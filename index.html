@@ -1,0 +1,137 @@
+﻿<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Gestion Atelier PRO</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+  </script>
+</head>
+
+<body>
+
+  <!-- LOGIN -->
+  <div id="login-container" class="login-container">
+    <div class="login-panel">
+      <h1>Gestion Atelier PRO</h1>
+      <form id="login-form">
+        <div class="form-group">
+          <label>Login</label>
+          <input type="text" id="login-input" placeholder="Votre login" required />
+        </div>
+        <div class="form-group">
+          <label>Mot de passe</label>
+          <input type="password" id="password-input" placeholder="Votre mot de passe" required />
+        </div>
+        <div id="login-error" class="login-error" style="display: none;"></div>
+        <button type="submit">Se connecter</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div id="app-container" class="app-container hidden">
+
+    <!-- HEADER -->
+    <header>
+      <h1>Gestion Atelier PRO</h1>
+      <div class="header-right">
+        <span id="user-info">Utilisateur</span>
+        <button id="btn-logout" class="btn">Déconnexion</button>
+        <button id="btn-settings" class="btn" style="display:none;">Paramétrage</button>
+        <button id="btn-accounts" class="btn" style="display:none;">Gérer comptes</button>
+      </div>
+    </header>
+
+    <!-- ALERTE GLOBALE -->
+    <div id="global-alert" class="global-alert" style="display:none;"></div>
+
+    <!-- TOOLBAR -->
+    <div class="toolbar">
+      <input id="searchInput" type="text" placeholder="Rechercher…" />
+      <select id="sortBy">
+        <option value="date_desc">Date (récent → ancien)</option>
+        <option value="date_asc">Date (ancien → récent)</option>
+        <option value="name_asc">Nom (A→Z)</option>
+        <option value="name_desc">Nom (Z→A)</option>
+        <option value="size_desc">Taille (grosse → petite)</option>
+        <option value="size_asc">Taille (petite → grosse)</option>
+      </select>
+      <div class="tab-buttons">
+        <button id="btnViewKanban" class="tab-btn active">Production</button>
+        <button id="btnViewCalendar" class="tab-btn">Calendrier</button>
+        <button id="btnViewSubmission" class="tab-btn" style="display:none;">Soumission</button>
+		<button id="btnViewProduction" class="tab-btn" style="display:none;">Production</button>      </div>
+    </div>
+
+    <!-- CONTAINER -->
+    <div class="container">
+      <div id="kanban"></div>
+      <div id="calendar" class="hidden"></div>
+      <div id="submission" class="submission hidden"></div>
+      <div id="production" class="production-view hidden"></div>
+    </div>
+
+    <!-- MODALE FICHE FABRICATION -->
+    <div id="fab-modal" class="modal hidden">
+      <div class="fab-modal-content">
+        <h2>Fiche de fabrication</h2>
+        <div class="fab-form-grid">
+          <div class="fab-form-group"><label>Machine</label><input id="fab-machine" type="text" /></div>
+          <div class="fab-form-group"><label>Opérateur</label><input id="fab-operateur" type="text" /></div>
+          <div class="fab-form-group"><label>Quantité</label><input id="fab-quantite" type="number" /></div>
+          <div class="fab-form-group"><label>Type de travail</label><input id="fab-type" type="text" /></div>
+          <div class="fab-form-group"><label>Format</label><input id="fab-format" type="text" /></div>
+          <div class="fab-form-group"><label>Papier</label><input id="fab-papier" type="text" /></div>
+          <div class="fab-form-group"><label>Recto/Verso</label><input id="fab-rectoverso" type="text" /></div>
+          <div class="fab-form-group"><label>Encres</label><input id="fab-encres" type="text" /></div>
+          <div class="fab-form-group"><label>Client</label><input id="fab-client" type="text" /></div>
+          <div class="fab-form-group"><label>Numéro d'affaire</label><input id="fab-numero" type="text" /></div>
+          <div class="fab-form-group" style="grid-column: 1 / -1;"><label>Notes</label><textarea id="fab-notes" rows="4"></textarea></div>
+        </div>
+        <h3>Historique</h3>
+        <div id="fab-history"></div>
+        <div class="fab-modal-buttons">
+          <button id="fab-close">Fermer</button>
+          <button id="fab-pdf" class="btn btn-primary">Générer PDF</button>
+          <button id="fab-finprod" class="btn btn-primary">Fin de production</button>
+          <button id="fab-delivery-remove" class="btn">Retirer du planning</button>
+          <button id="fab-save" class="btn btn-primary">Enregistrer</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODALE GESTION COMPTES -->
+    <div id="accounts-modal" class="modal hidden">
+      <div class="accounts-modal-content">
+        <h2>Gérer les comptes utilisateurs</h2>
+        <div class="accounts-new-user">
+          <h3>Créer un nouveau compte</h3>
+          <input type="text" id="new-login" placeholder="Login" />
+          <input type="password" id="new-password" placeholder="Mot de passe" />
+          <input type="text" id="new-name" placeholder="Nom complet" />
+          <select id="new-profile">
+            <option value="1">Profil 1 - Soumission</option>
+            <option value="2">Profil 2 - Opérateur</option>
+            <option value="3">Profil 3 - Admin</option>
+          </select>
+          <button id="btn-create-user" class="btn btn-primary">Créer</button>
+        </div>
+        <div class="accounts-list">
+          <h3>Utilisateurs existants</h3>
+          <div id="users-list"></div>
+        </div>
+        <button id="accounts-close" class="btn">Fermer</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="js/app.js?v=5"></script>
+
+</body>
+</html>
