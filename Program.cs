@@ -992,11 +992,11 @@ file static class MongoDbHelper
             var countersCol = db.GetCollection<BsonDocument>(CountersCollection);
 
             var filter = Builders<BsonDocument>.Filter.Eq("_id", "file_counter");
-            var update = Builders<BsonDocument>.Update.Inc("value", 1);
+            var update = Builders<BsonDocument>.Update.Inc("value", 1L);
             var options = new FindOneAndUpdateOptions<BsonDocument> { ReturnDocument = ReturnDocument.After, IsUpsert = true };
 
             var result = countersCol.FindOneAndUpdate(filter, update, options);
-            return result["value"].AsInt64;
+            return result["value"].ToInt64();
         }
         catch (Exception ex)
         {
@@ -1017,7 +1017,7 @@ file static class MongoDbHelper
             var options = new FindOneAndUpdateOptions<BsonDocument> { ReturnDocument = ReturnDocument.After, IsUpsert = true };
 
             var result = countersCol.FindOneAndUpdate(filter, update, options);
-            return result["value"].AsInt64;
+            return result["value"].ToInt64();
         }
         catch (Exception ex)
         {
