@@ -769,17 +769,9 @@ app.MapPost("/api/upload", async (HttpContext ctx) =>
         var destDir = Path.Combine(root, folder);
         Directory.CreateDirectory(destDir);
 
-        // --- AJOUT : récupère le numéro SI c'est un dépôt "soumission"
         string destFileName = Path.GetFileName(file.FileName);
-
-        // On détermine le profil: (adaptation selon ton code, ici profil = form["profile"])
-        var profile = form["profile"].ToString().Trim();
-
-        if (profile == "soumission")
-        {
-            long numero = MongoDbHelper.GetNextFileNumber();
-            destFileName = $"{numero:D5}_{destFileName}";
-        }
+        long numero = MongoDbHelper.GetNextFileNumber();
+        destFileName = $"{numero:D5}_{destFileName}";
 
         var destPath = Path.Combine(destDir, destFileName);
 

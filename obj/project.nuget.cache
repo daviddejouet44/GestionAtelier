@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "dgSpecHash": "1KCcaZCTiBE=",
+  "success": true,
+  "projectFilePath": "/home/runner/work/GestionAtelier/GestionAtelier/GestionAtelier.csproj",
+  "expectedPackageFiles": [
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/dnsclient/1.6.1/dnsclient.1.6.1.nupkg.sha512",
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/microsoft.extensions.logging.abstractions/2.0.0/microsoft.extensions.logging.abstractions.2.0.0.nupkg.sha512",
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/microsoft.netcore.platforms/5.0.0/microsoft.netcore.platforms.5.0.0.nupkg.sha512",
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/microsoft.win32.registry/5.0.0/microsoft.win32.registry.5.0.0.nupkg.sha512",
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/mongodb.bson/3.7.1/mongodb.bson.3.7.1.nupkg.sha512",
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/mongodb.driver/3.7.1/mongodb.driver.3.7.1.nupkg.sha512",
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/questpdf/2024.3.1/questpdf.2024.3.1.nupkg.sha512",
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/sharpcompress/0.30.1/sharpcompress.0.30.1.nupkg.sha512",
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/snappier/1.0.0/snappier.1.0.0.nupkg.sha512",
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/system.buffers/4.5.1/system.buffers.4.5.1.nupkg.sha512",
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/system.memory/4.5.5/system.memory.4.5.5.nupkg.sha512",
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/system.runtime.compilerservices.unsafe/5.0.0/system.runtime.compilerservices.unsafe.5.0.0.nupkg.sha512",
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/system.security.accesscontrol/5.0.0/system.security.accesscontrol.5.0.0.nupkg.sha512",
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/system.security.principal.windows/5.0.0/system.security.principal.windows.5.0.0.nupkg.sha512",
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/zstdsharp.port/0.7.3/zstdsharp.port.0.7.3.nupkg.sha512",
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/microsoft.netcore.app.ref/8.0.25/microsoft.netcore.app.ref.8.0.25.nupkg.sha512",
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/microsoft.aspnetcore.app.ref/8.0.25/microsoft.aspnetcore.app.ref.8.0.25.nupkg.sha512",
+    "/tmp/codeql-scratch-fcc30f674b411dc9/dbs/csharp/working/packages/microsoft.netcore.app.host.win-x64/8.0.25/microsoft.netcore.app.host.win-x64.8.0.25.nupkg.sha512"
+  ],
+  "logs": []
+}
