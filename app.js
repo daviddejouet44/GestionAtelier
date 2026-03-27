@@ -180,151 +180,131 @@ function showProduction() {
   // Vide et reconstruit
   productionEl.innerHTML = "";
   
-  // Crée un conteneur pour le kanban
+  // Crée un conteneur pour le kanban (même style que le kanban opérateur)
   const kanbanContainer = document.createElement("div");
   kanbanContainer.id = "productionKanban";
-  kanbanContainer.style.cssText = "display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; width: 100%;";
+  kanbanContainer.style.cssText = "display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; width: 100%;";
   
   productionEl.appendChild(kanbanContainer);
   
-  // Copie le kanban du profil opérateur (en lecture seule)
-  buildProductionKanban(kanbanContainer);
+  // Charge les affectations puis construit le kanban
+  loadAssignments().then(() => buildProductionKanban(kanbanContainer));
 }
 
 async function buildProductionKanban(container) {
-  const backendFolders = await fetch("/api/folders").then(r => r.json()).catch(() => []);
-  
-  const folderLabels = {
-    "1.Reception": "📥 Début de production",
-    "2.Corrections": "🔍 Corrections",
-    "2.Corrections + fond perdu": "🔍 Corrections et fond perdu",
-    "3.Rapport": "📊 Rapport",
-    "4.BAT": "📋 BAT",
-    "5.Relecture": "👁️ Relecture",
-    "6.Archivage": "📦 Archivage",
-    "7.Termine": "✅ Terminé",
-    "8. Fin de production": "🏁 Fin de production"
-  };
-  
-  const folders = backendFolders.map(name => ({
-    name,
-    label: folderLabels[name] || name.replace(/_/g, " ").replace(/\u00A0/g, " ")
-  }));
+  const folderConfig = [
+    { folder: "1.Reception", label: "Début de production", color: "#5fa8c4" },
+    { folder: "2.Corrections", label: "Corrections", color: "#5fa8c4" },
+    { folder: "3.Rapport", label: "Rapport", color: "#5fa8c4" },
+    { folder: "2.Corrections + fond perdu", label: "Corrections et fond perdu", color: "#5fa8c4" },
+    { folder: "6.Archivage", label: "Prêt pour impression", color: "#5fa8c4" },
+    { folder: "4.BAT", label: "BAT", color: "#5fa8c4" },
+    { folder: "5.Relecture", label: "Impression en cours", color: "#5fa8c4" },
+    { folder: "7.Termine", label: "PrismaPrepare", color: "#6b7e89" },
+    { folder: "8. Fin de production", label: "Fiery", color: "#6b7e89" },
+    { folder: "9. Archived", label: "Fin de production", color: "#22c55e" }
+  ];
 
   container.innerHTML = "";
-  container.style.pointerEvents = "none";
-  container.style.opacity = "0.9";
 
-  for (const f of folders) {
+  for (const cfg of folderConfig) {
     const col = document.createElement("div");
-    col.className = "kanban-col";
-    col.dataset.folder = f.name;
-    col.style.pointerEvents = "none";
+    col.className = "kanban-col-operator";
+    col.dataset.folder = cfg.folder;
+    col.style.background = `linear-gradient(135deg, ${cfg.color} 0%, ${darkenColor(cfg.color, 15)} 100%)`;
 
-    const titleContainer = document.createElement("div");
-    titleContainer.style.cssText = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;";
-    
     const title = document.createElement("div");
-    title.className = "kanban-col__title";
-    title.textContent = f.label;
-    titleContainer.appendChild(title);
-
-    const counter = document.createElement("div");
-    counter.className = "kanban-col__counter";
-    counter.style.cssText = "font-size: 12px; background: #e5e7eb; padding: 4px 8px; border-radius: 4px; font-weight: 600; color: #6b7280;";
-    counter.textContent = "0";
-    counter.dataset.folder = f.name;
-    titleContainer.appendChild(counter);
-    
-    col.appendChild(titleContainer);
+    title.className = "kanban-col-operator__title";
+    title.textContent = cfg.label;
+    col.appendChild(title);
 
     const drop = document.createElement("div");
-    drop.className = "kanban-col__drop";
-    drop.dataset.folder = f.name;
+    drop.className = "kanban-col-operator__drop";
+    drop.dataset.folder = cfg.folder;
     col.appendChild(drop);
 
     container.appendChild(col);
   }
 
-  // Remplit les colonnes
   await refreshProductionKanban(container);
 }
 
 async function refreshProductionKanban(container) {
-  const q = "";
-  const sort = "date_desc";
-
-  const cols = container.querySelectorAll(".kanban-col");
+  const cols = container.querySelectorAll(".kanban-col-operator");
   for (const col of cols) {
-    await refreshKanbanColumnProduction(col.dataset.folder, q, sort, col);
+    await refreshKanbanColumnReadOnly(col.dataset.folder, col);
   }
 }
 
-async function refreshKanbanColumnProduction(folderName, q, sort, col) {
+async function refreshKanbanColumnReadOnly(folderName, col) {
   try {
     const jobs = await fetch(`/api/jobs?folder=${encodeURIComponent(folderName)}`)
       .then(r => r.json())
       .catch(() => []);
 
-    const drop = col.querySelector(".kanban-col__drop");
-    const counter = col.querySelector(".kanban-col__counter");
-
+    const drop = col.querySelector(".kanban-col-operator__drop");
     drop.innerHTML = "";
-    counter.textContent = jobs.length;
 
-    let filtered = jobs;
-    if (q) {
-      filtered = jobs.filter(j => (j.name || "").toLowerCase().includes(q.toLowerCase()));
-    }
+    jobs.sort((a, b) => new Date(b.modified) - new Date(a.modified));
 
-    if (sort === "name_asc") filtered.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-    else if (sort === "name_desc") filtered.sort((a, b) => (b.name || "").localeCompare(a.name || ""));
-    else if (sort === "size_asc") filtered.sort((a, b) => (a.size || 0) - (b.size || 0));
-    else if (sort === "size_desc") filtered.sort((a, b) => (b.size || 0) - (a.size || 0));
-    else filtered.sort((a, b) => new Date(b.modified) - new Date(a.modified));
-
-    for (const job of filtered) {
+    for (const job of jobs) {
       const card = document.createElement("div");
-      card.className = "kanban-card";
-      card.style.pointerEvents = "none";
+      card.className = "kanban-card-operator";
       card.dataset.fullPath = normalizePath(job.fullPath || "");
 
-      const thumb = document.createElement("div");
-      thumb.className = "thumb";
-      if ((job.name || "").toLowerCase().endsWith(".pdf")) {
-        renderPdfThumbnail(normalizePath(job.fullPath || ""), thumb).catch(() => {});
-      } else {
-        thumb.innerHTML = '<div style="font-size:24px;">📄</div>';
-      }
-      card.appendChild(thumb);
-
-      const body = document.createElement("div");
-      body.className = "card-body";
-
       const title = document.createElement("p");
-      title.className = "card-title";
+      title.className = "kanban-card-operator-title";
       title.textContent = job.name || "Sans nom";
-      body.appendChild(title);
+      card.appendChild(title);
 
       const sub = document.createElement("p");
-      sub.className = "card-sub";
+      sub.className = "kanban-card-operator-info";
       sub.textContent = `${new Date(job.modified).toLocaleDateString("fr-FR")} · ${fmtBytes(job.size)}`;
-      body.appendChild(sub);
+      card.appendChild(sub);
 
       const full = normalizePath(job.fullPath || "");
-      const iso = deliveriesByPath[full];
-      if (iso) {
-        const pill = document.createElement("div");
-        pill.className = `due-pill ${daysDiffFromToday(iso) <= 1 ? "due--red" : "due--orange"}`;
-        pill.textContent = new Date(iso).toLocaleDateString("fr-FR");
-        body.appendChild(pill);
+
+      // Assignment badge (read-only view — visible but no action)
+      const assignment = assignmentsByPath[full];
+      if (assignment) {
+        const badge = document.createElement("div");
+        badge.className = "assignment-badge";
+        badge.textContent = `👤 ${assignment.operatorName}`;
+        card.appendChild(badge);
       }
 
-      card.appendChild(body);
+      const iso = deliveriesByPath[full];
+      if (iso) {
+        const status = document.createElement("div");
+        status.className = "kanban-card-operator-status";
+        const daysLeft = daysDiffFromToday(iso);
+        if (daysLeft <= 1) status.classList.add("urgent");
+        else if (daysLeft <= 3) status.classList.add("warning");
+        status.textContent = new Date(iso).toLocaleDateString("fr-FR");
+        card.appendChild(status);
+      }
+
+      // Read-only actions: only "Ouvrir" and "Fiche"
+      const actions = document.createElement("div");
+      actions.className = "kanban-card-operator-actions";
+
+      const btnOpen = document.createElement("button");
+      btnOpen.className = "btn btn-sm";
+      btnOpen.textContent = "Ouvrir";
+      btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full), "_blank", "noopener");
+      actions.appendChild(btnOpen);
+
+      const btnFiche = document.createElement("button");
+      btnFiche.className = "btn btn-sm";
+      btnFiche.textContent = "Fiche";
+      btnFiche.onclick = () => openFabrication(full);
+      actions.appendChild(btnFiche);
+
+      card.appendChild(actions);
       drop.appendChild(card);
     }
   } catch (err) {
-    console.error("Erreur refresh kanban production:", err);
+    console.error("Erreur refresh kanban read-only:", err);
   }
 }
 
@@ -844,6 +824,7 @@ async function initApp() {
 
   try {
     await loadDeliveries();
+    await loadAssignments();
     updateGlobalAlert();
     await buildKanban();
     ensureCalendar();
@@ -874,10 +855,24 @@ const sortBy = document.getElementById("sortBy");
 
 let calendar = null;
 let deliveriesByPath = {};
+let assignmentsByPath = {};
+
+async function loadAssignments() {
+  try {
+    const list = await fetch("/api/assignments").then(r => r.json()).catch(() => []);
+    assignmentsByPath = {};
+    list.forEach(a => {
+      if (a && a.fullPath) assignmentsByPath[normalizePath(a.fullPath)] = a;
+    });
+  } catch(err) {
+    console.error("Erreur loadAssignments:", err);
+  }
+}
 
 setInterval(async () => {
   if (kanbanDiv.classList.contains("hidden")) return;
   await loadDeliveries();
+  await loadAssignments();
   updateGlobalAlert();
   await refreshKanban();
 }, 30000);
@@ -951,7 +946,7 @@ const fabClose = document.getElementById("fab-close");
 const fabSave = document.getElementById("fab-save");
 const fabPdf = document.getElementById("fab-pdf");
 const fabFinProd = document.getElementById("fab-finprod");
-const fabMachine = document.getElementById("fab-machine");
+const fabMoteur = document.getElementById("fab-moteur");
 const fabOperateur = document.getElementById("fab-operateur");
 const fabQuantite = document.getElementById("fab-quantite");
 const fabType = document.getElementById("fab-type");
@@ -962,6 +957,15 @@ const fabEncres = document.getElementById("fab-encres");
 const fabClient = document.getElementById("fab-client");
 const fabNumero = document.getElementById("fab-numero");
 const fabNotes = document.getElementById("fab-notes");
+const fabDelai = document.getElementById("fab-delai");
+const fabFaconnage = document.getElementById("fab-faconnage");
+const fabLivraison = document.getElementById("fab-livraison");
+const fabMedia1 = document.getElementById("fab-media1");
+const fabMedia2 = document.getElementById("fab-media2");
+const fabMedia3 = document.getElementById("fab-media3");
+const fabMedia4 = document.getElementById("fab-media4");
+const fabTypeDoc = document.getElementById("fab-typedoc");
+const fabNbFeuilles = document.getElementById("fab-nbfeuilles");
 const fabHistory = document.getElementById("fab-history");
 const fabRemove = document.getElementById("fab-delivery-remove");
 
@@ -975,7 +979,19 @@ async function openFabrication(fullPath) {
   const j = await r.json();
   const d = j.ok === false ? {} : j;
 
-  fabMachine.value = d.machine || "";
+  // Load print engines into dropdown
+  try {
+    const engines = await fetch("/api/config/print-engines").then(r => r.json()).catch(() => []);
+    fabMoteur.innerHTML = '<option value="">— Sélectionner —</option>';
+    engines.forEach(e => {
+      const opt = document.createElement("option");
+      opt.value = e;
+      opt.textContent = e;
+      fabMoteur.appendChild(opt);
+    });
+  } catch(err) { console.warn("Erreur print-engines:", err); }
+
+  fabMoteur.value = d.moteurImpression || d.machine || "";
   fabOperateur.value = d.operateur || "";
   fabQuantite.value = d.quantite || "";
   fabType.value = d.typeTravail || "";
@@ -986,11 +1002,34 @@ async function openFabrication(fullPath) {
   fabClient.value = d.client || "";
   fabNumero.value = d.numeroAffaire || "";
   fabNotes.value = d.notes || "";
+  fabFaconnage.value = d.faconnage || "";
+  fabLivraison.value = d.livraison || "";
+  fabMedia1.value = d.media1 || "";
+  fabMedia2.value = d.media2 || "";
+  fabMedia3.value = d.media3 || "";
+  fabMedia4.value = d.media4 || "";
+  fabTypeDoc.value = d.typeDocument || "";
+  fabNbFeuilles.value = d.nombreFeuilles || "";
+
+  // Pre-fill Délai from delivery if available
+  const deliveryDate = deliveriesByPath[fabCurrentPath];
+  if (d.delai) {
+    fabDelai.value = new Date(d.delai).toISOString().split("T")[0];
+  } else if (deliveryDate) {
+    fabDelai.value = deliveryDate;
+  } else {
+    fabDelai.value = "";
+  }
+
+  // Show/hide admin-only fields
+  document.querySelectorAll(".fab-admin-field").forEach(el => {
+    el.style.display = currentUser.profile === 3 ? "" : "none";
+  });
 
   fabHistory.innerHTML = "";
   (d.history || []).forEach(h => {
     const div = document.createElement("div");
-    div.textContent = `${h.date} — ${h.user} — ${h.action}`;
+    div.textContent = `${new Date(h.date).toLocaleDateString("fr-FR", {day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})} — ${h.user} — ${h.action}`;
     fabHistory.appendChild(div);
   });
 
@@ -1018,9 +1057,9 @@ fabSave.onclick = async () => {
   const payload = {
     fullPath: fabCurrentPath,
     fileName: fabCurrentPath.split("\\").pop(),
-    machine: fabMachine.value,
-    operateur: fabOperateur.value,
-    quantite: parseInt(fabQuantite.value) || 0,
+    moteurImpression: fabMoteur.value,
+    machine: fabMoteur.value,
+    quantite: parseInt(fabQuantite.value) || null,
     typeTravail: fabType.value,
     format: fabFormat.value,
     papier: fabPapier.value,
@@ -1028,12 +1067,21 @@ fabSave.onclick = async () => {
     encres: fabEncres.value,
     client: fabClient.value,
     numeroAffaire: fabNumero.value,
-    notes: fabNotes.value
+    notes: fabNotes.value,
+    faconnage: fabFaconnage.value,
+    livraison: fabLivraison.value,
+    delai: fabDelai.value || null,
+    media1: fabMedia1.value || null,
+    media2: fabMedia2.value || null,
+    media3: fabMedia3.value || null,
+    media4: fabMedia4.value || null,
+    typeDocument: fabTypeDoc.value || null,
+    nombreFeuilles: parseInt(fabNbFeuilles.value) || null
   };
 
   const r = await fetch("/api/fabrication", {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
     body: JSON.stringify(payload)
   }).then(r => r.json());
 
@@ -1043,7 +1091,7 @@ fabSave.onclick = async () => {
   }
 
   fabModal.classList.add("hidden");
-  alert("Fiche enregistrée !");
+  showNotification("✅ Fiche enregistrée", "success");
 };
 
 fabPdf.onclick = () => {
@@ -1445,6 +1493,16 @@ if (folderName === "2.Corrections" || folderName === "2.Corrections + fond perdu
       card.appendChild(sub);
 
       const full = normalizePath(job.fullPath || "");
+
+      // Assignment badge
+      const assignment = assignmentsByPath[full];
+      if (assignment) {
+        const badge = document.createElement("div");
+        badge.className = "assignment-badge";
+        badge.textContent = `👤 ${assignment.operatorName}`;
+        card.appendChild(badge);
+      }
+
       const iso = deliveriesByPath[full];
       if (iso) {
         const status = document.createElement("div");
@@ -1459,43 +1517,29 @@ if (folderName === "2.Corrections" || folderName === "2.Corrections + fond perdu
         card.appendChild(status);
       }
 
-      // Actions selon la tuile
+      // Actions
       const actions = document.createElement("div");
       actions.className = "kanban-card-operator-actions";
 
-      if (folderName === "1.Reception") {
-        // Début de production
-        const btnOpen = document.createElement("button");
-        btnOpen.className = "btn btn-sm";
-        btnOpen.textContent = "Ouvrir";
-        btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full), "_blank", "noopener");
-        actions.appendChild(btnOpen);
+      const btnOpen = document.createElement("button");
+      btnOpen.className = "btn btn-sm";
+      btnOpen.textContent = "Ouvrir";
+      btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full), "_blank", "noopener");
+      actions.appendChild(btnOpen);
 
-        const btnFiche = document.createElement("button");
-        btnFiche.className = "btn btn-sm";
-        btnFiche.textContent = "Fiche";
-        btnFiche.onclick = () => openFabrication(full);
-        actions.appendChild(btnFiche);
+      const btnFiche = document.createElement("button");
+      btnFiche.className = "btn btn-sm";
+      btnFiche.textContent = "Fiche";
+      btnFiche.onclick = () => openFabrication(full);
+      actions.appendChild(btnFiche);
 
-        const btnDelete = document.createElement("button");
-        btnDelete.className = "btn btn-sm";
-        btnDelete.textContent = "Corbeille";
-        btnDelete.onclick = () => deleteFile(full);
-        actions.appendChild(btnDelete);
-
-      } else if (folderName === "2.Corrections" || folderName === "2.Corrections + fond perdu") {
-        // Corrections
-        const btnOpen = document.createElement("button");
-        btnOpen.className = "btn btn-sm";
-        btnOpen.textContent = "Ouvrir";
-        btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full), "_blank", "noopener");
-        actions.appendChild(btnOpen);
-
-        const btnFiche = document.createElement("button");
-        btnFiche.className = "btn btn-sm";
-        btnFiche.textContent = "Fiche";
-        btnFiche.onclick = () => openFabrication(full);
-        actions.appendChild(btnFiche);
+      // "Affecter à" button (visible for profiles 2 and 3)
+      if (currentUser.profile === 2 || currentUser.profile === 3) {
+        const btnAssign = document.createElement("button");
+        btnAssign.className = "btn btn-sm btn-assign";
+        btnAssign.textContent = "Affecter à";
+        btnAssign.onclick = (e) => { e.stopPropagation(); openAssignDropdown(btnAssign, full); };
+        actions.appendChild(btnAssign);
 
         const btnDelete = document.createElement("button");
         btnDelete.className = "btn btn-sm";
@@ -1516,6 +1560,72 @@ if (folderName === "2.Corrections" || folderName === "2.Corrections + fond perdu
   } catch (err) {
     console.error("Erreur refresh kanban operator:", err);
   }
+}
+
+async function openAssignDropdown(btn, fullPath) {
+  // Close any open assign dropdowns
+  document.querySelectorAll(".assign-dropdown").forEach(d => d.remove());
+
+  let operators = [];
+  try {
+    const resp = await fetch("/api/operators").then(r => r.json());
+    operators = resp.operators || [];
+  } catch(err) {
+    showNotification("❌ Impossible de charger les opérateurs", "error");
+    return;
+  }
+
+  if (operators.length === 0) {
+    showNotification("ℹ️ Aucun opérateur disponible", "info");
+    return;
+  }
+
+  const dropdown = document.createElement("div");
+  dropdown.className = "assign-dropdown";
+  dropdown.style.cssText = `
+    position: absolute; background: white; border: 1px solid #e5e7eb;
+    border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    z-index: 9999; min-width: 180px; overflow: hidden;
+  `;
+
+  operators.forEach(op => {
+    const item = document.createElement("div");
+    item.style.cssText = "padding: 10px 14px; cursor: pointer; font-size: 13px; transition: background 0.15s;";
+    item.textContent = op.name;
+    item.onmouseenter = () => item.style.background = "#f3f4f6";
+    item.onmouseleave = () => item.style.background = "";
+    item.onclick = async () => {
+      dropdown.remove();
+      const r = await fetch("/api/assignment", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+        body: JSON.stringify({ fullPath, operatorId: op.id })
+      }).then(r => r.json()).catch(() => ({ ok: false }));
+
+      if (r.ok) {
+        assignmentsByPath[normalizePath(fullPath)] = { fullPath, operatorName: r.operatorName || op.name, operatorId: op.id };
+        showNotification(`✅ Job affecté à ${r.operatorName || op.name}`, "success");
+        await refreshKanban();
+      } else {
+        showNotification("❌ Erreur : " + (r.error || ""), "error");
+      }
+    };
+    dropdown.appendChild(item);
+  });
+
+  // Position relative to button
+  const rect = btn.getBoundingClientRect();
+  dropdown.style.top = (rect.bottom + window.scrollY + 4) + "px";
+  dropdown.style.left = (rect.left + window.scrollX) + "px";
+  document.body.appendChild(dropdown);
+
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener("click", function closeDropdown() {
+      dropdown.remove();
+      document.removeEventListener("click", closeDropdown);
+    }, { once: true });
+  }, 10);
 }
 
 async function refreshKanban() {

@@ -674,6 +674,27 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
 {
     try
     {
+        // Extract user from token
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        string userName = "Système";
+        int userProfile = 0;
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            try
+            {
+                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+                var parts = decoded.Split(':');
+                if (parts.Length >= 3)
+                {
+                    int.TryParse(parts[2], out userProfile);
+                    var users = BackendUtils.LoadUsers();
+                    var u = users.FirstOrDefault(x => x.Id == parts[0]);
+                    if (u != null) userName = u.Name;
+                }
+            }
+            catch { /* ignore token parse errors */ }
+        }
+
         var input = await ctx.Request.ReadFromJsonAsync<FabricationInput>();
         if (input == null)
             return Results.Json(new { ok = false, error = "JSON vide." });
@@ -686,6 +707,9 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
 
         var old = BackendUtils.FindFabrication(input.FullPath);
 
+        // Admin-only fields: only profile 3 can update Media1-4, TypeDocument, NombreFeuilles
+        var isAdmin = (userProfile == 3);
+
         var sheet = new FabricationSheet
         {
             FullPath = input.FullPath,
@@ -693,24 +717,36 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
                 ? Path.GetFileName(input.FullPath)
                 : input.FileName,
 
-            Machine       = input.Machine,
-            Operateur     = input.Operateur,
-            Quantite      = input.Quantite,
-            TypeTravail   = input.TypeTravail,
-            Format        = input.Format,
-            Papier        = input.Papier,
-            RectoVerso    = input.RectoVerso,
-            Encres        = input.Encres,
-            Client        = input.Client,
-            NumeroAffaire = input.NumeroAffaire,
-            Notes         = input.Notes,
-            History       = old?.History ?? new List<FabricationHistory>()
+            MoteurImpression = input.MoteurImpression,
+            Machine          = input.MoteurImpression ?? input.Machine,
+            Operateur        = old?.Operateur,
+            Quantite         = input.Quantite,
+            TypeTravail      = input.TypeTravail,
+            Format           = input.Format,
+            Papier           = input.Papier,
+            RectoVerso       = input.RectoVerso,
+            Encres           = input.Encres,
+            Client           = input.Client,
+            NumeroAffaire    = input.NumeroAffaire,
+            Notes            = input.Notes,
+            Faconnage        = input.Faconnage,
+            Livraison        = input.Livraison,
+            Delai            = input.Delai,
+
+            Media1        = isAdmin ? input.Media1        : old?.Media1,
+            Media2        = isAdmin ? input.Media2        : old?.Media2,
+            Media3        = isAdmin ? input.Media3        : old?.Media3,
+            Media4        = isAdmin ? input.Media4        : old?.Media4,
+            TypeDocument  = isAdmin ? input.TypeDocument  : old?.TypeDocument,
+            NombreFeuilles = isAdmin ? input.NombreFeuilles : old?.NombreFeuilles,
+
+            History = old?.History ?? new List<FabricationHistory>()
         };
 
         sheet.History.Add(new FabricationHistory
         {
             Date   = DateTime.Now,
-            User   = "David",
+            User   = userName,
             Action = (old == null ? "Création fiche" : "Modification fiche")
         });
 
@@ -738,6 +774,135 @@ app.MapGet("/api/fabrication/pdf", (string fullPath) =>
         ms.Position = 0;
 
         return Results.File(ms, "application/pdf", $"FicheFabrication-{sheet.FileName}.pdf");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// CONFIG — Moteurs d'impression
+// ======================================================
+
+var printEngines = new List<string>
+{
+    "Offset",
+    "Numérique",
+    "Jet d'encre",
+    "Sérigraphie",
+    "Flexographie",
+    "Héliogravure",
+    "Tampographie",
+    "Laser"
+};
+
+app.MapGet("/api/config/print-engines", () => Results.Json(printEngines));
+
+// ======================================================
+// OPÉRATEURS — liste des utilisateurs profil 2
+// ======================================================
+
+app.MapGet("/api/operators", () =>
+{
+    try
+    {
+        var users = BackendUtils.LoadUsers();
+        var operators = users.Where(u => u.Profile == 2)
+            .Select(u => new { id = u.Id, name = u.Name, login = u.Login });
+        return Results.Json(new { ok = true, operators });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// ASSIGNMENTS
+// ======================================================
+
+app.MapGet("/api/assignment", (string fullPath) =>
+{
+    var a = BackendUtils.FindAssignment(fullPath);
+    if (a != null)
+        return Results.Json(new { ok = true, assignment = new { fullPath = a.FullPath, operatorId = a.OperatorId, operatorName = a.OperatorName, assignedAt = a.AssignedAt, assignedBy = a.AssignedBy } });
+    return Results.Json(new { ok = false, error = "Aucune affectation." });
+});
+
+app.MapGet("/api/assignments", () =>
+{
+    var list = BackendUtils.LoadAssignments();
+    var result = list.Select(a => new { fullPath = a.FullPath, operatorId = a.OperatorId, operatorName = a.OperatorName, assignedAt = a.AssignedAt, assignedBy = a.AssignedBy });
+    return Results.Json(result);
+});
+
+app.MapPut("/api/assignment", async (HttpContext ctx) =>
+{
+    try
+    {
+        // Extract caller identity from token
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        string callerName = "Système";
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            try
+            {
+                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+                var parts = decoded.Split(':');
+                if (parts.Length >= 3)
+                {
+                    var users = BackendUtils.LoadUsers();
+                    var u = users.FirstOrDefault(x => x.Id == parts[0]);
+                    if (u != null) callerName = u.Name;
+                }
+            }
+            catch { /* ignore */ }
+        }
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        if (!json.TryGetProperty("fullPath", out var fpEl) ||
+            !json.TryGetProperty("operatorId", out var opIdEl))
+            return Results.Json(new { ok = false, error = "fullPath et operatorId requis." });
+
+        var fullPath = fpEl.GetString() ?? "";
+        var operatorId = opIdEl.GetString() ?? "";
+
+        var users2 = BackendUtils.LoadUsers();
+        var operator2 = users2.FirstOrDefault(u => u.Id == operatorId && u.Profile == 2);
+        if (operator2 == null)
+            return Results.Json(new { ok = false, error = "Opérateur introuvable ou profil invalide." });
+
+        var assignment = new AssignmentItem
+        {
+            FullPath     = fullPath,
+            OperatorId   = operatorId,
+            OperatorName = operator2.Name,
+            AssignedAt   = DateTime.Now,
+            AssignedBy   = callerName
+        };
+        BackendUtils.UpsertAssignment(assignment);
+
+        // Update fabrication history
+        var sheet = BackendUtils.FindFabrication(fullPath);
+        if (sheet != null)
+        {
+            var updatedHistory = sheet.History.ToList();
+            updatedHistory.Add(new FabricationHistory
+            {
+                Date   = DateTime.Now,
+                User   = callerName,
+                Action = $"Affecté à {operator2.Name}"
+            });
+            var updatedSheet = sheet with
+            {
+                Operateur = operator2.Name,
+                History   = updatedHistory
+            };
+            BackendUtils.UpsertFabrication(updatedSheet);
+        }
+
+        return Results.Json(new { ok = true, operatorName = operator2.Name });
     }
     catch (Exception ex)
     {
@@ -1034,6 +1199,9 @@ file static class MongoDbHelper
 
     public static IMongoCollection<BsonDocument> GetFabricationsCollection()
         => GetDatabase().GetCollection<BsonDocument>("fabrications");
+
+    public static IMongoCollection<BsonDocument> GetAssignmentsCollection()
+        => GetDatabase().GetCollection<BsonDocument>("assignments");
 }
 
 
@@ -1067,6 +1235,15 @@ file record DeliveryItem
     public string Time { get; set; } = "09:00";
 }
 
+file record AssignmentItem
+{
+    public string FullPath     { get; init; } = default!;
+    public string OperatorId   { get; init; } = default!;
+    public string OperatorName { get; init; } = default!;
+    public DateTime AssignedAt { get; init; }
+    public string AssignedBy   { get; init; } = "";
+}
+
 file record FabricationHistory
 {
     public DateTime Date { get; init; }
@@ -1079,6 +1256,7 @@ file record FabricationSheet
     public string FullPath { get; init; } = default!;
     public string FileName { get; init; } = default!;
     public string? Machine { get; init; }
+    public string? MoteurImpression { get; init; }
     public string? Operateur { get; init; }
     public int? Quantite { get; init; }
     public string? TypeTravail { get; init; }
@@ -1089,6 +1267,15 @@ file record FabricationSheet
     public string? Client { get; init; }
     public string? NumeroAffaire { get; init; }
     public string? Notes { get; init; }
+    public DateTime? Delai { get; init; }
+    public string? Media1 { get; init; }
+    public string? Media2 { get; init; }
+    public string? Media3 { get; init; }
+    public string? Media4 { get; init; }
+    public string? TypeDocument { get; init; }
+    public int? NombreFeuilles { get; init; }
+    public string? Faconnage { get; init; }
+    public string? Livraison { get; init; }
     public List<FabricationHistory> History { get; init; } = new();
 }
 
@@ -1097,6 +1284,7 @@ file class FabricationInput
     public string FullPath { get; set; } = "";
     public string FileName { get; set; } = "";
     public string? Machine { get; set; }
+    public string? MoteurImpression { get; set; }
     public string? Operateur { get; set; }
     public int? Quantite { get; set; }
     public string? TypeTravail { get; set; }
@@ -1107,6 +1295,15 @@ file class FabricationInput
     public string? Client { get; set; }
     public string? NumeroAffaire { get; set; }
     public string? Notes { get; set; }
+    public DateTime? Delai { get; set; }
+    public string? Media1 { get; set; }
+    public string? Media2 { get; set; }
+    public string? Media3 { get; set; }
+    public string? Media4 { get; set; }
+    public string? TypeDocument { get; set; }
+    public int? NombreFeuilles { get; set; }
+    public string? Faconnage { get; set; }
+    public string? Livraison { get; set; }
 }
 
 // ======================================================
@@ -1298,20 +1495,30 @@ file static class BackendUtils
         }));
         var doc = new BsonDocument
         {
-            ["fullPath"]      = sheet.FullPath,
-            ["fileName"]      = sheet.FileName,
-            ["machine"]       = sheet.Machine       == null ? BsonNull.Value : (BsonValue)sheet.Machine,
-            ["operateur"]     = sheet.Operateur     == null ? BsonNull.Value : (BsonValue)sheet.Operateur,
-            ["quantite"]      = sheet.Quantite      == null ? BsonNull.Value : (BsonValue)(int)sheet.Quantite,
-            ["typeTravail"]   = sheet.TypeTravail   == null ? BsonNull.Value : (BsonValue)sheet.TypeTravail,
-            ["format"]        = sheet.Format        == null ? BsonNull.Value : (BsonValue)sheet.Format,
-            ["papier"]        = sheet.Papier        == null ? BsonNull.Value : (BsonValue)sheet.Papier,
-            ["rectoVerso"]    = sheet.RectoVerso    == null ? BsonNull.Value : (BsonValue)sheet.RectoVerso,
-            ["encres"]        = sheet.Encres        == null ? BsonNull.Value : (BsonValue)sheet.Encres,
-            ["client"]        = sheet.Client        == null ? BsonNull.Value : (BsonValue)sheet.Client,
-            ["numeroAffaire"] = sheet.NumeroAffaire == null ? BsonNull.Value : (BsonValue)sheet.NumeroAffaire,
-            ["notes"]         = sheet.Notes         == null ? BsonNull.Value : (BsonValue)sheet.Notes,
-            ["history"]       = historyArray
+            ["fullPath"]          = sheet.FullPath,
+            ["fileName"]          = sheet.FileName,
+            ["machine"]           = sheet.Machine           == null ? BsonNull.Value : (BsonValue)sheet.Machine,
+            ["moteurImpression"]  = sheet.MoteurImpression  == null ? BsonNull.Value : (BsonValue)sheet.MoteurImpression,
+            ["operateur"]         = sheet.Operateur         == null ? BsonNull.Value : (BsonValue)sheet.Operateur,
+            ["quantite"]          = sheet.Quantite          == null ? BsonNull.Value : (BsonValue)(int)sheet.Quantite,
+            ["typeTravail"]       = sheet.TypeTravail       == null ? BsonNull.Value : (BsonValue)sheet.TypeTravail,
+            ["format"]            = sheet.Format            == null ? BsonNull.Value : (BsonValue)sheet.Format,
+            ["papier"]            = sheet.Papier            == null ? BsonNull.Value : (BsonValue)sheet.Papier,
+            ["rectoVerso"]        = sheet.RectoVerso        == null ? BsonNull.Value : (BsonValue)sheet.RectoVerso,
+            ["encres"]            = sheet.Encres            == null ? BsonNull.Value : (BsonValue)sheet.Encres,
+            ["client"]            = sheet.Client            == null ? BsonNull.Value : (BsonValue)sheet.Client,
+            ["numeroAffaire"]     = sheet.NumeroAffaire     == null ? BsonNull.Value : (BsonValue)sheet.NumeroAffaire,
+            ["notes"]             = sheet.Notes             == null ? BsonNull.Value : (BsonValue)sheet.Notes,
+            ["delai"]             = sheet.Delai             == null ? BsonNull.Value : (BsonValue)sheet.Delai.Value,
+            ["media1"]            = sheet.Media1            == null ? BsonNull.Value : (BsonValue)sheet.Media1,
+            ["media2"]            = sheet.Media2            == null ? BsonNull.Value : (BsonValue)sheet.Media2,
+            ["media3"]            = sheet.Media3            == null ? BsonNull.Value : (BsonValue)sheet.Media3,
+            ["media4"]            = sheet.Media4            == null ? BsonNull.Value : (BsonValue)sheet.Media4,
+            ["typeDocument"]      = sheet.TypeDocument      == null ? BsonNull.Value : (BsonValue)sheet.TypeDocument,
+            ["nombreFeuilles"]    = sheet.NombreFeuilles    == null ? BsonNull.Value : (BsonValue)(int)sheet.NombreFeuilles,
+            ["faconnage"]         = sheet.Faconnage         == null ? BsonNull.Value : (BsonValue)sheet.Faconnage,
+            ["livraison"]         = sheet.Livraison         == null ? BsonNull.Value : (BsonValue)sheet.Livraison,
+            ["history"]           = historyArray
         };
         col.ReplaceOne(filter, doc, new ReplaceOptions { IsUpsert = true });
     }
@@ -1336,27 +1543,103 @@ file static class BackendUtils
             }
         }
 
+        var machineVal = GetNullableString(d, "machine");
         return new FabricationSheet
         {
-            FullPath      = fullPath,
-            FileName      = d.Contains("fileName")      ? d["fileName"].AsString      : (Path.GetFileName(fullPath) ?? ""),
-            Machine       = GetNullableString(d, "machine"),
-            Operateur     = GetNullableString(d, "operateur"),
-            Quantite      = d.Contains("quantite")      && d["quantite"] != BsonNull.Value ? (int?)d["quantite"].AsInt32 : null,
-            TypeTravail   = GetNullableString(d, "typeTravail"),
-            Format        = GetNullableString(d, "format"),
-            Papier        = GetNullableString(d, "papier"),
-            RectoVerso    = GetNullableString(d, "rectoVerso"),
-            Encres        = GetNullableString(d, "encres"),
-            Client        = GetNullableString(d, "client"),
-            NumeroAffaire = GetNullableString(d, "numeroAffaire"),
-            Notes         = GetNullableString(d, "notes"),
-            History       = history
+            FullPath         = fullPath,
+            FileName         = d.Contains("fileName")         ? d["fileName"].AsString      : (Path.GetFileName(fullPath) ?? ""),
+            Machine          = machineVal,
+            MoteurImpression = GetNullableString(d, "moteurImpression") ?? machineVal,
+            Operateur        = GetNullableString(d, "operateur"),
+            Quantite         = d.Contains("quantite")         && d["quantite"]         != BsonNull.Value ? (int?)d["quantite"].AsInt32   : null,
+            TypeTravail      = GetNullableString(d, "typeTravail"),
+            Format           = GetNullableString(d, "format"),
+            Papier           = GetNullableString(d, "papier"),
+            RectoVerso       = GetNullableString(d, "rectoVerso"),
+            Encres           = GetNullableString(d, "encres"),
+            Client           = GetNullableString(d, "client"),
+            NumeroAffaire    = GetNullableString(d, "numeroAffaire"),
+            Notes            = GetNullableString(d, "notes"),
+            Delai            = d.Contains("delai")            && d["delai"]            != BsonNull.Value ? (DateTime?)d["delai"].ToLocalTime() : null,
+            Media1           = GetNullableString(d, "media1"),
+            Media2           = GetNullableString(d, "media2"),
+            Media3           = GetNullableString(d, "media3"),
+            Media4           = GetNullableString(d, "media4"),
+            TypeDocument     = GetNullableString(d, "typeDocument"),
+            NombreFeuilles   = d.Contains("nombreFeuilles")   && d["nombreFeuilles"]   != BsonNull.Value ? (int?)d["nombreFeuilles"].AsInt32 : null,
+            Faconnage        = GetNullableString(d, "faconnage"),
+            Livraison        = GetNullableString(d, "livraison"),
+            History          = history
         };
     }
 
     private static string? GetNullableString(BsonDocument d, string key)
         => d.Contains(key) && d[key] != BsonNull.Value ? d[key].AsString : null;
+
+    // ---- Assignments ----
+
+    public static AssignmentItem? FindAssignment(string fullPath)
+    {
+        try
+        {
+            var col = MongoDbHelper.GetAssignmentsCollection();
+            var filter = Builders<BsonDocument>.Filter.Eq("fullPath", fullPath);
+            var doc = col.Find(filter).FirstOrDefault();
+            return doc == null ? null : BsonDocToAssignment(doc);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] FindAssignment MongoDB error: {ex.Message}");
+            return null;
+        }
+    }
+
+    public static List<AssignmentItem> LoadAssignments()
+    {
+        try
+        {
+            var col = MongoDbHelper.GetAssignmentsCollection();
+            return col.Find(new BsonDocument()).ToList()
+                .Select(d => BsonDocToAssignment(d))
+                .Where(a => a != null)
+                .Select(a => a!)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] LoadAssignments MongoDB error: {ex.Message}");
+            return new();
+        }
+    }
+
+    public static void UpsertAssignment(AssignmentItem item)
+    {
+        var col = MongoDbHelper.GetAssignmentsCollection();
+        var filter = Builders<BsonDocument>.Filter.Eq("fullPath", item.FullPath);
+        var doc = new BsonDocument
+        {
+            ["fullPath"]     = item.FullPath,
+            ["operatorId"]   = item.OperatorId,
+            ["operatorName"] = item.OperatorName,
+            ["assignedAt"]   = item.AssignedAt,
+            ["assignedBy"]   = item.AssignedBy
+        };
+        col.ReplaceOne(filter, doc, new ReplaceOptions { IsUpsert = true });
+    }
+
+    private static AssignmentItem? BsonDocToAssignment(BsonDocument d)
+    {
+        var fullPath = d.Contains("fullPath") ? d["fullPath"].AsString : "";
+        if (string.IsNullOrEmpty(fullPath)) return null;
+        return new AssignmentItem
+        {
+            FullPath     = fullPath,
+            OperatorId   = d.Contains("operatorId")   ? d["operatorId"].AsString   : "",
+            OperatorName = d.Contains("operatorName") ? d["operatorName"].AsString : "",
+            AssignedAt   = d.Contains("assignedAt")   ? d["assignedAt"].ToUniversalTime() : DateTime.MinValue,
+            AssignedBy   = d.Contains("assignedBy")   ? d["assignedBy"].AsString   : ""
+        };
+    }
 }
 
 // ======================================================
@@ -1387,21 +1670,38 @@ file static class PdfUtils
                     col.Item().Text($"Nom fichier : {s.FileName}");
                     col.Item().Text($"Chemin : {s.FullPath}");
                     col.Item().Text($"Généré : {DateTime.Now:dd/MM/yyyy HH:mm}");
+                    if (s.Delai.HasValue)
+                        col.Item().Text($"Délai : {s.Delai.Value:dd/MM/yyyy}");
 
                     col.Item().PaddingVertical(10).LineHorizontal(1).LineColor("#cccccc");
 
                     col.Item().Text("Données Atelier").FontSize(14).SemiBold();
-                    col.Item().Text($"Machine : {s.Machine}");
+                    col.Item().Text($"Moteur d'impression : {s.MoteurImpression ?? s.Machine}");
                     col.Item().Text($"Opérateur : {s.Operateur}");
                     col.Item().Text($"Quantité : {s.Quantite}");
+                    col.Item().Text($"Nombre de feuilles : {s.NombreFeuilles}");
                     col.Item().Text($"Type travail : {s.TypeTravail}");
+                    col.Item().Text($"Type document : {s.TypeDocument}");
                     col.Item().Text($"Format : {s.Format}");
                     col.Item().Text($"Papier : {s.Papier}");
                     col.Item().Text($"Recto/Verso : {s.RectoVerso}");
                     col.Item().Text($"Encres : {s.Encres}");
+                    col.Item().Text($"Façonnage : {s.Faconnage}");
+                    col.Item().Text($"Livraison : {s.Livraison}");
                     col.Item().Text($"Client : {s.Client}");
                     col.Item().Text($"N° affaire : {s.NumeroAffaire}");
                     col.Item().Text($"Notes : {s.Notes}");
+
+                    if (!string.IsNullOrWhiteSpace(s.Media1) || !string.IsNullOrWhiteSpace(s.Media2) ||
+                        !string.IsNullOrWhiteSpace(s.Media3) || !string.IsNullOrWhiteSpace(s.Media4))
+                    {
+                        col.Item().PaddingVertical(10).LineHorizontal(1).LineColor("#cccccc");
+                        col.Item().Text("Médias").FontSize(14).SemiBold();
+                        if (!string.IsNullOrWhiteSpace(s.Media1)) col.Item().Text($"Média 1 : {s.Media1}");
+                        if (!string.IsNullOrWhiteSpace(s.Media2)) col.Item().Text($"Média 2 : {s.Media2}");
+                        if (!string.IsNullOrWhiteSpace(s.Media3)) col.Item().Text($"Média 3 : {s.Media3}");
+                        if (!string.IsNullOrWhiteSpace(s.Media4)) col.Item().Text($"Média 4 : {s.Media4}");
+                    }
 
                     col.Item().PaddingVertical(10).LineHorizontal(1).LineColor("#cccccc");
 
