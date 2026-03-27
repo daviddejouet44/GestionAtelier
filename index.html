@@ -81,17 +81,27 @@
       <div class="fab-modal-content">
         <h2>Fiche de fabrication</h2>
         <div class="fab-form-grid">
-          <div class="fab-form-group"><label>Machine</label><input id="fab-machine" type="text" /></div>
-          <div class="fab-form-group"><label>Opérateur</label><input id="fab-operateur" type="text" /></div>
+          <div class="fab-form-group"><label>Délai</label><input id="fab-delai" type="date" /></div>
+          <div class="fab-form-group"><label>Moteur d'impression</label><select id="fab-moteur"><option value="">— Sélectionner —</option></select></div>
+          <div class="fab-form-group"><label>Opérateur</label><input id="fab-operateur" type="text" readonly style="background:#f3f4f6;cursor:not-allowed;" /></div>
           <div class="fab-form-group"><label>Quantité</label><input id="fab-quantite" type="number" /></div>
           <div class="fab-form-group"><label>Type de travail</label><input id="fab-type" type="text" /></div>
           <div class="fab-form-group"><label>Format</label><input id="fab-format" type="text" /></div>
           <div class="fab-form-group"><label>Papier</label><input id="fab-papier" type="text" /></div>
           <div class="fab-form-group"><label>Recto/Verso</label><input id="fab-rectoverso" type="text" /></div>
           <div class="fab-form-group"><label>Encres</label><input id="fab-encres" type="text" /></div>
+          <div class="fab-form-group"><label>Façonnage</label><input id="fab-faconnage" type="text" /></div>
+          <div class="fab-form-group"><label>Livraison</label><input id="fab-livraison" type="text" /></div>
           <div class="fab-form-group"><label>Client</label><input id="fab-client" type="text" /></div>
           <div class="fab-form-group"><label>Numéro d'affaire</label><input id="fab-numero" type="text" /></div>
-          <div class="fab-form-group" style="grid-column: 1 / -1;"><label>Notes</label><textarea id="fab-notes" rows="4"></textarea></div>
+          <div class="fab-form-group" style="grid-column: 1 / -1;"><label>Notes</label><textarea id="fab-notes" rows="3"></textarea></div>
+          <!-- Champs Admin uniquement -->
+          <div class="fab-form-group fab-admin-field" style="display:none;"><label>Média 1 (XML)</label><input id="fab-media1" type="text" /></div>
+          <div class="fab-form-group fab-admin-field" style="display:none;"><label>Média 2 (XML)</label><input id="fab-media2" type="text" /></div>
+          <div class="fab-form-group fab-admin-field" style="display:none;"><label>Média 3 (XML)</label><input id="fab-media3" type="text" /></div>
+          <div class="fab-form-group fab-admin-field" style="display:none;"><label>Média 4 (XML)</label><input id="fab-media4" type="text" /></div>
+          <div class="fab-form-group fab-admin-field" style="display:none;"><label>Type de document</label><input id="fab-typedoc" type="text" /></div>
+          <div class="fab-form-group fab-admin-field" style="display:none;"><label>Nombre de feuilles</label><input id="fab-nbfeuilles" type="number" /></div>
         </div>
         <h3>Historique</h3>
         <div id="fab-history"></div>

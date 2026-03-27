@@ -2173,3 +2173,37 @@ header h1 {
 
 
 
+
+/* ======================================================
+   ASSIGNMENT BADGE & ASSIGN BUTTON
+====================================================== */
+
+.assignment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  margin: 4px 0;
+}
+
+.btn-assign {
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+  border-color: #bfdbfe !important;
+}
+
+.btn-assign:hover {
+  background: #dbeafe !important;
+  border-color: #93c5fd !important;
+}
+
+.assign-dropdown {
+  position: fixed;
+}
+
