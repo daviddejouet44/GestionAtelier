@@ -256,7 +256,7 @@ app.MapPost("/api/auth/register", async (HttpContext ctx) =>
         if (users.Any(u => u.Login == loginEl.GetString()))
             return Results.Json(new { ok = false, error = "Login déjà existant" });
 
-        var newId = (users.Count + 1).ToString("D3");
+        var newId = MongoDbHelper.GetNextUserId().ToString("D3");
         var newUser = new UserItem
         {
             Id = newId,
@@ -266,8 +266,7 @@ app.MapPost("/api/auth/register", async (HttpContext ctx) =>
             Name = nameEl.GetString() ?? ""
         };
 
-        users.Add(newUser);
-        BackendUtils.SaveUsers(users);
+        BackendUtils.InsertUser(newUser);
 
         return Results.Json(new { ok = true, user = new { id = newUser.Id, login = newUser.Login } });
     }
@@ -288,14 +287,8 @@ app.MapDelete("/api/auth/users/{userId}", (HttpContext ctx, string userId) =>
         if (parts.Length < 3 || parts[2] != "3")
             return Results.Json(new { ok = false, error = "Admin only" });
 
-        var users = BackendUtils.LoadUsers();
-        var toRemove = users.FirstOrDefault(u => u.Id == userId);
-
-        if (toRemove == null)
+        if (!BackendUtils.DeleteUser(userId))
             return Results.Json(new { ok = false, error = "Utilisateur non trouvé" });
-
-        users.Remove(toRemove);
-        BackendUtils.SaveUsers(users);
 
         return Results.Json(new { ok = true });
     }
@@ -583,23 +576,22 @@ app.MapGet("/api/file", (string path) =>
 app.MapGet("/api/delivery", () =>
 {
     var map = BackendUtils.LoadDeliveries();
-    
+
     var toRemove = map.Where(kvp => !File.Exists(kvp.Key)).Select(kvp => kvp.Key).ToList();
     if (toRemove.Count > 0) {
-        foreach (var key in toRemove) {
-            map.Remove(key);
-        }
-        BackendUtils.SaveDeliveries(map);
+        BackendUtils.DeleteDeliveries(toRemove);
         Console.WriteLine($"[INFO] Nettoyage: {toRemove.Count} fichier(s) supprimé(s) du planning");
     }
-    
-    var data = map.Values.Select(v => new
-    {
-        fullPath = v.FullPath,
-        fileName = v.FileName,
-        date     = v.Date.ToString("yyyy-MM-dd"),
-        time     = v.Time
-    });
+
+    var data = map.Values
+        .Where(v => File.Exists(v.FullPath))
+        .Select(v => new
+        {
+            fullPath = v.FullPath,
+            fileName = v.FileName,
+            date     = v.Date.ToString("yyyy-MM-dd"),
+            time     = v.Time
+        });
     return Results.Json(data);
 });
 
@@ -633,15 +625,14 @@ app.MapPut("/api/delivery", async (HttpContext ctx) =>
             time = tEl.GetString() ?? "09:00";
         }
 
-        var map = BackendUtils.LoadDeliveries();
-        map[full] = new DeliveryItem
+        var delivery = new DeliveryItem
         {
             FullPath = full,
             FileName = Path.GetFileName(full),
             Date     = dt.Date,
             Time     = time
         };
-        BackendUtils.SaveDeliveries(map);
+        BackendUtils.UpsertDelivery(delivery);
 
         return Results.Json(new { ok = true });
     }
@@ -655,12 +646,9 @@ app.MapDelete("/api/delivery", (string fullPath) =>
 {
     try
     {
-        var map = BackendUtils.LoadDeliveries();
-        if (map.Remove(fullPath))
-        {
-            BackendUtils.SaveDeliveries(map);
+        if (BackendUtils.DeleteDelivery(fullPath))
             return Results.Json(new { ok = true });
-        }
+
         return Results.Json(new { ok = false, error = "Aucune livraison trouvée." });
     }
     catch (Exception ex)
@@ -675,8 +663,8 @@ app.MapDelete("/api/delivery", (string fullPath) =>
 
 app.MapGet("/api/fabrication", (string fullPath) =>
 {
-    var map = BackendUtils.LoadFabrications();
-    if (map.TryGetValue(fullPath, out var sheet))
+    var sheet = BackendUtils.FindFabrication(fullPath);
+    if (sheet != null)
         return Results.Json(sheet);
 
     return Results.Json(new { ok = false, error = "Aucune fiche de fabrication." });
@@ -696,8 +684,7 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
         if (!File.Exists(input.FullPath))
             return Results.Json(new { ok = false, error = "Fichier introuvable." });
 
-        var map = BackendUtils.LoadFabrications();
-        map.TryGetValue(input.FullPath, out var old);
+        var old = BackendUtils.FindFabrication(input.FullPath);
 
         var sheet = new FabricationSheet
         {
@@ -727,8 +714,7 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             Action = (old == null ? "Création fiche" : "Modification fiche")
         });
 
-        map[input.FullPath] = sheet;
-        BackendUtils.SaveFabrications(map);
+        BackendUtils.UpsertFabrication(sheet);
 
         return Results.Json(new { ok = true });
     }
@@ -742,8 +728,8 @@ app.MapGet("/api/fabrication/pdf", (string fullPath) =>
 {
     try
     {
-        var all = BackendUtils.LoadFabrications();
-        if (!all.TryGetValue(fullPath, out var sheet))
+        var sheet = BackendUtils.FindFabrication(fullPath);
+        if (sheet == null)
             return Results.Json(new { ok = false, error = "Fiche introuvable" });
 
         var doc = PdfUtils.CreateFabricationPdf(sheet);
@@ -906,8 +892,85 @@ foreach (var s in summaries)
     Console.WriteLine($"  {s}");
 Console.WriteLine("[DEBUG] === FIN LISTE ===\n");
 
+// ======================================================
+// MIGRATION — JSON vers MongoDB
+// ======================================================
 
+app.MapPost("/api/admin/migrate-to-mongo", () =>
+{
+    var results = new List<string>();
+    var appData = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        "FluxAtelier");
 
+    // ---- Users ----
+    try
+    {
+        var usersPath = Path.Combine(appData, "users.json");
+        if (File.Exists(usersPath))
+        {
+            var json = File.ReadAllText(usersPath);
+            var users = JsonSerializer.Deserialize<List<UserItem>>(json) ?? new();
+            var col = MongoDbHelper.GetUsersCollection();
+            col.DeleteMany(Builders<BsonDocument>.Filter.Empty);
+            foreach (var u in users)
+                BackendUtils.InsertUser(u);
+            File.Move(usersPath, usersPath + ".bak", overwrite: true);
+            results.Add($"Users: {users.Count} migrated");
+        }
+        else
+        {
+            results.Add("Users: file not found, skipped");
+        }
+    }
+    catch (Exception ex) { results.Add($"Users error: {ex.Message}"); }
+
+    // ---- Deliveries ----
+    try
+    {
+        var deliveriesPath = Path.Combine(appData, "deliveries.json");
+        if (File.Exists(deliveriesPath))
+        {
+            var json = File.ReadAllText(deliveriesPath);
+            var list = JsonSerializer.Deserialize<List<DeliveryItem>>(json) ?? new();
+            var col = MongoDbHelper.GetDeliveriesCollection();
+            col.DeleteMany(Builders<BsonDocument>.Filter.Empty);
+            foreach (var item in list)
+                BackendUtils.UpsertDelivery(item);
+            File.Move(deliveriesPath, deliveriesPath + ".bak", overwrite: true);
+            results.Add($"Deliveries: {list.Count} migrated");
+        }
+        else
+        {
+            results.Add("Deliveries: file not found, skipped");
+        }
+    }
+    catch (Exception ex) { results.Add($"Deliveries error: {ex.Message}"); }
+
+    // ---- Fabrications ----
+    try
+    {
+        var fabricationsPath = Path.Combine(appData, "fabrications.json");
+        if (File.Exists(fabricationsPath))
+        {
+            var json = File.ReadAllText(fabricationsPath);
+            var list = JsonSerializer.Deserialize<List<FabricationSheet>>(json) ?? new();
+            var col = MongoDbHelper.GetFabricationsCollection();
+            col.DeleteMany(Builders<BsonDocument>.Filter.Empty);
+            foreach (var sheet in list)
+                BackendUtils.UpsertFabrication(sheet);
+            File.Move(fabricationsPath, fabricationsPath + ".bak", overwrite: true);
+            results.Add($"Fabrications: {list.Count} migrated");
+        }
+        else
+        {
+            results.Add("Fabrications: file not found, skipped");
+        }
+    }
+    catch (Exception ex) { results.Add($"Fabrications error: {ex.Message}"); }
+
+    return Results.Json(new { ok = true, results });
+});
 
 // ======================================================
 // RUN
@@ -949,6 +1012,36 @@ file static class MongoDbHelper
             return 1;
         }
     }
+
+    public static long GetNextUserId()
+    {
+        try
+        {
+            var db = GetDatabase();
+            var countersCol = db.GetCollection<BsonDocument>(CountersCollection);
+
+            var filter = Builders<BsonDocument>.Filter.Eq("_id", "user_counter");
+            var update = Builders<BsonDocument>.Update.Inc("value", 1L);
+            var options = new FindOneAndUpdateOptions<BsonDocument> { ReturnDocument = ReturnDocument.After, IsUpsert = true };
+
+            var result = countersCol.FindOneAndUpdate(filter, update, options);
+            return result["value"].AsInt64;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] MongoDB user counter error: {ex.Message}");
+            return 1;
+        }
+    }
+
+    public static IMongoCollection<BsonDocument> GetUsersCollection()
+        => GetDatabase().GetCollection<BsonDocument>("users");
+
+    public static IMongoCollection<BsonDocument> GetDeliveriesCollection()
+        => GetDatabase().GetCollection<BsonDocument>("deliveries");
+
+    public static IMongoCollection<BsonDocument> GetFabricationsCollection()
+        => GetDatabase().GetCollection<BsonDocument>("fabrications");
 }
 
 
@@ -1055,128 +1148,223 @@ file static class BackendUtils
         catch { return Array.Empty<string>(); }
     }
 
-    public static string UsersDbPath()
-    {
-        var appData = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "FluxAtelier");
-        Directory.CreateDirectory(appData);
-        return Path.Combine(appData, "users.json");
-    }
+    // ---- Users ----
 
     public static List<UserItem> LoadUsers()
     {
-        var path = UsersDbPath();
-        Console.WriteLine($"[DEBUG] Loading users from: {path}");
-        Console.WriteLine($"[DEBUG] File exists: {File.Exists(path)}");
-        
-        if (!File.Exists(path))
-        {
-            Console.WriteLine($"[DEBUG] File not found!");
-            return new();
-        }
-
         try
         {
-            var json = File.ReadAllText(path);
-            Console.WriteLine($"[DEBUG] JSON content: {json}");
-            
-            var result = JsonSerializer.Deserialize<List<UserItem>>(json);
-            Console.WriteLine($"[DEBUG] Deserialized: {result?.Count ?? 0} users");
-            
-            if (result != null)
-            {
-                foreach (var u in result)
+            var col = MongoDbHelper.GetUsersCollection();
+            return col.Find(new BsonDocument()).ToList()
+                .Select(d => new UserItem
                 {
-                    Console.WriteLine($"[DEBUG] User: Id={u.Id}, Login={u.Login}, Pwd={u.Password}, Profile={u.Profile}, Name={u.Name}");
-                }
-            }
-            
-            return result ?? new();
+                    Id       = d.Contains("id")       ? d["id"].AsString       : "",
+                    Login    = d.Contains("login")    ? d["login"].AsString    : "",
+                    Password = d.Contains("password") ? d["password"].AsString : "",
+                    Profile  = d.Contains("profile")  ? d["profile"].AsInt32   : 1,
+                    Name     = d.Contains("name")     ? d["name"].AsString     : ""
+                }).ToList();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[DEBUG] Exception in LoadUsers: {ex.Message}");
+            Console.WriteLine($"[ERROR] LoadUsers MongoDB error: {ex.Message}");
             return new();
         }
     }
 
-    public static void SaveUsers(List<UserItem> users)
+    public static void InsertUser(UserItem user)
     {
-        var path = UsersDbPath();
-        var json = JsonSerializer.Serialize(users, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(path, json);
+        var col = MongoDbHelper.GetUsersCollection();
+        var doc = new BsonDocument
+        {
+            ["id"]       = user.Id,
+            ["login"]    = user.Login,
+            ["password"] = user.Password,
+            ["profile"]  = user.Profile,
+            ["name"]     = user.Name
+        };
+        col.InsertOne(doc);
     }
 
-    public static string DeliveryDbPath()
+    public static bool DeleteUser(string userId)
     {
-        var appData = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "FluxAtelier");
-        Directory.CreateDirectory(appData);
-        return Path.Combine(appData, "deliveries.json");
+        var col = MongoDbHelper.GetUsersCollection();
+        var filter = Builders<BsonDocument>.Filter.Eq("id", userId);
+        var result = col.DeleteOne(filter);
+        return result.DeletedCount > 0;
     }
+
+    // ---- Deliveries ----
 
     public static Dictionary<string, DeliveryItem> LoadDeliveries()
     {
-        var path = DeliveryDbPath();
-        if (!File.Exists(path))
-            return new(StringComparer.OrdinalIgnoreCase);
-
         try
         {
-            var json = File.ReadAllText(path);
-            var list = JsonSerializer.Deserialize<List<DeliveryItem>>(json) ?? new();
-            return list.ToDictionary(x => x.FullPath, x => x, StringComparer.OrdinalIgnoreCase);
+            var col = MongoDbHelper.GetDeliveriesCollection();
+            var result = new Dictionary<string, DeliveryItem>(StringComparer.OrdinalIgnoreCase);
+            foreach (var d in col.Find(new BsonDocument()).ToList())
+            {
+                var fullPath = d.Contains("fullPath") ? d["fullPath"].AsString : "";
+                if (!string.IsNullOrEmpty(fullPath))
+                {
+                    result[fullPath] = new DeliveryItem
+                    {
+                        FullPath = fullPath,
+                        FileName = d.Contains("fileName") ? d["fileName"].AsString : (Path.GetFileName(fullPath) ?? ""),
+                        Date     = d.Contains("date")     ? d["date"].ToUniversalTime() : DateTime.MinValue,
+                        Time     = d.Contains("time")     ? d["time"].AsString : "09:00"
+                    };
+                }
+            }
+            return result;
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"[ERROR] LoadDeliveries MongoDB error: {ex.Message}");
             return new(StringComparer.OrdinalIgnoreCase);
         }
     }
 
-    public static void SaveDeliveries(Dictionary<string, DeliveryItem> map)
+    public static void UpsertDelivery(DeliveryItem item)
     {
-        var path = DeliveryDbPath();
-        var list = map.Values.OrderBy(v => v.Date).ThenBy(v => v.FileName).ToList();
-        var json = JsonSerializer.Serialize(list, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(path, json);
+        var col = MongoDbHelper.GetDeliveriesCollection();
+        var filter = Builders<BsonDocument>.Filter.Eq("fullPath", item.FullPath);
+        var doc = new BsonDocument
+        {
+            ["fullPath"] = item.FullPath,
+            ["fileName"] = item.FileName,
+            ["date"]     = item.Date,
+            ["time"]     = item.Time
+        };
+        col.ReplaceOne(filter, doc, new ReplaceOptions { IsUpsert = true });
     }
 
-    public static string FabricationDbPath()
+    public static bool DeleteDelivery(string fullPath)
     {
-        var appData = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "FluxAtelier");
-        Directory.CreateDirectory(appData);
-        return Path.Combine(appData, "fabrications.json");
+        var col = MongoDbHelper.GetDeliveriesCollection();
+        var filter = Builders<BsonDocument>.Filter.Eq("fullPath", fullPath);
+        var result = col.DeleteOne(filter);
+        return result.DeletedCount > 0;
     }
+
+    public static void DeleteDeliveries(List<string> fullPaths)
+    {
+        if (fullPaths.Count == 0) return;
+        var col = MongoDbHelper.GetDeliveriesCollection();
+        var filter = Builders<BsonDocument>.Filter.In("fullPath", fullPaths);
+        col.DeleteMany(filter);
+    }
+
+    // ---- Fabrications ----
 
     public static Dictionary<string, FabricationSheet> LoadFabrications()
     {
-        var path = FabricationDbPath();
-        if (!File.Exists(path))
-            return new(StringComparer.OrdinalIgnoreCase);
-
         try
         {
-            var json = File.ReadAllText(path);
-            var list = JsonSerializer.Deserialize<List<FabricationSheet>>(json) ?? new();
-            return list.ToDictionary(k => k.FullPath, v => v, StringComparer.OrdinalIgnoreCase);
+            var col = MongoDbHelper.GetFabricationsCollection();
+            var result = new Dictionary<string, FabricationSheet>(StringComparer.OrdinalIgnoreCase);
+            foreach (var d in col.Find(new BsonDocument()).ToList())
+            {
+                var sheet = BsonDocToFabricationSheet(d);
+                if (sheet != null)
+                    result[sheet.FullPath] = sheet;
+            }
+            return result;
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"[ERROR] LoadFabrications MongoDB error: {ex.Message}");
             return new(StringComparer.OrdinalIgnoreCase);
         }
     }
 
-    public static void SaveFabrications(Dictionary<string, FabricationSheet> map)
+    public static FabricationSheet? FindFabrication(string fullPath)
     {
-        var path = FabricationDbPath();
-        var list = map.Values.OrderBy(v => v.FileName).ToList();
-        var json = JsonSerializer.Serialize(list, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(path, json);
+        try
+        {
+            var col = MongoDbHelper.GetFabricationsCollection();
+            var filter = Builders<BsonDocument>.Filter.Eq("fullPath", fullPath);
+            var doc = col.Find(filter).FirstOrDefault();
+            return doc == null ? null : BsonDocToFabricationSheet(doc);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] FindFabrication MongoDB error: {ex.Message}");
+            return null;
+        }
     }
+
+    public static void UpsertFabrication(FabricationSheet sheet)
+    {
+        var col = MongoDbHelper.GetFabricationsCollection();
+        var filter = Builders<BsonDocument>.Filter.Eq("fullPath", sheet.FullPath);
+        var historyArray = new BsonArray(sheet.History.Select(h => new BsonDocument
+        {
+            ["date"]   = h.Date,
+            ["user"]   = h.User,
+            ["action"] = h.Action
+        }));
+        var doc = new BsonDocument
+        {
+            ["fullPath"]      = sheet.FullPath,
+            ["fileName"]      = sheet.FileName,
+            ["machine"]       = sheet.Machine       == null ? BsonNull.Value : (BsonValue)sheet.Machine,
+            ["operateur"]     = sheet.Operateur     == null ? BsonNull.Value : (BsonValue)sheet.Operateur,
+            ["quantite"]      = sheet.Quantite      == null ? BsonNull.Value : (BsonValue)(int)sheet.Quantite,
+            ["typeTravail"]   = sheet.TypeTravail   == null ? BsonNull.Value : (BsonValue)sheet.TypeTravail,
+            ["format"]        = sheet.Format        == null ? BsonNull.Value : (BsonValue)sheet.Format,
+            ["papier"]        = sheet.Papier        == null ? BsonNull.Value : (BsonValue)sheet.Papier,
+            ["rectoVerso"]    = sheet.RectoVerso    == null ? BsonNull.Value : (BsonValue)sheet.RectoVerso,
+            ["encres"]        = sheet.Encres        == null ? BsonNull.Value : (BsonValue)sheet.Encres,
+            ["client"]        = sheet.Client        == null ? BsonNull.Value : (BsonValue)sheet.Client,
+            ["numeroAffaire"] = sheet.NumeroAffaire == null ? BsonNull.Value : (BsonValue)sheet.NumeroAffaire,
+            ["notes"]         = sheet.Notes         == null ? BsonNull.Value : (BsonValue)sheet.Notes,
+            ["history"]       = historyArray
+        };
+        col.ReplaceOne(filter, doc, new ReplaceOptions { IsUpsert = true });
+    }
+
+    private static FabricationSheet? BsonDocToFabricationSheet(BsonDocument d)
+    {
+        var fullPath = d.Contains("fullPath") ? d["fullPath"].AsString : "";
+        if (string.IsNullOrEmpty(fullPath)) return null;
+
+        var history = new List<FabricationHistory>();
+        if (d.Contains("history") && d["history"].IsBsonArray)
+        {
+            foreach (var item in d["history"].AsBsonArray)
+            {
+                var h = item.AsBsonDocument;
+                history.Add(new FabricationHistory
+                {
+                    Date   = h.Contains("date")   ? h["date"].ToUniversalTime() : DateTime.MinValue,
+                    User   = h.Contains("user")   ? h["user"].AsString : "David",
+                    Action = h.Contains("action") ? h["action"].AsString : ""
+                });
+            }
+        }
+
+        return new FabricationSheet
+        {
+            FullPath      = fullPath,
+            FileName      = d.Contains("fileName")      ? d["fileName"].AsString      : (Path.GetFileName(fullPath) ?? ""),
+            Machine       = GetNullableString(d, "machine"),
+            Operateur     = GetNullableString(d, "operateur"),
+            Quantite      = d.Contains("quantite")      && d["quantite"] != BsonNull.Value ? (int?)d["quantite"].AsInt32 : null,
+            TypeTravail   = GetNullableString(d, "typeTravail"),
+            Format        = GetNullableString(d, "format"),
+            Papier        = GetNullableString(d, "papier"),
+            RectoVerso    = GetNullableString(d, "rectoVerso"),
+            Encres        = GetNullableString(d, "encres"),
+            Client        = GetNullableString(d, "client"),
+            NumeroAffaire = GetNullableString(d, "numeroAffaire"),
+            Notes         = GetNullableString(d, "notes"),
+            History       = history
+        };
+    }
+
+    private static string? GetNullableString(BsonDocument d, string key)
+        => d.Contains(key) && d[key] != BsonNull.Value ? d[key].AsString : null;
 }
 
 // ======================================================
