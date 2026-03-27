@@ -2305,3 +2305,92 @@ header h1 {
   color: #374151;
   margin-bottom: 5px;
 }
+
+/* ======================================================
+   DASHBOARD STATISTIQUES
+   ====================================================== */
+
+.dashboard-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 640px) {
+  .dashboard-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dashboard-card {
+  border-radius: 10px;
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.dashboard-card-blue {
+  background: #dbeafe;
+}
+
+.dashboard-card-green {
+  background: #dcfce7;
+}
+
+.dashboard-card-yellow {
+  background: #fef9c3;
+}
+
+.dashboard-card-value {
+  font-size: 36px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.dashboard-card-blue .dashboard-card-value { color: #1e40af; }
+.dashboard-card-green .dashboard-card-value { color: #15803d; }
+.dashboard-card-yellow .dashboard-card-value { color: #a16207; }
+
+.dashboard-card-label {
+  font-weight: 500;
+  margin-top: 6px;
+}
+
+.dashboard-card-blue .dashboard-card-label { color: #3b82f6; }
+.dashboard-card-green .dashboard-card-label { color: #16a34a; }
+.dashboard-card-yellow .dashboard-card-label { color: #ca8a04; }
+
+.dashboard-folders {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .dashboard-folders {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dashboard-folder-item {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dashboard-folder-name {
+  font-size: 13px;
+  color: #374151;
+}
+
+.dashboard-folder-count {
+  background: #f3f4f6;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-weight: 700;
+  color: #111827;
+}

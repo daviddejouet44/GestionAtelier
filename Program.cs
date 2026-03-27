@@ -1279,10 +1279,15 @@ app.MapGet("/api/admin/stats", (HttpContext ctx) =>
     try
     {
         var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (string.IsNullOrWhiteSpace(token))
+            return Results.Json(new { ok = false, error = "Non authentifié" });
         var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
         var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
-            return Results.Json(new { ok = false, error = "Admin only" });
+        if (parts.Length < 3)
+            return Results.Json(new { ok = false, error = "Non authentifié" });
+        var statsUsers = BackendUtils.LoadUsers();
+        if (!statsUsers.Any(u => u.Id == parts[0]))
+            return Results.Json(new { ok = false, error = "Utilisateur non trouvé" });
 
         var root = BackendUtils.HotfoldersRoot();
         var filesByFolder = new Dictionary<string, int>();

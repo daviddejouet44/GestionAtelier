@@ -95,12 +95,14 @@ function setupProfileUI() {
   const btnAccounts = document.getElementById("btn-accounts");
   const btnProduction = document.getElementById("btnViewProduction");
   const btnRecycle = document.getElementById("btnViewRecycle");
+  const btnDashboard = document.getElementById("btnViewDashboard");
   const userInfo = document.getElementById("user-info");
 
   userInfo.textContent = `${currentUser.name} (Profil ${currentUser.profile})`;
 
-  // Corbeille visible for all profiles
+  // Corbeille et Dashboard visibles pour tous les profils
   if (btnRecycle) btnRecycle.style.display = "inline-block";
+  if (btnDashboard) btnDashboard.style.display = "inline-block";
 
   if (currentUser.profile === 1) {
     btnSubmission.style.display = "inline-block";
@@ -147,6 +149,7 @@ function hideAllViews() {
   document.getElementById("submission").classList.add("hidden");
   document.getElementById("production").classList.add("hidden");
   document.getElementById("recycle").classList.add("hidden");
+  document.getElementById("dashboard").classList.add("hidden");
   document.getElementById("settings-view").classList.add("hidden");
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
 }
@@ -329,6 +332,7 @@ document.getElementById("btnViewCalendar").onclick = () => {
 document.getElementById("btnViewSubmission").onclick = showSubmission;
 document.getElementById("btnViewProduction").onclick = showProduction;
 document.getElementById("btnViewRecycle").onclick = showRecycle;
+document.getElementById("btnViewDashboard").onclick = showDashboard;
 
 // ======================================================
 // SOUMISSION (Profil 1)
@@ -757,6 +761,86 @@ async function initProductionView() {
 // ======================================================
 // REST DU CODE (Kanban, Calendar, Fabrication, etc.)
 // ======================================================
+
+// ======================================================
+// DASHBOARD STATISTIQUES (tous profils)
+// ======================================================
+
+function showDashboard() {
+  hideAllViews();
+  document.getElementById("dashboard").classList.remove("hidden");
+  document.getElementById("btnViewDashboard").classList.add("active");
+  initDashboardView();
+}
+
+async function initDashboardView() {
+  const dashEl = document.getElementById("dashboard");
+  dashEl.innerHTML = `
+    <div class="settings-container">
+      <h2>📊 Dashboard — Vue d'ensemble de l'atelier</h2>
+      <div style="display: flex; gap: 10px; margin-bottom: 16px;">
+        <button id="dashboard-refresh" class="btn btn-primary">🔄 Rafraîchir</button>
+      </div>
+      <div id="dashboard-content"><p style="color:#6b7280;">Chargement...</p></div>
+    </div>
+  `;
+  document.getElementById("dashboard-refresh").onclick = loadDashboardData;
+  await loadDashboardData();
+}
+
+async function loadDashboardData() {
+  const contentEl = document.getElementById("dashboard-content");
+  if (!contentEl) return;
+  contentEl.innerHTML = `<p style="color:#6b7280;">Chargement...</p>`;
+  try {
+    const rawResp = await fetch("/api/admin/stats", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    });
+    if (!rawResp.ok) {
+      contentEl.innerHTML = `<p style="color:#ef4444;">Erreur serveur (${rawResp.status})</p>`;
+      return;
+    }
+    const resp = await rawResp.json();
+    if (!resp.ok) {
+      contentEl.innerHTML = `<p style="color:#ef4444;">Erreur : ${resp.error || "Inconnue"}</p>`;
+      return;
+    }
+
+    const stats = resp.stats || {};
+    const filesByFolder = stats.filesByFolder || {};
+    const scheduledThisWeek = stats.scheduledThisWeek || 0;
+    const activeAssignments = stats.activeAssignments || 0;
+    const totalFiles = stats.totalFiles || 0;
+
+    contentEl.innerHTML = `
+      <div class="dashboard-cards">
+        <div class="dashboard-card dashboard-card-blue">
+          <div class="dashboard-card-value">${totalFiles}</div>
+          <div class="dashboard-card-label">📄 Fichiers totaux</div>
+        </div>
+        <div class="dashboard-card dashboard-card-green">
+          <div class="dashboard-card-value">${scheduledThisWeek}</div>
+          <div class="dashboard-card-label">📅 Planifiés cette semaine</div>
+        </div>
+        <div class="dashboard-card dashboard-card-yellow">
+          <div class="dashboard-card-value">${activeAssignments}</div>
+          <div class="dashboard-card-label">👤 Affectations actives</div>
+        </div>
+      </div>
+      <h4 style="margin-top: 24px; margin-bottom: 12px;">Fichiers par étape</h4>
+      <div class="dashboard-folders">
+        ${Object.entries(filesByFolder).map(([folder, count]) => `
+          <div class="dashboard-folder-item">
+            <span class="dashboard-folder-name">${folder}</span>
+            <span class="dashboard-folder-count">${count}</span>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  } catch (err) {
+    contentEl.innerHTML = `<p style="color:#ef4444;">Erreur : ${err.message}</p>`;
+  }
+}
 
 // ======================================================
 // CORBEILLE (tous profils)
