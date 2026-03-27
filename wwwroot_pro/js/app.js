@@ -112,6 +112,8 @@ function setupProfileUI() {
   } else if (currentUser.profile === 3) {
     btnSettings.style.display = "inline-block";
     btnAccounts.style.display = "inline-block";
+    btnSubmission.style.display = "inline-block";
+    btnProduction.style.display = "inline-block";
   }
 
   setupKanbanActions();
@@ -136,6 +138,7 @@ function setupKanbanActions() {
     btnKanban.style.display = "inline-block";
     btnCalendar.style.display = "inline-block";
     btnSubmission.style.display = "inline-block";
+    btnProduction.style.display = "inline-block";
   }
 }
 
@@ -256,6 +259,14 @@ async function refreshKanbanColumnReadOnly(folderName, col) {
       const card = document.createElement("div");
       card.className = "kanban-card-operator";
       card.dataset.fullPath = normalizePath(job.fullPath || "");
+
+      const thumb = document.createElement("div");
+      thumb.className = "thumb";
+      thumb.textContent = "PDF";
+      card.appendChild(thumb);
+      if ((job.name || "").toLowerCase().endsWith(".pdf")) {
+        renderPdfThumbnail(normalizePath(job.fullPath || ""), thumb).catch(() => {});
+      }
 
       const title = document.createElement("p");
       title.className = "kanban-card-operator-title";
@@ -2052,27 +2063,21 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col) {
     else filtered.sort((a, b) => new Date(b.modified) - new Date(a.modified));
 
     // Ajoute bouton Acrobat au niveau de la tuile si c'est Corrections
-if (folderName === "2.Corrections" || folderName === "2.Corrections + fond perdu") {
-  const acrobatBtn = document.createElement("button");
-  acrobatBtn.className = "btn btn-acrobat";
-  acrobatBtn.textContent = "📄 Ouvrir dans Acrobat Pro";
-  acrobatBtn.onclick = async () => {
-  try {
-    const resp = await fetch("/api/acrobat", { method: "POST" });
-    if (!resp.ok) throw new Error("Erreur au lancement d'Acrobat");
-    alert("Acrobat Pro est en cours de lancement...");
-  } catch (err) {
-    alert("❌ " + err.message);
-  }
-};
-  drop.appendChild(acrobatBtn);
-}
+// (removed: column-level button replaced by per-card button below)
 
     for (const job of filtered) {
       const card = document.createElement("div");
       card.className = "kanban-card-operator";
       card.draggable = true;
       card.dataset.fullPath = normalizePath(job.fullPath || "");
+
+      const thumb = document.createElement("div");
+      thumb.className = "thumb";
+      thumb.textContent = "PDF";
+      card.appendChild(thumb);
+      if ((job.name || "").toLowerCase().endsWith(".pdf")) {
+        renderPdfThumbnail(normalizePath(job.fullPath || ""), thumb).catch(() => {});
+      }
 
       const title = document.createElement("p");
       title.className = "kanban-card-operator-title";
@@ -2138,6 +2143,27 @@ if (folderName === "2.Corrections" || folderName === "2.Corrections + fond perdu
         btnDelete.textContent = "Corbeille";
         btnDelete.onclick = () => deleteFile(full);
         actions.appendChild(btnDelete);
+
+        if (folderName === "2.Corrections" || folderName === "2.Corrections + fond perdu") {
+          const btnAcrobat = document.createElement("button");
+          btnAcrobat.className = "btn btn-sm btn-acrobat";
+          btnAcrobat.textContent = "📄 Acrobat";
+          btnAcrobat.onclick = async () => {
+            try {
+              const resp = await fetch("/api/acrobat/open", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ fullPath: full })
+              });
+              const result = await resp.json();
+              if (!result.ok) throw new Error(result.error || "Erreur");
+              showNotification("Acrobat Pro lancé", "success");
+            } catch (err) {
+              alert("❌ " + err.message);
+            }
+          };
+          actions.appendChild(btnAcrobat);
+        }
       }
 
       card.appendChild(actions);
