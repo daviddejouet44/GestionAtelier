@@ -83,7 +83,6 @@ function logout() {
 
 document.getElementById("btn-logout").onclick = logout;
 document.getElementById("btn-settings").onclick = showSettings;
-document.getElementById("btn-accounts").onclick = showAccountsModal;
 
 // ======================================================
 // SETUP PROFILS
@@ -92,7 +91,6 @@ document.getElementById("btn-accounts").onclick = showAccountsModal;
 function setupProfileUI() {
   const btnSubmission = document.getElementById("btnViewSubmission");
   const btnSettings = document.getElementById("btn-settings");
-  const btnAccounts = document.getElementById("btn-accounts");
   const btnProduction = document.getElementById("btnViewProduction");
   const btnRecycle = document.getElementById("btnViewRecycle");
   const btnDashboard = document.getElementById("btnViewDashboard");
@@ -100,9 +98,9 @@ function setupProfileUI() {
 
   userInfo.textContent = `${currentUser.name} (Profil ${currentUser.profile})`;
 
-  // Corbeille et Dashboard visibles pour tous les profils
+  // Corbeille visible pour tous les profils ; Dashboard uniquement pour Admin (profil 3)
   if (btnRecycle) btnRecycle.style.display = "inline-block";
-  if (btnDashboard) btnDashboard.style.display = "inline-block";
+  if (btnDashboard) btnDashboard.style.display = currentUser.profile === 3 ? "inline-block" : "none";
 
   if (currentUser.profile === 1) {
     btnSubmission.style.display = "inline-block";
@@ -111,9 +109,7 @@ function setupProfileUI() {
     btnSubmission.style.display = "inline-block";
   } else if (currentUser.profile === 3) {
     btnSettings.style.display = "inline-block";
-    btnAccounts.style.display = "inline-block";
     btnSubmission.style.display = "inline-block";
-    btnProduction.style.display = "inline-block";
   }
 
   setupKanbanActions();
@@ -134,11 +130,13 @@ function setupKanbanActions() {
     btnKanban.style.display = "inline-block";
     btnCalendar.style.display = "inline-block";
     btnSubmission.style.display = "inline-block";
+    btnProduction.style.display = "none";
   } else if (currentUser.profile === 3) {
     btnKanban.style.display = "inline-block";
     btnCalendar.style.display = "inline-block";
     btnSubmission.style.display = "inline-block";
-    btnProduction.style.display = "inline-block";
+    // Profile 3 uses btnViewKanban (labelled "Production") — hide the duplicate
+    btnProduction.style.display = "none";
   }
 }
 
@@ -184,19 +182,54 @@ function showProduction() {
   const productionEl = document.getElementById("production");
   productionEl.classList.remove("hidden");
   document.getElementById("btnViewProduction").classList.add("active");
-  
-  // Vide et reconstruit
+
+  // Rebuild each time
   productionEl.innerHTML = "";
-  
-  // Crée un conteneur pour le kanban (même style que le kanban opérateur)
-  const kanbanContainer = document.createElement("div");
-  kanbanContainer.id = "productionKanban";
-  kanbanContainer.style.cssText = "display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; width: 100%;";
-  
-  productionEl.appendChild(kanbanContainer);
-  
-  // Charge les affectations puis construit le kanban
-  loadAssignments().then(() => buildProductionKanban(kanbanContainer));
+  productionEl.style.cssText = "display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; width: 100%;";
+
+  const folderConfig = [
+    { folder: "1.Reception", label: "Début de production", color: "#5fa8c4" },
+    { folder: "2.Corrections", label: "Corrections", color: "#5fa8c4" },
+    { folder: "3.Rapport", label: "Rapport", color: "#5fa8c4" },
+    { folder: "2.Corrections + fond perdu", label: "Corrections et fond perdu", color: "#5fa8c4" },
+    { folder: "6.Archivage", label: "Prêt pour impression", color: "#5fa8c4" },
+    { folder: "4.BAT", label: "BAT", color: "#5fa8c4" },
+    { folder: "5.Relecture", label: "Impression en cours", color: "#5fa8c4" },
+    { folder: "7.Termine", label: "PrismaPrepare", color: "#6b7e89" },
+    { folder: "8. Fin de production", label: "Fiery", color: "#6b7e89" },
+    { folder: "9. Archived", label: "Fin de production", color: "#22c55e" }
+  ];
+
+  for (const cfg of folderConfig) {
+    const col = document.createElement("div");
+    col.className = "kanban-col-operator";
+    col.dataset.folder = cfg.folder;
+    col.style.background = `linear-gradient(135deg, ${cfg.color} 0%, ${darkenColor(cfg.color, 15)} 100%)`;
+
+    const title = document.createElement("div");
+    title.className = "kanban-col-operator__title";
+    title.textContent = cfg.label;
+    col.appendChild(title);
+
+    const drop = document.createElement("div");
+    drop.className = "kanban-col-operator__drop";
+    drop.dataset.folder = cfg.folder;
+    col.appendChild(drop);
+
+    productionEl.appendChild(col);
+  }
+
+  // Use the same operator card renderer (profile 1 — no drag/delete, but with Affecter à)
+  loadAssignments().then(() => refreshProductionViewKanban()).catch(err => console.error("Erreur production kanban:", err));
+}
+
+async function refreshProductionViewKanban() {
+  const productionEl = document.getElementById("production");
+  if (!productionEl || productionEl.classList.contains("hidden")) return;
+  const cols = productionEl.querySelectorAll(".kanban-col-operator");
+  for (const col of cols) {
+    await refreshKanbanColumnOperator(col.dataset.folder, "", "date_desc", col, true);
+  }
 }
 
 async function buildProductionKanban(container) {
@@ -359,14 +392,8 @@ async function initSubmissionView() {
 
   submissionEl.innerHTML = `
     <div class="submission-container">
-      
-      <!-- CALENDRIER EN HAUT (100% width) -->
-      <div class="submission-section">
-        <h3>📅 Planning de livraison</h3>
-        <div id="submissionCalendar" class="submission-calendar"></div>
-      </div>
 
-      <!-- LAYOUT : DRAG & DROP + FICHIERS -->
+      <!-- LAYOUT : DRAG & DROP + FICHIERS (EN HAUT) -->
       <div class="submission-split">
         
         <!-- GAUCHE : DRAG & DROP -->
@@ -396,6 +423,12 @@ async function initSubmissionView() {
           <div id="submissionKanban" class="submission-kanban"></div>
         </div>
 
+      </div>
+
+      <!-- CALENDRIER EN BAS (100% width) -->
+      <div class="submission-section">
+        <h3>📅 Planning de livraison</h3>
+        <div id="submissionCalendar" class="submission-calendar"></div>
       </div>
 
     </div>
@@ -803,47 +836,38 @@ async function loadDashboardData() {
   const contentEl = document.getElementById("dashboard-content");
   if (!contentEl) return;
   contentEl.innerHTML = `<p style="color:#6b7280;">Chargement...</p>`;
-  try {
-    const rawResp = await fetch("/api/admin/stats", {
-      headers: { "Authorization": `Bearer ${authToken}` }
-    });
-    if (!rawResp.ok) {
-      contentEl.innerHTML = `<p style="color:#ef4444;">Erreur serveur (${rawResp.status})</p>`;
-      return;
-    }
-    const resp = await rawResp.json();
-    if (!resp.ok) {
-      contentEl.innerHTML = `<p style="color:#ef4444;">Erreur : ${resp.error || "Inconnue"}</p>`;
-      return;
-    }
 
-    const stats = resp.stats || {};
-    const filesByFolder = stats.filesByFolder || {};
-    const scheduledThisWeek = stats.scheduledThisWeek || 0;
-    const activeAssignments = stats.activeAssignments || 0;
-    const totalFiles = stats.totalFiles || 0;
+  // Kanban folder labels (same as buildKanban)
+  const kanbanFolders = [
+    { folder: "1.Reception", label: "Début de production" },
+    { folder: "2.Corrections", label: "Corrections" },
+    { folder: "3.Rapport", label: "Rapport" },
+    { folder: "2.Corrections + fond perdu", label: "Corrections et fond perdu" },
+    { folder: "6.Archivage", label: "Prêt pour impression" },
+    { folder: "4.BAT", label: "BAT" },
+    { folder: "5.Relecture", label: "Impression en cours" },
+    { folder: "7.Termine", label: "PrismaPrepare" },
+    { folder: "8. Fin de production", label: "Fiery" },
+    { folder: "9. Archived", label: "Fin de production" }
+  ];
+
+  try {
+    const counts = await Promise.all(
+      kanbanFolders.map(k =>
+        fetch(`/api/jobs?folder=${encodeURIComponent(k.folder)}`)
+          .then(r => r.json())
+          .then(jobs => ({ ...k, count: Array.isArray(jobs) ? jobs.length : 0 }))
+          .catch(() => ({ ...k, count: 0 }))
+      )
+    );
 
     contentEl.innerHTML = `
-      <div class="dashboard-cards">
-        <div class="dashboard-card dashboard-card-blue">
-          <div class="dashboard-card-value">${totalFiles}</div>
-          <div class="dashboard-card-label">📄 Fichiers totaux</div>
-        </div>
-        <div class="dashboard-card dashboard-card-green">
-          <div class="dashboard-card-value">${scheduledThisWeek}</div>
-          <div class="dashboard-card-label">📅 Planifiés cette semaine</div>
-        </div>
-        <div class="dashboard-card dashboard-card-yellow">
-          <div class="dashboard-card-value">${activeAssignments}</div>
-          <div class="dashboard-card-label">👤 Affectations actives</div>
-        </div>
-      </div>
-      <h4 style="margin-top: 24px; margin-bottom: 12px;">Fichiers par étape</h4>
-      <div class="dashboard-folders">
-        ${Object.entries(filesByFolder).map(([folder, count]) => `
-          <div class="dashboard-folder-item">
-            <span class="dashboard-folder-name">${folder}</span>
-            <span class="dashboard-folder-count">${count}</span>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;">
+        ${counts.map(k => `
+          <div style="background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 18px; display: flex; flex-direction: column; align-items: center; gap: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.07);">
+            <div style="font-size: 34px; font-weight: 700; color: #1e40af;">${k.count}</div>
+            <div style="font-size: 12px; font-weight: 600; color: #374151; text-align: center;">${k.label}</div>
+            <div style="font-size: 10px; color: #9ca3af;">${k.folder}</div>
           </div>
         `).join("")}
       </div>
@@ -961,6 +985,7 @@ async function initSettingsView() {
         <button class="settings-tab" data-tab="schedule">📅 Plages horaires</button>
         <button class="settings-tab" data-tab="paths">📁 Chemins d'accès</button>
         <button class="settings-tab" data-tab="integrations">🔌 Prepare / Fiery</button>
+        <button class="settings-tab" data-tab="print-engines">🖨️ Moteurs d'impression</button>
         <button class="settings-tab" data-tab="fabrication-imports">📄 Imports fiche</button>
         <button class="settings-tab" data-tab="logs">📋 Logs</button>
         <button class="settings-tab" data-tab="stats">📊 Dashboard</button>
@@ -969,6 +994,7 @@ async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-schedule"></div>
       <div class="settings-panel hidden" id="settings-panel-paths"></div>
       <div class="settings-panel hidden" id="settings-panel-integrations"></div>
+      <div class="settings-panel hidden" id="settings-panel-print-engines"></div>
       <div class="settings-panel hidden" id="settings-panel-fabrication-imports"></div>
       <div class="settings-panel hidden" id="settings-panel-logs"></div>
       <div class="settings-panel hidden" id="settings-panel-stats"></div>
@@ -998,7 +1024,8 @@ async function loadSettingsPanel(tabName, panelEl) {
     case "accounts": await renderSettingsAccounts(panelEl); break;
     case "schedule": await renderSettingsSchedule(panelEl); break;
     case "paths": await renderSettingsPaths(panelEl); break;
-    case "integrations": renderSettingsIntegrations(panelEl); break;
+    case "integrations": await renderSettingsIntegrations(panelEl); break;
+    case "print-engines": await renderSettingsPrintEngines(panelEl); break;
     case "fabrication-imports": await renderSettingsFabricationImports(panelEl); break;
     case "logs": await renderSettingsLogs(panelEl); break;
     case "stats": await renderSettingsStats(panelEl); break;
@@ -1112,9 +1139,10 @@ async function renderSettingsSchedule(panel) {
     <button id="sch-save" class="btn btn-primary" style="margin-top: 10px;">💾 Enregistrer les plages</button>
     <hr style="margin: 20px 0;" />
     <h4>Jours fériés</h4>
-    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+    <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
       <input type="date" id="sch-holiday-date" class="settings-input" />
       <button id="sch-add-holiday" class="btn btn-primary">Ajouter</button>
+      <button id="sch-add-french-holidays" class="btn">🇫🇷 Ajouter jours fériés français</button>
     </div>
     <div id="sch-holidays-list">
       ${holidays.length === 0 ? '<p style="color:#9ca3af;">Aucun jour férié configuré</p>' : holidays.map(h => `
@@ -1134,7 +1162,18 @@ async function renderSettingsSchedule(panel) {
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
       body: JSON.stringify({ workStart, workEnd })
     }).then(r => r.json());
-    if (r.ok) showNotification("✅ Plages horaires enregistrées", "success");
+    if (r.ok) {
+      // Update FullCalendar displays immediately
+      if (calendar) {
+        calendar.setOption("slotMinTime", workStart);
+        calendar.setOption("slotMaxTime", workEnd);
+      }
+      if (submissionCalendar) {
+        submissionCalendar.setOption("slotMinTime", workStart);
+        submissionCalendar.setOption("slotMaxTime", workEnd);
+      }
+      showNotification("✅ Plages horaires enregistrées", "success");
+    }
     else alert("Erreur : " + r.error);
   };
 
@@ -1153,6 +1192,23 @@ async function renderSettingsSchedule(panel) {
     } else { alert("Erreur : " + r.error); }
   };
 
+  document.getElementById("sch-add-french-holidays").onclick = async () => {
+    const year = new Date().getFullYear();
+    const frenchHolidays = getFrenchPublicHolidays(year);
+    let added = 0;
+    for (const date of frenchHolidays) {
+      const r = await fetch("/api/config/schedule/holidays", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+        body: JSON.stringify({ date })
+      }).then(r => r.json()).catch(() => ({ ok: false }));
+      if (r.ok) added++;
+    }
+    showNotification(`✅ ${added} jours fériés français ajoutés pour ${year}`, "success");
+    panel._loaded = false;
+    await renderSettingsSchedule(panel);
+  };
+
   document.querySelectorAll("#sch-holidays-list button[data-date]").forEach(btn => {
     btn.onclick = async () => {
       const dateToRemove = btn.dataset.date;
@@ -1167,6 +1223,49 @@ async function renderSettingsSchedule(panel) {
       } else { alert("Erreur : " + r.error); }
     };
   });
+}
+
+// Compute French public holidays for a given year (fixed + Easter-based)
+function getFrenchPublicHolidays(year) {
+  // Meeus/Jones/Butcher algorithm for Easter Sunday
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  const easter = new Date(year, month - 1, day);
+
+  function addDays(d, n) {
+    const r = new Date(d);
+    r.setDate(r.getDate() + n);
+    return r.toISOString().split("T")[0];
+  }
+  function fmt(y, m, d) {
+    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+
+  return [
+    fmt(year, 1, 1),       // Jour de l'An
+    addDays(easter, 1),    // Lundi de Pâques
+    fmt(year, 5, 1),       // Fête du Travail
+    fmt(year, 5, 8),       // Victoire 1945
+    addDays(easter, 39),   // Ascension
+    addDays(easter, 50),   // Lundi de Pentecôte
+    fmt(year, 7, 14),      // Fête nationale
+    fmt(year, 8, 15),      // Assomption
+    fmt(year, 11, 1),      // Toussaint
+    fmt(year, 11, 11),     // Armistice
+    fmt(year, 12, 25)      // Noël
+  ];
 }
 
 async function renderSettingsPaths(panel) {
@@ -1205,14 +1304,49 @@ async function renderSettingsPaths(panel) {
   };
 }
 
-function renderSettingsIntegrations(panel) {
+async function renderSettingsIntegrations(panel) {
+  panel.innerHTML = `<h3>🔌 Prepare / Fiery — Chemins d'accès</h3><p style="color:#6b7280;">Chargement...</p>`;
+  let cfg = { preparePath: "", fieryPath: "" };
+  try {
+    const resp = await fetch("/api/config/integrations", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json());
+    if (resp.ok && resp.config) cfg = resp.config;
+  } catch(e) { /* use defaults */ }
+
   panel.innerHTML = `
-    <h3>🔌 Gestion des chemins Prepare / Fiery / contrôleurs</h3>
-    <div style="background: #fef9c3; border: 1px solid #fbbf24; border-radius: 8px; padding: 20px; margin-top: 16px;">
-      <p style="font-size: 16px; margin: 0;">🚧 <strong>À venir</strong> — Configuration des chemins Prepare, Fiery et contrôleurs</p>
-      <p style="color: #6b7280; margin-top: 8px; margin-bottom: 0;">Cette section sera disponible dans une prochaine version.</p>
+    <h3>🔌 Prepare / Fiery — Chemins d'accès</h3>
+
+    <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 20px; background: #f9fafb;">
+      <h4 style="margin-top: 0; margin-bottom: 12px;">🖨️ Prepare</h4>
+      <div class="settings-form-group">
+        <label>Chemin vers Prepare</label>
+        <input type="text" id="int-prepare" value="${cfg.preparePath || ''}" class="settings-input" style="width:100%;max-width:500px;" placeholder="Ex: C:\\Prepare\\prepare.exe" />
+      </div>
     </div>
+
+    <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 20px; background: #f9fafb;">
+      <h4 style="margin-top: 0; margin-bottom: 12px;">🔥 Fiery</h4>
+      <div class="settings-form-group">
+        <label>Chemin vers Fiery</label>
+        <input type="text" id="int-fiery" value="${cfg.fieryPath || ''}" class="settings-input" style="width:100%;max-width:500px;" placeholder="Ex: C:\\Fiery\\fiery.exe" />
+      </div>
+    </div>
+
+    <button id="int-save" class="btn btn-primary">💾 Enregistrer</button>
   `;
+
+  document.getElementById("int-save").onclick = async () => {
+    const preparePath = document.getElementById("int-prepare").value.trim();
+    const fieryPath = document.getElementById("int-fiery").value.trim();
+    const r = await fetch("/api/config/integrations", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ preparePath, fieryPath })
+    }).then(r => r.json());
+    if (r.ok) showNotification("✅ Chemins Prepare/Fiery enregistrés", "success");
+    else alert("Erreur : " + r.error);
+  };
 }
 
 async function renderSettingsFabricationImports(panel) {
@@ -1253,9 +1387,98 @@ async function renderSettingsFabricationImports(panel) {
   };
 }
 
+async function renderSettingsPrintEngines(panel) {
+  panel.innerHTML = `<h3>🖨️ Moteurs d'impression</h3><p style="color:#6b7280;">Chargement...</p>`;
+  await refreshPrintEnginesPanel(panel);
+}
+
+async function refreshPrintEnginesPanel(panel) {
+  let engines = [];
+  try {
+    const resp = await fetch("/api/config/print-engines").then(r => r.json());
+    engines = Array.isArray(resp) ? resp : [];
+  } catch(e) { /* use empty */ }
+
+  panel.innerHTML = `
+    <h3>🖨️ Moteurs d'impression</h3>
+    <p style="color:#6b7280; margin-bottom: 16px;">Gérez la liste des moteurs d'impression disponibles dans la fiche de fabrication.</p>
+
+    <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
+      <input type="text" id="pe-new-name" placeholder="Nom du moteur" class="settings-input" style="max-width:250px;" />
+      <button id="pe-add" class="btn btn-primary">Ajouter</button>
+      <label style="cursor:pointer; background:#f3f4f6; border:1px solid #e5e7eb; padding:6px 14px; border-radius:6px; font-size:13px;">
+        📁 Importer CSV
+        <input type="file" id="pe-csv-input" accept=".csv,.txt" style="display:none;" />
+      </label>
+    </div>
+
+    <div id="pe-list">
+      ${engines.length === 0
+        ? '<p style="color:#9ca3af;">Aucun moteur configuré</p>'
+        : engines.map(e => `
+          <div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: white; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 6px;">
+            <span style="flex: 1; font-size: 13px;">${e}</span>
+            <button class="btn btn-sm pe-delete" data-name="${e}" style="color:#ef4444;border-color:#ef4444;">Supprimer</button>
+          </div>
+        `).join("")
+      }
+    </div>
+  `;
+
+  document.getElementById("pe-add").onclick = async () => {
+    const name = document.getElementById("pe-new-name").value.trim();
+    if (!name) { alert("Entrez un nom"); return; }
+    const r = await fetch("/api/config/print-engines", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ name })
+    }).then(r => r.json());
+    if (r.ok) {
+      showNotification("✅ Moteur ajouté", "success");
+      panel._loaded = false;
+      await refreshPrintEnginesPanel(panel);
+    } else { alert("Erreur : " + r.error); }
+  };
+
+  document.getElementById("pe-csv-input").onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const text = await file.text();
+    const names = text.split(/[\r\n,;]+/).map(s => s.trim()).filter(Boolean);
+    if (names.length === 0) { alert("Aucun moteur trouvé dans le fichier"); return; }
+    const r = await fetch("/api/config/print-engines/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ engines: names })
+    }).then(r => r.json());
+    if (r.ok) {
+      showNotification(`✅ ${r.count || names.length} moteurs importés`, "success");
+      panel._loaded = false;
+      await refreshPrintEnginesPanel(panel);
+    } else { alert("Erreur : " + r.error); }
+    e.target.value = "";
+  };
+
+  panel.querySelectorAll(".pe-delete").forEach(btn => {
+    btn.onclick = async () => {
+      const name = btn.dataset.name;
+      if (!confirm(`Supprimer "${name}" ?`)) return;
+      const r = await fetch(`/api/config/print-engines/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(r => r.json());
+      if (r.ok) {
+        showNotification("✅ Moteur supprimé", "success");
+        panel._loaded = false;
+        await refreshPrintEnginesPanel(panel);
+      } else { alert("Erreur : " + r.error); }
+    };
+  });
+}
+
 async function renderSettingsLogs(panel) {
   panel.innerHTML = `
-    <h3>📋 Logs de l'application</h3>
+    <h3>📋 Journaux d'activité utilisateurs</h3>
     <div style="display: flex; gap: 8px; margin-bottom: 16px; align-items: center;">
       <input type="date" id="logs-date-filter" class="settings-input" />
       <button id="logs-refresh" class="btn btn-primary">🔄 Rafraîchir</button>
@@ -1272,7 +1495,7 @@ async function loadSettingsLogs() {
   if (!container) return;
 
   const dateFilter = document.getElementById("logs-date-filter")?.value || "";
-  const url = "/api/admin/logs" + (dateFilter ? `?date=${encodeURIComponent(dateFilter)}` : "");
+  const url = "/api/admin/activity-logs" + (dateFilter ? `?date=${encodeURIComponent(dateFilter)}` : "");
 
   try {
     const resp = await fetch(url, {
@@ -1281,7 +1504,7 @@ async function loadSettingsLogs() {
 
     const logs = resp.logs || [];
     if (logs.length === 0) {
-      container.innerHTML = '<p style="color:#9ca3af;">Aucun log disponible</p>';
+      container.innerHTML = '<p style="color:#9ca3af;">Aucune activité enregistrée</p>';
       return;
     }
 
@@ -1290,18 +1513,18 @@ async function loadSettingsLogs() {
         <thead>
           <tr style="background: #f3f4f6; text-align: left;">
             <th style="padding: 8px 12px; border-bottom: 2px solid #e5e7eb;">Date</th>
-            <th style="padding: 8px 12px; border-bottom: 2px solid #e5e7eb;">Méthode</th>
-            <th style="padding: 8px 12px; border-bottom: 2px solid #e5e7eb;">URL</th>
-            <th style="padding: 8px 12px; border-bottom: 2px solid #e5e7eb;">Statut</th>
+            <th style="padding: 8px 12px; border-bottom: 2px solid #e5e7eb;">Utilisateur</th>
+            <th style="padding: 8px 12px; border-bottom: 2px solid #e5e7eb;">Action</th>
+            <th style="padding: 8px 12px; border-bottom: 2px solid #e5e7eb;">Détails</th>
           </tr>
         </thead>
         <tbody>
           ${logs.map(l => `
             <tr style="border-bottom: 1px solid #e5e7eb;">
               <td style="padding: 6px 12px; white-space: nowrap; color: #6b7280;">${new Date(l.timestamp).toLocaleString("fr-FR")}</td>
-              <td style="padding: 6px 12px;"><span style="background: #dbeafe; color: #1e40af; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;">${l.method || ""}</span></td>
-              <td style="padding: 6px 12px; font-family: monospace; color: #374151;">${l.path || ""}</td>
-              <td style="padding: 6px 12px;"><span style="color: ${(l.statusCode || 200) >= 400 ? '#ef4444' : '#16a34a'}; font-weight: 600;">${l.statusCode || ""}</span></td>
+              <td style="padding: 6px 12px; font-weight: 600;">${l.userName || l.userLogin || "—"}</td>
+              <td style="padding: 6px 12px;"><span style="background: #dbeafe; color: #1e40af; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;">${l.action || ""}</span></td>
+              <td style="padding: 6px 12px; color: #374151;">${l.details || ""}</td>
             </tr>
           `).join("")}
         </tbody>
@@ -1313,40 +1536,41 @@ async function loadSettingsLogs() {
 }
 
 async function renderSettingsStats(panel) {
-  panel.innerHTML = `<h3>📊 Dashboard — Vue d'ensemble de l'atelier</h3><p style="color:#6b7280;">Chargement...</p>`;
-  try {
-    const resp = await fetch("/api/admin/stats", {
-      headers: { "Authorization": `Bearer ${authToken}` }
-    }).then(r => r.json());
+  panel.innerHTML = `<h3>📊 Dashboard — Étapes kanban</h3><p style="color:#6b7280;">Chargement...</p>`;
 
-    const stats = resp.stats || {};
-    const filesByFolder = stats.filesByFolder || {};
-    const scheduledThisWeek = stats.scheduledThisWeek || 0;
-    const activeAssignments = stats.activeAssignments || 0;
-    const totalFiles = stats.totalFiles || 0;
+  const kanbanFolders = [
+    { folder: "1.Reception", label: "Début de production" },
+    { folder: "2.Corrections", label: "Corrections" },
+    { folder: "3.Rapport", label: "Rapport" },
+    { folder: "2.Corrections + fond perdu", label: "Corrections et fond perdu" },
+    { folder: "6.Archivage", label: "Prêt pour impression" },
+    { folder: "4.BAT", label: "BAT" },
+    { folder: "5.Relecture", label: "Impression en cours" },
+    { folder: "7.Termine", label: "PrismaPrepare" },
+    { folder: "8. Fin de production", label: "Fiery" },
+    { folder: "9. Archived", label: "Fin de production" }
+  ];
+
+  try {
+    const counts = await Promise.all(
+      kanbanFolders.map(k =>
+        fetch(`/api/jobs?folder=${encodeURIComponent(k.folder)}`)
+          .then(r => r.json())
+          .then(jobs => ({ ...k, count: Array.isArray(jobs) ? jobs.length : 0 }))
+          .catch(() => ({ ...k, count: 0 }))
+      )
+    );
 
     panel.innerHTML = `
-      <h3>📊 Dashboard — Vue d'ensemble de l'atelier</h3>
-      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px;">
-        <div style="background: #dbeafe; border-radius: 10px; padding: 20px; text-align: center;">
-          <div style="font-size: 32px; font-weight: 700; color: #1e40af;">${totalFiles}</div>
-          <div style="color: #3b82f6; font-weight: 500; margin-top: 4px;">📄 Fichiers totaux</div>
-        </div>
-        <div style="background: #dcfce7; border-radius: 10px; padding: 20px; text-align: center;">
-          <div style="font-size: 32px; font-weight: 700; color: #15803d;">${scheduledThisWeek}</div>
-          <div style="color: #16a34a; font-weight: 500; margin-top: 4px;">📅 Planifiés cette semaine</div>
-        </div>
-        <div style="background: #fef9c3; border-radius: 10px; padding: 20px; text-align: center;">
-          <div style="font-size: 32px; font-weight: 700; color: #a16207;">${activeAssignments}</div>
-          <div style="color: #ca8a04; font-weight: 500; margin-top: 4px;">👤 Affectations actives</div>
-        </div>
-      </div>
-      <h4>Fichiers par étape</h4>
-      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
-        ${Object.entries(filesByFolder).map(([folder, count]) => `
+      <h3>📊 Dashboard — Étapes kanban</h3>
+      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 16px;">
+        ${counts.map(k => `
           <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 13px; color: #374151;">${folder}</span>
-            <span style="background: #f3f4f6; border-radius: 999px; padding: 2px 10px; font-weight: 700; color: #111827;">${count}</span>
+            <div>
+              <div style="font-size: 13px; color: #374151; font-weight: 600;">${k.label}</div>
+              <div style="font-size: 11px; color: #9ca3af;">${k.folder}</div>
+            </div>
+            <span style="background: #dbeafe; border-radius: 999px; padding: 4px 12px; font-weight: 700; color: #1e40af; font-size: 16px;">${k.count}</span>
           </div>
         `).join("")}
       </div>
@@ -1354,70 +1578,6 @@ async function renderSettingsStats(panel) {
   } catch (err) {
     panel.innerHTML = `<h3>📊 Dashboard</h3><p style="color:#ef4444;">Erreur : ${err.message}</p>`;
   }
-}
-
-async function showAccountsModal() {
-  const modal = document.getElementById("accounts-modal");
-  const usersList = document.getElementById("users-list");
-  const btnCreate = document.getElementById("btn-create-user");
-  const closeBtn = document.getElementById("accounts-close");
-
-  const resp = await fetch("/api/auth/users", {
-    headers: { "Authorization": `Bearer ${authToken}` }
-  }).then(r => r.json());
-
-  usersList.innerHTML = "";
-  if (resp.ok && resp.users) {
-    resp.users.forEach(u => {
-      const div = document.createElement("div");
-      div.className = "user-item";
-      div.innerHTML = `
-        <div class="user-item-info"><strong>${u.login}</strong><small>${u.name}</small></div>
-        <div class="user-item-profile">Profil ${u.profile}</div>
-        <button class="btn-delete" data-id="${u.id}">Supprimer</button>
-      `;
-      div.querySelector(".btn-delete").onclick = async () => {
-        if (!confirm("Supprimer ?")) return;
-        await fetch(`/api/auth/users/${u.id}`, {
-          method: "DELETE",
-          headers: { "Authorization": `Bearer ${authToken}` }
-        });
-        showAccountsModal();
-      };
-      usersList.appendChild(div);
-    });
-  }
-
-  btnCreate.onclick = async () => {
-    const login = document.getElementById("new-login").value.trim();
-    const password = document.getElementById("new-password").value.trim();
-    const name = document.getElementById("new-name").value.trim();
-    const profile = parseInt(document.getElementById("new-profile").value);
-
-    if (!login || !password || !name) {
-      alert("Remplissez tous les champs");
-      return;
-    }
-
-    const r = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ login, password, name, profile })
-    }).then(r => r.json());
-
-    if (r.ok) {
-      alert("Utilisateur créé !");
-      document.getElementById("new-login").value = "";
-      document.getElementById("new-password").value = "";
-      document.getElementById("new-name").value = "";
-      showAccountsModal();
-    } else {
-      alert("Erreur : " + r.error);
-    }
-  };
-
-  closeBtn.onclick = () => modal.classList.add("hidden");
-  modal.classList.remove("hidden");
 }
 
 async function initApp() {
@@ -2042,7 +2202,7 @@ async function refreshKanban() {
   }
 }
 
-async function refreshKanbanColumnOperator(folderName, q, sort, col) {
+async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = false) {
   try {
     const jobs = await fetch(`/api/jobs?folder=${encodeURIComponent(folderName)}`)
       .then(r => r.json())
@@ -2062,13 +2222,12 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col) {
     else if (sort === "size_desc") filtered.sort((a, b) => (b.size || 0) - (a.size || 0));
     else filtered.sort((a, b) => new Date(b.modified) - new Date(a.modified));
 
-    // Ajoute bouton Acrobat au niveau de la tuile si c'est Corrections
-// (removed: column-level button replaced by per-card button below)
-
     for (const job of filtered) {
       const card = document.createElement("div");
       card.className = "kanban-card-operator";
-      card.draggable = true;
+      if (!readOnly) {
+        card.draggable = true;
+      }
       card.dataset.fullPath = normalizePath(job.fullPath || "");
 
       const thumb = document.createElement("div");
@@ -2130,14 +2289,15 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col) {
       btnFiche.onclick = () => openFabrication(full);
       actions.appendChild(btnFiche);
 
-      // "Affecter à" button (visible for profiles 2 and 3)
-      if (currentUser.profile === 2 || currentUser.profile === 3) {
-        const btnAssign = document.createElement("button");
-        btnAssign.className = "btn btn-sm btn-assign";
-        btnAssign.textContent = "Affecter à";
-        btnAssign.onclick = (e) => { e.stopPropagation(); openAssignDropdown(btnAssign, full); };
-        actions.appendChild(btnAssign);
+      // "Affecter à" button — visible for all profiles
+      const btnAssign = document.createElement("button");
+      btnAssign.className = "btn btn-sm btn-assign";
+      btnAssign.textContent = "Affecter à";
+      btnAssign.onclick = (e) => { e.stopPropagation(); openAssignDropdown(btnAssign, full); };
+      actions.appendChild(btnAssign);
 
+      // Delete and Acrobat — only for profiles 2 and 3 (not read-only profile 1)
+      if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
         const btnDelete = document.createElement("button");
         btnDelete.className = "btn btn-sm";
         btnDelete.textContent = "Corbeille";
@@ -2150,11 +2310,7 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col) {
           btnAcrobat.textContent = "📄 Acrobat";
           btnAcrobat.onclick = async () => {
             try {
-              const resp = await fetch("/api/acrobat/open", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ fullPath: full })
-              });
+              const resp = await fetch("/api/acrobat", { method: "POST" });
               const result = await resp.json();
               if (!result.ok) throw new Error(result.error || "Erreur");
               showNotification("Acrobat Pro lancé", "success");
@@ -2168,10 +2324,12 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col) {
 
       card.appendChild(actions);
 
-      card.addEventListener("dragstart", (e) => {
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", card.dataset.fullPath);
-      });
+      if (!readOnly) {
+        card.addEventListener("dragstart", (e) => {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", card.dataset.fullPath);
+        });
+      }
 
       drop.appendChild(card);
     }

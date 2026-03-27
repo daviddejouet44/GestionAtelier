@@ -43,7 +43,6 @@
         <span id="user-info">Utilisateur</span>
         <button id="btn-logout" class="btn">Déconnexion</button>
         <button id="btn-settings" class="btn" style="display:none;">Paramétrage</button>
-        <button id="btn-accounts" class="btn" style="display:none;">Gérer comptes</button>
       </div>
     </header>
 
@@ -82,8 +81,7 @@
       <div id="settings-view" class="hidden"></div>
     </div>
 
-    <!-- MODALE FICHE FABRICATION -->
-    <div id="fab-modal" class="modal hidden">
+    <!-- MODALE FICHE FABRICATION -->    <div id="fab-modal" class="modal hidden">
       <div class="fab-modal-content">
         <h2>Fiche de fabrication</h2>
         <div class="fab-form-grid">
@@ -121,33 +119,9 @@
       </div>
     </div>
 
-    <!-- MODALE GESTION COMPTES -->
-    <div id="accounts-modal" class="modal hidden">
-      <div class="accounts-modal-content">
-        <h2>Gérer les comptes utilisateurs</h2>
-        <div class="accounts-new-user">
-          <h3>Créer un nouveau compte</h3>
-          <input type="text" id="new-login" placeholder="Login" />
-          <input type="password" id="new-password" placeholder="Mot de passe" />
-          <input type="text" id="new-name" placeholder="Nom complet" />
-          <select id="new-profile">
-            <option value="1">Profil 1 - Soumission</option>
-            <option value="2">Profil 2 - Opérateur</option>
-            <option value="3">Profil 3 - Admin</option>
-          </select>
-          <button id="btn-create-user" class="btn btn-primary">Créer</button>
-        </div>
-        <div class="accounts-list">
-          <h3>Utilisateurs existants</h3>
-          <div id="users-list"></div>
-        </div>
-        <button id="accounts-close" class="btn">Fermer</button>
-      </div>
-    </div>
-
   </div>
 
-  <script src="js/app.js?v=7"></script>
+  <script src="js/app.js?v=8"></script>
 
 </body>
 </html>

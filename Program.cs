@@ -159,6 +159,16 @@ app.MapPost("/api/auth/login", async (HttpContext ctx) =>
 
         Console.WriteLine($"[DEBUG] Login successful for {user.Login}");
 
+        // Log login activity
+        MongoDbHelper.InsertActivityLog(new ActivityLogEntry
+        {
+            Timestamp = DateTime.Now,
+            UserLogin = user.Login,
+            UserName = user.Name,
+            Action = "LOGIN",
+            Details = $"Connexion profil {user.Profile}"
+        });
+
         return Results.Json(new
         {
             ok = true,
@@ -279,6 +289,17 @@ app.MapPost("/api/auth/register", async (HttpContext ctx) =>
 
         BackendUtils.InsertUser(newUser);
 
+        // Log account creation
+        var creatorLogin = parts.Length >= 2 ? parts[1] : "?";
+        MongoDbHelper.InsertActivityLog(new ActivityLogEntry
+        {
+            Timestamp = DateTime.Now,
+            UserLogin = creatorLogin,
+            UserName = creatorLogin,
+            Action = "CREATE_ACCOUNT",
+            Details = $"Compte créé : {newUser.Login} (Profil {newUser.Profile})"
+        });
+
         return Results.Json(new { ok = true, user = new { id = newUser.Id, login = newUser.Login } });
     }
     catch (Exception ex)
@@ -300,6 +321,17 @@ app.MapDelete("/api/auth/users/{userId}", (HttpContext ctx, string userId) =>
 
         if (!BackendUtils.DeleteUser(userId))
             return Results.Json(new { ok = false, error = "Utilisateur non trouvé" });
+
+        // Log account deletion
+        var delCreatorLogin = parts.Length >= 2 ? parts[1] : "?";
+        MongoDbHelper.InsertActivityLog(new ActivityLogEntry
+        {
+            Timestamp = DateTime.Now,
+            UserLogin = delCreatorLogin,
+            UserName = delCreatorLogin,
+            Action = "DELETE_ACCOUNT",
+            Details = $"Compte supprimé : ID {userId}"
+        });
 
         return Results.Json(new { ok = true });
     }
@@ -504,6 +536,30 @@ app.MapPost("/api/jobs/move", async (HttpContext ctx) =>
             Console.WriteLine($"[DEBUG] dstFolder = {dstFolder}");
             
             var (ok, moved, error) = MoveOne(src, dstFolder, overwrite);
+
+            if (ok && moved != null)
+            {
+                // Log file move activity
+                var token2 = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+                var userLogin2 = "?";
+                var userName2 = "?";
+                try {
+                    var dec2 = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token2));
+                    var p2 = dec2.Split(':');
+                    if (p2.Length >= 2) userLogin2 = p2[1];
+                    var u2 = BackendUtils.LoadUsers().FirstOrDefault(u => u.Login == userLogin2);
+                    if (u2 != null) userName2 = u2.Name;
+                } catch { /* ignore */ }
+                MongoDbHelper.InsertActivityLog(new ActivityLogEntry
+                {
+                    Timestamp = DateTime.Now,
+                    UserLogin = userLogin2,
+                    UserName = userName2,
+                    Action = "MOVE_FILE",
+                    Details = $"Déplacement : {Path.GetFileName(src)} → {dstFolder}"
+                });
+            }
+
             return Results.Json(new { ok, moved, error });
         }
 
@@ -793,24 +849,6 @@ app.MapGet("/api/fabrication/pdf", (string fullPath) =>
 });
 
 // ======================================================
-// CONFIG — Moteurs d'impression
-// ======================================================
-
-var printEngines = new List<string>
-{
-    "Offset",
-    "Numérique",
-    "Jet d'encre",
-    "Sérigraphie",
-    "Flexographie",
-    "Héliogravure",
-    "Tampographie",
-    "Laser"
-};
-
-app.MapGet("/api/config/print-engines", () => Results.Json(printEngines));
-
-// ======================================================
 // OPÉRATEURS — liste des utilisateurs profil 2
 // ======================================================
 
@@ -989,6 +1027,33 @@ app.MapPost("/api/acrobat/open", async (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = "Acrobat.exe introuvable" });
 
         var psi = new System.Diagnostics.ProcessStartInfo(exe, $"\"{full}\"")
+        {
+            UseShellExecute = true,
+            WorkingDirectory = Path.GetDirectoryName(exe)!
+        };
+        System.Diagnostics.Process.Start(psi);
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// ACROBAT — Ouvrir Acrobat Pro (sans fichier)
+// ======================================================
+
+app.MapPost("/api/acrobat", () =>
+{
+    try
+    {
+        var exe = @"C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe";
+        if (!File.Exists(exe))
+            return Results.Json(new { ok = false, error = "Acrobat.exe introuvable" });
+
+        var psi = new System.Diagnostics.ProcessStartInfo(exe)
         {
             UseShellExecute = true,
             WorkingDirectory = Path.GetDirectoryName(exe)!
@@ -1246,6 +1311,155 @@ app.MapPut("/api/config/fabrication-imports", async (HttpContext ctx) =>
 
         MongoDbHelper.UpsertSettings("fabrication_imports", existing);
         return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// CONFIG — Integrations (Prepare / Fiery)
+// ======================================================
+
+app.MapGet("/api/config/integrations", (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var cfg = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations")
+            ?? new IntegrationsSettings();
+        return Results.Json(new { ok = true, config = new { preparePath = cfg.PreparePath, fieryPath = cfg.FieryPath } });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapPut("/api/config/integrations", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var existing = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations")
+            ?? new IntegrationsSettings();
+
+        if (json.TryGetProperty("preparePath", out var pp)) existing.PreparePath = pp.GetString() ?? "";
+        if (json.TryGetProperty("fieryPath", out var fp)) existing.FieryPath = fp.GetString() ?? "";
+
+        MongoDbHelper.UpsertSettings("integrations", existing);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// CONFIG — Moteurs d'impression (CRUD + MongoDB)
+// ======================================================
+
+app.MapGet("/api/config/print-engines", () =>
+{
+    try
+    {
+        var engines = MongoDbHelper.GetPrintEngines();
+        if (engines.Count == 0)
+        {
+            // Return default list if none configured
+            engines = new List<string> { "Offset", "Numérique", "Jet d'encre", "Sérigraphie", "Flexographie", "Héliogravure", "Tampographie", "Laser" };
+        }
+        return Results.Json(engines);
+    }
+    catch (Exception)
+    {
+        return Results.Json(new List<string>());
+    }
+});
+
+app.MapPost("/api/config/print-engines", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        if (!json.TryGetProperty("name", out var nameEl) || string.IsNullOrWhiteSpace(nameEl.GetString()))
+            return Results.Json(new { ok = false, error = "name requis" });
+
+        MongoDbHelper.AddPrintEngine(nameEl.GetString()!);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapPost("/api/config/print-engines/import", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        if (!json.TryGetProperty("engines", out var enginesEl))
+            return Results.Json(new { ok = false, error = "engines requis" });
+
+        var names = enginesEl.EnumerateArray()
+            .Select(e => e.GetString() ?? "")
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToList();
+
+        foreach (var name in names)
+            MongoDbHelper.AddPrintEngine(name);
+
+        return Results.Json(new { ok = true, count = names.Count });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapDelete("/api/config/print-engines/{name}", (HttpContext ctx, string name) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        MongoDbHelper.RemovePrintEngine(name);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// ADMIN — Activity Logs
+// ======================================================
+
+app.MapGet("/api/admin/activity-logs", (HttpContext ctx, string? date) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var logs = MongoDbHelper.GetActivityLogs(date);
+        return Results.Json(new { ok = true, logs });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
@@ -1516,6 +1730,114 @@ file static class MongoDbHelper
         }
     }
 
+    public static IMongoCollection<BsonDocument> GetActivityLogsCollection()
+        => GetDatabase().GetCollection<BsonDocument>("activity_logs");
+
+    public static IMongoCollection<BsonDocument> GetPrintEnginesCollection()
+        => GetDatabase().GetCollection<BsonDocument>("print_engines");
+
+    public static void InsertActivityLog(ActivityLogEntry entry)
+    {
+        try
+        {
+            var col = GetActivityLogsCollection();
+            var doc = new BsonDocument
+            {
+                ["timestamp"] = entry.Timestamp,
+                ["userLogin"] = entry.UserLogin,
+                ["userName"]  = entry.UserName,
+                ["action"]    = entry.Action,
+                ["details"]   = entry.Details
+            };
+            col.InsertOne(doc);
+        }
+        catch (Exception ex) { Console.WriteLine($"[WARN] Activity log failed: {ex.Message}"); }
+    }
+
+    public static List<object> GetActivityLogs(string? dateFilter, int limit = 500)
+    {
+        try
+        {
+            var col = GetActivityLogsCollection();
+            var filter = Builders<BsonDocument>.Filter.Empty;
+            if (!string.IsNullOrWhiteSpace(dateFilter) && DateTime.TryParse(dateFilter, out var dt))
+            {
+                var start = dt.Date;
+                var end = start.AddDays(1);
+                filter = Builders<BsonDocument>.Filter.And(
+                    Builders<BsonDocument>.Filter.Gte("timestamp", start),
+                    Builders<BsonDocument>.Filter.Lt("timestamp", end)
+                );
+            }
+            var docs = col.Find(filter)
+                .Sort(Builders<BsonDocument>.Sort.Descending("timestamp"))
+                .Limit(limit)
+                .ToList();
+
+            return docs.Select(d => (object)new
+            {
+                timestamp = d.Contains("timestamp") ? d["timestamp"].ToLocalTime() : (DateTime?)null,
+                userLogin = d.Contains("userLogin") ? d["userLogin"].AsString : "",
+                userName  = d.Contains("userName")  ? d["userName"].AsString  : "",
+                action    = d.Contains("action")    ? d["action"].AsString    : "",
+                details   = d.Contains("details")   ? d["details"].AsString   : ""
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] GetActivityLogs error: {ex.Message}");
+            return new();
+        }
+    }
+
+    public static List<string> GetPrintEngines()
+    {
+        try
+        {
+            var col = GetPrintEnginesCollection();
+            var docs = col.Find(Builders<BsonDocument>.Filter.Empty)
+                .Sort(Builders<BsonDocument>.Sort.Ascending("name"))
+                .ToList();
+            return docs.Select(d => d.Contains("name") ? d["name"].AsString : "").Where(s => s.Length > 0).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] GetPrintEngines error: {ex.Message}");
+            return new();
+        }
+    }
+
+    public static void AddPrintEngine(string name)
+    {
+        try
+        {
+            var col = GetPrintEnginesCollection();
+            var filter = Builders<BsonDocument>.Filter.Eq("name", name);
+            var existing = col.Find(filter).FirstOrDefault();
+            if (existing == null)
+            {
+                col.InsertOne(new BsonDocument { ["name"] = name });
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] AddPrintEngine error: {ex.Message}");
+        }
+    }
+
+    public static void RemovePrintEngine(string name)
+    {
+        try
+        {
+            var col = GetPrintEnginesCollection();
+            col.DeleteOne(Builders<BsonDocument>.Filter.Eq("name", name));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] RemovePrintEngine error: {ex.Message}");
+        }
+    }
+
     public static void InsertLog(LogEntry entry)
     {
         try
@@ -1720,6 +2042,24 @@ file class LogEntry
     public string Method { get; set; } = "";
     public string Path { get; set; } = "";
     public int StatusCode { get; set; }
+}
+
+file class ActivityLogEntry
+{
+    public DateTime Timestamp { get; set; }
+    public string UserLogin { get; set; } = "";
+    public string UserName { get; set; } = "";
+    public string Action { get; set; } = "";
+    public string Details { get; set; } = "";
+}
+
+file class IntegrationsSettings
+{
+    [JsonPropertyName("preparePath")]
+    public string PreparePath { get; set; } = "";
+
+    [JsonPropertyName("fieryPath")]
+    public string FieryPath { get; set; } = "";
 }
 
 // ======================================================
