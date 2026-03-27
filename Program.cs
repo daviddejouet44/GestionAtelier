@@ -48,13 +48,24 @@ var app = builder.Build();
 Console.WriteLine("[INFO] ContentRoot = " + app.Environment.ContentRootPath);
 
 // ======================================================
-// Logging (console)
+// Logging (console + MongoDB)
 // ======================================================
 
 app.Use(async (ctx, next) =>
 {
     Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {ctx.Request.Method} {ctx.Request.Path}");
     await next();
+    try
+    {
+        MongoDbHelper.InsertLog(new LogEntry
+        {
+            Timestamp  = DateTime.Now,
+            Method     = ctx.Request.Method,
+            Path       = ctx.Request.Path.Value ?? "",
+            StatusCode = ctx.Response.StatusCode
+        });
+    }
+    catch (Exception logEx) { Console.WriteLine($"[WARN] MongoDB log failed: {logEx.Message}"); }
 });
 
 // ======================================================
@@ -1050,8 +1061,264 @@ foreach (var s in summaries)
 Console.WriteLine("[DEBUG] === FIN LISTE ===\n");
 
 // ======================================================
-// MIGRATION — JSON vers MongoDB
+// CONFIG — Schedule (plages horaires + jours fériés)
 // ======================================================
+
+app.MapGet("/api/config/schedule", (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var cfg = MongoDbHelper.GetSettings<ScheduleSettings>("schedule")
+            ?? new ScheduleSettings { WorkStart = "08:00", WorkEnd = "18:00", Holidays = new List<string>() };
+        return Results.Json(new { ok = true, config = new { workStart = cfg.WorkStart, workEnd = cfg.WorkEnd, holidays = cfg.Holidays } });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapPut("/api/config/schedule", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var existing = MongoDbHelper.GetSettings<ScheduleSettings>("schedule")
+            ?? new ScheduleSettings { WorkStart = "08:00", WorkEnd = "18:00", Holidays = new List<string>() };
+
+        if (json.TryGetProperty("workStart", out var wsEl)) existing.WorkStart = wsEl.GetString() ?? existing.WorkStart;
+        if (json.TryGetProperty("workEnd", out var weEl)) existing.WorkEnd = weEl.GetString() ?? existing.WorkEnd;
+
+        MongoDbHelper.UpsertSettings("schedule", existing);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapPost("/api/config/schedule/holidays", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        if (!json.TryGetProperty("date", out var dateEl))
+            return Results.Json(new { ok = false, error = "date requis" });
+
+        var dateStr = dateEl.GetString() ?? "";
+        var existing = MongoDbHelper.GetSettings<ScheduleSettings>("schedule")
+            ?? new ScheduleSettings { WorkStart = "08:00", WorkEnd = "18:00", Holidays = new List<string>() };
+
+        if (!existing.Holidays.Contains(dateStr))
+        {
+            existing.Holidays.Add(dateStr);
+            existing.Holidays.Sort();
+            MongoDbHelper.UpsertSettings("schedule", existing);
+        }
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapDelete("/api/config/schedule/holidays", (HttpContext ctx, string date) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var existing = MongoDbHelper.GetSettings<ScheduleSettings>("schedule")
+            ?? new ScheduleSettings { WorkStart = "08:00", WorkEnd = "18:00", Holidays = new List<string>() };
+
+        existing.Holidays.Remove(date);
+        MongoDbHelper.UpsertSettings("schedule", existing);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// CONFIG — Paths (chemins d'accès)
+// ======================================================
+
+app.MapGet("/api/config/paths", (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var cfg = MongoDbHelper.GetSettings<PathsSettings>("paths")
+            ?? new PathsSettings { HotfoldersRoot = BackendUtils.HotfoldersRoot(), RecycleBinPath = recyclePath };
+        return Results.Json(new { ok = true, config = new { hotfoldersRoot = cfg.HotfoldersRoot, recycleBinPath = cfg.RecycleBinPath } });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapPut("/api/config/paths", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var existing = MongoDbHelper.GetSettings<PathsSettings>("paths")
+            ?? new PathsSettings { HotfoldersRoot = BackendUtils.HotfoldersRoot(), RecycleBinPath = recyclePath };
+
+        if (json.TryGetProperty("hotfoldersRoot", out var hrEl) && !string.IsNullOrWhiteSpace(hrEl.GetString()))
+            existing.HotfoldersRoot = hrEl.GetString()!;
+        if (json.TryGetProperty("recycleBinPath", out var rbEl))
+            existing.RecycleBinPath = rbEl.GetString() ?? existing.RecycleBinPath;
+
+        MongoDbHelper.UpsertSettings("paths", existing);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// CONFIG — Fabrication Imports
+// ======================================================
+
+app.MapGet("/api/config/fabrication-imports", (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var cfg = MongoDbHelper.GetSettings<FabricationImportsSettings>("fabrication_imports")
+            ?? new FabricationImportsSettings();
+        return Results.Json(new { ok = true, config = new {
+            media1Path = cfg.Media1Path, media2Path = cfg.Media2Path,
+            media3Path = cfg.Media3Path, media4Path = cfg.Media4Path,
+            typeDocumentPath = cfg.TypeDocumentPath
+        }});
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapPut("/api/config/fabrication-imports", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var existing = MongoDbHelper.GetSettings<FabricationImportsSettings>("fabrication_imports")
+            ?? new FabricationImportsSettings();
+
+        if (json.TryGetProperty("media1Path", out var m1)) existing.Media1Path = m1.GetString() ?? "";
+        if (json.TryGetProperty("media2Path", out var m2)) existing.Media2Path = m2.GetString() ?? "";
+        if (json.TryGetProperty("media3Path", out var m3)) existing.Media3Path = m3.GetString() ?? "";
+        if (json.TryGetProperty("media4Path", out var m4)) existing.Media4Path = m4.GetString() ?? "";
+        if (json.TryGetProperty("typeDocumentPath", out var td)) existing.TypeDocumentPath = td.GetString() ?? "";
+
+        MongoDbHelper.UpsertSettings("fabrication_imports", existing);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// ADMIN — Logs
+// ======================================================
+
+app.MapGet("/api/admin/logs", (HttpContext ctx, string? date) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var logs = MongoDbHelper.GetRecentLogs(date);
+        return Results.Json(new { ok = true, logs });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// ADMIN — Stats (Dashboard)
+// ======================================================
+
+app.MapGet("/api/admin/stats", (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var root = BackendUtils.HotfoldersRoot();
+        var filesByFolder = new Dictionary<string, int>();
+        int totalFiles = 0;
+
+        if (Directory.Exists(root))
+        {
+            foreach (var dir in Directory.GetDirectories(root))
+            {
+                var folderName = Path.GetFileName(dir) ?? "";
+                var count = Directory.GetFiles(dir).Length;
+                filesByFolder[folderName] = count;
+                totalFiles += count;
+            }
+        }
+
+        // Scheduled this week
+        var now = DateTime.Now;
+        var startOfWeek = now.Date.AddDays(-(int)now.DayOfWeek);
+        var endOfWeek = startOfWeek.AddDays(7);
+        var deliveries = BackendUtils.LoadDeliveries();
+        var scheduledThisWeek = deliveries.Values.Count(d => d.Date >= startOfWeek && d.Date < endOfWeek);
+
+        // Active assignments
+        var assignments = BackendUtils.LoadAssignments();
+        var activeAssignments = assignments.Count;
+
+        return Results.Json(new { ok = true, stats = new {
+            totalFiles,
+            filesByFolder,
+            scheduledThisWeek,
+            activeAssignments
+        }});
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
 
 app.MapPost("/api/admin/migrate-to-mongo", () =>
 {
@@ -1202,6 +1469,99 @@ file static class MongoDbHelper
 
     public static IMongoCollection<BsonDocument> GetAssignmentsCollection()
         => GetDatabase().GetCollection<BsonDocument>("assignments");
+
+    public static IMongoCollection<BsonDocument> GetSettingsCollection()
+        => GetDatabase().GetCollection<BsonDocument>("settings");
+
+    public static IMongoCollection<BsonDocument> GetLogsCollection()
+        => GetDatabase().GetCollection<BsonDocument>("logs");
+
+    public static T? GetSettings<T>(string settingsId) where T : class
+    {
+        try
+        {
+            var col = GetSettingsCollection();
+            var filter = Builders<BsonDocument>.Filter.Eq("_id", settingsId);
+            var doc = col.Find(filter).FirstOrDefault();
+            if (doc == null) return null;
+            doc.Remove("_id");
+            return JsonSerializer.Deserialize<T>(doc.ToJson());
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] GetSettings({settingsId}) error: {ex.Message}");
+            return null;
+        }
+    }
+
+    public static void UpsertSettings<T>(string settingsId, T value) where T : class
+    {
+        try
+        {
+            var col = GetSettingsCollection();
+            var json = JsonSerializer.Serialize(value);
+            var doc = BsonDocument.Parse(json);
+            doc["_id"] = settingsId;
+            var filter = Builders<BsonDocument>.Filter.Eq("_id", settingsId);
+            col.ReplaceOne(filter, doc, new ReplaceOptions { IsUpsert = true });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] UpsertSettings({settingsId}) error: {ex.Message}");
+        }
+    }
+
+    public static void InsertLog(LogEntry entry)
+    {
+        try
+        {
+            var col = GetLogsCollection();
+            var doc = new BsonDocument
+            {
+                ["timestamp"]  = entry.Timestamp,
+                ["method"]     = entry.Method,
+                ["path"]       = entry.Path,
+                ["statusCode"] = entry.StatusCode
+            };
+            col.InsertOne(doc);
+        }
+        catch { /* ignore log errors */ }
+    }
+
+    public static List<object> GetRecentLogs(string? dateFilter, int limit = 200)
+    {
+        try
+        {
+            var col = GetLogsCollection();
+            var filter = Builders<BsonDocument>.Filter.Empty;
+            if (!string.IsNullOrWhiteSpace(dateFilter) && DateTime.TryParse(dateFilter, out var dt))
+            {
+                var start = dt.Date;
+                var end = start.AddDays(1);
+                filter = Builders<BsonDocument>.Filter.And(
+                    Builders<BsonDocument>.Filter.Gte("timestamp", start),
+                    Builders<BsonDocument>.Filter.Lt("timestamp", end)
+                );
+            }
+            var docs = col.Find(filter)
+                .Sort(Builders<BsonDocument>.Sort.Descending("timestamp"))
+                .Limit(limit)
+                .ToList();
+
+            return docs.Select(d => (object)new
+            {
+                timestamp  = d.Contains("timestamp")  ? d["timestamp"].ToLocalTime() : (DateTime?)null,
+                method     = d.Contains("method")     ? d["method"].AsString : "",
+                path       = d.Contains("path")       ? d["path"].AsString : "",
+                statusCode = d.Contains("statusCode") ? d["statusCode"].AsInt32 : 0
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] GetRecentLogs error: {ex.Message}");
+            return new();
+        }
+    }
 }
 
 
@@ -1304,6 +1664,57 @@ file class FabricationInput
     public int? NombreFeuilles { get; set; }
     public string? Faconnage { get; set; }
     public string? Livraison { get; set; }
+}
+
+// ======================================================
+// Settings / Log types
+// ======================================================
+
+file class ScheduleSettings
+{
+    [JsonPropertyName("workStart")]
+    public string WorkStart { get; set; } = "08:00";
+
+    [JsonPropertyName("workEnd")]
+    public string WorkEnd { get; set; } = "18:00";
+
+    [JsonPropertyName("holidays")]
+    public List<string> Holidays { get; set; } = new();
+}
+
+file class PathsSettings
+{
+    [JsonPropertyName("hotfoldersRoot")]
+    public string HotfoldersRoot { get; set; } = @"C:\Flux";
+
+    [JsonPropertyName("recycleBinPath")]
+    public string RecycleBinPath { get; set; } = "";
+}
+
+file class FabricationImportsSettings
+{
+    [JsonPropertyName("media1Path")]
+    public string Media1Path { get; set; } = "";
+
+    [JsonPropertyName("media2Path")]
+    public string Media2Path { get; set; } = "";
+
+    [JsonPropertyName("media3Path")]
+    public string Media3Path { get; set; } = "";
+
+    [JsonPropertyName("media4Path")]
+    public string Media4Path { get; set; } = "";
+
+    [JsonPropertyName("typeDocumentPath")]
+    public string TypeDocumentPath { get; set; } = "";
+}
+
+file class LogEntry
+{
+    public DateTime Timestamp { get; set; }
+    public string Method { get; set; } = "";
+    public string Path { get; set; } = "";
+    public int StatusCode { get; set; }
 }
 
 // ======================================================
