@@ -11,6 +11,15 @@ const FOLDER_DEBUT_PRODUCTION = "Début de production";
 const FOLDER_FIN_PRODUCTION = "Fin de production";
 
 // ======================================================
+// UTILITAIRE — Formatage date/heure
+// ======================================================
+function formatDateTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("fr-FR") + " " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+}
+
+// ======================================================
 // AUTHENTIFICATION
 // ======================================================
 
@@ -492,7 +501,7 @@ async function initSubmissionCalendar() {
     if (sr.ok && sr.config) {
       if (sr.config.workStart) schedStart = sr.config.workStart;
       if (sr.config.workEnd) {
-        // add 30min buffer so last hour slot is visible
+        // add 1-hour buffer so last hour slot is fully visible
         const [h, m] = sr.config.workEnd.split(":").map(Number);
         const endH = Math.min(h + 1, 24);
         schedEnd = `${String(endH).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
@@ -1426,7 +1435,7 @@ async function renderSettingsSchedule(panel) {
       body: JSON.stringify({ workStart, workEnd })
     }).then(r => r.json());
     if (r.ok) {
-      // Compute buffered end (add 1h so last slot is fully visible)
+      // Compute buffered end (add 1 hour so last slot is fully visible)
       const [h, m] = workEnd.split(":").map(Number);
       const bufferedEnd = `${String(Math.min(h + 1, 24)).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
       // Update FullCalendar displays immediately
@@ -2756,30 +2765,24 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
           .then(status => {
             batTracking.innerHTML = "";
 
-            const fmtDT = (iso) => {
-              if (!iso) return "";
-              const d = new Date(iso);
-              return d.toLocaleDateString("fr-FR") + " " + d.toLocaleTimeString("fr-FR", {hour:"2-digit",minute:"2-digit"});
-            };
-
             const btnSent = document.createElement("button");
             btnSent.className = "bat-status-badge bat-sent" + (status.sentAt ? " active" : "");
             btnSent.innerHTML = status.sentAt
-              ? `📤 ENVOYÉ ${fmtDT(status.sentAt)}`
+              ? `📤 ENVOYÉ ${formatDateTime(status.sentAt)}`
               : "📤 MARQUER ENVOYÉ";
             btnSent.onclick = (e) => { e.stopPropagation(); fetch("/api/bat/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
 
             const btnValidate = document.createElement("button");
             btnValidate.className = "bat-status-badge bat-validated" + (status.validatedAt ? " active" : "");
             btnValidate.innerHTML = status.validatedAt
-              ? `✅ VALIDÉ ${fmtDT(status.validatedAt)}`
+              ? `✅ VALIDÉ ${formatDateTime(status.validatedAt)}`
               : "✅ VALIDER";
             btnValidate.onclick = (e) => { e.stopPropagation(); fetch("/api/bat/validate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
 
             const btnReject = document.createElement("button");
             btnReject.className = "bat-status-badge bat-rejected" + (status.rejectedAt ? " active" : "");
             btnReject.innerHTML = status.rejectedAt
-              ? `❌ REFUSÉ ${fmtDT(status.rejectedAt)}`
+              ? `❌ REFUSÉ ${formatDateTime(status.rejectedAt)}`
               : "❌ REFUSER";
             btnReject.onclick = (e) => { e.stopPropagation(); fetch("/api/bat/reject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
 
