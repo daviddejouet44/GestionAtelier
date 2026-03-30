@@ -2462,3 +2462,151 @@ header h1 {
   margin-left: 10px;
   padding: 0 8px;
 }
+
+/* =========================================================
+   FIX: Calendrier — Hauteur complète, slotMaxTime visible
+========================================================= */
+#calendar,
+.submission-calendar,
+#submissionCalendar,
+.production-calendar {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.submission-calendar {
+  height: auto !important;
+  min-height: 600px;
+}
+
+#submissionCalendar {
+  height: auto !important;
+}
+
+/* Fix for FullCalendar time grid overflow */
+#submissionCalendar .fc-scroller,
+#calendar .fc-scroller {
+  overflow-y: auto !important;
+}
+
+/* =========================================================
+   DESIGN MODERNE — Kanban columns
+========================================================= */
+.kanban-col-operator {
+  border-radius: 16px !important;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08) !important;
+  overflow: hidden;
+}
+
+.kanban-col-operator:hover {
+  box-shadow: 0 6px 24px rgba(0,0,0,0.15) !important;
+  transform: translateY(-3px);
+}
+
+.kanban-col-operator__title {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  padding: 14px 16px !important;
+  letter-spacing: 0.3px;
+}
+
+/* =========================================================
+   DESIGN MODERNE — Kanban cards
+========================================================= */
+.kanban-card-operator {
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08) !important;
+  padding: 12px !important;
+  transition: all 0.2s ease !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.kanban-card-operator:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12) !important;
+  transform: translateY(-2px);
+}
+
+.kanban-card-operator-layout {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.kanban-card-operator-thumb {
+  width: 60px !important;
+  height: 80px !important;
+  border-radius: 8px !important;
+  border: 1px solid #e5e7eb !important;
+  overflow: hidden !important;
+  flex-shrink: 0 !important;
+  background: #f8fafc !important;
+}
+
+.kanban-card-operator-title {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: #111827 !important;
+  margin: 0 0 4px 0 !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kanban-card-operator-info {
+  font-size: 11px !important;
+  color: #6b7280 !important;
+  margin: 0 0 4px 0 !important;
+}
+
+.kanban-card-operator-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px !important;
+  border-top: 1px solid #f3f4f6;
+  padding-top: 8px;
+  margin-top: 4px;
+}
+
+.kanban-card-operator-actions .btn {
+  font-size: 11px !important;
+  padding: 4px 8px !important;
+  border-radius: 6px !important;
+  font-weight: 500 !important;
+}
+
+.kanban-card-operator-status {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  padding: 2px 8px !important;
+  border-radius: 12px !important;
+  background: #dbeafe !important;
+  color: #1e40af !important;
+  display: inline-block;
+  margin: 2px 0 !important;
+}
+
+.kanban-card-operator-status.urgent {
+  background: #fee2e2 !important;
+  color: #b91c1c !important;
+}
+
+.kanban-card-operator-status.warning {
+  background: #fef3c7 !important;
+  color: #b45309 !important;
+}
+
+/* =========================================================
+   FIX: Folder names updated in CSS data-folder selectors
+========================================================= */
+.kanban-col-operator[data-folder="PrismaPrepare"],
+.kanban-col-operator[data-folder="Fiery"],
+.kanban-col-operator[data-folder="Façonnage"] {
+  background: linear-gradient(135deg, #6b7e89 0%, #556374 100%);
+}
+
+.kanban-col-operator[data-folder="Fin de production"] {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important;
+}

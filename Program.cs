@@ -39,13 +39,32 @@ builder.WebHost.UseKestrel(k =>
 // CREATION DE LA CORBEILLE
 // ======================================================
 var recycleEnabled = builder.Configuration["RecycleBin:Enabled"] == "true";
-var recyclePath    = builder.Configuration["RecycleBin:Path"] ?? Path.Combine(builder.Environment.ContentRootPath, "Corbeille");
+var recyclePath    = builder.Configuration["RecycleBin:Path"] ?? @"C:\Flux\Corbeille";
 var recycleDays    = int.TryParse(builder.Configuration["RecycleBin:DaysToKeep"], out var d) ? d : 7;
 Directory.CreateDirectory(recyclePath);
 
 var app = builder.Build();
 
 Console.WriteLine("[INFO] ContentRoot = " + app.Environment.ContentRootPath);
+
+// ======================================================
+// CREATION DES DOSSIERS HOTFOLDERS AU DÉMARRAGE
+// ======================================================
+{
+    var hotRoot = BackendUtils.HotfoldersRoot();
+    var hotFolders = new[]
+    {
+        "Soumission", "Début de production", "Corrections", "Corrections et fond perdu",
+        "Rapport", "Prêt pour impression", "BAT", "Impression en cours",
+        "PrismaPrepare", "Fiery", "Façonnage", "Fin de production", "Corbeille",
+        "DossiersProduction"
+    };
+    foreach (var f in hotFolders)
+    {
+        try { Directory.CreateDirectory(Path.Combine(hotRoot, f)); } catch { }
+    }
+    Console.WriteLine("[INFO] Hotfolders initialized in " + hotRoot);
+}
 
 // ======================================================
 // Logging (console + MongoDB)
@@ -539,6 +558,16 @@ app.MapPost("/api/jobs/move", async (HttpContext ctx) =>
 
             if (ok && moved != null)
             {
+                // Update delivery path in MongoDB so planning persists after file move
+                try
+                {
+                    BackendUtils.UpdateDeliveryPath(src, moved);
+                }
+                catch (Exception ex2)
+                {
+                    Console.WriteLine($"[WARN] UpdateDeliveryPath failed: {ex2.Message}");
+                }
+
                 // Log file move activity
                 var token2 = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
                 var userLogin2 = "?";
@@ -558,6 +587,31 @@ app.MapPost("/api/jobs/move", async (HttpContext ctx) =>
                     Action = "MOVE_FILE",
                     Details = $"Déplacement : {Path.GetFileName(src)} → {dstFolder}"
                 });
+
+                // Create production folder when file moves to "Début de production"
+                if (string.Equals(dstFolder.Trim(), "Début de production", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        await BackendUtils.EnsureProductionFolderAsync(moved);
+                    }
+                    catch (Exception ex3)
+                    {
+                        Console.WriteLine($"[WARN] EnsureProductionFolder failed: {ex3.Message}");
+                    }
+                }
+                else
+                {
+                    // Copy file to production folder stage sub-folder if applicable
+                    try
+                    {
+                        await BackendUtils.CopyToProductionFolderStageAsync(moved, dstFolder);
+                    }
+                    catch (Exception ex4)
+                    {
+                        Console.WriteLine($"[WARN] CopyToProductionFolderStage failed: {ex4.Message}");
+                    }
+                }
             }
 
             return Results.Json(new { ok, moved, error });
@@ -594,18 +648,17 @@ app.MapPost("/api/jobs/delete", async (HttpContext ctx) =>
         if (!File.Exists(fullPath))
             return Results.Json(new { ok = false, error = "Fichier non trouvé" });
 
-        string trashFolder = Path.Combine(Path.GetDirectoryName(fullPath)!, ".Trash");
-        Directory.CreateDirectory(trashFolder);
+        Directory.CreateDirectory(recyclePath);
 
         string fileName = Path.GetFileName(fullPath);
-        string trashPath = Path.Combine(trashFolder, fileName);
+        string trashPath = Path.Combine(recyclePath, fileName);
 
         int counter = 1;
         while (File.Exists(trashPath))
         {
             string fileNameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
             string ext = Path.GetExtension(fileName);
-            trashPath = Path.Combine(trashFolder, $"{fileNameWithoutExt}_{counter}{ext}");
+            trashPath = Path.Combine(recyclePath, $"{fileNameWithoutExt}_{counter}{ext}");
             counter++;
         }
 
@@ -679,12 +732,6 @@ app.MapPut("/api/delivery", async (HttpContext ctx) =>
         var full = Path.GetFullPath(fullPath);
         if (!File.Exists(full))
             return Results.BadRequest("Fichier introuvable.");
-
-        var folder = new DirectoryInfo(Path.GetDirectoryName(full)!).Name;
-        if (!string.Equals(folder, "1.Reception", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(folder, "2.Analyse", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(folder, "8. Fin de production", StringComparison.OrdinalIgnoreCase))
-            return Results.Json(new { ok = false, error = "Seuls les fichiers de 1.Reception, 2.Analyse et 8. Fin de production peuvent être planifiés." });
 
         var time = "09:00";
         if (json.TryGetProperty("time", out var tEl) && tEl.ValueKind != JsonValueKind.Null)
@@ -974,7 +1021,7 @@ app.MapPost("/api/upload", async (HttpContext ctx) =>
         var file   = form.Files.First();
         var folder = form["folder"].ToString().Trim();
         if (string.IsNullOrWhiteSpace(folder))
-            folder = "1.Reception";
+            folder = "Soumission";
 
         if (!file.FileName.ToLower().EndsWith(".pdf"))
             return Results.Json(new { ok = false, error = "Seuls les PDF sont acceptés" });
@@ -1108,6 +1155,179 @@ app.MapGet("/debug/pro", () =>
         : Array.Empty<string>();
 
     return Results.Json(new { expected = path, exists = Directory.Exists(path), files });
+});
+
+// ======================================================
+// DOSSIERS DE PRODUCTION — API
+// ======================================================
+
+app.MapGet("/api/production-folders", () =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+        var docs = col.Find(new BsonDocument()).SortByDescending(x => x["createdAt"]).ToList();
+        var result = docs.Select(d => new
+        {
+            _id = d["_id"].ToString(),
+            number = d.Contains("number") ? d["number"].AsInt32 : 0,
+            fileName = d.Contains("fileName") ? d["fileName"].AsString : "",
+            folderPath = d.Contains("folderPath") ? d["folderPath"].AsString : "",
+            createdAt = d.Contains("createdAt") ? d["createdAt"].ToUniversalTime() : DateTime.MinValue,
+            currentStage = d.Contains("currentStage") ? d["currentStage"].AsString : "",
+            files = d.Contains("files") ? d["files"].AsBsonArray.Count : 0
+        }).ToList();
+        return Results.Json(result);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapGet("/api/production-folders/{id}", (string id) =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+        var filter = Builders<BsonDocument>.Filter.Eq("_id", new ObjectId(id));
+        var doc = col.Find(filter).FirstOrDefault();
+        if (doc == null) return Results.Json(new { ok = false, error = "Dossier introuvable" });
+
+        var files = new List<object>();
+        if (doc.Contains("files"))
+        {
+            foreach (BsonDocument f in doc["files"].AsBsonArray)
+            {
+                files.Add(new
+                {
+                    stage = f.Contains("stage") ? f["stage"].AsString : "",
+                    fileName = f.Contains("fileName") ? f["fileName"].AsString : "",
+                    addedAt = f.Contains("addedAt") ? f["addedAt"].ToUniversalTime() : DateTime.MinValue
+                });
+            }
+        }
+
+        var fab = doc.Contains("fabricationSheet") ? doc["fabricationSheet"].AsBsonDocument : new BsonDocument();
+        var fabricationSheet = new Dictionary<string, string?>();
+        foreach (var el in fab.Elements)
+            fabricationSheet[el.Name] = el.Value.ToString();
+
+        return Results.Json(new
+        {
+            _id = doc["_id"].ToString(),
+            number = doc.Contains("number") ? doc["number"].AsInt32 : 0,
+            fileName = doc.Contains("fileName") ? doc["fileName"].AsString : "",
+            folderPath = doc.Contains("folderPath") ? doc["folderPath"].AsString : "",
+            createdAt = doc.Contains("createdAt") ? doc["createdAt"].ToUniversalTime() : DateTime.MinValue,
+            currentStage = doc.Contains("currentStage") ? doc["currentStage"].AsString : "",
+            fabricationSheet,
+            files
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapPut("/api/production-folders/{id}", async (string id, HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var col = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+        var filter = Builders<BsonDocument>.Filter.Eq("_id", new ObjectId(id));
+
+        var updates = new List<UpdateDefinition<BsonDocument>>();
+
+        if (json.TryGetProperty("currentStage", out var stageEl) && stageEl.ValueKind == JsonValueKind.String)
+            updates.Add(Builders<BsonDocument>.Update.Set("currentStage", stageEl.GetString()));
+
+        if (json.TryGetProperty("fabricationSheet", out var fabEl) && fabEl.ValueKind == JsonValueKind.Object)
+        {
+            var fabDoc = new BsonDocument();
+            foreach (var prop in fabEl.EnumerateObject())
+                fabDoc[prop.Name] = prop.Value.GetString() ?? "";
+            updates.Add(Builders<BsonDocument>.Update.Set("fabricationSheet", fabDoc));
+        }
+
+        if (updates.Count > 0)
+        {
+            var combined = Builders<BsonDocument>.Update.Combine(updates);
+            await col.UpdateOneAsync(filter, combined);
+        }
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapPost("/api/production-folders/{id}/upload", async (string id, HttpContext ctx) =>
+{
+    try
+    {
+        var form = await ctx.Request.ReadFormAsync();
+        if (!form.Files.Any())
+            return Results.Json(new { ok = false, error = "Aucun fichier" });
+
+        var col = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+        var filter = Builders<BsonDocument>.Filter.Eq("_id", new ObjectId(id));
+        var doc = col.Find(filter).FirstOrDefault();
+        if (doc == null) return Results.Json(new { ok = false, error = "Dossier introuvable" });
+
+        var folderPath = doc.Contains("folderPath") ? doc["folderPath"].AsString : "";
+        if (!Directory.Exists(folderPath))
+            Directory.CreateDirectory(folderPath);
+
+        foreach (var file in form.Files)
+        {
+            var destPath = Path.Combine(folderPath, Path.GetFileName(file.FileName));
+            using var fs = new FileStream(destPath, FileMode.Create);
+            await file.CopyToAsync(fs);
+
+            var fileEntry = new BsonDocument
+            {
+                ["stage"] = "Fichier ajouté",
+                ["fileName"] = Path.GetFileName(file.FileName),
+                ["addedAt"] = DateTime.UtcNow
+            };
+            await col.UpdateOneAsync(filter, Builders<BsonDocument>.Update.Push("files", fileEntry));
+        }
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapGet("/api/production-folders/{id}/files/{filename}", (string id, string filename) =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+        var filter = Builders<BsonDocument>.Filter.Eq("_id", new ObjectId(id));
+        var doc = col.Find(filter).FirstOrDefault();
+        if (doc == null) return Results.NotFound();
+
+        var folderPath = doc.Contains("folderPath") ? doc["folderPath"].AsString : "";
+        var safeName = Path.GetFileName(filename);
+        var full = Path.Combine(folderPath, safeName);
+        if (!File.Exists(full)) return Results.NotFound();
+
+        var provider = new FileExtensionContentTypeProvider();
+        if (!provider.TryGetContentType(full, out var ct)) ct = "application/octet-stream";
+        return Results.File(File.OpenRead(full), ct, safeName);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
 });
 
 // ======================================================
@@ -1695,6 +1915,9 @@ file static class MongoDbHelper
     public static IMongoCollection<BsonDocument> GetLogsCollection()
         => GetDatabase().GetCollection<BsonDocument>("logs");
 
+    public static IMongoCollection<T> GetCollection<T>(string name)
+        => GetDatabase().GetCollection<T>(name);
+
     public static T? GetSettings<T>(string settingsId) where T : class
     {
         try
@@ -2068,6 +2291,8 @@ file class IntegrationsSettings
 
 file static class BackendUtils
 {
+    private static readonly System.Text.RegularExpressions.Regex SafeNameRegex =
+        new(@"[^\w\-]", System.Text.RegularExpressions.RegexOptions.Compiled);
     public static string HotfoldersRoot()
     {
         var env = Environment.GetEnvironmentVariable("GA_HOTFOLDERS_ROOT");
@@ -2198,6 +2423,106 @@ file static class BackendUtils
         var col = MongoDbHelper.GetDeliveriesCollection();
         var filter = Builders<BsonDocument>.Filter.In("fullPath", fullPaths);
         col.DeleteMany(filter);
+    }
+
+    public static void UpdateDeliveryPath(string oldPath, string newPath)
+    {
+        var col = MongoDbHelper.GetDeliveriesCollection();
+        var filter = Builders<BsonDocument>.Filter.Eq("fullPath", oldPath);
+        var update = Builders<BsonDocument>.Update
+            .Set("fullPath", newPath)
+            .Set("fileName", Path.GetFileName(newPath));
+        col.UpdateMany(filter, update);
+    }
+
+    public static async Task EnsureProductionFolderAsync(string movedFilePath)
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+        var fileName = Path.GetFileName(movedFilePath);
+
+        // Check if already exists
+        var existing = col.Find(Builders<BsonDocument>.Filter.Eq("originalFilePath", movedFilePath)).FirstOrDefault();
+        if (existing != null) return;
+
+        // Get next number
+        var count = (int)col.CountDocuments(new BsonDocument()) + 1;
+        var number = count;
+        var safeName = SafeNameRegex.Replace(Path.GetFileNameWithoutExtension(fileName), "_");
+        var folderName = $"{number:D3}_{safeName}";
+        var root = HotfoldersRoot();
+        var dossiersRoot = Path.Combine(root, "DossiersProduction");
+        Directory.CreateDirectory(dossiersRoot);
+        var folderPath = Path.Combine(dossiersRoot, folderName);
+        Directory.CreateDirectory(folderPath);
+
+        // Copy original file to "Original" subfolder
+        var originalDir = Path.Combine(folderPath, "Original");
+        Directory.CreateDirectory(originalDir);
+        if (File.Exists(movedFilePath))
+            File.Copy(movedFilePath, Path.Combine(originalDir, fileName), overwrite: true);
+
+        var doc = new BsonDocument
+        {
+            ["number"] = number,
+            ["fileName"] = fileName,
+            ["originalFilePath"] = movedFilePath,
+            ["folderPath"] = folderPath,
+            ["createdAt"] = DateTime.UtcNow,
+            ["currentStage"] = "Début de production",
+            ["fabricationSheet"] = new BsonDocument(),
+            ["files"] = new BsonArray
+            {
+                new BsonDocument
+                {
+                    ["stage"] = "Original",
+                    ["fileName"] = fileName,
+                    ["addedAt"] = DateTime.UtcNow
+                }
+            }
+        };
+        await col.InsertOneAsync(doc);
+    }
+
+    public static async Task CopyToProductionFolderStageAsync(string filePath, string stage)
+    {
+        var stageFolderMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Rapport"] = "Rapport",
+            ["Prêt pour impression"] = "PDF_Impression",
+            ["BAT"] = "BAT",
+            ["PrismaPrepare"] = "PrismaPrepare",
+            ["Fin de production"] = "PDF_Imprime"
+        };
+
+        if (!stageFolderMap.TryGetValue(stage.Trim(), out var subFolder)) return;
+
+        var col = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+        var fileName = Path.GetFileName(filePath);
+
+        // Find production folder by matching fileName
+        var filter = Builders<BsonDocument>.Filter.Eq("fileName", fileName);
+        var doc = col.Find(filter).SortByDescending(x => x["createdAt"]).FirstOrDefault();
+        if (doc == null) return;
+
+        var folderPath = doc.Contains("folderPath") ? doc["folderPath"].AsString : "";
+        if (string.IsNullOrEmpty(folderPath)) return;
+
+        var stageDir = Path.Combine(folderPath, subFolder);
+        Directory.CreateDirectory(stageDir);
+
+        if (File.Exists(filePath))
+            File.Copy(filePath, Path.Combine(stageDir, fileName), overwrite: true);
+
+        var fileEntry = new BsonDocument
+        {
+            ["stage"] = subFolder,
+            ["fileName"] = fileName,
+            ["addedAt"] = DateTime.UtcNow
+        };
+        var update = Builders<BsonDocument>.Update
+            .Push("files", fileEntry)
+            .Set("currentStage", stage);
+        await col.UpdateOneAsync(Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]), update);
     }
 
     // ---- Fabrications ----
