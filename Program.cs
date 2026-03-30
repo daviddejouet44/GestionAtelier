@@ -638,16 +638,54 @@ app.MapPost("/api/jobs/move", async (HttpContext ctx) =>
                     {
                         Console.WriteLine($"[WARN] CopyToProductionFolderStage failed: {ex4.Message}");
                     }
+
+                    // For stages not handled by CopyToProductionFolderStageAsync, still update currentStage
+                    try
+                    {
+                        var pfCol = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+                        var pfFileName = Path.GetFileName(moved);
+                        var pfFilter = Builders<BsonDocument>.Filter.Eq("fileName", pfFileName);
+                        var pfUpdate = Builders<BsonDocument>.Update.Set("currentStage", dstFolder);
+                        pfCol.UpdateMany(pfFilter, pfUpdate);
+                    }
+                    catch (Exception ex5)
+                    {
+                        Console.WriteLine($"[WARN] UpdateProductionFolderStage failed: {ex5.Message}");
+                    }
                 }
 
-                // Auto-mark BAT status when file moves to BAT folder
+                // Initialize BAT status entry (without sentAt) when file moves to BAT folder
                 if (string.Equals(dstFolder.Trim(), "BAT", StringComparison.OrdinalIgnoreCase))
                 {
                     try {
                         var batCol = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
                         var batFilter = Builders<BsonDocument>.Filter.Eq("fullPath", moved);
-                        var batDoc = new BsonDocument { ["fullPath"] = moved, ["status"] = "sent", ["sentAt"] = DateTime.UtcNow, ["validatedAt"] = BsonNull.Value, ["rejectedAt"] = BsonNull.Value };
-                        batCol.ReplaceOne(batFilter, batDoc, new ReplaceOptions { IsUpsert = true });
+                        // Only create if no entry exists yet — do NOT auto-set sentAt
+                        var existing = batCol.Find(batFilter).FirstOrDefault();
+                        if (existing == null)
+                        {
+                            var batDoc = new BsonDocument { ["fullPath"] = moved, ["status"] = "pending", ["sentAt"] = BsonNull.Value, ["validatedAt"] = BsonNull.Value, ["rejectedAt"] = BsonNull.Value };
+                            batCol.InsertOne(batDoc);
+                        }
+                    } catch { }
+                }
+
+                // When file arrives in Rapport or Prêt pour impression, delete source from Corrections folders
+                if (string.Equals(dstFolder.Trim(), "Rapport", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(dstFolder.Trim(), "Prêt pour impression", StringComparison.OrdinalIgnoreCase))
+                {
+                    try {
+                        var root3 = BackendUtils.HotfoldersRoot();
+                        var baseName = Path.GetFileName(moved);
+                        foreach (var corrFolder in new[] { "Corrections", "Corrections et fond perdu" })
+                        {
+                            var corrPath = Path.Combine(root3, corrFolder, baseName);
+                            if (File.Exists(corrPath) && !string.Equals(corrPath, src, StringComparison.OrdinalIgnoreCase))
+                            {
+                                try { File.Delete(corrPath); Console.WriteLine($"[INFO] Auto-deleted source {corrPath}"); }
+                                catch (Exception deleteEx) { Console.WriteLine($"[WARN] Could not delete {corrPath}: {deleteEx.Message}"); }
+                            }
+                        }
                     } catch { }
                 }
             }
@@ -703,6 +741,38 @@ app.MapPost("/api/jobs/delete", async (HttpContext ctx) =>
         File.Move(fullPath, trashPath);
 
         return Results.Json(new { ok = true, message = "Fichier supprimé avec succès" });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// Delete source file from Corrections folders (called from "Supprimer source" button on Rapport cards)
+app.MapPost("/api/jobs/delete-corrections-source", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        if (!json.TryGetProperty("fileName", out var fnEl))
+            return Results.Json(new { ok = false, error = "fileName manquant" });
+
+        var fileName = fnEl.GetString() ?? "";
+        if (string.IsNullOrWhiteSpace(fileName))
+            return Results.Json(new { ok = false, error = "fileName vide" });
+
+        var root = BackendUtils.HotfoldersRoot();
+        var deleted = new List<string>();
+        foreach (var corrFolder in new[] { "Corrections", "Corrections et fond perdu" })
+        {
+            var corrPath = Path.Combine(root, corrFolder, fileName);
+            if (File.Exists(corrPath))
+            {
+                try { File.Delete(corrPath); deleted.Add(corrPath); Console.WriteLine($"[INFO] Deleted source {corrPath}"); }
+                catch (Exception exDel) { Console.WriteLine($"[WARN] Could not delete {corrPath}: {exDel.Message}"); }
+            }
+        }
+        return Results.Json(new { ok = true, deleted = deleted.Count });
     }
     catch (Exception ex)
     {
@@ -2812,7 +2882,7 @@ file static class BackendUtils
                     {
                         FullPath = fullPath,
                         FileName = d.Contains("fileName") ? d["fileName"].AsString : (Path.GetFileName(fullPath) ?? ""),
-                        Date     = d.Contains("date")     ? d["date"].ToUniversalTime() : DateTime.MinValue,
+                        Date     = d.Contains("date")     ? d["date"].ToLocalTime() : DateTime.MinValue,
                         Time     = d.Contains("time")     ? d["time"].AsString : "09:00"
                     };
                 }
@@ -3158,7 +3228,9 @@ file static class BackendUtils
         return template
             .Replace("{filePath}", filePath)
             .Replace("{typeWork}", typeWork)
-            .Replace("{quantity}", quantity.ToString());
+            .Replace("{type}", typeWork)
+            .Replace("{quantity}", quantity.ToString())
+            .Replace("{qty}", quantity.ToString());
     }
 
     public static (bool ok, string? error) MoveFileToDestFolder(string filePath, string destFolder)

@@ -520,6 +520,7 @@ async function initSubmissionCalendar() {
   submissionCalendar = new FullCalendar.Calendar(calendarEl, {
     initialView: "timeGridWeek",
     locale: "fr",
+    timeZone: "local",
     height: 360,
     scrollTime: schedStart,
     slotLabelInterval: "01:00",
@@ -927,7 +928,7 @@ async function loadDossiersList() {
     grid.style.cssText = "display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;";
 
     folders.forEach(folder => {
-      const folderName = `${String(folder.number || 0).padStart(3, '0')}_${folder.fileName || ''}`;
+      const folderName = folder.fileName || '';
       const card = document.createElement("div");
       card.className = "dossier-card";
       card.style.cssText = "background: white; border: 1px solid #e5e7eb; border-radius: 16px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); cursor: pointer; transition: all 0.2s;";
@@ -1748,7 +1749,8 @@ async function refreshPrintEnginesPanel(panel) {
     const file = e.target.files[0];
     if (!file) return;
     const text = await file.text();
-    const names = text.split(/[\r\n,;]+/).map(s => s.trim()).filter(Boolean);
+    // Split by lines, take only the first column (name) from each row — ignore IP or other columns
+    const names = text.split(/[\r\n]+/).map(s => s.split(/[,;]/)[0].trim()).filter(Boolean);
     if (names.length === 0) { alert("Aucun moteur trouvé dans le fichier"); return; }
     const r = await fetch("/api/config/print-engines/import", {
       method: "POST",
@@ -1858,8 +1860,43 @@ async function pollNotifications() {
       countEl.textContent = count;
       countEl.classList.toggle("hidden", count === 0);
     }
+
+    // Show pop-up overlay for new unread notifications
+    if (Array.isArray(notifs) && notifs.length > 0) {
+      const prevIds = new Set(window._lastNotifIds || []);
+      const newNotifs = notifs.filter(n => !n.read && n.id && !prevIds.has(n.id));
+      newNotifs.forEach(n => showNotificationPopup(n.message || ''));
+    }
+    window._lastNotifIds = Array.isArray(notifs) ? notifs.filter(n => n.id).map(n => n.id) : [];
     window._lastNotifs = notifs;
   } catch(e) { console.error("Notification poll error:", e); }
+}
+
+function showNotificationPopup(message) {
+  // Remove any existing notification popup
+  const existingPopup = document.getElementById("notif-popup-overlay");
+  if (existingPopup) existingPopup.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "notif-popup-overlay";
+  overlay.style.cssText = "position:fixed;top:0;left:0;inset:0;background:rgba(0,0,0,0.35);z-index:10000;display:flex;align-items:center;justify-content:center;";
+
+  const box = document.createElement("div");
+  box.style.cssText = "background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.3);padding:32px 40px;max-width:420px;width:90%;text-align:center;position:relative;";
+  box.innerHTML = `
+    <div style="font-size:36px;margin-bottom:12px;">🔔</div>
+    <h3 style="font-size:17px;font-weight:700;color:#1d1d1f;margin:0 0 12px;">Nouvelle notification</h3>
+    <p style="font-size:14px;color:#3c3c43;margin:0 0 20px;line-height:1.5;">${message}</p>
+    <button id="notif-popup-ok" style="background:#0071e3;color:#fff;border:none;border-radius:8px;padding:10px 28px;font-size:14px;font-weight:600;cursor:pointer;">OK</button>
+  `;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  let timer;
+  const dismiss = () => { overlay.remove(); if (timer) clearTimeout(timer); };
+  document.getElementById("notif-popup-ok").onclick = dismiss;
+  overlay.onclick = (e) => { if (e.target === overlay) dismiss(); };
+  timer = setTimeout(dismiss, 10000);
 }
 
 function initNotificationBell() {
@@ -2565,6 +2602,7 @@ async function buildKanban() {
       }
 
       await loadDeliveries();
+      await loadAssignments();
       updateGlobalAlert();
       await refreshKanban();
       await refreshSubmissionView();
@@ -2844,6 +2882,23 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
           });
         };
         actions.appendChild(btnAcrobat);
+
+        const btnDelSrc = document.createElement("button");
+        btnDelSrc.className = "btn btn-sm";
+        btnDelSrc.style.cssText = "color:#dc2626;border-color:#dc2626;";
+        btnDelSrc.innerHTML = "Supprimer source";
+        btnDelSrc.onclick = async () => {
+          if (!confirm("Supprimer le fichier source dans Corrections / Corrections et fond perdu ?")) return;
+          const r = await fetch("/api/jobs/delete-corrections-source", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ fileName: fileName })
+          }).then(r => r.json()).catch(() => ({ok: false}));
+          if (r.ok) { showNotification("✅ Source supprimée", "success"); await refreshKanban(); }
+          else showNotification("❌ " + (r.error || "Erreur"), "error");
+        };
+        actions.appendChild(btnDelSrc);
+
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
           actions.appendChild(btnDelete);
         }
@@ -3075,6 +3130,7 @@ async function initCalendar() {
   calendar = new FullCalendar.Calendar(calendarEl, {
     initialView: "dayGridMonth",
     locale: "fr",
+    timeZone: "local",
     height: 480,
     scrollTime: schedStart,
     slotMinTime: schedStart,
