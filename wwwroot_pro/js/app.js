@@ -4,6 +4,13 @@ let currentUser = null;
 let authToken = null;
 
 // ======================================================
+// CONSTANTES — Noms de dossiers
+// ======================================================
+const FOLDER_SOUMISSION = "Soumission";
+const FOLDER_DEBUT_PRODUCTION = "Début de production";
+const FOLDER_FIN_PRODUCTION = "Fin de production";
+
+// ======================================================
 // AUTHENTIFICATION
 // ======================================================
 
@@ -610,7 +617,7 @@ async function handleSubmissionFiles(files) {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("folder", "Soumission");
+      formData.append("folder", FOLDER_SOUMISSION);
 
       const r = await fetch("/api/upload", { method: "POST", body: formData }).then(r => r.json());
 
@@ -648,7 +655,7 @@ async function refreshSubmissionView() {
   if (!submissionKanban) return;
 
   try {
-    const jobs = await fetch("/api/jobs?folder=Soumission").then(r => r.json()).catch(() => []);
+    const jobs = await fetch(`/api/jobs?folder=${encodeURIComponent(FOLDER_SOUMISSION)}`).then(r => r.json()).catch(() => []);
 
     submissionKanban.innerHTML = "";
     if (jobs.length === 0) {
@@ -794,7 +801,7 @@ function setupSubmissionButtons() {
         const r = await fetch("/api/jobs/move", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ source: fullPath, destination: "Début de production", overwrite: true })
+          body: JSON.stringify({ source: fullPath, destination: FOLDER_DEBUT_PRODUCTION, overwrite: true })
         }).then(r => r.json());
 
         if (r.ok) successCount++;
@@ -1173,7 +1180,7 @@ async function loadRecycleList() {
 }
 
 async function restoreFromRecycle(fullPath, fileName) {
-  const folder = prompt(`Restaurer "${fileName}" dans quel dossier ?`, "Soumission");
+  const folder = prompt(`Restaurer "${fileName}" dans quel dossier ?`, FOLDER_SOUMISSION);
   if (!folder) return;
 
   const r = await fetch(`/api/recycle/restore?fullPath=${encodeURIComponent(fullPath)}&destinationFolder=${encodeURIComponent(folder)}`, {
@@ -1794,7 +1801,7 @@ document.addEventListener("DOMContentLoaded", initLogin);
 // UTILITAIRES & REST
 // ======================================================
 
-const FIN_PROD_FOLDER = "Fin de production";
+const FIN_PROD_FOLDER = FOLDER_FIN_PRODUCTION;
 const btnViewKanban = document.getElementById("btnViewKanban");
 const btnViewCalendar = document.getElementById("btnViewCalendar");
 const calendarEl = document.getElementById("calendar");
@@ -2308,7 +2315,7 @@ const folderConfig = [
       if (e.dataTransfer && e.dataTransfer.files?.length) {
         e.preventDefault();
         drop.classList.remove("drag-over");
-        handleDesktopDrop(e, "Soumission");
+        handleDesktopDrop(e, FOLDER_SOUMISSION);
         return;
       }
 
@@ -2335,7 +2342,7 @@ const folderConfig = [
       const oldTime = deliveriesByPath[srcFull + "_time"] || "09:00";
 
       if (oldIso) {
-        if (destFolder === "Fin de production") {
+        if (destFolder === FOLDER_FIN_PRODUCTION) {
           const remove = confirm("Retirer du planning ?");
           if (remove) {
             await fetch("/api/delivery?fullPath=" + encodeURIComponent(srcFull), { method: "DELETE" });

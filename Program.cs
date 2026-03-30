@@ -2291,6 +2291,8 @@ file class IntegrationsSettings
 
 file static class BackendUtils
 {
+    private static readonly System.Text.RegularExpressions.Regex SafeNameRegex =
+        new(@"[^\w\-]", System.Text.RegularExpressions.RegexOptions.Compiled);
     public static string HotfoldersRoot()
     {
         var env = Environment.GetEnvironmentVariable("GA_HOTFOLDERS_ROOT");
@@ -2445,7 +2447,7 @@ file static class BackendUtils
         // Get next number
         var count = (int)col.CountDocuments(new BsonDocument()) + 1;
         var number = count;
-        var safeName = System.Text.RegularExpressions.Regex.Replace(Path.GetFileNameWithoutExtension(fileName), @"[^\w\-]", "_");
+        var safeName = SafeNameRegex.Replace(Path.GetFileNameWithoutExtension(fileName), "_");
         var folderName = $"{number:D3}_{safeName}";
         var root = HotfoldersRoot();
         var dossiersRoot = Path.Combine(root, "DossiersProduction");
