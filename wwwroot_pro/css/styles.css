@@ -384,7 +384,7 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
 .submission-card-status.scheduled { background: #DBEAFE; color: #1E40AF; }
 .submission-card-status.pending { background: var(--bg-subtle); color: var(--text-tertiary); }
 .submission-card-actions { display: flex; gap: 3px; flex-wrap: wrap; }
-.submission-calendar { height: 340px; }
+.submission-calendar { min-height: 500px; flex: 1; }
 
 /* =========================================================
    VUE PRODUCTION (Profil 1 — lecture seule)
@@ -476,7 +476,7 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
 /* =========================================================
    CALENDAR
 ========================================================= */
-#calendar { height: calc(100vh - 120px); overflow: hidden; }
+#calendar { height: calc(100vh - 120px); }
 .fc { height: 100% !important; }
 
 /* =========================================================
