@@ -781,6 +781,54 @@ app.MapPost("/api/jobs/delete-corrections-source", async (HttpContext ctx) =>
 });
 
 // ======================================================
+// CLEANUP CORRECTIONS — called after Acrobat deposits files
+// ======================================================
+
+app.MapPost("/api/jobs/cleanup-corrections", () =>
+{
+    try
+    {
+        var root = BackendUtils.HotfoldersRoot();
+        var deleted = new List<string>();
+
+        // Scan Rapport and Prêt pour impression folders
+        foreach (var srcFolder in new[] { "Rapport", "Prêt pour impression" })
+        {
+            var srcDir = Path.Combine(root, srcFolder);
+            if (!Directory.Exists(srcDir)) continue;
+
+            foreach (var file in Directory.GetFiles(srcDir, "*.pdf", SearchOption.TopDirectoryOnly))
+            {
+                var baseName = Path.GetFileName(file);
+                foreach (var corrFolder in new[] { "Corrections", "Corrections et fond perdu" })
+                {
+                    var corrPath = Path.Combine(root, corrFolder, baseName);
+                    if (File.Exists(corrPath))
+                    {
+                        try
+                        {
+                            File.Delete(corrPath);
+                            deleted.Add(corrPath);
+                            Console.WriteLine($"[INFO] Cleanup: deleted source {corrPath}");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[WARN] Cleanup: could not delete {corrPath}: {ex.Message}");
+                        }
+                    }
+                }
+            }
+        }
+
+        return Results.Json(new { ok = true, deleted = deleted.Count, files = deleted });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
 // API — FILE
 // ======================================================
 
@@ -1703,17 +1751,22 @@ app.MapGet("/api/config/print-engines", () =>
 {
     try
     {
-        var engines = MongoDbHelper.GetPrintEngines();
+        var engines = MongoDbHelper.GetPrintEnginesWithIp();
         if (engines.Count == 0)
         {
             // Return default list if none configured
-            engines = new List<string> { "Offset", "Numérique", "Jet d'encre", "Sérigraphie", "Flexographie", "Héliogravure", "Tampographie", "Laser" };
+            return Results.Json(new[] {
+                new { name = "Offset", ip = "" }, new { name = "Numérique", ip = "" },
+                new { name = "Jet d'encre", ip = "" }, new { name = "Sérigraphie", ip = "" },
+                new { name = "Flexographie", ip = "" }, new { name = "Héliogravure", ip = "" },
+                new { name = "Tampographie", ip = "" }, new { name = "Laser", ip = "" }
+            });
         }
         return Results.Json(engines);
     }
     catch (Exception)
     {
-        return Results.Json(new List<string>());
+        return Results.Json(new object[0]);
     }
 });
 
@@ -1731,7 +1784,8 @@ app.MapPost("/api/config/print-engines", async (HttpContext ctx) =>
         if (!json.TryGetProperty("name", out var nameEl) || string.IsNullOrWhiteSpace(nameEl.GetString()))
             return Results.Json(new { ok = false, error = "name requis" });
 
-        MongoDbHelper.AddPrintEngine(nameEl.GetString()!);
+        var ip = json.TryGetProperty("ip", out var ipEl) ? ipEl.GetString() ?? "" : "";
+        MongoDbHelper.AddPrintEngineWithIp(nameEl.GetString()!, ip);
         return Results.Json(new { ok = true });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
@@ -1751,15 +1805,23 @@ app.MapPost("/api/config/print-engines/import", async (HttpContext ctx) =>
         if (!json.TryGetProperty("engines", out var enginesEl))
             return Results.Json(new { ok = false, error = "engines requis" });
 
-        var names = enginesEl.EnumerateArray()
-            .Select(e => e.GetString() ?? "")
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .ToList();
+        int count = 0;
+        foreach (var e in enginesEl.EnumerateArray())
+        {
+            string name = "", ip = "";
+            if (e.ValueKind == JsonValueKind.Object)
+            {
+                name = e.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+                ip   = e.TryGetProperty("ip",   out var i) ? i.GetString() ?? "" : "";
+            }
+            else
+            {
+                name = e.GetString() ?? "";
+            }
+            if (!string.IsNullOrWhiteSpace(name)) { MongoDbHelper.AddPrintEngineWithIp(name, ip); count++; }
+        }
 
-        foreach (var name in names)
-            MongoDbHelper.AddPrintEngine(name);
-
-        return Results.Json(new { ok = true, count = names.Count });
+        return Results.Json(new { ok = true, count });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
@@ -2050,10 +2112,10 @@ app.MapPost("/api/commands/bat", async (HttpContext ctx) =>
         var typeWork = json.TryGetProperty("typeWork", out var tw) ? tw.GetString() ?? "" : "";
         var quantity = json.TryGetProperty("quantity", out var qty) ? qty.GetInt32() : 1;
 
-        var col = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
-        var cfg = col.Find(new BsonDocument()).FirstOrDefault();
-        var template = cfg?.Contains("batCommand") == true ? cfg["batCommand"].AsString :
-            "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\" /T \"{typeWork}\" /SP /C {quantity}";
+        var batCfgCol = MongoDbHelper.GetCollection<BsonDocument>("batCommandConfig");
+        var batCfg = batCfgCol.Find(Builders<BsonDocument>.Filter.Empty).FirstOrDefault();
+        var template = batCfg != null && batCfg.Contains("command") ? batCfg["command"].AsString :
+            "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\" /T \"{type}\" /SP /C {qty}";
 
         var cmd = BackendUtils.BuildCommandTemplate(template, filePath, typeWork, quantity);
         Console.WriteLine($"[INFO] BAT command: {cmd}");
@@ -2531,6 +2593,29 @@ file static class MongoDbHelper
         }
     }
 
+    public static List<object> GetPrintEnginesWithIp()
+    {
+        try
+        {
+            var col = GetPrintEnginesCollection();
+            var docs = col.Find(Builders<BsonDocument>.Filter.Empty)
+                .Sort(Builders<BsonDocument>.Sort.Ascending("name"))
+                .ToList();
+            return docs
+                .Where(d => d.Contains("name") && !string.IsNullOrWhiteSpace(d["name"].AsString))
+                .Select(d => (object)new {
+                    name = d["name"].AsString,
+                    ip   = d.Contains("ip") ? d["ip"].AsString : ""
+                })
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] GetPrintEnginesWithIp error: {ex.Message}");
+            return new();
+        }
+    }
+
     public static void AddPrintEngine(string name)
     {
         try
@@ -2540,12 +2625,29 @@ file static class MongoDbHelper
             var existing = col.Find(filter).FirstOrDefault();
             if (existing == null)
             {
-                col.InsertOne(new BsonDocument { ["name"] = name });
+                col.InsertOne(new BsonDocument { ["name"] = name, ["ip"] = "" });
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[ERROR] AddPrintEngine error: {ex.Message}");
+        }
+    }
+
+    public static void AddPrintEngineWithIp(string name, string ip)
+    {
+        try
+        {
+            var col = GetPrintEnginesCollection();
+            var filter = Builders<BsonDocument>.Filter.Eq("name", name);
+            var update = Builders<BsonDocument>.Update
+                .Set("name", name)
+                .Set("ip", ip ?? "");
+            col.UpdateOne(filter, update, new UpdateOptions { IsUpsert = true });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] AddPrintEngineWithIp error: {ex.Message}");
         }
     }
 

@@ -508,6 +508,54 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
 @keyframes slideOut { to { opacity: 0; transform: translateY(-8px); } }
 
 /* =========================================================
+   NOTIFICATION POPUP
+========================================================= */
+.notification-popup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notification-popup {
+  position: relative;
+  z-index: 10000;
+  background: white;
+  border: 2px solid #D50000;
+  border-radius: 12px;
+  padding: 30px 40px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  text-align: center;
+  font-size: 16px;
+  font-weight: 600;
+  max-width: 380px;
+  width: 90%;
+}
+
+.notification-popup p {
+  margin: 0 0 20px;
+  color: var(--text-primary);
+}
+
+.notification-popup button {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 32px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notification-popup button:hover {
+  background: var(--primary-hover);
+}
+
+/* =========================================================
    RESPONSIVE
 ========================================================= */
 @media (max-width: 1100px) {
