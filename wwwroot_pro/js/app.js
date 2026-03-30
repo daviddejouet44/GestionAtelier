@@ -94,12 +94,14 @@ function setupProfileUI() {
   const btnProduction = document.getElementById("btnViewProduction");
   const btnRecycle = document.getElementById("btnViewRecycle");
   const btnDashboard = document.getElementById("btnViewDashboard");
+  const btnDossiers = document.getElementById("btnViewDossiers");
   const userInfo = document.getElementById("user-info");
 
   userInfo.textContent = `${currentUser.name} (Profil ${currentUser.profile})`;
 
-  // Corbeille visible pour tous les profils ; Dashboard uniquement pour Admin (profil 3)
+  // Corbeille et Dossiers visibles pour tous les profils ; Dashboard uniquement pour Admin (profil 3)
   if (btnRecycle) btnRecycle.style.display = "inline-block";
+  if (btnDossiers) btnDossiers.style.display = "inline-block";
   if (btnDashboard) btnDashboard.style.display = currentUser.profile === 3 ? "inline-block" : "none";
 
   if (currentUser.profile === 1) {
@@ -151,6 +153,7 @@ function hideAllViews() {
   document.getElementById("production").classList.add("hidden");
   document.getElementById("recycle").classList.add("hidden");
   document.getElementById("dashboard").classList.add("hidden");
+  document.getElementById("dossiers").classList.add("hidden");
   document.getElementById("settings-view").classList.add("hidden");
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
 }
@@ -188,16 +191,17 @@ function showProduction() {
   productionEl.style.cssText = "display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; width: 100%;";
 
   const folderConfig = [
-    { folder: "1.Reception", label: "Début de production", color: "#5fa8c4" },
-    { folder: "2.Corrections", label: "Corrections", color: "#5fa8c4" },
-    { folder: "3.Rapport", label: "Rapport", color: "#5fa8c4" },
-    { folder: "2.Corrections + fond perdu", label: "Corrections et fond perdu", color: "#5fa8c4" },
-    { folder: "6.Archivage", label: "Prêt pour impression", color: "#5fa8c4" },
-    { folder: "4.BAT", label: "BAT", color: "#5fa8c4" },
-    { folder: "5.Relecture", label: "Impression en cours", color: "#5fa8c4" },
-    { folder: "7.Termine", label: "PrismaPrepare", color: "#6b7e89" },
-    { folder: "8. Fin de production", label: "Fiery", color: "#6b7e89" },
-    { folder: "9. Archived", label: "Fin de production", color: "#22c55e" }
+    { folder: "Début de production", label: "Début de production", color: "#5fa8c4" },
+    { folder: "Corrections", label: "Corrections", color: "#5fa8c4" },
+    { folder: "Rapport", label: "Rapport", color: "#5fa8c4" },
+    { folder: "Corrections et fond perdu", label: "Corrections et fond perdu", color: "#5fa8c4" },
+    { folder: "Prêt pour impression", label: "Prêt pour impression", color: "#5fa8c4" },
+    { folder: "BAT", label: "BAT", color: "#5fa8c4" },
+    { folder: "Impression en cours", label: "Impression en cours", color: "#5fa8c4" },
+    { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#6b7e89" },
+    { folder: "Fiery", label: "Fiery", color: "#6b7e89" },
+    { folder: "Façonnage", label: "Façonnage", color: "#6b7e89" },
+    { folder: "Fin de production", label: "Fin de production", color: "#22c55e" }
   ];
 
   for (const cfg of folderConfig) {
@@ -211,7 +215,6 @@ function showProduction() {
     title.textContent = cfg.label;
     const counter = document.createElement("span");
     counter.className = "kanban-col-counter";
-    counter.id = `counter-${cfg.folder.replace(/[^a-zA-Z0-9]/g, '_')}`;
     counter.textContent = "0";
     title.appendChild(counter);
     col.appendChild(title);
@@ -239,16 +242,17 @@ async function refreshProductionViewKanban() {
 
 async function buildProductionKanban(container) {
   const folderConfig = [
-    { folder: "1.Reception", label: "Début de production", color: "#5fa8c4" },
-    { folder: "2.Corrections", label: "Corrections", color: "#5fa8c4" },
-    { folder: "3.Rapport", label: "Rapport", color: "#5fa8c4" },
-    { folder: "2.Corrections + fond perdu", label: "Corrections et fond perdu", color: "#5fa8c4" },
-    { folder: "6.Archivage", label: "Prêt pour impression", color: "#5fa8c4" },
-    { folder: "4.BAT", label: "BAT", color: "#5fa8c4" },
-    { folder: "5.Relecture", label: "Impression en cours", color: "#5fa8c4" },
-    { folder: "7.Termine", label: "PrismaPrepare", color: "#6b7e89" },
-    { folder: "8. Fin de production", label: "Fiery", color: "#6b7e89" },
-    { folder: "9. Archived", label: "Fin de production", color: "#22c55e" }
+    { folder: "Début de production", label: "Début de production", color: "#5fa8c4" },
+    { folder: "Corrections", label: "Corrections", color: "#5fa8c4" },
+    { folder: "Rapport", label: "Rapport", color: "#5fa8c4" },
+    { folder: "Corrections et fond perdu", label: "Corrections et fond perdu", color: "#5fa8c4" },
+    { folder: "Prêt pour impression", label: "Prêt pour impression", color: "#5fa8c4" },
+    { folder: "BAT", label: "BAT", color: "#5fa8c4" },
+    { folder: "Impression en cours", label: "Impression en cours", color: "#5fa8c4" },
+    { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#6b7e89" },
+    { folder: "Fiery", label: "Fiery", color: "#6b7e89" },
+    { folder: "Façonnage", label: "Façonnage", color: "#6b7e89" },
+    { folder: "Fin de production", label: "Fin de production", color: "#22c55e" }
   ];
 
   container.innerHTML = "";
@@ -359,8 +363,7 @@ async function refreshKanbanColumnReadOnly(folderName, col) {
     }
 
     // Update column counter
-    const counterId = `counter-${folderName.replace(/[^a-zA-Z0-9]/g, '_')}`;
-    const counterEl = document.getElementById(counterId);
+    const counterEl = col.querySelector(".kanban-col-counter");
     if (counterEl) counterEl.textContent = jobs.length;
   } catch (err) {
     console.error("Erreur refresh kanban read-only:", err);
@@ -387,6 +390,7 @@ document.getElementById("btnViewSubmission").onclick = showSubmission;
 document.getElementById("btnViewProduction").onclick = showProduction;
 document.getElementById("btnViewRecycle").onclick = showRecycle;
 document.getElementById("btnViewDashboard").onclick = showDashboard;
+document.getElementById("btnViewDossiers").onclick = showDossiers;
 
 // ======================================================
 // SOUMISSION (Profil 1)
@@ -427,7 +431,7 @@ async function initSubmissionView() {
             <h3 style="margin: 0;">📋 Fichiers soumis</h3>
             <div style="display: flex; gap: 8px;">
               <button id="btnSelectAll" class="btn btn-sm">Sélectionner tout</button>
-              <button id="btnSendAnalysis" class="btn btn-primary btn-sm">Envoyer analyse</button>
+              <button id="btnSendAnalysis" class="btn btn-primary btn-sm">Envoyer en production</button>
             </div>
           </div>
           <div id="submissionKanban" class="submission-kanban"></div>
@@ -606,7 +610,7 @@ async function handleSubmissionFiles(files) {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("folder", "1.Reception");
+      formData.append("folder", "Soumission");
 
       const r = await fetch("/api/upload", { method: "POST", body: formData }).then(r => r.json());
 
@@ -644,7 +648,7 @@ async function refreshSubmissionView() {
   if (!submissionKanban) return;
 
   try {
-    const jobs = await fetch("/api/jobs?folder=1.Reception").then(r => r.json()).catch(() => []);
+    const jobs = await fetch("/api/jobs?folder=Soumission").then(r => r.json()).catch(() => []);
 
     submissionKanban.innerHTML = "";
     if (jobs.length === 0) {
@@ -778,7 +782,7 @@ function setupSubmissionButtons() {
       return;
     }
 
-    if (!confirm(`Envoyer ${checkboxes.length} fichier(s) à l'analyse ?`)) return;
+    if (!confirm(`Envoyer ${checkboxes.length} fichier(s) en production ?`)) return;
 
     let successCount = 0;
 
@@ -790,7 +794,7 @@ function setupSubmissionButtons() {
         const r = await fetch("/api/jobs/move", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ source: fullPath, destination: "2.Analyse", overwrite: true })
+          body: JSON.stringify({ source: fullPath, destination: "Début de production", overwrite: true })
         }).then(r => r.json());
 
         if (r.ok) successCount++;
@@ -800,8 +804,11 @@ function setupSubmissionButtons() {
     }
 
     if (successCount > 0) {
-      showNotification(`✅ ${successCount} fichier(s) envoyé(s)`, "success");
+      await loadDeliveries();
+      showNotification(`✅ ${successCount} fichier(s) envoyé(s) en production`, "success");
       await refreshSubmissionView();
+      calendar?.refetchEvents();
+      submissionCalendar?.refetchEvents();
     }
   };
 
@@ -838,6 +845,222 @@ async function initProductionView() {
 // ======================================================
 // REST DU CODE (Kanban, Calendar, Fabrication, etc.)
 // ======================================================
+
+// ======================================================
+// DOSSIERS DE PRODUCTION (tous profils)
+// ======================================================
+
+function showDossiers() {
+  hideAllViews();
+  document.getElementById("dossiers").classList.remove("hidden");
+  document.getElementById("btnViewDossiers").classList.add("active");
+  initDossiersView();
+}
+
+async function initDossiersView() {
+  const el = document.getElementById("dossiers");
+  el.innerHTML = `
+    <div class="settings-container">
+      <h2>📁 Dossiers de production</h2>
+      <div style="display: flex; gap: 10px; margin-bottom: 16px;">
+        <button id="dossiers-refresh" class="btn btn-primary">🔄 Rafraîchir</button>
+      </div>
+      <div id="dossiers-list"><p style="color:#6b7280;">Chargement...</p></div>
+    </div>
+  `;
+  document.getElementById("dossiers-refresh").onclick = loadDossiersList;
+  await loadDossiersList();
+}
+
+async function loadDossiersList() {
+  const listEl = document.getElementById("dossiers-list");
+  if (!listEl) return;
+  try {
+    const folders = await fetch("/api/production-folders", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => []);
+
+    if (!Array.isArray(folders) || folders.length === 0) {
+      listEl.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:40px;">📭 Aucun dossier de production</p>';
+      return;
+    }
+
+    listEl.innerHTML = "";
+    const grid = document.createElement("div");
+    grid.style.cssText = "display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;";
+
+    folders.forEach(folder => {
+      const card = document.createElement("div");
+      card.style.cssText = "background: white; border: 1px solid #e5e7eb; border-radius: 16px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); cursor: pointer; transition: all 0.2s;";
+      card.onmouseenter = () => { card.style.boxShadow = "0 4px 20px rgba(0,0,0,0.15)"; card.style.transform = "translateY(-2px)"; };
+      card.onmouseleave = () => { card.style.boxShadow = "0 2px 12px rgba(0,0,0,0.08)"; card.style.transform = ""; };
+      card.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+          <span style="font-size:32px;">📁</span>
+          <div>
+            <div style="font-weight:700;font-size:15px;color:#111827;">${String(folder.number || 0).padStart(3, '0')}_${folder.fileName || ''}</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:2px;">${folder.createdAt ? new Date(folder.createdAt).toLocaleDateString("fr-FR") : ''}</div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;">${folder.currentStage || 'Début de production'}</span>
+          <span style="color:#6b7280;font-size:12px;">${folder.files ? folder.files.length : 0} fichier(s)</span>
+        </div>
+      `;
+      card.onclick = () => openDossierDetail(folder._id || folder.id);
+      grid.appendChild(card);
+    });
+
+    listEl.appendChild(grid);
+  } catch (err) {
+    listEl.innerHTML = `<p style="color:#ef4444;">Erreur : ${err.message}</p>`;
+  }
+}
+
+async function openDossierDetail(dossierId) {
+  try {
+    const folder = await fetch(`/api/production-folders/${dossierId}`, {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => null);
+
+    if (!folder) {
+      showNotification("❌ Dossier introuvable", "error");
+      return;
+    }
+
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;";
+
+    const modal = document.createElement("div");
+    modal.style.cssText = "background:white;border-radius:16px;padding:32px;width:100%;max-width:800px;box-shadow:0 20px 60px rgba(0,0,0,0.3);";
+
+    const fab = folder.fabricationSheet || {};
+    modal.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+        <h2 style="margin:0;font-size:22px;color:#111827;">📁 Dossier ${String(folder.number||0).padStart(3,'0')} — ${folder.fileName||''}</h2>
+        <button id="dossier-close" style="background:none;border:none;font-size:24px;cursor:pointer;color:#6b7280;">✕</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">ÉTAPE ACTUELLE</label>
+          <span style="background:#dbeafe;color:#1e40af;padding:6px 12px;border-radius:20px;font-size:13px;font-weight:500;">${folder.currentStage||'Début de production'}</span>
+        </div>
+        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">DATE DE CRÉATION</label>
+          <span style="font-size:14px;color:#111827;">${folder.createdAt ? new Date(folder.createdAt).toLocaleDateString("fr-FR") : '—'}</span>
+        </div>
+      </div>
+
+      <h3 style="font-size:16px;color:#111827;margin-bottom:12px;">📋 Fiche de fabrication</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;">
+        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">DÉLAI</label><input id="df-delai" type="date" value="${fab.delai||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
+        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">CLIENT</label><input id="df-client" type="text" value="${fab.client||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
+        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">QUANTITÉ</label><input id="df-quantite" type="number" value="${fab.quantite||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
+        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">FORMAT</label><input id="df-format" type="text" value="${fab.format||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
+        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">PAPIER</label><input id="df-papier" type="text" value="${fab.papier||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
+        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">MOTEUR</label><input id="df-moteur" type="text" value="${fab.moteur||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
+        <div style="grid-column:1/-1;"><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">NOTES</label><textarea id="df-notes" rows="2" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">${fab.notes||''}</textarea></div>
+      </div>
+      <button id="df-save" class="btn btn-primary" style="margin-bottom:24px;">💾 Enregistrer la fiche</button>
+
+      <h3 style="font-size:16px;color:#111827;margin-bottom:12px;">📂 Fichiers par étape</h3>
+      <div id="df-files" style="margin-bottom:24px;"></div>
+
+      <h3 style="font-size:16px;color:#111827;margin-bottom:12px;">📎 Ajouter un fichier</h3>
+      <div style="border:2px dashed #e5e7eb;border-radius:12px;padding:20px;text-align:center;cursor:pointer;" id="df-upload-zone">
+        <p style="color:#6b7280;margin:0;">Cliquez ou déposez un fichier (PDF, Excel, Word, PSD, InDesign...)</p>
+        <input type="file" id="df-upload-input" style="display:none;" multiple />
+      </div>
+    `;
+
+    // Render files list
+    const filesEl = modal.querySelector("#df-files");
+    const files = folder.files || [];
+    if (files.length === 0) {
+      filesEl.innerHTML = '<p style="color:#9ca3af;font-size:13px;">Aucun fichier dans ce dossier</p>';
+    } else {
+      files.forEach(f => {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:12px;padding:10px 14px;background:#f9fafb;border-radius:8px;margin-bottom:8px;";
+        row.innerHTML = `
+          <span style="font-size:20px;">📄</span>
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:600;color:#111827;">${f.fileName||''}</div>
+            <div style="font-size:11px;color:#6b7280;">${f.stage||''} · ${f.addedAt ? new Date(f.addedAt).toLocaleDateString("fr-FR") : ''}</div>
+          </div>
+          <a href="/api/production-folders/${dossierId}/files/${encodeURIComponent(f.fileName||'')}" target="_blank" class="btn btn-sm">Télécharger</a>
+        `;
+        filesEl.appendChild(row);
+      });
+    }
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    modal.querySelector("#dossier-close").onclick = () => overlay.remove();
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+    modal.querySelector("#df-save").onclick = async () => {
+      const updatedFab = {
+        delai: modal.querySelector("#df-delai").value,
+        client: modal.querySelector("#df-client").value,
+        quantite: modal.querySelector("#df-quantite").value,
+        format: modal.querySelector("#df-format").value,
+        papier: modal.querySelector("#df-papier").value,
+        moteur: modal.querySelector("#df-moteur").value,
+        notes: modal.querySelector("#df-notes").value
+      };
+      const r = await fetch(`/api/production-folders/${dossierId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+        body: JSON.stringify({ fabricationSheet: updatedFab })
+      }).then(r => r.json()).catch(() => ({ ok: false }));
+      if (r.ok) {
+        showNotification("✅ Fiche enregistrée", "success");
+      } else {
+        showNotification("❌ Erreur : " + (r.error || ""), "error");
+      }
+    };
+
+    const uploadZone = modal.querySelector("#df-upload-zone");
+    const uploadInput = modal.querySelector("#df-upload-input");
+    uploadZone.onclick = () => uploadInput.click();
+    uploadZone.addEventListener("dragover", e => { e.preventDefault(); uploadZone.style.background = "#f3f4f6"; });
+    uploadZone.addEventListener("dragleave", () => { uploadZone.style.background = ""; });
+    uploadZone.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      uploadZone.style.background = "";
+      const files = Array.from(e.dataTransfer.files || []);
+      if (files.length) await uploadDossierFiles(dossierId, files, overlay);
+    });
+    uploadInput.addEventListener("change", async (e) => {
+      const files = Array.from(e.target.files || []);
+      if (files.length) await uploadDossierFiles(dossierId, files, overlay);
+      uploadInput.value = "";
+    });
+
+  } catch (err) {
+    showNotification("❌ " + err.message, "error");
+  }
+}
+
+async function uploadDossierFiles(dossierId, files, overlay) {
+  for (const file of files) {
+    const formData = new FormData();
+    formData.append("file", file);
+    const r = await fetch(`/api/production-folders/${dossierId}/upload`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${authToken}` },
+      body: formData
+    }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (r.ok) {
+      showNotification(`✅ ${file.name} ajouté`, "success");
+    } else {
+      showNotification(`❌ Erreur upload ${file.name}`, "error");
+    }
+  }
+  overlay.remove();
+  openDossierDetail(dossierId);
+}
 
 // ======================================================
 // DASHBOARD STATISTIQUES (tous profils)
@@ -950,7 +1173,7 @@ async function loadRecycleList() {
 }
 
 async function restoreFromRecycle(fullPath, fileName) {
-  const folder = prompt(`Restaurer "${fileName}" dans quel dossier ?`, "1.Reception");
+  const folder = prompt(`Restaurer "${fileName}" dans quel dossier ?`, "Soumission");
   if (!folder) return;
 
   const r = await fetch(`/api/recycle/restore?fullPath=${encodeURIComponent(fullPath)}&destinationFolder=${encodeURIComponent(folder)}`, {
@@ -1556,7 +1779,7 @@ async function initApp() {
     ensureCalendar();
 
     if (currentUser.profile === 1) {
-      showProduction();
+      showSubmission();
     } else {
       showKanban();
     }
@@ -1571,7 +1794,7 @@ document.addEventListener("DOMContentLoaded", initLogin);
 // UTILITAIRES & REST
 // ======================================================
 
-const FIN_PROD_FOLDER = "8. Fin de production".replace(/\u00A0/g, " ");
+const FIN_PROD_FOLDER = "Fin de production";
 const btnViewKanban = document.getElementById("btnViewKanban");
 const btnViewCalendar = document.getElementById("btnViewCalendar");
 const calendarEl = document.getElementById("calendar");
@@ -2014,18 +2237,19 @@ async function buildKanban() {
   
 const folderConfig = [
   // Ligne 1
-  { folder: "1.Reception", label: "Début de production", color: "#5fa8c4" },
-  { folder: "2.Corrections", label: "Corrections", color: "#5fa8c4" },
-  { folder: "3.Rapport", label: "Rapport", color: "#5fa8c4" },
-  { folder: "2.Corrections + fond perdu", label: "Corrections et fond perdu", color: "#5fa8c4" },
+  { folder: "Début de production", label: "Début de production", color: "#5fa8c4" },
+  { folder: "Corrections", label: "Corrections", color: "#5fa8c4" },
+  { folder: "Rapport", label: "Rapport", color: "#5fa8c4" },
+  { folder: "Corrections et fond perdu", label: "Corrections et fond perdu", color: "#5fa8c4" },
   // Ligne 2
-  { folder: "6.Archivage", label: "Prêt pour impression", color: "#5fa8c4" },
-  { folder: "4.BAT", label: "BAT", color: "#5fa8c4" },
-  { folder: "5.Relecture", label: "Impression en cours", color: "#5fa8c4" },
+  { folder: "Prêt pour impression", label: "Prêt pour impression", color: "#5fa8c4" },
+  { folder: "BAT", label: "BAT", color: "#5fa8c4" },
+  { folder: "Impression en cours", label: "Impression en cours", color: "#5fa8c4" },
   // Ligne 3
-  { folder: "7.Termine", label: "PrismaPrepare", color: "#6b7e89" },
-  { folder: "8. Fin de production", label: "Fiery", color: "#6b7e89" },
-  { folder: "9. Archived", label: "Fin de production", color: "#22c55e" }
+  { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#6b7e89" },
+  { folder: "Fiery", label: "Fiery", color: "#6b7e89" },
+  { folder: "Façonnage", label: "Façonnage", color: "#6b7e89" },
+  { folder: "Fin de production", label: "Fin de production", color: "#22c55e" }
 ];
 
   kanbanDiv.innerHTML = "";
@@ -2045,7 +2269,6 @@ const folderConfig = [
     title.textContent = cfg.label;
     const counter = document.createElement("span");
     counter.className = "kanban-col-counter";
-    counter.id = `counter-${cfg.folder.replace(/[^a-zA-Z0-9]/g, '_')}`;
     counter.textContent = "0";
     title.appendChild(counter);
     col.appendChild(title);
@@ -2055,7 +2278,7 @@ const folderConfig = [
     drop.dataset.folder = cfg.folder;
     col.appendChild(drop);
 
-    if (cfg.folder === "2.Corrections" || cfg.folder === "2.Corrections + fond perdu") {
+    if (cfg.folder === "Corrections" || cfg.folder === "Corrections et fond perdu") {
       const acrobatBtn = document.createElement("button");
       acrobatBtn.className = "btn btn-acrobat";
       acrobatBtn.textContent = "📄 Ouvrir dans Acrobat Pro";
@@ -2085,7 +2308,7 @@ const folderConfig = [
       if (e.dataTransfer && e.dataTransfer.files?.length) {
         e.preventDefault();
         drop.classList.remove("drag-over");
-        handleDesktopDrop(e, "1.Reception");
+        handleDesktopDrop(e, "Soumission");
         return;
       }
 
@@ -2112,7 +2335,7 @@ const folderConfig = [
       const oldTime = deliveriesByPath[srcFull + "_time"] || "09:00";
 
       if (oldIso) {
-        if (destFolder === "8. Fin de production" || destFolder === "9. Archived") {
+        if (destFolder === "Fin de production") {
           const remove = confirm("Retirer du planning ?");
           if (remove) {
             await fetch("/api/delivery?fullPath=" + encodeURIComponent(srcFull), { method: "DELETE" });
@@ -2315,8 +2538,7 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
     }
 
     // Update column counter
-    const counterId = `counter-${folderName.replace(/[^a-zA-Z0-9]/g, '_')}`;
-    const counterEl = document.getElementById(counterId);
+    const counterEl = col.querySelector(".kanban-col-counter");
     if (counterEl) counterEl.textContent = filtered.length;
   } catch (err) {
     console.error("Erreur refresh kanban operator:", err);
