@@ -209,6 +209,11 @@ function showProduction() {
     const title = document.createElement("div");
     title.className = "kanban-col-operator__title";
     title.textContent = cfg.label;
+    const counter = document.createElement("span");
+    counter.className = "kanban-col-counter";
+    counter.id = `counter-${cfg.folder.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    counter.textContent = "0";
+    title.appendChild(counter);
     col.appendChild(title);
 
     const drop = document.createElement("div");
@@ -352,6 +357,11 @@ async function refreshKanbanColumnReadOnly(folderName, col) {
       card.appendChild(actions);
       drop.appendChild(card);
     }
+
+    // Update column counter
+    const counterId = `counter-${folderName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const counterEl = document.getElementById(counterId);
+    if (counterEl) counterEl.textContent = jobs.length;
   } catch (err) {
     console.error("Erreur refresh kanban read-only:", err);
   }
@@ -494,6 +504,23 @@ function initSubmissionCalendar() {
             extendedProps: { fullPath: full, bg, bc, tc, date: x.date, time: time }
           };
         });
+        try {
+          const schedResp = await fetch("/api/config/schedule", {
+            headers: { "Authorization": `Bearer ${authToken}` }
+          }).then(r => r.json());
+          if (schedResp.ok && schedResp.config && schedResp.config.holidays) {
+            schedResp.config.holidays.forEach(h => {
+              ev.push({
+                title: "Férié",
+                start: h,
+                allDay: true,
+                display: "background",
+                backgroundColor: "#fee2e2",
+                borderColor: "#fecaca"
+              });
+            });
+          }
+        } catch(e) { console.error("Impossible de charger les jours fériés:", e); }
         success(ev);
       } catch (err) {
         console.error("Erreur events:", err);
@@ -687,6 +714,12 @@ async function refreshSubmissionView() {
       btnFiche.onclick = () => openFabrication(full);
       actions.appendChild(btnFiche);
 
+      const btnAssignSub = document.createElement("button");
+      btnAssignSub.className = "btn btn-assign";
+      btnAssignSub.textContent = "Affecter à";
+      btnAssignSub.onclick = (e) => { e.stopPropagation(); openAssignDropdown(btnAssignSub, full); };
+      actions.appendChild(btnAssignSub);
+
       const btnPlan = document.createElement("button");
       btnPlan.className = "btn btn-primary";
       btnPlan.textContent = "Planifier";
@@ -835,46 +868,26 @@ async function initDashboardView() {
 async function loadDashboardData() {
   const contentEl = document.getElementById("dashboard-content");
   if (!contentEl) return;
-  contentEl.innerHTML = `<p style="color:#6b7280;">Chargement...</p>`;
-
-  // Kanban folder labels (same as buildKanban)
-  const kanbanFolders = [
-    { folder: "1.Reception", label: "Début de production" },
-    { folder: "2.Corrections", label: "Corrections" },
-    { folder: "3.Rapport", label: "Rapport" },
-    { folder: "2.Corrections + fond perdu", label: "Corrections et fond perdu" },
-    { folder: "6.Archivage", label: "Prêt pour impression" },
-    { folder: "4.BAT", label: "BAT" },
-    { folder: "5.Relecture", label: "Impression en cours" },
-    { folder: "7.Termine", label: "PrismaPrepare" },
-    { folder: "8. Fin de production", label: "Fiery" },
-    { folder: "9. Archived", label: "Fin de production" }
-  ];
-
-  try {
-    const counts = await Promise.all(
-      kanbanFolders.map(k =>
-        fetch(`/api/jobs?folder=${encodeURIComponent(k.folder)}`)
-          .then(r => r.json())
-          .then(jobs => ({ ...k, count: Array.isArray(jobs) ? jobs.length : 0 }))
-          .catch(() => ({ ...k, count: 0 }))
-      )
-    );
-
-    contentEl.innerHTML = `
-      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;">
-        ${counts.map(k => `
-          <div style="background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 18px; display: flex; flex-direction: column; align-items: center; gap: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.07);">
-            <div style="font-size: 34px; font-weight: 700; color: #1e40af;">${k.count}</div>
-            <div style="font-size: 12px; font-weight: 600; color: #374151; text-align: center;">${k.label}</div>
-            <div style="font-size: 10px; color: #9ca3af;">${k.folder}</div>
-          </div>
-        `).join("")}
+  contentEl.innerHTML = `
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+      <div style="background: #fef9c3; border: 1px solid #fbbf24; border-radius: 12px; padding: 30px;">
+        <h3 style="margin: 0 0 12px 0; font-size: 20px;">📊 Reporting</h3>
+        <p style="color: #92400e; margin: 0 0 8px 0;">🚧 <strong>À venir</strong></p>
+        <p style="color: #6b7280; margin: 0; font-size: 13px;">
+          Cette section contiendra les rapports de production, les temps de traitement,
+          les statistiques par opérateur et les analyses de performance.
+        </p>
       </div>
-    `;
-  } catch (err) {
-    contentEl.innerHTML = `<p style="color:#ef4444;">Erreur : ${err.message}</p>`;
-  }
+      <div style="background: #fef9c3; border: 1px solid #fbbf24; border-radius: 12px; padding: 30px;">
+        <h3 style="margin: 0 0 12px 0; font-size: 20px;">🖨️ Presses numériques</h3>
+        <p style="color: #92400e; margin: 0 0 8px 0;">🚧 <strong>À venir</strong></p>
+        <p style="color: #6b7280; margin: 0; font-size: 13px;">
+          Connexion aux presses numériques pour le suivi en temps réel :
+          état des machines, files d'attente, consommation d'encre et alertes.
+        </p>
+      </div>
+    </div>
+  `;
 }
 
 // ======================================================
@@ -988,7 +1001,6 @@ async function initSettingsView() {
         <button class="settings-tab" data-tab="print-engines">🖨️ Moteurs d'impression</button>
         <button class="settings-tab" data-tab="fabrication-imports">📄 Imports fiche</button>
         <button class="settings-tab" data-tab="logs">📋 Logs</button>
-        <button class="settings-tab" data-tab="stats">📊 Dashboard</button>
       </div>
       <div class="settings-panel" id="settings-panel-accounts"></div>
       <div class="settings-panel hidden" id="settings-panel-schedule"></div>
@@ -997,7 +1009,6 @@ async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-print-engines"></div>
       <div class="settings-panel hidden" id="settings-panel-fabrication-imports"></div>
       <div class="settings-panel hidden" id="settings-panel-logs"></div>
-      <div class="settings-panel hidden" id="settings-panel-stats"></div>
     </div>
   `;
 
@@ -1028,7 +1039,6 @@ async function loadSettingsPanel(tabName, panelEl) {
     case "print-engines": await renderSettingsPrintEngines(panelEl); break;
     case "fabrication-imports": await renderSettingsFabricationImports(panelEl); break;
     case "logs": await renderSettingsLogs(panelEl); break;
-    case "stats": await renderSettingsStats(panelEl); break;
   }
   panelEl._loaded = true;
 }
@@ -1535,51 +1545,6 @@ async function loadSettingsLogs() {
   }
 }
 
-async function renderSettingsStats(panel) {
-  panel.innerHTML = `<h3>📊 Dashboard — Étapes kanban</h3><p style="color:#6b7280;">Chargement...</p>`;
-
-  const kanbanFolders = [
-    { folder: "1.Reception", label: "Début de production" },
-    { folder: "2.Corrections", label: "Corrections" },
-    { folder: "3.Rapport", label: "Rapport" },
-    { folder: "2.Corrections + fond perdu", label: "Corrections et fond perdu" },
-    { folder: "6.Archivage", label: "Prêt pour impression" },
-    { folder: "4.BAT", label: "BAT" },
-    { folder: "5.Relecture", label: "Impression en cours" },
-    { folder: "7.Termine", label: "PrismaPrepare" },
-    { folder: "8. Fin de production", label: "Fiery" },
-    { folder: "9. Archived", label: "Fin de production" }
-  ];
-
-  try {
-    const counts = await Promise.all(
-      kanbanFolders.map(k =>
-        fetch(`/api/jobs?folder=${encodeURIComponent(k.folder)}`)
-          .then(r => r.json())
-          .then(jobs => ({ ...k, count: Array.isArray(jobs) ? jobs.length : 0 }))
-          .catch(() => ({ ...k, count: 0 }))
-      )
-    );
-
-    panel.innerHTML = `
-      <h3>📊 Dashboard — Étapes kanban</h3>
-      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 16px;">
-        ${counts.map(k => `
-          <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <div style="font-size: 13px; color: #374151; font-weight: 600;">${k.label}</div>
-              <div style="font-size: 11px; color: #9ca3af;">${k.folder}</div>
-            </div>
-            <span style="background: #dbeafe; border-radius: 999px; padding: 4px 12px; font-weight: 700; color: #1e40af; font-size: 16px;">${k.count}</span>
-          </div>
-        `).join("")}
-      </div>
-    `;
-  } catch (err) {
-    panel.innerHTML = `<h3>📊 Dashboard</h3><p style="color:#ef4444;">Erreur : ${err.message}</p>`;
-  }
-}
-
 async function initApp() {
   setupProfileUI();
 
@@ -2078,12 +2043,34 @@ const folderConfig = [
     const title = document.createElement("div");
     title.className = "kanban-col-operator__title";
     title.textContent = cfg.label;
+    const counter = document.createElement("span");
+    counter.className = "kanban-col-counter";
+    counter.id = `counter-${cfg.folder.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    counter.textContent = "0";
+    title.appendChild(counter);
     col.appendChild(title);
 
     const drop = document.createElement("div");
     drop.className = "kanban-col-operator__drop";
     drop.dataset.folder = cfg.folder;
     col.appendChild(drop);
+
+    if (cfg.folder === "2.Corrections" || cfg.folder === "2.Corrections + fond perdu") {
+      const acrobatBtn = document.createElement("button");
+      acrobatBtn.className = "btn btn-acrobat";
+      acrobatBtn.textContent = "📄 Ouvrir dans Acrobat Pro";
+      acrobatBtn.style.cssText = "margin: 0 15px 10px 15px; width: calc(100% - 30px);";
+      acrobatBtn.onclick = async () => {
+        try {
+          const resp = await fetch("/api/acrobat", { method: "POST" });
+          if (!resp.ok) throw new Error("Erreur au lancement d'Acrobat");
+          alert("Acrobat Pro est en cours de lancement...");
+        } catch (err) {
+          alert("❌ " + err.message);
+        }
+      };
+      col.insertBefore(acrobatBtn, drop);
+    }
 
     drop.addEventListener("dragover", e => {
       e.preventDefault();
@@ -2230,25 +2217,32 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
       }
       card.dataset.fullPath = normalizePath(job.fullPath || "");
 
-      const thumb = document.createElement("div");
-      thumb.className = "thumb";
-      thumb.textContent = "PDF";
-      card.appendChild(thumb);
+      const full = normalizePath(job.fullPath || "");
+
+      // Horizontal layout: thumbnail left + info right
+      const layout = document.createElement("div");
+      layout.className = "kanban-card-operator-layout";
+
+      const thumbDiv = document.createElement("div");
+      thumbDiv.className = "kanban-card-operator-thumb";
+      thumbDiv.textContent = "PDF";
+      layout.appendChild(thumbDiv);
       if ((job.name || "").toLowerCase().endsWith(".pdf")) {
-        renderPdfThumbnail(normalizePath(job.fullPath || ""), thumb).catch(() => {});
+        renderPdfThumbnail(full, thumbDiv).catch(() => {});
       }
+
+      const textDiv = document.createElement("div");
+      textDiv.style.cssText = "flex: 1; min-width: 0;";
 
       const title = document.createElement("p");
       title.className = "kanban-card-operator-title";
       title.textContent = job.name || "Sans nom";
-      card.appendChild(title);
+      textDiv.appendChild(title);
 
       const sub = document.createElement("p");
       sub.className = "kanban-card-operator-info";
       sub.textContent = `${new Date(job.modified).toLocaleDateString("fr-FR")} · ${fmtBytes(job.size)}`;
-      card.appendChild(sub);
-
-      const full = normalizePath(job.fullPath || "");
+      textDiv.appendChild(sub);
 
       // Assignment badge
       const assignment = assignmentsByPath[full];
@@ -2256,7 +2250,7 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
         const badge = document.createElement("div");
         badge.className = "assignment-badge";
         badge.textContent = `👤 ${assignment.operatorName}`;
-        card.appendChild(badge);
+        textDiv.appendChild(badge);
       }
 
       const iso = deliveriesByPath[full];
@@ -2270,10 +2264,13 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
           status.classList.add("warning");
         }
         status.textContent = new Date(iso).toLocaleDateString("fr-FR");
-        card.appendChild(status);
+        textDiv.appendChild(status);
       }
 
-      // Actions
+      layout.appendChild(textDiv);
+      card.appendChild(layout);
+
+      // Actions row below
       const actions = document.createElement("div");
       actions.className = "kanban-card-operator-actions";
 
@@ -2296,30 +2293,13 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
       btnAssign.onclick = (e) => { e.stopPropagation(); openAssignDropdown(btnAssign, full); };
       actions.appendChild(btnAssign);
 
-      // Delete and Acrobat — only for profiles 2 and 3 (not read-only profile 1)
+      // Delete — only for profiles 2 and 3 (not read-only profile 1)
       if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
         const btnDelete = document.createElement("button");
         btnDelete.className = "btn btn-sm";
         btnDelete.textContent = "Corbeille";
         btnDelete.onclick = () => deleteFile(full);
         actions.appendChild(btnDelete);
-
-        if (folderName === "2.Corrections" || folderName === "2.Corrections + fond perdu") {
-          const btnAcrobat = document.createElement("button");
-          btnAcrobat.className = "btn btn-sm btn-acrobat";
-          btnAcrobat.textContent = "📄 Acrobat";
-          btnAcrobat.onclick = async () => {
-            try {
-              const resp = await fetch("/api/acrobat", { method: "POST" });
-              const result = await resp.json();
-              if (!result.ok) throw new Error(result.error || "Erreur");
-              showNotification("Acrobat Pro lancé", "success");
-            } catch (err) {
-              alert("❌ " + err.message);
-            }
-          };
-          actions.appendChild(btnAcrobat);
-        }
       }
 
       card.appendChild(actions);
@@ -2333,6 +2313,11 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
 
       drop.appendChild(card);
     }
+
+    // Update column counter
+    const counterId = `counter-${folderName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const counterEl = document.getElementById(counterId);
+    if (counterEl) counterEl.textContent = filtered.length;
   } catch (err) {
     console.error("Erreur refresh kanban operator:", err);
   }
@@ -2462,6 +2447,23 @@ function initCalendar() {
             extendedProps: { fullPath: full, bg, bc, tc, date: x.date, time: time }
           };
         });
+        try {
+          const schedResp = await fetch("/api/config/schedule", {
+            headers: { "Authorization": `Bearer ${authToken}` }
+          }).then(r => r.json());
+          if (schedResp.ok && schedResp.config && schedResp.config.holidays) {
+            schedResp.config.holidays.forEach(h => {
+              ev.push({
+                title: "Férié",
+                start: h,
+                allDay: true,
+                display: "background",
+                backgroundColor: "#fee2e2",
+                borderColor: "#fecaca"
+              });
+            });
+          }
+        } catch(e) { console.error("Impossible de charger les jours fériés:", e); }
         success(ev);
       } catch (err) {
         console.error("Erreur events:", err);
@@ -2548,7 +2550,7 @@ async function loadDeliveries() {
       newDeliveries[normalized + "_time"] = x.time || "09:00";
     });
     
-    Object.assign(deliveriesByPath, newDeliveries);
+    deliveriesByPath = newDeliveries;
   } catch (err) {
     console.error("Erreur loadDeliveries:", err);
   }
