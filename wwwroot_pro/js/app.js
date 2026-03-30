@@ -172,11 +172,11 @@ function showKanban() {
   refreshKanban();
 }
 
-function showCalendar() {
+async function showCalendar() {
   hideAllViews();
   document.getElementById("calendar").classList.remove("hidden");
   document.getElementById("btnViewCalendar").classList.add("active");
-  ensureCalendar();
+  await ensureCalendar();
   calendar?.refetchEvents();
 }
 
@@ -215,10 +215,9 @@ function showProduction() {
     const col = document.createElement("div");
     col.className = "kanban-col-operator";
     col.dataset.folder = cfg.folder;
-    col.style.background = `linear-gradient(135deg, ${cfg.color} 0%, ${darkenColor(cfg.color, 15)} 100%)`;
-
     const title = document.createElement("div");
     title.className = "kanban-col-operator__title";
+    title.style.background = `linear-gradient(135deg, ${cfg.color} 0%, ${darkenColor(cfg.color, 15)} 100%)`;
     title.textContent = cfg.label;
     const counter = document.createElement("span");
     counter.className = "kanban-col-counter";
@@ -268,10 +267,9 @@ async function buildProductionKanban(container) {
     const col = document.createElement("div");
     col.className = "kanban-col-operator";
     col.dataset.folder = cfg.folder;
-    col.style.background = `linear-gradient(135deg, ${cfg.color} 0%, ${darkenColor(cfg.color, 15)} 100%)`;
-
     const title = document.createElement("div");
     title.className = "kanban-col-operator__title";
+    title.style.background = `linear-gradient(135deg, ${cfg.color} 0%, ${darkenColor(cfg.color, 15)} 100%)`;
     title.textContent = cfg.label;
     col.appendChild(title);
 
@@ -484,18 +482,32 @@ async function initSubmissionView() {
   setupSubmissionButtons();
 }
 
-function initSubmissionCalendar() {
+async function initSubmissionCalendar() {
   const calendarEl = document.getElementById("submissionCalendar");
   if (!calendarEl || submissionCalendar) return;
+
+  let schedStart = "07:00", schedEnd = "21:00";
+  try {
+    const sr = await fetch("/api/config/schedule", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json());
+    if (sr.ok && sr.config) {
+      if (sr.config.workStart) schedStart = sr.config.workStart;
+      if (sr.config.workEnd) {
+        // add 30min buffer so last hour slot is visible
+        const [h, m] = sr.config.workEnd.split(":").map(Number);
+        const endH = Math.min(h + 1, 24);
+        schedEnd = `${String(endH).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      }
+    }
+  } catch(e) { /* use defaults */ }
 
   submissionCalendar = new FullCalendar.Calendar(calendarEl, {
     initialView: "timeGridWeek",
     locale: "fr",
-    height: 420,
-    scrollTime: "08:00",
+    height: 360,
+    scrollTime: schedStart,
     slotLabelInterval: "01:00",
-    slotMinTime: "07:00",
-    slotMaxTime: "21:00",
+    slotMinTime: schedStart,
+    slotMaxTime: schedEnd,
     headerToolbar: { left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek" },
     editable: true,
     eventDurationEditable: false,
@@ -1153,22 +1165,32 @@ async function loadRecycleList() {
   const listEl = document.getElementById("recycle-list");
   if (!listEl) return;
 
-  try {
-    const files = await fetch("/api/recycle/list").then(r => r.json()).catch(() => []);
+  listEl.innerHTML = '<p style="color:var(--text-tertiary);">Chargement...</p>';
 
-    if (!Array.isArray(files) || files.length === 0) {
-      listEl.innerHTML = '<p style="color: #9ca3af; text-align: center; padding: 20px;">📭 La corbeille est vide</p>';
+  try {
+    const resp = await fetch("/api/recycle/list").then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+
+    // Handle error response
+    if (resp && !Array.isArray(resp) && resp.ok === false) {
+      listEl.innerHTML = `<p style="color:var(--danger);">❌ Erreur : ${resp.error || "Impossible de charger la corbeille"}</p>`;
+      return;
+    }
+
+    const files = Array.isArray(resp) ? resp : [];
+
+    if (files.length === 0) {
+      listEl.innerHTML = '<p style="color:var(--text-tertiary);text-align:center;padding:20px;">📭 La corbeille est vide</p>';
       return;
     }
 
     listEl.innerHTML = "";
     files.forEach(f => {
       const div = document.createElement("div");
-      div.style.cssText = "display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; background: white; border-radius: 6px; margin-bottom: 6px;";
+      div.style.cssText = "display:flex;align-items:center;gap:10px;padding:12px 16px;border:1px solid var(--border-light);background:var(--bg-card);border-radius:var(--radius-sm);margin-bottom:6px;";
       div.innerHTML = `
-        <div style="flex: 1;">
-          <strong>${f.fileName}</strong>
-          <small style="display: block; color: #6b7280;">Supprimé le ${new Date(f.deletedAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</small>
+        <div style="flex:1;">
+          <strong style="font-size:13px;color:var(--text-primary);">${f.fileName}</strong>
+          <small style="display:block;color:var(--text-tertiary);font-size:11px;">Supprimé le ${new Date(f.deletedAt).toLocaleDateString("fr-FR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" })}</small>
         </div>
         <button class="btn btn-sm btn-primary" data-path="${f.fullPath}">↩️ Restaurer</button>
       `;
@@ -1176,7 +1198,7 @@ async function loadRecycleList() {
       listEl.appendChild(div);
     });
   } catch (err) {
-    listEl.innerHTML = `<p style="color: #ef4444;">Erreur : ${err.message}</p>`;
+    listEl.innerHTML = `<p style="color:var(--danger);">Erreur : ${err.message}</p>`;
   }
 }
 
@@ -1404,14 +1426,17 @@ async function renderSettingsSchedule(panel) {
       body: JSON.stringify({ workStart, workEnd })
     }).then(r => r.json());
     if (r.ok) {
+      // Compute buffered end (add 1h so last slot is fully visible)
+      const [h, m] = workEnd.split(":").map(Number);
+      const bufferedEnd = `${String(Math.min(h + 1, 24)).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
       // Update FullCalendar displays immediately
       if (calendar) {
         calendar.setOption("slotMinTime", workStart);
-        calendar.setOption("slotMaxTime", workEnd);
+        calendar.setOption("slotMaxTime", bufferedEnd);
       }
       if (submissionCalendar) {
         submissionCalendar.setOption("slotMinTime", workStart);
-        submissionCalendar.setOption("slotMaxTime", workEnd);
+        submissionCalendar.setOption("slotMaxTime", bufferedEnd);
       }
       showNotification("✅ Plages horaires enregistrées", "success");
     }
@@ -1784,7 +1809,7 @@ async function initApp() {
     await loadAssignments();
     updateGlobalAlert();
     await buildKanban();
-    ensureCalendar();
+    await ensureCalendar();
 
     if (currentUser.profile === 1) {
       showSubmission();
@@ -1895,8 +1920,8 @@ function updateGlobalAlert() {
   globalAlert.style.display = "block";
 }
 
-function ensureCalendar() {
-  if (!calendar) initCalendar();
+async function ensureCalendar() {
+  if (!calendar) await initCalendar();
 }
 
 let fabCurrentPath = null;
@@ -2267,10 +2292,9 @@ const folderConfig = [
     const col = document.createElement("div");
     col.className = "kanban-col-operator";
     col.dataset.folder = cfg.folder;
-    col.style.background = `linear-gradient(135deg, ${cfg.color} 0%, ${darkenColor(cfg.color, 15)} 100%)`;
-
     const title = document.createElement("div");
     title.className = "kanban-col-operator__title";
+    title.style.background = `linear-gradient(135deg, ${cfg.color} 0%, ${darkenColor(cfg.color, 15)} 100%)`;
     title.textContent = cfg.label;
     const counter = document.createElement("span");
     counter.className = "kanban-col-counter";
@@ -2726,25 +2750,38 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
       if (folderName === "BAT") {
         const batTracking = document.createElement("div");
         batTracking.className = "bat-tracking";
-        batTracking.innerHTML = '<span style="color:#9ca3af;font-size:10px;">Chargement suivi...</span>';
+        batTracking.innerHTML = '<span style="color:var(--text-tertiary);font-size:10px;">Chargement...</span>';
         fetch(`/api/bat/status?path=${encodeURIComponent(full)}`)
           .then(r => r.json())
           .then(status => {
             batTracking.innerHTML = "";
+
+            const fmtDT = (iso) => {
+              if (!iso) return "";
+              const d = new Date(iso);
+              return d.toLocaleDateString("fr-FR") + " " + d.toLocaleTimeString("fr-FR", {hour:"2-digit",minute:"2-digit"});
+            };
+
             const btnSent = document.createElement("button");
-            btnSent.className = `bat-btn bat-sent${status.status === "sent" || status.sentAt ? " active" : ""}`;
-            btnSent.innerHTML = `📤 ${status.sentAt ? "Envoyé " + new Date(status.sentAt).toLocaleDateString("fr-FR") : "Marquer envoyé"}`;
-            btnSent.onclick = () => fetch("/api/bat/send", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban());
+            btnSent.className = "bat-status-badge bat-sent" + (status.sentAt ? " active" : "");
+            btnSent.innerHTML = status.sentAt
+              ? `📤 ENVOYÉ ${fmtDT(status.sentAt)}`
+              : "📤 MARQUER ENVOYÉ";
+            btnSent.onclick = (e) => { e.stopPropagation(); fetch("/api/bat/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
 
             const btnValidate = document.createElement("button");
-            btnValidate.className = `bat-btn bat-validated${status.status === "validated" ? " active" : ""}`;
-            btnValidate.innerHTML = `✅ ${status.validatedAt ? "Validé " + new Date(status.validatedAt).toLocaleDateString("fr-FR") : "Valider"}`;
-            btnValidate.onclick = () => fetch("/api/bat/validate", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban());
+            btnValidate.className = "bat-status-badge bat-validated" + (status.validatedAt ? " active" : "");
+            btnValidate.innerHTML = status.validatedAt
+              ? `✅ VALIDÉ ${fmtDT(status.validatedAt)}`
+              : "✅ VALIDER";
+            btnValidate.onclick = (e) => { e.stopPropagation(); fetch("/api/bat/validate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
 
             const btnReject = document.createElement("button");
-            btnReject.className = `bat-btn bat-rejected${status.status === "rejected" ? " active" : ""}`;
-            btnReject.innerHTML = `❌ ${status.rejectedAt ? "Refusé " + new Date(status.rejectedAt).toLocaleDateString("fr-FR") : "Refuser"}`;
-            btnReject.onclick = () => fetch("/api/bat/reject", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban());
+            btnReject.className = "bat-status-badge bat-rejected" + (status.rejectedAt ? " active" : "");
+            btnReject.innerHTML = status.rejectedAt
+              ? `❌ REFUSÉ ${fmtDT(status.rejectedAt)}`
+              : "❌ REFUSER";
+            btnReject.onclick = (e) => { e.stopPropagation(); fetch("/api/bat/reject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
 
             batTracking.appendChild(btnSent);
             batTracking.appendChild(btnValidate);
@@ -2863,14 +2900,29 @@ async function openInAcrobatPro(fullPath) {
   }
 }
 
-function initCalendar() {
+async function initCalendar() {
   if (calendar || !calendarEl || !window.FullCalendar) return;
+
+  let schedStart = "07:00", schedEnd = "21:00";
+  try {
+    const sr = await fetch("/api/config/schedule", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json());
+    if (sr.ok && sr.config) {
+      if (sr.config.workStart) schedStart = sr.config.workStart;
+      if (sr.config.workEnd) {
+        const [h, m] = sr.config.workEnd.split(":").map(Number);
+        const endH = Math.min(h + 1, 24);
+        schedEnd = `${String(endH).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      }
+    }
+  } catch(e) { /* use defaults */ }
 
   calendar = new FullCalendar.Calendar(calendarEl, {
     initialView: "dayGridMonth",
     locale: "fr",
-    height: 520,
-    scrollTime: "08:00",
+    height: 480,
+    scrollTime: schedStart,
+    slotMinTime: schedStart,
+    slotMaxTime: schedEnd,
     headerToolbar: {
       left: "prev,next today",
       center: "title",
@@ -2966,24 +3018,12 @@ function initCalendar() {
 
 function showNotification(message, type = "info") {
   const toast = document.createElement("div");
-  toast.style.cssText = `
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    padding: 16px 20px;
-    border-radius: 8px;
-    font-weight: 500;
-    z-index: 10000;
-    animation: slideIn 0.3s ease;
-    ${type === "success" ? "background: #dcfce7; color: #15803d;" : ""}
-    ${type === "error" ? "background: #fee2e2; color: #991b1b;" : ""}
-    ${type === "info" ? "background: #dbeafe; color: #1e40af;" : ""}
-  `;
+  toast.className = `toast-notification toast-${type === "success" ? "success" : type === "error" ? "error" : "info"}`;
   toast.textContent = message;
   document.body.appendChild(toast);
 
   setTimeout(() => {
-    toast.style.animation = "slideOut 0.3s ease";
+    toast.style.animation = "toastFadeOut 0.3s ease forwards";
     setTimeout(() => toast.remove(), 300);
   }, 3000);
 }
