@@ -148,7 +148,7 @@ header h1 {
   padding: 12px;
   display: flex;
   flex-direction: column;
-  min-height: 400px;
+  min-height: 500px;
   box-shadow: 0 1px 3px rgba(0,0,0,.05);
 }
 
@@ -1887,7 +1887,7 @@ header h1 {
   padding: 0;
   display: flex;
   flex-direction: column;
-  min-height: 280px;
+  min-height: 500px;
   box-shadow: 0 4px 12px rgba(0,0,0,.15);
   transition: all .3s;
   overflow: hidden;
@@ -2449,18 +2449,16 @@ header h1 {
 
 /* Column counter badge */
 .kanban-col-counter {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255,255,255,0.3);
   color: white;
-  font-size: 14px;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 11px;
   font-weight: 700;
-  min-width: 28px;
-  height: 28px;
-  border-radius: 14px;
-  margin-left: 10px;
-  padding: 0 8px;
+  margin-left: 8px;
+  display: inline-block;
+  min-width: 20px;
+  text-align: center;
 }
 
 /* =========================================================
@@ -2610,3 +2608,70 @@ header h1 {
 .kanban-col-operator[data-folder="Fin de production"] {
   background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important;
 }
+
+/* =========================================================
+   KANBAN SUMMARY
+========================================================= */
+.kanban-summary {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 20px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.kanban-summary-counts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.kanban-summary-count {
+  padding: 4px 10px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #475569;
+}
+.kanban-summary-urgent {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.urgent-badge {
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.urgent-j0 { background: #fee2e2; color: #991b1b; }
+.urgent-j1 { background: #ffedd5; color: #9a3412; }
+.urgent-j2 { background: #fef9c3; color: #854d0e; }
+.urgent-j3 { background: #dbeafe; color: #1e40af; }
+
+/* BAT tracking */
+.bat-tracking {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #f1f5f9;
+}
+.bat-btn {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.bat-btn:hover { background: #f9fafb; }
+.bat-sent.active { background: #dbeafe !important; color: #1e40af !important; border-color: #bfdbfe !important; }
+.bat-validated.active { background: #dcfce7 !important; color: #15803d !important; border-color: #bbf7d0 !important; }
+.bat-rejected.active { background: #fee2e2 !important; color: #991b1b !important; border-color: #fecaca !important; }

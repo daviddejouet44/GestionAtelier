@@ -199,14 +199,14 @@ function showProduction() {
 
   const folderConfig = [
     { folder: "Début de production", label: "Début de production", color: "#5fa8c4" },
-    { folder: "Corrections", label: "Corrections", color: "#5fa8c4" },
-    { folder: "Rapport", label: "Rapport", color: "#5fa8c4" },
-    { folder: "Corrections et fond perdu", label: "Corrections et fond perdu", color: "#5fa8c4" },
-    { folder: "Prêt pour impression", label: "Prêt pour impression", color: "#5fa8c4" },
-    { folder: "BAT", label: "BAT", color: "#5fa8c4" },
-    { folder: "Impression en cours", label: "Impression en cours", color: "#5fa8c4" },
+    { folder: "Corrections", label: "Corrections", color: "#e88b3d" },
+    { folder: "Corrections et fond perdu", label: "Corrections et fond perdu", color: "#e88b3d" },
+    { folder: "Rapport", label: "Rapport", color: "#8b5cf6" },
+    { folder: "Prêt pour impression", label: "Prêt pour impression", color: "#10b981" },
+    { folder: "BAT", label: "BAT", color: "#3b82f6" },
     { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#6b7e89" },
     { folder: "Fiery", label: "Fiery", color: "#6b7e89" },
+    { folder: "Impression en cours", label: "Impression en cours", color: "#f59e0b" },
     { folder: "Façonnage", label: "Façonnage", color: "#6b7e89" },
     { folder: "Fin de production", label: "Fin de production", color: "#22c55e" }
   ];
@@ -250,14 +250,14 @@ async function refreshProductionViewKanban() {
 async function buildProductionKanban(container) {
   const folderConfig = [
     { folder: "Début de production", label: "Début de production", color: "#5fa8c4" },
-    { folder: "Corrections", label: "Corrections", color: "#5fa8c4" },
-    { folder: "Rapport", label: "Rapport", color: "#5fa8c4" },
-    { folder: "Corrections et fond perdu", label: "Corrections et fond perdu", color: "#5fa8c4" },
-    { folder: "Prêt pour impression", label: "Prêt pour impression", color: "#5fa8c4" },
-    { folder: "BAT", label: "BAT", color: "#5fa8c4" },
-    { folder: "Impression en cours", label: "Impression en cours", color: "#5fa8c4" },
+    { folder: "Corrections", label: "Corrections", color: "#e88b3d" },
+    { folder: "Corrections et fond perdu", label: "Corrections et fond perdu", color: "#e88b3d" },
+    { folder: "Rapport", label: "Rapport", color: "#8b5cf6" },
+    { folder: "Prêt pour impression", label: "Prêt pour impression", color: "#10b981" },
+    { folder: "BAT", label: "BAT", color: "#3b82f6" },
     { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#6b7e89" },
     { folder: "Fiery", label: "Fiery", color: "#6b7e89" },
+    { folder: "Impression en cours", label: "Impression en cours", color: "#f59e0b" },
     { folder: "Façonnage", label: "Façonnage", color: "#6b7e89" },
     { folder: "Fin de production", label: "Fin de production", color: "#22c55e" }
   ];
@@ -491,7 +491,8 @@ function initSubmissionCalendar() {
   submissionCalendar = new FullCalendar.Calendar(calendarEl, {
     initialView: "timeGridWeek",
     locale: "fr",
-    height: "auto",
+    height: 420,
+    scrollTime: "08:00",
     slotLabelInterval: "01:00",
     slotMinTime: "07:00",
     slotMaxTime: "21:00",
@@ -2243,18 +2244,15 @@ async function buildKanban() {
   const backendFolders = await fetch("/api/folders").then(r => r.json()).catch(() => []);
   
 const folderConfig = [
-  // Ligne 1
   { folder: "Début de production", label: "Début de production", color: "#5fa8c4" },
-  { folder: "Corrections", label: "Corrections", color: "#5fa8c4" },
-  { folder: "Rapport", label: "Rapport", color: "#5fa8c4" },
-  { folder: "Corrections et fond perdu", label: "Corrections et fond perdu", color: "#5fa8c4" },
-  // Ligne 2
-  { folder: "Prêt pour impression", label: "Prêt pour impression", color: "#5fa8c4" },
-  { folder: "BAT", label: "BAT", color: "#5fa8c4" },
-  { folder: "Impression en cours", label: "Impression en cours", color: "#5fa8c4" },
-  // Ligne 3
+  { folder: "Corrections", label: "Corrections", color: "#e88b3d" },
+  { folder: "Corrections et fond perdu", label: "Corrections et fond perdu", color: "#e88b3d" },
+  { folder: "Rapport", label: "Rapport", color: "#8b5cf6" },
+  { folder: "Prêt pour impression", label: "Prêt pour impression", color: "#10b981" },
+  { folder: "BAT", label: "BAT", color: "#3b82f6" },
   { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#6b7e89" },
   { folder: "Fiery", label: "Fiery", color: "#6b7e89" },
+  { folder: "Impression en cours", label: "Impression en cours", color: "#f59e0b" },
   { folder: "Façonnage", label: "Façonnage", color: "#6b7e89" },
   { folder: "Fin de production", label: "Fin de production", color: "#22c55e" }
 ];
@@ -2391,6 +2389,15 @@ const folderConfig = [
     kanbanDiv.appendChild(col);
   }
 
+  // Create summary div before kanban
+  let summaryEl = document.getElementById("kanban-summary");
+  if (!summaryEl) {
+    summaryEl = document.createElement("div");
+    summaryEl.id = "kanban-summary";
+    summaryEl.className = "kanban-summary";
+    kanbanDiv.parentNode?.insertBefore(summaryEl, kanbanDiv);
+  }
+
   await refreshKanban();
 
   if (searchInput) searchInput.oninput = () => refreshKanban();
@@ -2417,6 +2424,118 @@ async function refreshKanban() {
   for (const col of cols) {
     await refreshKanbanColumnOperator(col.dataset.folder, q, sort, col);
   }
+  await updateKanbanSummary();
+}
+
+async function updateKanbanSummary() {
+  const summaryEl = document.getElementById("kanban-summary");
+  if (!summaryEl) return;
+
+  try {
+    const folders = ["Début de production","Corrections","Corrections et fond perdu","Rapport","Prêt pour impression","BAT","PrismaPrepare","Fiery","Impression en cours","Façonnage","Fin de production"];
+    const counts = {};
+    for (const f of folders) {
+      const jobs = await fetch(`/api/jobs?folder=${encodeURIComponent(f)}`).then(r => r.json()).catch(() => []);
+      counts[f] = Array.isArray(jobs) ? jobs.length : 0;
+    }
+
+    const labelMap = {
+      "Début de production": "Début prod",
+      "Corrections": "Corrections",
+      "Corrections et fond perdu": "Corr. fp",
+      "Rapport": "Rapport",
+      "Prêt pour impression": "Prêt impr.",
+      "BAT": "BAT",
+      "PrismaPrepare": "Prisma",
+      "Fiery": "Fiery",
+      "Impression en cours": "Impression",
+      "Façonnage": "Façonnage",
+      "Fin de production": "Fin prod"
+    };
+
+    const countsHtml = folders.map(f =>
+      `<span class="kanban-summary-count">${labelMap[f]}: <strong>${counts[f]}</strong></span>`
+    ).join("");
+
+    const today = new Date(); today.setHours(0,0,0,0);
+    const urgent = Object.entries(deliveriesByPath)
+      .filter(([k]) => !k.endsWith("_time"))
+      .map(([path, date]) => {
+        const d = new Date(date + "T00:00:00");
+        const diff = Math.ceil((d - today) / 86400000);
+        return { path, date, diff, name: path.split("\\").pop() };
+      })
+      .filter(x => x.diff >= 0 && x.diff <= 3)
+      .sort((a,b) => a.diff - b.diff);
+
+    const urgentHtml = urgent.length === 0 ? '<span style="color:#9ca3af;font-size:12px;">Aucune urgence</span>' :
+      urgent.map(x => {
+        const cls = x.diff === 0 ? "urgent-j0" : x.diff === 1 ? "urgent-j1" : x.diff === 2 ? "urgent-j2" : "urgent-j3";
+        const label = x.diff === 0 ? "Aujourd'hui" : `J+${x.diff}`;
+        return `<span class="urgent-badge ${cls}" title="${x.path}">${label}: ${x.name}</span>`;
+      }).join("");
+
+    summaryEl.innerHTML = `
+      <div class="kanban-summary-counts">${countsHtml}</div>
+      <div class="kanban-summary-urgent"><strong style="font-size:12px;color:#374151;margin-right:8px;">Urgences:</strong>${urgentHtml}</div>
+    `;
+  } catch(e) { console.error("Erreur summary:", e); }
+}
+
+async function openPrintDialog(fullPath) {
+  const fab = await fetch("/api/fabrication?fullPath=" + encodeURIComponent(fullPath)).then(r=>r.json()).catch(()=>({}));
+
+  const modal = document.createElement("div");
+  modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;";
+  modal.innerHTML = `
+    <div style="background:white;border-radius:16px;padding:32px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      <h3 style="margin:0 0 20px;font-size:18px;color:#111;">🖨️ Options d'impression</h3>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:20px;">Fichier: <strong>${fullPath.split("\\").pop()}</strong></p>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <button class="btn btn-primary print-opt" data-action="controller">📡 Envoyer vers le contrôleur</button>
+        <button class="btn btn-primary print-opt" data-action="prisma">🔧 Envoyer vers PrismaPrepare</button>
+        <button class="btn btn-primary print-opt" data-action="print">🖨️ Envoyer en impression</button>
+        <button class="btn btn-primary print-opt" data-action="modify">✏️ Modification</button>
+        <button class="btn btn-primary print-opt" data-action="fiery">📀 Envoyer sur Fiery</button>
+      </div>
+      <button id="print-dialog-close" class="btn" style="margin-top:16px;width:100%;">Annuler</button>
+    </div>
+  `;
+
+  const printActions = {
+    controller: { endpoint: "/api/commands/send-controller" },
+    prisma: { endpoint: "/api/commands/send-prisma" },
+    print: { endpoint: "/api/commands/send-print" },
+    modify: { endpoint: "/api/commands/modify" },
+    fiery: { endpoint: "/api/commands/send-fiery" }
+  };
+
+  modal.querySelectorAll(".print-opt").forEach(btn => {
+    btn.onclick = async () => {
+      const action = btn.dataset.action;
+      const cfg = printActions[action];
+      try {
+        const r = await fetch(cfg.endpoint, {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ filePath: fullPath, product: fab.typeTravail || "", fabricationData: fab })
+        }).then(r => r.json()).catch(()=>({ok:false,error:"Erreur réseau"}));
+
+        if (r.ok) {
+          showNotification(`✅ Action lancée`, "success");
+          modal.remove();
+          await refreshKanban();
+        } else {
+          showNotification("❌ " + (r.error || "Erreur"), "error");
+        }
+      } catch(e) {
+        showNotification("❌ " + e.message, "error");
+      }
+    };
+  });
+
+  modal.querySelector("#print-dialog-close").onclick = () => modal.remove();
+  document.body.appendChild(modal);
 }
 
 async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = false) {
@@ -2508,31 +2627,131 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
       btnOpen.className = "btn btn-sm";
       btnOpen.textContent = "Ouvrir";
       btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full), "_blank", "noopener");
-      actions.appendChild(btnOpen);
 
       const btnFiche = document.createElement("button");
       btnFiche.className = "btn btn-sm";
       btnFiche.textContent = "Fiche";
       btnFiche.onclick = () => openFabrication(full);
-      actions.appendChild(btnFiche);
 
-      // "Affecter à" button — visible for all profiles
       const btnAssign = document.createElement("button");
       btnAssign.className = "btn btn-sm btn-assign";
       btnAssign.textContent = "Affecter à";
       btnAssign.onclick = (e) => { e.stopPropagation(); openAssignDropdown(btnAssign, full); };
-      actions.appendChild(btnAssign);
 
-      // Delete — only for profiles 2 and 3 (not read-only profile 1)
-      if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
-        const btnDelete = document.createElement("button");
-        btnDelete.className = "btn btn-sm";
-        btnDelete.textContent = "Corbeille";
-        btnDelete.onclick = () => deleteFile(full);
-        actions.appendChild(btnDelete);
+      const btnDelete = document.createElement("button");
+      btnDelete.className = "btn btn-sm";
+      btnDelete.textContent = "Corbeille";
+      btnDelete.onclick = () => deleteFile(full);
+
+      if (folderName === "Rapport") {
+        actions.appendChild(btnOpen);
+        const btnAcrobat = document.createElement("button");
+        btnAcrobat.className = "btn btn-sm";
+        btnAcrobat.innerHTML = "🔴 Acrobat Pro";
+        btnAcrobat.onclick = () => {
+          fetch("/api/acrobat/open", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ fullPath: full })
+          }).then(r => r.json()).then(r => {
+            if (!r.ok) showNotification("❌ " + (r.error || "Erreur"), "error");
+          });
+        };
+        actions.appendChild(btnAcrobat);
+        if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          actions.appendChild(btnDelete);
+        }
+      } else if (folderName === "BAT") {
+        actions.appendChild(btnOpen);
+        actions.appendChild(btnAssign);
+        const btnAcrobatBat = document.createElement("button");
+        btnAcrobatBat.className = "btn btn-sm";
+        btnAcrobatBat.innerHTML = "🔴 Acrobat";
+        btnAcrobatBat.onclick = () => {
+          fetch("/api/acrobat/open", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ fullPath: full })
+          }).then(r => r.json()).then(r => {
+            if (!r.ok) showNotification("❌ " + (r.error || "Erreur"), "error");
+          });
+        };
+        actions.appendChild(btnAcrobatBat);
+        if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          actions.appendChild(btnDelete);
+        }
+      } else if (folderName === "Prêt pour impression") {
+        actions.appendChild(btnOpen);
+        actions.appendChild(btnFiche);
+        actions.appendChild(btnAssign);
+
+        const btnBAT = document.createElement("button");
+        btnBAT.className = "btn btn-sm btn-primary";
+        btnBAT.innerHTML = "✓ BAT";
+        btnBAT.onclick = async () => {
+          const fab = await fetch("/api/fabrication?fullPath=" + encodeURIComponent(full)).then(r=>r.json()).catch(()=>({}));
+          const typeWork = fab.typeTravail || "";
+          const quantity = fab.quantite || 1;
+          const r = await fetch("/api/commands/bat", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ filePath: full, typeWork, quantity })
+          }).then(r => r.json()).catch(()=>({ok:false}));
+          if (r.ok) showNotification("✅ Commande BAT lancée", "success");
+          else showNotification("❌ " + (r.error || "Erreur"), "error");
+        };
+        actions.appendChild(btnBAT);
+
+        const btnPrint = document.createElement("button");
+        btnPrint.className = "btn btn-sm btn-primary";
+        btnPrint.innerHTML = "🖨️ Imprimer";
+        btnPrint.onclick = () => openPrintDialog(full);
+        actions.appendChild(btnPrint);
+
+        if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          actions.appendChild(btnDelete);
+        }
+      } else {
+        actions.appendChild(btnOpen);
+        actions.appendChild(btnFiche);
+        actions.appendChild(btnAssign);
+        if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          actions.appendChild(btnDelete);
+        }
       }
 
       card.appendChild(actions);
+
+      // BAT tracking for BAT folder
+      if (folderName === "BAT") {
+        const batTracking = document.createElement("div");
+        batTracking.className = "bat-tracking";
+        batTracking.innerHTML = '<span style="color:#9ca3af;font-size:10px;">Chargement suivi...</span>';
+        fetch(`/api/bat/status?path=${encodeURIComponent(full)}`)
+          .then(r => r.json())
+          .then(status => {
+            batTracking.innerHTML = "";
+            const btnSent = document.createElement("button");
+            btnSent.className = `bat-btn bat-sent${status.status === "sent" || status.sentAt ? " active" : ""}`;
+            btnSent.innerHTML = `📤 ${status.sentAt ? "Envoyé " + new Date(status.sentAt).toLocaleDateString("fr-FR") : "Marquer envoyé"}`;
+            btnSent.onclick = () => fetch("/api/bat/send", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban());
+
+            const btnValidate = document.createElement("button");
+            btnValidate.className = `bat-btn bat-validated${status.status === "validated" ? " active" : ""}`;
+            btnValidate.innerHTML = `✅ ${status.validatedAt ? "Validé " + new Date(status.validatedAt).toLocaleDateString("fr-FR") : "Valider"}`;
+            btnValidate.onclick = () => fetch("/api/bat/validate", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban());
+
+            const btnReject = document.createElement("button");
+            btnReject.className = `bat-btn bat-rejected${status.status === "rejected" ? " active" : ""}`;
+            btnReject.innerHTML = `❌ ${status.rejectedAt ? "Refusé " + new Date(status.rejectedAt).toLocaleDateString("fr-FR") : "Refuser"}`;
+            btnReject.onclick = () => fetch("/api/bat/reject", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban());
+
+            batTracking.appendChild(btnSent);
+            batTracking.appendChild(btnValidate);
+            batTracking.appendChild(btnReject);
+          }).catch(() => { batTracking.innerHTML = ""; });
+        card.appendChild(batTracking);
+      }
 
       if (!readOnly) {
         card.addEventListener("dragstart", (e) => {
@@ -2650,7 +2869,8 @@ function initCalendar() {
   calendar = new FullCalendar.Calendar(calendarEl, {
     initialView: "dayGridMonth",
     locale: "fr",
-    height: "auto",
+    height: 520,
+    scrollTime: "08:00",
     headerToolbar: {
       left: "prev,next today",
       center: "title",

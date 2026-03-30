@@ -39,7 +39,8 @@ builder.WebHost.UseKestrel(k =>
 // CREATION DE LA CORBEILLE
 // ======================================================
 var recycleEnabled = builder.Configuration["RecycleBin:Enabled"] == "true";
-var recyclePath    = builder.Configuration["RecycleBin:Path"] ?? @"C:\Flux\Corbeille";
+var hotfoldersRootForRecycle = Environment.GetEnvironmentVariable("GA_HOTFOLDERS_ROOT") is { Length: > 0 } env ? Path.GetFullPath(env) : @"C:\Flux";
+var recyclePath    = builder.Configuration["RecycleBin:Path"] ?? Path.Combine(hotfoldersRootForRecycle, "Corbeille");
 var recycleDays    = int.TryParse(builder.Configuration["RecycleBin:DaysToKeep"], out var d) ? d : 7;
 Directory.CreateDirectory(recyclePath);
 
@@ -612,6 +613,17 @@ app.MapPost("/api/jobs/move", async (HttpContext ctx) =>
                         Console.WriteLine($"[WARN] CopyToProductionFolderStage failed: {ex4.Message}");
                     }
                 }
+
+                // Auto-mark BAT status when file moves to BAT folder
+                if (string.Equals(dstFolder.Trim(), "BAT", StringComparison.OrdinalIgnoreCase))
+                {
+                    try {
+                        var batCol = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
+                        var batFilter = Builders<BsonDocument>.Filter.Eq("fullPath", moved);
+                        var batDoc = new BsonDocument { ["fullPath"] = moved, ["status"] = "sent", ["sentAt"] = DateTime.UtcNow, ["validatedAt"] = BsonNull.Value, ["rejectedAt"] = BsonNull.Value };
+                        batCol.ReplaceOne(batFilter, batDoc, new ReplaceOptions { IsUpsert = true });
+                    } catch { }
+                }
             }
 
             return Results.Json(new { ok, moved, error });
@@ -697,14 +709,7 @@ app.MapGet("/api/delivery", () =>
 {
     var map = BackendUtils.LoadDeliveries();
 
-    var toRemove = map.Where(kvp => !File.Exists(kvp.Key)).Select(kvp => kvp.Key).ToList();
-    if (toRemove.Count > 0) {
-        BackendUtils.DeleteDeliveries(toRemove);
-        Console.WriteLine($"[INFO] Nettoyage: {toRemove.Count} fichier(s) supprimé(s) du planning");
-    }
-
     var data = map.Values
-        .Where(v => File.Exists(v.FullPath))
         .Select(v => new
         {
             fullPath = v.FullPath,
@@ -730,8 +735,6 @@ app.MapPut("/api/delivery", async (HttpContext ctx) =>
             return Results.BadRequest("Format date invalide.");
 
         var full = Path.GetFullPath(fullPath);
-        if (!File.Exists(full))
-            return Results.BadRequest("Fichier introuvable.");
 
         var time = "09:00";
         if (json.TryGetProperty("time", out var tEl) && tEl.ValueKind != JsonValueKind.Null)
@@ -1836,6 +1839,251 @@ app.MapPost("/api/admin/migrate-to-mongo", () =>
 });
 
 // ======================================================
+// ACROBAT — Complete processing
+// ======================================================
+app.MapPost("/api/acrobat/complete", async (HttpContext ctx) =>
+{
+    try
+    {
+        var doc = await JsonDocument.ParseAsync(ctx.Request.Body);
+        if (!doc.RootElement.TryGetProperty("sourcePath", out var spEl))
+            return Results.Json(new { ok = false, error = "sourcePath manquant" });
+
+        var sourcePath = Path.GetFullPath(spEl.GetString() ?? "");
+        var root = BackendUtils.HotfoldersRoot();
+        var fileName = Path.GetFileName(sourcePath);
+        var rapportPath = Path.Combine(root, "Rapport", fileName);
+        var printPath = Path.Combine(root, "Prêt pour impression", fileName);
+
+        if (!File.Exists(rapportPath))
+            return Results.Json(new { ok = false, error = $"Rapport introuvable: {rapportPath}" });
+        if (!File.Exists(printPath))
+            return Results.Json(new { ok = false, error = $"PDF corrigé introuvable: {printPath}" });
+
+        if (File.Exists(sourcePath))
+        {
+            File.Delete(sourcePath);
+            Console.WriteLine($"[INFO] Acrobat complete: suppression {sourcePath}");
+        }
+
+        BackendUtils.UpdateDeliveryPath(sourcePath, printPath);
+        Console.WriteLine($"[INFO] Acrobat complete: delivery mis à jour → {printPath}");
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// COMMANDS CONFIG
+// ======================================================
+app.MapGet("/api/config/commands", (HttpContext ctx) =>
+{
+    var col = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
+    var doc = col.Find(new BsonDocument()).FirstOrDefault();
+    if (doc == null)
+        return Results.Json(new { ok = true, config = new {
+            batCommand = "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\" /T \"{typeWork}\" /SP /C {quantity}",
+            prismaPrepareCommand = "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\"",
+            printCommand = "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\" /SP /C {quantity}",
+            modifyCommand = "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\"",
+            fieryHotfolderBase = "C:\\Fiery\\Hotfolders",
+            controllerPath = "C:\\PrismaSync\\Controller"
+        }});
+    return Results.Json(new { ok = true, config = new {
+        batCommand = doc.Contains("batCommand") ? doc["batCommand"].AsString : "",
+        prismaPrepareCommand = doc.Contains("prismaPrepareCommand") ? doc["prismaPrepareCommand"].AsString : "",
+        printCommand = doc.Contains("printCommand") ? doc["printCommand"].AsString : "",
+        modifyCommand = doc.Contains("modifyCommand") ? doc["modifyCommand"].AsString : "",
+        fieryHotfolderBase = doc.Contains("fieryHotfolderBase") ? doc["fieryHotfolderBase"].AsString : "",
+        controllerPath = doc.Contains("controllerPath") ? doc["controllerPath"].AsString : ""
+    }});
+});
+
+app.MapPut("/api/config/commands", async (HttpContext ctx) =>
+{
+    var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+    var col = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
+    var doc = new BsonDocument();
+    foreach (var prop in json.EnumerateObject())
+        doc[prop.Name] = prop.Value.GetString() ?? "";
+    col.ReplaceOne(new BsonDocument(), doc, new ReplaceOptions { IsUpsert = true });
+    return Results.Json(new { ok = true });
+});
+
+// ======================================================
+// COMMANDS — BAT, Print, Send etc.
+// ======================================================
+app.MapPost("/api/commands/bat", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var filePath = json.TryGetProperty("filePath", out var fp) ? fp.GetString() ?? "" : "";
+        var typeWork = json.TryGetProperty("typeWork", out var tw) ? tw.GetString() ?? "" : "";
+        var quantity = json.TryGetProperty("quantity", out var qty) ? qty.GetInt32() : 1;
+
+        var col = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
+        var cfg = col.Find(new BsonDocument()).FirstOrDefault();
+        var template = cfg?.Contains("batCommand") == true ? cfg["batCommand"].AsString :
+            "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\" /T \"{typeWork}\" /SP /C {quantity}";
+
+        var cmd = BackendUtils.BuildCommandTemplate(template, filePath, typeWork, quantity);
+        Console.WriteLine($"[INFO] BAT command: {cmd}");
+        var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c {cmd}") { UseShellExecute = true };
+        System.Diagnostics.Process.Start(psi);
+        return Results.Json(new { ok = true, command = cmd });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapPost("/api/commands/send-controller", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var filePath = json.TryGetProperty("filePath", out var fp) ? fp.GetString() ?? "" : "";
+        var col = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
+        var cfg = col.Find(new BsonDocument()).FirstOrDefault();
+        var controllerPath = cfg?.Contains("controllerPath") == true ? cfg["controllerPath"].AsString : @"C:\PrismaSync\Controller";
+        Directory.CreateDirectory(controllerPath);
+        File.Copy(filePath, Path.Combine(controllerPath, Path.GetFileName(filePath)), overwrite: true);
+        var (ok, err) = BackendUtils.MoveFileToDestFolder(filePath, "Impression en cours");
+        return Results.Json(new { ok, error = err });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapPost("/api/commands/send-prisma", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var filePath = json.TryGetProperty("filePath", out var fp) ? fp.GetString() ?? "" : "";
+        var col = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
+        var cfg = col.Find(new BsonDocument()).FirstOrDefault();
+        var template = cfg?.Contains("prismaPrepareCommand") == true ? cfg["prismaPrepareCommand"].AsString :
+            "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\"";
+        var cmd = BackendUtils.BuildCommandTemplate(template, filePath);
+        var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c {cmd}") { UseShellExecute = true };
+        System.Diagnostics.Process.Start(psi);
+        var (ok, err) = BackendUtils.MoveFileToDestFolder(filePath, "PrismaPrepare");
+        return Results.Json(new { ok, error = err });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapPost("/api/commands/send-print", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var filePath = json.TryGetProperty("filePath", out var fp) ? fp.GetString() ?? "" : "";
+        var quantity = json.TryGetProperty("quantity", out var qty) ? qty.GetInt32() : 1;
+        var col = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
+        var cfg = col.Find(new BsonDocument()).FirstOrDefault();
+        var template = cfg?.Contains("printCommand") == true ? cfg["printCommand"].AsString :
+            "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\" /SP /C {quantity}";
+        var cmd = BackendUtils.BuildCommandTemplate(template, filePath, "", quantity);
+        var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c {cmd}") { UseShellExecute = true };
+        System.Diagnostics.Process.Start(psi);
+        var (ok, err) = BackendUtils.MoveFileToDestFolder(filePath, "Impression en cours");
+        return Results.Json(new { ok, error = err });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapPost("/api/commands/modify", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var filePath = json.TryGetProperty("filePath", out var fp) ? fp.GetString() ?? "" : "";
+        var col = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
+        var cfg = col.Find(new BsonDocument()).FirstOrDefault();
+        var template = cfg?.Contains("modifyCommand") == true ? cfg["modifyCommand"].AsString :
+            "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\"";
+        var cmd = BackendUtils.BuildCommandTemplate(template, filePath);
+        var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c {cmd}") { UseShellExecute = true };
+        System.Diagnostics.Process.Start(psi);
+        var (ok, err) = BackendUtils.MoveFileToDestFolder(filePath, "PrismaPrepare");
+        return Results.Json(new { ok, error = err });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapPost("/api/commands/send-fiery", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var filePath = json.TryGetProperty("filePath", out var fp) ? fp.GetString() ?? "" : "";
+        var col = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
+        var cfg = col.Find(new BsonDocument()).FirstOrDefault();
+        var fieryBase = cfg?.Contains("fieryHotfolderBase") == true ? cfg["fieryHotfolderBase"].AsString : @"C:\Fiery\Hotfolders";
+        Directory.CreateDirectory(fieryBase);
+        File.Copy(filePath, Path.Combine(fieryBase, Path.GetFileName(filePath)), overwrite: true);
+        var (ok, err) = BackendUtils.MoveFileToDestFolder(filePath, "Fiery");
+        return Results.Json(new { ok, error = err });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// BAT TRACKING
+// ======================================================
+app.MapGet("/api/bat/status", (HttpContext ctx) =>
+{
+    var path = ctx.Request.Query["path"].ToString();
+    if (string.IsNullOrEmpty(path)) return Results.Json(new { ok = false, error = "path manquant" });
+    var col = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
+    var filter = Builders<BsonDocument>.Filter.Eq("fullPath", path);
+    var doc = col.Find(filter).FirstOrDefault();
+    if (doc == null) return Results.Json(new { status = "none", sentAt = (object?)null, validatedAt = (object?)null, rejectedAt = (object?)null });
+    return Results.Json(new {
+        status = doc.Contains("status") ? doc["status"].AsString : "none",
+        sentAt = doc.Contains("sentAt") && doc["sentAt"] != BsonNull.Value ? doc["sentAt"].ToUniversalTime() : (DateTime?)null,
+        validatedAt = doc.Contains("validatedAt") && doc["validatedAt"] != BsonNull.Value ? doc["validatedAt"].ToUniversalTime() : (DateTime?)null,
+        rejectedAt = doc.Contains("rejectedAt") && doc["rejectedAt"] != BsonNull.Value ? doc["rejectedAt"].ToUniversalTime() : (DateTime?)null
+    });
+});
+
+app.MapPost("/api/bat/send", async (HttpContext ctx) =>
+{
+    var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+    var path = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
+    var col = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
+    var filter = Builders<BsonDocument>.Filter.Eq("fullPath", path);
+    var doc = new BsonDocument { ["fullPath"] = path, ["status"] = "sent", ["sentAt"] = DateTime.UtcNow, ["validatedAt"] = BsonNull.Value, ["rejectedAt"] = BsonNull.Value };
+    col.ReplaceOne(filter, doc, new ReplaceOptions { IsUpsert = true });
+    return Results.Json(new { ok = true });
+});
+
+app.MapPost("/api/bat/validate", async (HttpContext ctx) =>
+{
+    var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+    var path = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
+    var col = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
+    var filter = Builders<BsonDocument>.Filter.Eq("fullPath", path);
+    var update = Builders<BsonDocument>.Update.Set("status", "validated").Set("validatedAt", DateTime.UtcNow);
+    col.UpdateOne(filter, update, new UpdateOptions { IsUpsert = true });
+    return Results.Json(new { ok = true });
+});
+
+app.MapPost("/api/bat/reject", async (HttpContext ctx) =>
+{
+    var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+    var path = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
+    var col = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
+    var filter = Builders<BsonDocument>.Filter.Eq("fullPath", path);
+    var update = Builders<BsonDocument>.Update.Set("status", "rejected").Set("rejectedAt", DateTime.UtcNow);
+    col.UpdateOne(filter, update, new UpdateOptions { IsUpsert = true });
+    return Results.Json(new { ok = true });
+});
+
+// ======================================================
 // RUN
 // ======================================================
 app.Run();
@@ -2720,6 +2968,29 @@ file static class BackendUtils
             AssignedAt   = d.Contains("assignedAt")   ? d["assignedAt"].ToUniversalTime() : DateTime.MinValue,
             AssignedBy   = d.Contains("assignedBy")   ? d["assignedBy"].AsString   : ""
         };
+    }
+
+    public static string BuildCommandTemplate(string template, string filePath, string typeWork = "", int quantity = 1)
+    {
+        return template
+            .Replace("{filePath}", filePath)
+            .Replace("{typeWork}", typeWork)
+            .Replace("{quantity}", quantity.ToString());
+    }
+
+    public static (bool ok, string? error) MoveFileToDestFolder(string filePath, string destFolder)
+    {
+        try
+        {
+            var root = HotfoldersRoot();
+            var destDir = Path.Combine(root, destFolder);
+            Directory.CreateDirectory(destDir);
+            var dst = Path.Combine(destDir, Path.GetFileName(filePath));
+            File.Move(filePath, dst, true);
+            UpdateDeliveryPath(filePath, dst);
+            return (true, null);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
     }
 }
 
