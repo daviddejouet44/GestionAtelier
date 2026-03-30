@@ -349,7 +349,7 @@ async function refreshKanbanColumnReadOnly(folderName, col) {
       if (assignment) {
         const badge = document.createElement("div");
         badge.className = "assignment-badge";
-        badge.textContent = `👤 ${assignment.operatorName}`;
+        badge.textContent = `${assignment.operatorName}`;
         card.appendChild(badge);
       }
 
@@ -436,7 +436,7 @@ async function initSubmissionView() {
         <div class="submission-upload-section">
           <h3>Déposer fichiers</h3>
           <div class="upload-zone" id="uploadZone">
-            <div class="upload-icon">📁</div>
+            <div class="upload-icon">PDF</div>
             <p class="upload-text">Déposez vos fichiers PDF ici</p>
             <p class="upload-subtext">ou cliquez pour parcourir</p>
             <input type="file" id="uploadInput" multiple accept=".pdf" style="display: none;" />
@@ -713,7 +713,7 @@ async function refreshSubmissionView() {
       if ((job.name || "").toLowerCase().endsWith(".pdf")) {
         renderPdfThumbnail(full, preview).catch(() => {});
       } else {
-        preview.innerHTML = '<div class="submission-card-preview-text">📄</div>';
+        preview.innerHTML = '<div class="submission-card-preview-text">PDF</div>';
       }
       card.appendChild(preview);
 
@@ -769,7 +769,7 @@ async function refreshSubmissionView() {
 
       const btnDelete = document.createElement("button");
       btnDelete.className = "btn";
-      btnDelete.textContent = "🗑️";
+      btnDelete.textContent = "Supprimer";
       btnDelete.onclick = () => deleteFile(full);
       actions.appendChild(btnDelete);
 
@@ -900,7 +900,7 @@ async function initDossiersView() {
     <div class="settings-container">
       <h2>Dossiers de production</h2>
       <div style="display: flex; gap: 10px; margin-bottom: 16px;">
-        <button id="dossiers-refresh" class="btn btn-primary">🔄 Rafraîchir</button>
+        <button id="dossiers-refresh" class="btn btn-primary">Rafraîchir</button>
       </div>
       <div id="dossiers-list"><p style="color:#6b7280;">Chargement...</p></div>
     </div>
@@ -1012,7 +1012,7 @@ async function openDossierDetail(dossierId) {
         <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">MOTEUR</label><input id="df-moteur" type="text" value="${fab.moteur||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
         <div style="grid-column:1/-1;"><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">NOTES</label><textarea id="df-notes" rows="2" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">${fab.notes||''}</textarea></div>
       </div>
-      <button id="df-save" class="btn btn-primary" style="margin-bottom:24px;">💾 Enregistrer la fiche</button>
+      <button id="df-save" class="btn btn-primary" style="margin-bottom:24px;">Enregistrer la fiche</button>
 
       <h3 style="font-size:16px;color:#111827;margin-bottom:12px;">Fichiers par étape</h3>
       <div id="df-files" style="margin-bottom:24px;"></div>
@@ -1034,7 +1034,7 @@ async function openDossierDetail(dossierId) {
         const row = document.createElement("div");
         row.style.cssText = "display:flex;align-items:center;gap:12px;padding:10px 14px;background:#f9fafb;border-radius:8px;margin-bottom:8px;";
         row.innerHTML = `
-          <span style="font-size:20px;">📄</span>
+          <span style="font-size:13px;font-weight:700;color:#BC0024;font-family:monospace;">PDF</span>
           <div style="flex:1;">
             <div style="font-size:13px;font-weight:600;color:#111827;">${f.fileName||''}</div>
             <div style="font-size:11px;color:#6b7280;">${f.stage||''} · ${f.addedAt ? new Date(f.addedAt).toLocaleDateString("fr-FR") : ''}</div>
@@ -1131,7 +1131,7 @@ async function initDashboardView() {
     <div class="settings-container">
       <h2>Dashboard — Vue d'ensemble de l'atelier</h2>
       <div style="display: flex; gap: 10px; margin-bottom: 16px;">
-        <button id="dashboard-refresh" class="btn btn-primary">🔄 Rafraîchir</button>
+        <button id="dashboard-refresh" class="btn btn-primary">Rafraîchir</button>
       </div>
       <div id="dashboard-content"><p style="color:#6b7280;">Chargement...</p></div>
     </div>
@@ -1147,7 +1147,7 @@ async function loadDashboardData() {
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
       <div style="background: #fef9c3; border: 1px solid #fbbf24; border-radius: 12px; padding: 30px;">
         <h3 style="margin: 0 0 12px 0; font-size: 20px;">Reporting</h3>
-        <p style="color: #92400e; margin: 0 0 8px 0;">🚧 <strong>À venir</strong></p>
+        <p style="color: #92400e; margin: 0 0 8px 0;">À venir</p>
         <p style="color: #6b7280; margin: 0; font-size: 13px;">
           Cette section contiendra les rapports de production, les temps de traitement,
           les statistiques par opérateur et les analyses de performance.
@@ -1155,7 +1155,7 @@ async function loadDashboardData() {
       </div>
       <div style="background: #fef9c3; border: 1px solid #fbbf24; border-radius: 12px; padding: 30px;">
         <h3 style="margin: 0 0 12px 0; font-size: 20px;">Presses numériques</h3>
-        <p style="color: #92400e; margin: 0 0 8px 0;">🚧 <strong>À venir</strong></p>
+        <p style="color: #92400e; margin: 0 0 8px 0;">À venir</p>
         <p style="color: #6b7280; margin: 0; font-size: 13px;">
           Connexion aux presses numériques pour le suivi en temps réel :
           état des machines, files d'attente, consommation d'encre et alertes.
@@ -1182,8 +1182,8 @@ async function initRecycleView() {
     <div class="settings-container">
       <h2>Corbeille</h2>
       <div style="display: flex; gap: 10px; margin-bottom: 16px;">
-        <button id="recycle-refresh" class="btn btn-primary">🔄 Rafraîchir</button>
-        <button id="recycle-purge" class="btn">🗑️ Purger les anciens fichiers (&gt; 7 jours)</button>
+        <button id="recycle-refresh" class="btn btn-primary">Rafraîchir</button>
+        <button id="recycle-purge" class="btn">Purger les anciens fichiers (&gt; 7 jours)</button>
       </div>
       <div id="recycle-list"></div>
     </div>
@@ -1437,13 +1437,13 @@ async function renderSettingsSchedule(panel) {
       <label>Fin journée</label>
       <input type="time" id="sch-end" value="${cfg.workEnd || '18:00'}" class="settings-input" />
     </div>
-    <button id="sch-save" class="btn btn-primary" style="margin-top: 10px;">💾 Enregistrer les plages</button>
+    <button id="sch-save" class="btn btn-primary" style="margin-top: 10px;">Enregistrer les plages</button>
     <hr style="margin: 20px 0;" />
     <h4>Jours fériés</h4>
     <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
       <input type="date" id="sch-holiday-date" class="settings-input" />
       <button id="sch-add-holiday" class="btn btn-primary">Ajouter</button>
-      <button id="sch-add-french-holidays" class="btn">🇫🇷 Ajouter jours fériés français</button>
+      <button id="sch-add-french-holidays" class="btn">Ajouter jours fériés français</button>
     </div>
     <div id="sch-holidays-list">
       ${holidays.length === 0 ? '<p style="color:#9ca3af;">Aucun jour férié configuré</p>' : holidays.map(h => `
@@ -1592,7 +1592,7 @@ async function renderSettingsPaths(panel) {
       <label>Chemin corbeille</label>
       <input type="text" id="paths-recycle" value="${cfg.recycleBinPath || ''}" class="settings-input" style="width: 100%; max-width: 500px;" placeholder="Ex: C:\\Corbeille" />
     </div>
-    <button id="paths-save" class="btn btn-primary" style="margin-top: 10px;">💾 Enregistrer les chemins</button>
+    <button id="paths-save" class="btn btn-primary" style="margin-top: 10px;">Enregistrer les chemins</button>
   `;
 
   document.getElementById("paths-save").onclick = async () => {
@@ -1630,14 +1630,14 @@ async function renderSettingsIntegrations(panel) {
     </div>
 
     <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 20px; background: #f9fafb;">
-      <h4 style="margin-top: 0; margin-bottom: 12px;">🔥 Fiery</h4>
+      <h4 style="margin-top: 0; margin-bottom: 12px;">Fiery</h4>
       <div class="settings-form-group">
         <label>Chemin vers Fiery</label>
         <input type="text" id="int-fiery" value="${cfg.fieryPath || ''}" class="settings-input" style="width:100%;max-width:500px;" placeholder="Ex: C:\\Fiery\\fiery.exe" />
       </div>
     </div>
 
-    <button id="int-save" class="btn btn-primary">💾 Enregistrer</button>
+    <button id="int-save" class="btn btn-primary">Enregistrer</button>
   `;
 
   document.getElementById("int-save").onclick = async () => {
@@ -1671,7 +1671,7 @@ async function renderSettingsFabricationImports(panel) {
     <div class="settings-form-group"><label>Chemin Média 3 (XML)</label><input type="text" id="fi-media3" value="${cfg.media3Path || ''}" class="settings-input" style="width:100%;max-width:500px;" /></div>
     <div class="settings-form-group"><label>Chemin Média 4 (XML)</label><input type="text" id="fi-media4" value="${cfg.media4Path || ''}" class="settings-input" style="width:100%;max-width:500px;" /></div>
     <div class="settings-form-group"><label>Chemin Type de document</label><input type="text" id="fi-typedoc" value="${cfg.typeDocumentPath || ''}" class="settings-input" style="width:100%;max-width:500px;" /></div>
-    <button id="fi-save" class="btn btn-primary" style="margin-top: 10px;">💾 Enregistrer les chemins</button>
+    <button id="fi-save" class="btn btn-primary" style="margin-top: 10px;">Enregistrer les chemins</button>
   `;
 
   document.getElementById("fi-save").onclick = async () => {
@@ -1892,7 +1892,10 @@ function initNotificationBell() {
     }
   };
 
-  document.addEventListener("click", () => dropdown.classList.add("hidden"));
+  if (!document._notifOutsideHandlerAdded) {
+    document._notifOutsideHandlerAdded = true;
+    document.addEventListener("click", () => dropdown.classList.add("hidden"));
+  }
 }
 
 async function renderSettingsLogs(panel) {
@@ -1900,7 +1903,7 @@ async function renderSettingsLogs(panel) {
     <h3>Journaux d'activité utilisateurs</h3>
     <div style="display: flex; gap: 8px; margin-bottom: 16px; align-items: center;">
       <input type="date" id="logs-date-filter" class="settings-input" />
-      <button id="logs-refresh" class="btn btn-primary">🔄 Rafraîchir</button>
+      <button id="logs-refresh" class="btn btn-primary">Rafraîchir</button>
     </div>
     <div id="logs-table-container"><p style="color:#9ca3af;">Chargement...</p></div>
   `;
@@ -2781,7 +2784,7 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
       if (assignment) {
         const badge = document.createElement("div");
         badge.className = "assignment-badge";
-        badge.textContent = `👤 ${assignment.operatorName}`;
+        badge.textContent = `${assignment.operatorName}`;
         textDiv.appendChild(badge);
       }
 
@@ -2830,7 +2833,7 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
         actions.appendChild(btnOpen);
         const btnAcrobat = document.createElement("button");
         btnAcrobat.className = "btn btn-sm";
-        btnAcrobat.innerHTML = "🔴 Acrobat Pro";
+        btnAcrobat.innerHTML = "Acrobat Pro";
         btnAcrobat.onclick = () => {
           fetch("/api/acrobat/open", {
             method: "POST",
@@ -2849,7 +2852,7 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
         actions.appendChild(btnAssign);
         const btnAcrobatBat = document.createElement("button");
         btnAcrobatBat.className = "btn btn-sm";
-        btnAcrobatBat.innerHTML = "🔴 Acrobat";
+        btnAcrobatBat.innerHTML = "Acrobat";
         btnAcrobatBat.onclick = () => {
           fetch("/api/acrobat/open", {
             method: "POST",
@@ -2918,22 +2921,22 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
             const btnSent = document.createElement("button");
             btnSent.className = "bat-status-badge bat-sent" + (status.sentAt ? " active" : "");
             btnSent.innerHTML = status.sentAt
-              ? `📤 ENVOYÉ ${formatDateTime(status.sentAt)}`
-              : "📤 MARQUER ENVOYÉ";
+              ? `ENVOYÉ ${formatDateTime(status.sentAt)}`
+              : "MARQUER ENVOYÉ";
             btnSent.onclick = (e) => { e.stopPropagation(); fetch("/api/bat/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
 
             const btnValidate = document.createElement("button");
             btnValidate.className = "bat-status-badge bat-validated" + (status.validatedAt ? " active" : "");
             btnValidate.innerHTML = status.validatedAt
-              ? `✅ VALIDÉ ${formatDateTime(status.validatedAt)}`
-              : "✅ VALIDER";
+              ? `VALIDÉ ${formatDateTime(status.validatedAt)}`
+              : "VALIDER";
             btnValidate.onclick = (e) => { e.stopPropagation(); fetch("/api/bat/validate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
 
             const btnReject = document.createElement("button");
             btnReject.className = "bat-status-badge bat-rejected" + (status.rejectedAt ? " active" : "");
             btnReject.innerHTML = status.rejectedAt
-              ? `❌ REFUSÉ ${formatDateTime(status.rejectedAt)}`
-              : "❌ REFUSER";
+              ? `REFUSÉ ${formatDateTime(status.rejectedAt)}`
+              : "REFUSER";
             btnReject.onclick = (e) => { e.stopPropagation(); fetch("/api/bat/reject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
 
             batTracking.appendChild(btnSent);

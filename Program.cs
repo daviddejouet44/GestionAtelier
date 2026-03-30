@@ -2217,7 +2217,8 @@ app.MapDelete("/api/production-folder", async (string path) =>
         var fullPath = Path.GetFullPath(path);
         // Security: ensure path is within production folders root using canonical paths
         var relative = Path.GetRelativePath(prodRoot, fullPath);
-        if (relative.StartsWith("..") || Path.IsPathRooted(relative))
+        if (relative.StartsWith("..") || Path.IsPathRooted(relative) ||
+            !fullPath.StartsWith(prodRoot, StringComparison.OrdinalIgnoreCase))
             return Results.Json(new { ok = false, error = "Chemin non autorisé" });
         if (Directory.Exists(fullPath))
             Directory.Delete(fullPath, true);
