@@ -1697,6 +1697,10 @@ async function renderSettingsPrintEngines(panel) {
   await refreshPrintEnginesPanel(panel);
 }
 
+function extractEngineName(e) {
+  return (typeof e === "object" && e !== null) ? (e.name || "") : String(e || "");
+}
+
 async function refreshPrintEnginesPanel(panel) {
   let engines = [];
   try {
@@ -1709,7 +1713,8 @@ async function refreshPrintEnginesPanel(panel) {
     <p style="color:#6b7280; margin-bottom: 16px;">Gérez la liste des moteurs d'impression disponibles dans la fiche de fabrication.</p>
 
     <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
-      <input type="text" id="pe-new-name" placeholder="Nom du moteur" class="settings-input" style="max-width:250px;" />
+      <input type="text" id="pe-new-name" placeholder="Nom du moteur" class="settings-input" style="max-width:200px;" />
+      <input type="text" id="pe-new-ip" placeholder="IP / URL (optionnel)" class="settings-input" style="max-width:250px;" />
       <button id="pe-add" class="btn btn-primary">Ajouter</button>
       <label style="cursor:pointer; background:#f3f4f6; border:1px solid #e5e7eb; padding:6px 14px; border-radius:6px; font-size:13px;">
         Importer CSV
@@ -1720,26 +1725,30 @@ async function refreshPrintEnginesPanel(panel) {
     <div id="pe-list">
       ${engines.length === 0
         ? '<p style="color:#9ca3af;">Aucun moteur configuré</p>'
-        : engines.map(e => `
+        : engines.map(e => {
+            const name = extractEngineName(e);
+            const safeName = name.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            return `
           <div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: white; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 6px;">
-            <span style="flex: 1; font-size: 13px;">${e}</span>
-            <button class="btn btn-sm pe-delete" data-name="${e}" style="color:#ef4444;border-color:#ef4444;">Supprimer</button>
-          </div>
-        `).join("")
+            <span style="flex: 1; font-size: 13px;">${name}</span>
+            <button class="btn btn-sm pe-delete" data-name="${safeName}" style="color:#ef4444;border-color:#ef4444;">Supprimer</button>
+          </div>`;
+          }).join("")
       }
     </div>
   `;
 
   document.getElementById("pe-add").onclick = async () => {
     const name = document.getElementById("pe-new-name").value.trim();
+    const ip   = document.getElementById("pe-new-ip").value.trim();
     if (!name) { alert("Entrez un nom"); return; }
     const r = await fetch("/api/config/print-engines", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ name })
+      body: JSON.stringify({ name, ip })
     }).then(r => r.json());
     if (r.ok) {
-      showNotification("✅ Moteur ajouté", "success");
+      showNotification("Moteur ajouté", "success");
       panel._loaded = false;
       await refreshPrintEnginesPanel(panel);
     } else { alert("Erreur : " + r.error); }
@@ -1749,16 +1758,26 @@ async function refreshPrintEnginesPanel(panel) {
     const file = e.target.files[0];
     if (!file) return;
     const text = await file.text();
-    // Split by lines, take only the first column (name) from each row — ignore IP or other columns
-    const names = text.split(/[\r\n]+/).map(s => s.split(/[,;]/)[0].trim()).filter(Boolean);
-    if (names.length === 0) { alert("Aucun moteur trouvé dans le fichier"); return; }
+    // Parse CSV with semicolon separator: Presse;IP — skip header row
+    const lines = text.split(/[\r\n]+/).filter(Boolean);
+    const enginesList = [];
+    for (const line of lines) {
+      const parts = line.split(";");
+      const name = (parts[0] || "").trim();
+      const ip   = (parts[1] || "").trim();
+      // Skip header row (e.g. "Presse;IP", "Nom;Adresse", "PRESSE;IP")
+      const knownHeaders = ["presse", "nom", "name", "moteur", "engine"];
+      if (!name || knownHeaders.includes(name.toLowerCase())) continue;
+      enginesList.push({ name, ip });
+    }
+    if (enginesList.length === 0) { alert("Aucun moteur trouvé dans le fichier"); return; }
     const r = await fetch("/api/config/print-engines/import", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ engines: names })
+      body: JSON.stringify({ engines: enginesList })
     }).then(r => r.json());
     if (r.ok) {
-      showNotification(`✅ ${r.count || names.length} moteurs importés`, "success");
+      showNotification(`${r.count || enginesList.length} moteurs importés`, "success");
       panel._loaded = false;
       await refreshPrintEnginesPanel(panel);
     } else { alert("Erreur : " + r.error); }
@@ -1774,7 +1793,7 @@ async function refreshPrintEnginesPanel(panel) {
         headers: { "Authorization": `Bearer ${authToken}` }
       }).then(r => r.json());
       if (r.ok) {
-        showNotification("✅ Moteur supprimé", "success");
+        showNotification("Moteur supprimé", "success");
         panel._loaded = false;
         await refreshPrintEnginesPanel(panel);
       } else { alert("Erreur : " + r.error); }
@@ -1861,33 +1880,35 @@ async function pollNotifications() {
       countEl.classList.toggle("hidden", count === 0);
     }
 
-    // Show pop-up overlay for new unread notifications
+    // Show pop-up only for NEW unread notifications (persisted in localStorage to survive refresh)
     if (Array.isArray(notifs) && notifs.length > 0) {
-      const prevIds = new Set(window._lastNotifIds || []);
-      const newNotifs = notifs.filter(n => !n.read && n.id && !prevIds.has(n.id));
-      newNotifs.forEach(n => showNotificationPopup(n.message || ''));
+      const storageKey = `seenNotifs_${currentUser.login}`;
+      const seenIds = new Set(JSON.parse(localStorage.getItem(storageKey) || "[]"));
+      const newNotifs = notifs.filter(n => !n.read && n.id && !seenIds.has(n.id));
+      if (newNotifs.length > 0) {
+        showNotificationPopup();
+        newNotifs.forEach(n => seenIds.add(n.id));
+        localStorage.setItem(storageKey, JSON.stringify([...seenIds]));
+      }
     }
-    window._lastNotifIds = Array.isArray(notifs) ? notifs.filter(n => n.id).map(n => n.id) : [];
     window._lastNotifs = notifs;
   } catch(e) { console.error("Notification poll error:", e); }
 }
 
-function showNotificationPopup(message) {
+function showNotificationPopup() {
   // Remove any existing notification popup
   const existingPopup = document.getElementById("notif-popup-overlay");
   if (existingPopup) existingPopup.remove();
 
   const overlay = document.createElement("div");
   overlay.id = "notif-popup-overlay";
-  overlay.style.cssText = "position:fixed;top:0;left:0;inset:0;background:rgba(0,0,0,0.35);z-index:10000;display:flex;align-items:center;justify-content:center;";
+  overlay.className = "notification-popup-overlay";
 
   const box = document.createElement("div");
-  box.style.cssText = "background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.3);padding:32px 40px;max-width:420px;width:90%;text-align:center;position:relative;";
+  box.className = "notification-popup";
   box.innerHTML = `
-    <div style="font-size:36px;margin-bottom:12px;">🔔</div>
-    <h3 style="font-size:17px;font-weight:700;color:#1d1d1f;margin:0 0 12px;">Nouvelle notification</h3>
-    <p style="font-size:14px;color:#3c3c43;margin:0 0 20px;line-height:1.5;">${message}</p>
-    <button id="notif-popup-ok" style="background:#0071e3;color:#fff;border:none;border-radius:8px;padding:10px 28px;font-size:14px;font-weight:600;cursor:pointer;">OK</button>
+    <p>Une tâche vous a été affectée.</p>
+    <button id="notif-popup-ok">OK</button>
   `;
   overlay.appendChild(box);
   document.body.appendChild(overlay);
@@ -1896,7 +1917,7 @@ function showNotificationPopup(message) {
   const dismiss = () => { overlay.remove(); if (timer) clearTimeout(timer); };
   document.getElementById("notif-popup-ok").onclick = dismiss;
   overlay.onclick = (e) => { if (e.target === overlay) dismiss(); };
-  timer = setTimeout(dismiss, 10000);
+  timer = setTimeout(dismiss, 5000);
 }
 
 function initNotificationBell() {
@@ -2166,9 +2187,10 @@ async function openFabrication(fullPath) {
     const engines = await fetch("/api/config/print-engines").then(r => r.json()).catch(() => []);
     fabMoteur.innerHTML = '<option value="">— Sélectionner —</option>';
     engines.forEach(e => {
+      const name = extractEngineName(e);
       const opt = document.createElement("option");
-      opt.value = e;
-      opt.textContent = e;
+      opt.value = name;
+      opt.textContent = name;
       fabMoteur.appendChild(opt);
     });
   } catch(err) { console.warn("Erreur print-engines:", err); }
@@ -2649,6 +2671,9 @@ async function refreshKanban() {
     await refreshKanbanColumnOperator(col.dataset.folder, q, sort, col);
   }
   await updateKanbanSummary();
+
+  // Trigger automatic cleanup of source files in Corrections folders
+  fetch("/api/jobs/cleanup-corrections", { method: "POST" }).catch(() => {});
 }
 
 async function updateKanbanSummary() {
