@@ -19,6 +19,12 @@ function formatDateTime(iso) {
   return d.toLocaleDateString("fr-FR") + " " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 }
 
+// Luminosity check for contrast
+function isLight(hex) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return (r*299 + g*587 + b*114) / 1000 > 128;
+}
+
 // ======================================================
 // AUTHENTIFICATION
 // ======================================================
@@ -208,15 +214,15 @@ function showProduction() {
 
   const folderConfig = [
     { folder: "Début de production", label: "Début de production", color: "#5fa8c4" },
-    { folder: "Corrections", label: "Corrections", color: "#e88b3d" },
-    { folder: "Corrections et fond perdu", label: "Corrections et fond perdu", color: "#e88b3d" },
-    { folder: "Rapport", label: "Rapport", color: "#8b5cf6" },
-    { folder: "Prêt pour impression", label: "Prêt pour impression", color: "#10b981" },
-    { folder: "BAT", label: "BAT", color: "#3b82f6" },
-    { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#6b7e89" },
-    { folder: "Fiery", label: "Fiery", color: "#6b7e89" },
-    { folder: "Impression en cours", label: "Impression en cours", color: "#f59e0b" },
-    { folder: "Façonnage", label: "Façonnage", color: "#6b7e89" },
+    { folder: "Corrections", label: "Corrections", color: "#e0e0e0" },
+    { folder: "Corrections et fond perdu", label: "Corrections et fond perdu", color: "#e0e0e0" },
+    { folder: "Rapport", label: "Rapport", color: "#cccccc" },
+    { folder: "Prêt pour impression", label: "Prêt pour impression", color: "#b8b8b8" },
+    { folder: "BAT", label: "BAT", color: "#a3a3a3" },
+    { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#8f8f8f" },
+    { folder: "Fiery", label: "Fiery", color: "#8f8f8f" },
+    { folder: "Impression en cours", label: "Impression en cours", color: "#7a7a7a" },
+    { folder: "Façonnage", label: "Façonnage", color: "#666666" },
     { folder: "Fin de production", label: "Fin de production", color: "#22c55e" }
   ];
 
@@ -227,6 +233,7 @@ function showProduction() {
     const title = document.createElement("div");
     title.className = "kanban-col-operator__title";
     title.style.background = `linear-gradient(135deg, ${cfg.color} 0%, ${darkenColor(cfg.color, 15)} 100%)`;
+    title.style.color = isLight(cfg.color) ? '#1D1D1F' : '#FFFFFF';
     title.textContent = cfg.label;
     const counter = document.createElement("span");
     counter.className = "kanban-col-counter";
@@ -258,15 +265,15 @@ async function refreshProductionViewKanban() {
 async function buildProductionKanban(container) {
   const folderConfig = [
     { folder: "Début de production", label: "Début de production", color: "#5fa8c4" },
-    { folder: "Corrections", label: "Corrections", color: "#e88b3d" },
-    { folder: "Corrections et fond perdu", label: "Corrections et fond perdu", color: "#e88b3d" },
-    { folder: "Rapport", label: "Rapport", color: "#8b5cf6" },
-    { folder: "Prêt pour impression", label: "Prêt pour impression", color: "#10b981" },
-    { folder: "BAT", label: "BAT", color: "#3b82f6" },
-    { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#6b7e89" },
-    { folder: "Fiery", label: "Fiery", color: "#6b7e89" },
-    { folder: "Impression en cours", label: "Impression en cours", color: "#f59e0b" },
-    { folder: "Façonnage", label: "Façonnage", color: "#6b7e89" },
+    { folder: "Corrections", label: "Corrections", color: "#e0e0e0" },
+    { folder: "Corrections et fond perdu", label: "Corrections et fond perdu", color: "#e0e0e0" },
+    { folder: "Rapport", label: "Rapport", color: "#cccccc" },
+    { folder: "Prêt pour impression", label: "Prêt pour impression", color: "#b8b8b8" },
+    { folder: "BAT", label: "BAT", color: "#a3a3a3" },
+    { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#8f8f8f" },
+    { folder: "Fiery", label: "Fiery", color: "#8f8f8f" },
+    { folder: "Impression en cours", label: "Impression en cours", color: "#7a7a7a" },
+    { folder: "Façonnage", label: "Façonnage", color: "#666666" },
     { folder: "Fin de production", label: "Fin de production", color: "#22c55e" }
   ];
 
@@ -279,6 +286,7 @@ async function buildProductionKanban(container) {
     const title = document.createElement("div");
     title.className = "kanban-col-operator__title";
     title.style.background = `linear-gradient(135deg, ${cfg.color} 0%, ${darkenColor(cfg.color, 15)} 100%)`;
+    title.style.color = isLight(cfg.color) ? '#1D1D1F' : '#FFFFFF';
     title.textContent = cfg.label;
     col.appendChild(title);
 
@@ -341,7 +349,7 @@ async function refreshKanbanColumnReadOnly(folderName, col) {
       if (assignment) {
         const badge = document.createElement("div");
         badge.className = "assignment-badge";
-        badge.textContent = `👤 ${assignment.operatorName}`;
+        badge.textContent = `${assignment.operatorName}`;
         card.appendChild(badge);
       }
 
@@ -426,9 +434,9 @@ async function initSubmissionView() {
         
         <!-- GAUCHE : DRAG & DROP -->
         <div class="submission-upload-section">
-          <h3>📤 Déposer fichiers</h3>
+          <h3>Déposer fichiers</h3>
           <div class="upload-zone" id="uploadZone">
-            <div class="upload-icon">📁</div>
+            <div class="upload-icon">PDF</div>
             <p class="upload-text">Déposez vos fichiers PDF ici</p>
             <p class="upload-subtext">ou cliquez pour parcourir</p>
             <input type="file" id="uploadInput" multiple accept=".pdf" style="display: none;" />
@@ -442,7 +450,7 @@ async function initSubmissionView() {
         <!-- DROITE : FICHIERS SOUMIS -->
         <div class="submission-files-section">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h3 style="margin: 0;">📋 Fichiers soumis</h3>
+            <h3 style="margin: 0;">Fichiers soumis</h3>
             <div style="display: flex; gap: 8px;">
               <button id="btnSelectAll" class="btn btn-sm">Sélectionner tout</button>
               <button id="btnSendAnalysis" class="btn btn-primary btn-sm">Envoyer en production</button>
@@ -455,7 +463,7 @@ async function initSubmissionView() {
 
       <!-- CALENDRIER EN BAS (100% width) -->
       <div class="submission-section">
-        <h3>📅 Planning de livraison</h3>
+        <h3>Planning de livraison</h3>
         <div id="submissionCalendar" class="submission-calendar"></div>
       </div>
 
@@ -634,7 +642,7 @@ async function handleSubmissionFiles(files) {
       continue;
     }
 
-    uploadStatus.textContent = `📤 Envoi ${file.name}...`;
+    uploadStatus.textContent = `Envoi ${file.name}...`;
 
     try {
       const formData = new FormData();
@@ -681,7 +689,7 @@ async function refreshSubmissionView() {
 
     submissionKanban.innerHTML = "";
     if (jobs.length === 0) {
-      submissionKanban.innerHTML = `<div style="text-align: center; padding: 40px; color: #9ca3af;"><p>📭 Aucun fichier</p></div>`;
+      submissionKanban.innerHTML = `<div style="text-align: center; padding: 40px; color: #9ca3af;"><p>Aucun fichier</p></div>`;
       return;
     }
 
@@ -705,7 +713,7 @@ async function refreshSubmissionView() {
       if ((job.name || "").toLowerCase().endsWith(".pdf")) {
         renderPdfThumbnail(full, preview).catch(() => {});
       } else {
-        preview.innerHTML = '<div class="submission-card-preview-text">📄</div>';
+        preview.innerHTML = '<div class="submission-card-preview-text">PDF</div>';
       }
       card.appendChild(preview);
 
@@ -761,7 +769,7 @@ async function refreshSubmissionView() {
 
       const btnDelete = document.createElement("button");
       btnDelete.className = "btn";
-      btnDelete.textContent = "🗑️";
+      btnDelete.textContent = "Supprimer";
       btnDelete.onclick = () => deleteFile(full);
       actions.appendChild(btnDelete);
 
@@ -890,9 +898,9 @@ async function initDossiersView() {
   const el = document.getElementById("dossiers");
   el.innerHTML = `
     <div class="settings-container">
-      <h2>📁 Dossiers de production</h2>
+      <h2>Dossiers de production</h2>
       <div style="display: flex; gap: 10px; margin-bottom: 16px;">
-        <button id="dossiers-refresh" class="btn btn-primary">🔄 Rafraîchir</button>
+        <button id="dossiers-refresh" class="btn btn-primary">Rafraîchir</button>
       </div>
       <div id="dossiers-list"><p style="color:#6b7280;">Chargement...</p></div>
     </div>
@@ -910,7 +918,7 @@ async function loadDossiersList() {
     }).then(r => r.json()).catch(() => []);
 
     if (!Array.isArray(folders) || folders.length === 0) {
-      listEl.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:40px;">📭 Aucun dossier de production</p>';
+      listEl.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:40px;">Aucun dossier de production</p>';
       return;
     }
 
@@ -919,15 +927,16 @@ async function loadDossiersList() {
     grid.style.cssText = "display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;";
 
     folders.forEach(folder => {
+      const folderName = `${String(folder.number || 0).padStart(3, '0')}_${folder.fileName || ''}`;
       const card = document.createElement("div");
+      card.className = "dossier-card";
       card.style.cssText = "background: white; border: 1px solid #e5e7eb; border-radius: 16px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); cursor: pointer; transition: all 0.2s;";
       card.onmouseenter = () => { card.style.boxShadow = "0 4px 20px rgba(0,0,0,0.15)"; card.style.transform = "translateY(-2px)"; };
       card.onmouseleave = () => { card.style.boxShadow = "0 2px 12px rgba(0,0,0,0.08)"; card.style.transform = ""; };
       card.innerHTML = `
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
-          <span style="font-size:32px;">📁</span>
-          <div>
-            <div style="font-weight:700;font-size:15px;color:#111827;">${String(folder.number || 0).padStart(3, '0')}_${folder.fileName || ''}</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;min-width:0;">
+          <div style="min-width:0;flex:1;">
+            <div class="dossier-card-name" title="${folderName}" style="font-weight:700;font-size:15px;color:#111827;">${folderName}</div>
             <div style="font-size:12px;color:#6b7280;margin-top:2px;">${folder.createdAt ? new Date(folder.createdAt).toLocaleDateString("fr-FR") : ''}</div>
           </div>
         </div>
@@ -936,7 +945,21 @@ async function loadDossiersList() {
           <span style="color:#6b7280;font-size:12px;">${folder.files ? folder.files.length : 0} fichier(s)</span>
         </div>
       `;
-      card.onclick = () => openDossierDetail(folder._id || folder.id);
+      card.onclick = (e) => { if (e.target.closest(".btn-danger")) return; openDossierDetail(folder._id || folder.id); };
+
+      const btnDelete = document.createElement("button");
+      btnDelete.className = "btn btn-danger btn-sm";
+      btnDelete.textContent = "Supprimer";
+      btnDelete.style.cssText = "margin-top:12px;width:100%;";
+      btnDelete.onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm(`Supprimer le dossier "${folderName}" et tous ses fichiers ?`)) return;
+        const r = await fetch(`/api/production-folder?path=${encodeURIComponent(folder.path || folder.folderPath || "")}`, { method: "DELETE" }).then(r=>r.json()).catch(()=>({ok:false,error:"Erreur réseau"}));
+        if (r.ok) { showNotification("Dossier supprimé", "success"); loadDossiersList(); }
+        else showNotification("Erreur: " + (r.error || ""), "error");
+      };
+      card.appendChild(btnDelete);
+
       grid.appendChild(card);
     });
 
@@ -966,7 +989,7 @@ async function openDossierDetail(dossierId) {
     const fab = folder.fabricationSheet || {};
     modal.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
-        <h2 style="margin:0;font-size:22px;color:#111827;">📁 Dossier ${String(folder.number||0).padStart(3,'0')} — ${folder.fileName||''}</h2>
+        <h2 style="margin:0;font-size:22px;color:#111827;">Dossier ${String(folder.number||0).padStart(3,'0')} — ${folder.fileName||''}</h2>
         <button id="dossier-close" style="background:none;border:none;font-size:24px;cursor:pointer;color:#6b7280;">✕</button>
       </div>
 
@@ -979,7 +1002,7 @@ async function openDossierDetail(dossierId) {
         </div>
       </div>
 
-      <h3 style="font-size:16px;color:#111827;margin-bottom:12px;">📋 Fiche de fabrication</h3>
+      <h3 style="font-size:16px;color:#111827;margin-bottom:12px;">Fiche de fabrication</h3>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;">
         <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">DÉLAI</label><input id="df-delai" type="date" value="${fab.delai||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
         <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">CLIENT</label><input id="df-client" type="text" value="${fab.client||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
@@ -989,12 +1012,12 @@ async function openDossierDetail(dossierId) {
         <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">MOTEUR</label><input id="df-moteur" type="text" value="${fab.moteur||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
         <div style="grid-column:1/-1;"><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">NOTES</label><textarea id="df-notes" rows="2" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">${fab.notes||''}</textarea></div>
       </div>
-      <button id="df-save" class="btn btn-primary" style="margin-bottom:24px;">💾 Enregistrer la fiche</button>
+      <button id="df-save" class="btn btn-primary" style="margin-bottom:24px;">Enregistrer la fiche</button>
 
-      <h3 style="font-size:16px;color:#111827;margin-bottom:12px;">📂 Fichiers par étape</h3>
+      <h3 style="font-size:16px;color:#111827;margin-bottom:12px;">Fichiers par étape</h3>
       <div id="df-files" style="margin-bottom:24px;"></div>
 
-      <h3 style="font-size:16px;color:#111827;margin-bottom:12px;">📎 Ajouter un fichier</h3>
+      <h3 style="font-size:16px;color:#111827;margin-bottom:12px;">Ajouter un fichier</h3>
       <div style="border:2px dashed #e5e7eb;border-radius:12px;padding:20px;text-align:center;cursor:pointer;" id="df-upload-zone">
         <p style="color:#6b7280;margin:0;">Cliquez ou déposez un fichier (PDF, Excel, Word, PSD, InDesign...)</p>
         <input type="file" id="df-upload-input" style="display:none;" multiple />
@@ -1011,7 +1034,7 @@ async function openDossierDetail(dossierId) {
         const row = document.createElement("div");
         row.style.cssText = "display:flex;align-items:center;gap:12px;padding:10px 14px;background:#f9fafb;border-radius:8px;margin-bottom:8px;";
         row.innerHTML = `
-          <span style="font-size:20px;">📄</span>
+          <span style="font-size:13px;font-weight:700;color:#BC0024;font-family:monospace;">PDF</span>
           <div style="flex:1;">
             <div style="font-size:13px;font-weight:600;color:#111827;">${f.fileName||''}</div>
             <div style="font-size:11px;color:#6b7280;">${f.stage||''} · ${f.addedAt ? new Date(f.addedAt).toLocaleDateString("fr-FR") : ''}</div>
@@ -1106,9 +1129,9 @@ async function initDashboardView() {
   const dashEl = document.getElementById("dashboard");
   dashEl.innerHTML = `
     <div class="settings-container">
-      <h2>📊 Dashboard — Vue d'ensemble de l'atelier</h2>
+      <h2>Dashboard — Vue d'ensemble de l'atelier</h2>
       <div style="display: flex; gap: 10px; margin-bottom: 16px;">
-        <button id="dashboard-refresh" class="btn btn-primary">🔄 Rafraîchir</button>
+        <button id="dashboard-refresh" class="btn btn-primary">Rafraîchir</button>
       </div>
       <div id="dashboard-content"><p style="color:#6b7280;">Chargement...</p></div>
     </div>
@@ -1123,16 +1146,16 @@ async function loadDashboardData() {
   contentEl.innerHTML = `
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
       <div style="background: #fef9c3; border: 1px solid #fbbf24; border-radius: 12px; padding: 30px;">
-        <h3 style="margin: 0 0 12px 0; font-size: 20px;">📊 Reporting</h3>
-        <p style="color: #92400e; margin: 0 0 8px 0;">🚧 <strong>À venir</strong></p>
+        <h3 style="margin: 0 0 12px 0; font-size: 20px;">Reporting</h3>
+        <p style="color: #92400e; margin: 0 0 8px 0;">À venir</p>
         <p style="color: #6b7280; margin: 0; font-size: 13px;">
           Cette section contiendra les rapports de production, les temps de traitement,
           les statistiques par opérateur et les analyses de performance.
         </p>
       </div>
       <div style="background: #fef9c3; border: 1px solid #fbbf24; border-radius: 12px; padding: 30px;">
-        <h3 style="margin: 0 0 12px 0; font-size: 20px;">🖨️ Presses numériques</h3>
-        <p style="color: #92400e; margin: 0 0 8px 0;">🚧 <strong>À venir</strong></p>
+        <h3 style="margin: 0 0 12px 0; font-size: 20px;">Presses numériques</h3>
+        <p style="color: #92400e; margin: 0 0 8px 0;">À venir</p>
         <p style="color: #6b7280; margin: 0; font-size: 13px;">
           Connexion aux presses numériques pour le suivi en temps réel :
           état des machines, files d'attente, consommation d'encre et alertes.
@@ -1157,10 +1180,10 @@ async function initRecycleView() {
   const recycleEl = document.getElementById("recycle");
   recycleEl.innerHTML = `
     <div class="settings-container">
-      <h2>🗂️ Corbeille</h2>
+      <h2>Corbeille</h2>
       <div style="display: flex; gap: 10px; margin-bottom: 16px;">
-        <button id="recycle-refresh" class="btn btn-primary">🔄 Rafraîchir</button>
-        <button id="recycle-purge" class="btn">🗑️ Purger les anciens fichiers (&gt; 7 jours)</button>
+        <button id="recycle-refresh" class="btn btn-primary">Rafraîchir</button>
+        <button id="recycle-purge" class="btn">Purger les anciens fichiers (&gt; 7 jours)</button>
       </div>
       <div id="recycle-list"></div>
     </div>
@@ -1188,7 +1211,7 @@ async function loadRecycleList() {
     const files = Array.isArray(resp) ? resp : [];
 
     if (files.length === 0) {
-      listEl.innerHTML = '<p style="color:var(--text-tertiary);text-align:center;padding:20px;">📭 La corbeille est vide</p>';
+      listEl.innerHTML = '<p style="color:var(--text-tertiary);text-align:center;padding:20px;">La corbeille est vide</p>';
       return;
     }
 
@@ -1254,15 +1277,17 @@ async function initSettingsView() {
   const settingsEl = document.getElementById("settings-view");
   settingsEl.innerHTML = `
     <div class="settings-container">
-      <h2>⚙️ Paramétrage</h2>
+      <h2>Paramétrage</h2>
       <div class="settings-tabs">
-        <button class="settings-tab active" data-tab="accounts">👥 Comptes &amp; Rôles</button>
-        <button class="settings-tab" data-tab="schedule">📅 Plages horaires</button>
-        <button class="settings-tab" data-tab="paths">📁 Chemins d'accès</button>
-        <button class="settings-tab" data-tab="integrations">🔌 Prepare / Fiery</button>
-        <button class="settings-tab" data-tab="print-engines">🖨️ Moteurs d'impression</button>
-        <button class="settings-tab" data-tab="fabrication-imports">📄 Imports fiche</button>
-        <button class="settings-tab" data-tab="logs">📋 Logs</button>
+        <button class="settings-tab active" data-tab="accounts">Comptes &amp; Rôles</button>
+        <button class="settings-tab" data-tab="schedule">Plages horaires</button>
+        <button class="settings-tab" data-tab="paths">Chemins d'accès</button>
+        <button class="settings-tab" data-tab="integrations">Prepare / Fiery</button>
+        <button class="settings-tab" data-tab="print-engines">Moteurs d'impression</button>
+        <button class="settings-tab" data-tab="fabrication-imports">Imports fiche</button>
+        <button class="settings-tab" data-tab="bat-command">Commande BAT</button>
+        <button class="settings-tab" data-tab="action-buttons">Boutons d'action</button>
+        <button class="settings-tab" data-tab="logs">Logs</button>
       </div>
       <div class="settings-panel" id="settings-panel-accounts"></div>
       <div class="settings-panel hidden" id="settings-panel-schedule"></div>
@@ -1270,6 +1295,8 @@ async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-integrations"></div>
       <div class="settings-panel hidden" id="settings-panel-print-engines"></div>
       <div class="settings-panel hidden" id="settings-panel-fabrication-imports"></div>
+      <div class="settings-panel hidden" id="settings-panel-bat-command"></div>
+      <div class="settings-panel hidden" id="settings-panel-action-buttons"></div>
       <div class="settings-panel hidden" id="settings-panel-logs"></div>
     </div>
   `;
@@ -1300,6 +1327,8 @@ async function loadSettingsPanel(tabName, panelEl) {
     case "integrations": await renderSettingsIntegrations(panelEl); break;
     case "print-engines": await renderSettingsPrintEngines(panelEl); break;
     case "fabrication-imports": await renderSettingsFabricationImports(panelEl); break;
+    case "bat-command": await renderSettingsBatCommand(panelEl); break;
+    case "action-buttons": await renderSettingsActionButtons(panelEl); break;
     case "logs": await renderSettingsLogs(panelEl); break;
   }
   panelEl._loaded = true;
@@ -1307,7 +1336,7 @@ async function loadSettingsPanel(tabName, panelEl) {
 
 async function renderSettingsAccounts(panel) {
   panel.innerHTML = `
-    <h3>👥 Gestion des comptes et des rôles</h3>
+    <h3>Gestion des comptes et des rôles</h3>
     <div class="accounts-new-user" style="margin-bottom: 20px;">
       <h4>Créer un nouveau compte</h4>
       <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
@@ -1387,7 +1416,7 @@ async function refreshSettingsUsersList() {
 }
 
 async function renderSettingsSchedule(panel) {
-  panel.innerHTML = `<h3>📅 Plages horaires et jours fériés</h3><p style="color:#6b7280;">Chargement...</p>`;
+  panel.innerHTML = `<h3>Plages horaires et jours fériés</h3><p style="color:#6b7280;">Chargement...</p>`;
   let cfg = { workStart: "08:00", workEnd: "18:00", holidays: [] };
   try {
     const resp = await fetch("/api/config/schedule", {
@@ -1399,7 +1428,7 @@ async function renderSettingsSchedule(panel) {
   const holidays = Array.isArray(cfg.holidays) ? cfg.holidays : [];
 
   panel.innerHTML = `
-    <h3>📅 Plages horaires et jours fériés</h3>
+    <h3>Plages horaires et jours fériés</h3>
     <div class="settings-form-group">
       <label>Début journée</label>
       <input type="time" id="sch-start" value="${cfg.workStart || '08:00'}" class="settings-input" />
@@ -1408,13 +1437,13 @@ async function renderSettingsSchedule(panel) {
       <label>Fin journée</label>
       <input type="time" id="sch-end" value="${cfg.workEnd || '18:00'}" class="settings-input" />
     </div>
-    <button id="sch-save" class="btn btn-primary" style="margin-top: 10px;">💾 Enregistrer les plages</button>
+    <button id="sch-save" class="btn btn-primary" style="margin-top: 10px;">Enregistrer les plages</button>
     <hr style="margin: 20px 0;" />
     <h4>Jours fériés</h4>
     <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
       <input type="date" id="sch-holiday-date" class="settings-input" />
       <button id="sch-add-holiday" class="btn btn-primary">Ajouter</button>
-      <button id="sch-add-french-holidays" class="btn">🇫🇷 Ajouter jours fériés français</button>
+      <button id="sch-add-french-holidays" class="btn">Ajouter jours fériés français</button>
     </div>
     <div id="sch-holidays-list">
       ${holidays.length === 0 ? '<p style="color:#9ca3af;">Aucun jour férié configuré</p>' : holidays.map(h => `
@@ -1544,7 +1573,7 @@ function getFrenchPublicHolidays(year) {
 }
 
 async function renderSettingsPaths(panel) {
-  panel.innerHTML = `<h3>📁 Chemins d'accès aux dossiers</h3><p style="color:#6b7280;">Chargement...</p>`;
+  panel.innerHTML = `<h3>Chemins d'accès aux dossiers</h3><p style="color:#6b7280;">Chargement...</p>`;
   let cfg = { hotfoldersRoot: "C:\\Flux", recycleBinPath: "" };
   try {
     const resp = await fetch("/api/config/paths", {
@@ -1554,7 +1583,7 @@ async function renderSettingsPaths(panel) {
   } catch(e) { /* use defaults */ }
 
   panel.innerHTML = `
-    <h3>📁 Chemins d'accès aux dossiers</h3>
+    <h3>Chemins d'accès aux dossiers</h3>
     <div class="settings-form-group">
       <label>Racine des hotfolders (GA_HOTFOLDERS_ROOT)</label>
       <input type="text" id="paths-hotfolders" value="${cfg.hotfoldersRoot || 'C:\\\\Flux'}" class="settings-input" style="width: 100%; max-width: 500px;" />
@@ -1563,7 +1592,7 @@ async function renderSettingsPaths(panel) {
       <label>Chemin corbeille</label>
       <input type="text" id="paths-recycle" value="${cfg.recycleBinPath || ''}" class="settings-input" style="width: 100%; max-width: 500px;" placeholder="Ex: C:\\Corbeille" />
     </div>
-    <button id="paths-save" class="btn btn-primary" style="margin-top: 10px;">💾 Enregistrer les chemins</button>
+    <button id="paths-save" class="btn btn-primary" style="margin-top: 10px;">Enregistrer les chemins</button>
   `;
 
   document.getElementById("paths-save").onclick = async () => {
@@ -1580,7 +1609,7 @@ async function renderSettingsPaths(panel) {
 }
 
 async function renderSettingsIntegrations(panel) {
-  panel.innerHTML = `<h3>🔌 Prepare / Fiery — Chemins d'accès</h3><p style="color:#6b7280;">Chargement...</p>`;
+  panel.innerHTML = `<h3>Prepare / Fiery — Chemins d'accès</h3><p style="color:#6b7280;">Chargement...</p>`;
   let cfg = { preparePath: "", fieryPath: "" };
   try {
     const resp = await fetch("/api/config/integrations", {
@@ -1590,10 +1619,10 @@ async function renderSettingsIntegrations(panel) {
   } catch(e) { /* use defaults */ }
 
   panel.innerHTML = `
-    <h3>🔌 Prepare / Fiery — Chemins d'accès</h3>
+    <h3>Prepare / Fiery — Chemins d'accès</h3>
 
     <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 20px; background: #f9fafb;">
-      <h4 style="margin-top: 0; margin-bottom: 12px;">🖨️ Prepare</h4>
+      <h4 style="margin-top: 0; margin-bottom: 12px;">Prepare</h4>
       <div class="settings-form-group">
         <label>Chemin vers Prepare</label>
         <input type="text" id="int-prepare" value="${cfg.preparePath || ''}" class="settings-input" style="width:100%;max-width:500px;" placeholder="Ex: C:\\Prepare\\prepare.exe" />
@@ -1601,14 +1630,14 @@ async function renderSettingsIntegrations(panel) {
     </div>
 
     <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 20px; background: #f9fafb;">
-      <h4 style="margin-top: 0; margin-bottom: 12px;">🔥 Fiery</h4>
+      <h4 style="margin-top: 0; margin-bottom: 12px;">Fiery</h4>
       <div class="settings-form-group">
         <label>Chemin vers Fiery</label>
         <input type="text" id="int-fiery" value="${cfg.fieryPath || ''}" class="settings-input" style="width:100%;max-width:500px;" placeholder="Ex: C:\\Fiery\\fiery.exe" />
       </div>
     </div>
 
-    <button id="int-save" class="btn btn-primary">💾 Enregistrer</button>
+    <button id="int-save" class="btn btn-primary">Enregistrer</button>
   `;
 
   document.getElementById("int-save").onclick = async () => {
@@ -1625,7 +1654,7 @@ async function renderSettingsIntegrations(panel) {
 }
 
 async function renderSettingsFabricationImports(panel) {
-  panel.innerHTML = `<h3>📄 Gestion des imports — Fiche de fabrication</h3><p style="color:#6b7280;">Chargement...</p>`;
+  panel.innerHTML = `<h3>Gestion des imports — Fiche de fabrication</h3><p style="color:#6b7280;">Chargement...</p>`;
   let cfg = { media1Path: "", media2Path: "", media3Path: "", media4Path: "", typeDocumentPath: "" };
   try {
     const resp = await fetch("/api/config/fabrication-imports", {
@@ -1635,14 +1664,14 @@ async function renderSettingsFabricationImports(panel) {
   } catch(e) { /* use defaults */ }
 
   panel.innerHTML = `
-    <h3>📄 Gestion des imports — Fiche de fabrication</h3>
+    <h3>Gestion des imports — Fiche de fabrication</h3>
     <p style="color:#6b7280; margin-bottom: 16px;">Configurez les chemins vers les fichiers XML utilisés pour les imports automatiques dans la fiche de fabrication.</p>
     <div class="settings-form-group"><label>Chemin Média 1 (XML)</label><input type="text" id="fi-media1" value="${cfg.media1Path || ''}" class="settings-input" style="width:100%;max-width:500px;" placeholder="Ex: C:\\Flux\\media1.xml" /></div>
     <div class="settings-form-group"><label>Chemin Média 2 (XML)</label><input type="text" id="fi-media2" value="${cfg.media2Path || ''}" class="settings-input" style="width:100%;max-width:500px;" /></div>
     <div class="settings-form-group"><label>Chemin Média 3 (XML)</label><input type="text" id="fi-media3" value="${cfg.media3Path || ''}" class="settings-input" style="width:100%;max-width:500px;" /></div>
     <div class="settings-form-group"><label>Chemin Média 4 (XML)</label><input type="text" id="fi-media4" value="${cfg.media4Path || ''}" class="settings-input" style="width:100%;max-width:500px;" /></div>
     <div class="settings-form-group"><label>Chemin Type de document</label><input type="text" id="fi-typedoc" value="${cfg.typeDocumentPath || ''}" class="settings-input" style="width:100%;max-width:500px;" /></div>
-    <button id="fi-save" class="btn btn-primary" style="margin-top: 10px;">💾 Enregistrer les chemins</button>
+    <button id="fi-save" class="btn btn-primary" style="margin-top: 10px;">Enregistrer les chemins</button>
   `;
 
   document.getElementById("fi-save").onclick = async () => {
@@ -1663,7 +1692,7 @@ async function renderSettingsFabricationImports(panel) {
 }
 
 async function renderSettingsPrintEngines(panel) {
-  panel.innerHTML = `<h3>🖨️ Moteurs d'impression</h3><p style="color:#6b7280;">Chargement...</p>`;
+  panel.innerHTML = `<h3>Moteurs d'impression</h3><p style="color:#6b7280;">Chargement...</p>`;
   await refreshPrintEnginesPanel(panel);
 }
 
@@ -1675,14 +1704,14 @@ async function refreshPrintEnginesPanel(panel) {
   } catch(e) { /* use empty */ }
 
   panel.innerHTML = `
-    <h3>🖨️ Moteurs d'impression</h3>
+    <h3>Moteurs d'impression</h3>
     <p style="color:#6b7280; margin-bottom: 16px;">Gérez la liste des moteurs d'impression disponibles dans la fiche de fabrication.</p>
 
     <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
       <input type="text" id="pe-new-name" placeholder="Nom du moteur" class="settings-input" style="max-width:250px;" />
       <button id="pe-add" class="btn btn-primary">Ajouter</button>
       <label style="cursor:pointer; background:#f3f4f6; border:1px solid #e5e7eb; padding:6px 14px; border-radius:6px; font-size:13px;">
-        📁 Importer CSV
+        Importer CSV
         <input type="file" id="pe-csv-input" accept=".csv,.txt" style="display:none;" />
       </label>
     </div>
@@ -1751,12 +1780,130 @@ async function refreshPrintEnginesPanel(panel) {
   });
 }
 
+async function renderSettingsBatCommand(panel) {
+  let cmd = "";
+  try {
+    const r = await fetch("/api/config/bat-command").then(r => r.json());
+    if (r.ok) cmd = r.command || "";
+  } catch(e) { /* use default */ }
+
+  panel.innerHTML = `
+    <h3>Commande BAT</h3>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Utilisez <code>{filePath}</code>, <code>{type}</code> et <code>{qty}</code> comme variables.</p>
+    <div class="settings-form-group">
+      <label>Commande</label>
+      <input type="text" id="bat-cmd-input" value="${(cmd || '').replace(/"/g,'&quot;')}" class="settings-input" style="width:100%;max-width:600px;" />
+    </div>
+    <button id="bat-cmd-save" class="btn btn-primary" style="margin-top:10px;">Enregistrer</button>
+  `;
+  document.getElementById("bat-cmd-save").onclick = async () => {
+    const command = document.getElementById("bat-cmd-input").value;
+    const r = await fetch("/api/config/bat-command", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command })
+    }).then(r => r.json());
+    if (r.ok) showNotification("Commande BAT enregistrée", "success");
+    else alert("Erreur");
+  };
+}
+
+async function renderSettingsActionButtons(panel) {
+  let buttons = {};
+  try {
+    const r = await fetch("/api/config/action-buttons").then(r => r.json());
+    if (r.ok) buttons = r.buttons || {};
+  } catch(e) { /* use defaults */ }
+
+  const esc = s => (s || "").replace(/"/g,'&quot;');
+  panel.innerHTML = `
+    <h3>Boutons d'action</h3>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">Configurez les chemins d'exécutables pour chaque bouton d'action.</p>
+    <div class="settings-form-group"><label>Contrôleur</label><input type="text" id="ab-controller" value="${esc(buttons.controller)}" class="settings-input" style="width:100%;max-width:600px;" /></div>
+    <div class="settings-form-group"><label>PrismaPrepare</label><input type="text" id="ab-prisma" value="${esc(buttons.prismaPrepare)}" class="settings-input" style="width:100%;max-width:600px;" /></div>
+    <div class="settings-form-group"><label>Impression</label><input type="text" id="ab-print" value="${esc(buttons.print)}" class="settings-input" style="width:100%;max-width:600px;" /></div>
+    <div class="settings-form-group"><label>Modification</label><input type="text" id="ab-modification" value="${esc(buttons.modification)}" class="settings-input" style="width:100%;max-width:600px;" /></div>
+    <div class="settings-form-group"><label>Fiery (hotfolder)</label><input type="text" id="ab-fiery" value="${esc(buttons.fiery)}" class="settings-input" style="width:100%;max-width:600px;" /></div>
+    <button id="ab-save" class="btn btn-primary" style="margin-top:10px;">Enregistrer</button>
+  `;
+  document.getElementById("ab-save").onclick = async () => {
+    const data = {
+      buttons: {
+        controller: document.getElementById("ab-controller").value,
+        prismaPrepare: document.getElementById("ab-prisma").value,
+        print: document.getElementById("ab-print").value,
+        modification: document.getElementById("ab-modification").value,
+        fiery: document.getElementById("ab-fiery").value
+      }
+    };
+    const r = await fetch("/api/config/action-buttons", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    }).then(r => r.json());
+    if (r.ok) showNotification("Boutons d'action enregistrés", "success");
+    else alert("Erreur");
+  };
+}
+
+async function pollNotifications() {
+  if (!currentUser) return;
+  try {
+    const notifs = await fetch(`/api/notifications?login=${encodeURIComponent(currentUser.login)}`).then(r=>r.json()).catch(()=>[]);
+    const count = Array.isArray(notifs) ? notifs.filter(n => !n.read).length : 0;
+    const bell = document.getElementById("notif-bell");
+    const countEl = document.getElementById("notif-count");
+    if (bell) bell.style.display = "flex";
+    if (countEl) {
+      countEl.textContent = count;
+      countEl.classList.toggle("hidden", count === 0);
+    }
+    window._lastNotifs = notifs;
+  } catch(e) { console.error("Notification poll error:", e); }
+}
+
+function initNotificationBell() {
+  const btn = document.getElementById("notif-btn");
+  const dropdown = document.getElementById("notif-dropdown");
+  if (!btn || !dropdown) return;
+
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    const isHidden = dropdown.classList.contains("hidden");
+    dropdown.classList.toggle("hidden", !isHidden);
+    if (isHidden) {
+      const notifs = window._lastNotifs || [];
+      if (notifs.length === 0) {
+        dropdown.innerHTML = '<div class="notif-empty">Aucune notification</div>';
+      } else {
+        dropdown.innerHTML = notifs.map(n => `
+          <div class="notif-item ${n.read ? '' : 'unread'}">
+            <div>${n.message || ''}</div>
+            <div style="font-size:11px;color:#86868b;margin-top:2px;">${n.timestamp ? new Date(n.timestamp).toLocaleString("fr-FR") : ''}</div>
+          </div>
+        `).join("");
+      }
+      // Mark all as read
+      fetch("/api/notifications/read", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ login: currentUser.login })
+      }).then(() => pollNotifications()).catch(() => {});
+    }
+  };
+
+  if (!document._notifOutsideHandlerAdded) {
+    document._notifOutsideHandlerAdded = true;
+    document.addEventListener("click", () => dropdown.classList.add("hidden"));
+  }
+}
+
 async function renderSettingsLogs(panel) {
   panel.innerHTML = `
-    <h3>📋 Journaux d'activité utilisateurs</h3>
+    <h3>Journaux d'activité utilisateurs</h3>
     <div style="display: flex; gap: 8px; margin-bottom: 16px; align-items: center;">
       <input type="date" id="logs-date-filter" class="settings-input" />
-      <button id="logs-refresh" class="btn btn-primary">🔄 Rafraîchir</button>
+      <button id="logs-refresh" class="btn btn-primary">Rafraîchir</button>
     </div>
     <div id="logs-table-container"><p style="color:#9ca3af;">Chargement...</p></div>
   `;
@@ -1812,6 +1959,7 @@ async function loadSettingsLogs() {
 
 async function initApp() {
   setupProfileUI();
+  initNotificationBell();
 
   try {
     await loadDeliveries();
@@ -1828,6 +1976,10 @@ async function initApp() {
   } catch (err) {
     console.error("Erreur init:", err);
   }
+
+  // Start notification polling
+  pollNotifications();
+  setInterval(pollNotifications, 30000);
 }
 
 document.addEventListener("DOMContentLoaded", initLogin);
@@ -2277,19 +2429,19 @@ function openPlanificationCalendar(fullPath) {
 async function buildKanban() {
   const backendFolders = await fetch("/api/folders").then(r => r.json()).catch(() => []);
   
-const folderConfig = [
-  { folder: "Début de production", label: "Début de production", color: "#5fa8c4" },
-  { folder: "Corrections", label: "Corrections", color: "#e88b3d" },
-  { folder: "Corrections et fond perdu", label: "Corrections et fond perdu", color: "#e88b3d" },
-  { folder: "Rapport", label: "Rapport", color: "#8b5cf6" },
-  { folder: "Prêt pour impression", label: "Prêt pour impression", color: "#10b981" },
-  { folder: "BAT", label: "BAT", color: "#3b82f6" },
-  { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#6b7e89" },
-  { folder: "Fiery", label: "Fiery", color: "#6b7e89" },
-  { folder: "Impression en cours", label: "Impression en cours", color: "#f59e0b" },
-  { folder: "Façonnage", label: "Façonnage", color: "#6b7e89" },
-  { folder: "Fin de production", label: "Fin de production", color: "#22c55e" }
-];
+  const folderConfig = [
+    { folder: "Début de production", label: "Début de production", color: "#5fa8c4" },
+    { folder: "Corrections", label: "Corrections", color: "#e0e0e0" },
+    { folder: "Corrections et fond perdu", label: "Corrections et fond perdu", color: "#e0e0e0" },
+    { folder: "Rapport", label: "Rapport", color: "#cccccc" },
+    { folder: "Prêt pour impression", label: "Prêt pour impression", color: "#b8b8b8" },
+    { folder: "BAT", label: "BAT", color: "#a3a3a3" },
+    { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#8f8f8f" },
+    { folder: "Fiery", label: "Fiery", color: "#8f8f8f" },
+    { folder: "Impression en cours", label: "Impression en cours", color: "#7a7a7a" },
+    { folder: "Façonnage", label: "Façonnage", color: "#666666" },
+    { folder: "Fin de production", label: "Fin de production", color: "#22c55e" }
+  ];
 
   kanbanDiv.innerHTML = "";
   kanbanDiv.style.gridTemplateColumns = "repeat(3, 1fr)";
@@ -2304,6 +2456,7 @@ const folderConfig = [
     const title = document.createElement("div");
     title.className = "kanban-col-operator__title";
     title.style.background = `linear-gradient(135deg, ${cfg.color} 0%, ${darkenColor(cfg.color, 15)} 100%)`;
+    title.style.color = isLight(cfg.color) ? '#1D1D1F' : '#FFFFFF';
     title.textContent = cfg.label;
     const counter = document.createElement("span");
     counter.className = "kanban-col-counter";
@@ -2319,7 +2472,7 @@ const folderConfig = [
     if (cfg.folder === "Corrections" || cfg.folder === "Corrections et fond perdu") {
       const acrobatBtn = document.createElement("button");
       acrobatBtn.className = "btn btn-acrobat";
-      acrobatBtn.textContent = "📄 Ouvrir dans Acrobat Pro";
+      acrobatBtn.textContent = "Ouvrir dans Acrobat Pro";
       acrobatBtn.style.cssText = "margin: 0 15px 10px 15px; width: calc(100% - 30px);";
       acrobatBtn.onclick = async () => {
         try {
@@ -2522,14 +2675,14 @@ async function openPrintDialog(fullPath) {
   modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;";
   modal.innerHTML = `
     <div style="background:white;border-radius:16px;padding:32px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-      <h3 style="margin:0 0 20px;font-size:18px;color:#111;">🖨️ Options d'impression</h3>
+      <h3 style="margin:0 0 20px;font-size:18px;color:#111;">Options d'impression</h3>
       <p style="color:#6b7280;font-size:13px;margin-bottom:20px;">Fichier: <strong>${fullPath.split("\\").pop()}</strong></p>
       <div style="display:flex;flex-direction:column;gap:10px;">
-        <button class="btn btn-primary print-opt" data-action="controller">📡 Envoyer vers le contrôleur</button>
-        <button class="btn btn-primary print-opt" data-action="prisma">🔧 Envoyer vers PrismaPrepare</button>
-        <button class="btn btn-primary print-opt" data-action="print">🖨️ Envoyer en impression</button>
-        <button class="btn btn-primary print-opt" data-action="modify">✏️ Modification</button>
-        <button class="btn btn-primary print-opt" data-action="fiery">📀 Envoyer sur Fiery</button>
+        <button class="btn btn-primary print-opt" data-action="controller">Envoyer vers le contrôleur</button>
+        <button class="btn btn-primary print-opt" data-action="prisma">Envoyer vers PrismaPrepare</button>
+        <button class="btn btn-primary print-opt" data-action="print">Envoyer en impression</button>
+        <button class="btn btn-primary print-opt" data-action="modify">Modification</button>
+        <button class="btn btn-primary print-opt" data-action="fiery">Envoyer sur Fiery</button>
       </div>
       <button id="print-dialog-close" class="btn" style="margin-top:16px;width:100%;">Annuler</button>
     </div>
@@ -2631,7 +2784,7 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
       if (assignment) {
         const badge = document.createElement("div");
         badge.className = "assignment-badge";
-        badge.textContent = `👤 ${assignment.operatorName}`;
+        badge.textContent = `${assignment.operatorName}`;
         textDiv.appendChild(badge);
       }
 
@@ -2680,7 +2833,7 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
         actions.appendChild(btnOpen);
         const btnAcrobat = document.createElement("button");
         btnAcrobat.className = "btn btn-sm";
-        btnAcrobat.innerHTML = "🔴 Acrobat Pro";
+        btnAcrobat.innerHTML = "Acrobat Pro";
         btnAcrobat.onclick = () => {
           fetch("/api/acrobat/open", {
             method: "POST",
@@ -2699,7 +2852,7 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
         actions.appendChild(btnAssign);
         const btnAcrobatBat = document.createElement("button");
         btnAcrobatBat.className = "btn btn-sm";
-        btnAcrobatBat.innerHTML = "🔴 Acrobat";
+        btnAcrobatBat.innerHTML = "Acrobat";
         btnAcrobatBat.onclick = () => {
           fetch("/api/acrobat/open", {
             method: "POST",
@@ -2737,7 +2890,7 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
 
         const btnPrint = document.createElement("button");
         btnPrint.className = "btn btn-sm btn-primary";
-        btnPrint.innerHTML = "🖨️ Imprimer";
+        btnPrint.innerHTML = "Imprimer";
         btnPrint.onclick = () => openPrintDialog(full);
         actions.appendChild(btnPrint);
 
@@ -2768,22 +2921,22 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
             const btnSent = document.createElement("button");
             btnSent.className = "bat-status-badge bat-sent" + (status.sentAt ? " active" : "");
             btnSent.innerHTML = status.sentAt
-              ? `📤 ENVOYÉ ${formatDateTime(status.sentAt)}`
-              : "📤 MARQUER ENVOYÉ";
+              ? `ENVOYÉ ${formatDateTime(status.sentAt)}`
+              : "MARQUER ENVOYÉ";
             btnSent.onclick = (e) => { e.stopPropagation(); fetch("/api/bat/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
 
             const btnValidate = document.createElement("button");
             btnValidate.className = "bat-status-badge bat-validated" + (status.validatedAt ? " active" : "");
             btnValidate.innerHTML = status.validatedAt
-              ? `✅ VALIDÉ ${formatDateTime(status.validatedAt)}`
-              : "✅ VALIDER";
+              ? `VALIDÉ ${formatDateTime(status.validatedAt)}`
+              : "VALIDER";
             btnValidate.onclick = (e) => { e.stopPropagation(); fetch("/api/bat/validate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
 
             const btnReject = document.createElement("button");
             btnReject.className = "bat-status-badge bat-rejected" + (status.rejectedAt ? " active" : "");
             btnReject.innerHTML = status.rejectedAt
-              ? `❌ REFUSÉ ${formatDateTime(status.rejectedAt)}`
-              : "❌ REFUSER";
+              ? `REFUSÉ ${formatDateTime(status.rejectedAt)}`
+              : "REFUSER";
             btnReject.onclick = (e) => { e.stopPropagation(); fetch("/api/bat/reject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
 
             batTracking.appendChild(btnSent);

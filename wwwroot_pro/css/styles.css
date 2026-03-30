@@ -201,13 +201,13 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
 .kanban-summary-count strong { font-weight: 700; color: var(--text-primary); }
 .kanban-summary-urgent { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .urgent-badge {
-  padding: 3px 8px; border-radius: var(--radius-sm); font-size: 10px; font-weight: 600;
+  padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; color: white;
   max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.urgent-j0 { background: #FEE2E2; color: #991B1B; }
-.urgent-j1 { background: #FFEDD5; color: #9A3412; }
-.urgent-j2 { background: #FEF9C3; color: #854D0E; }
-.urgent-j3 { background: #DBEAFE; color: #1E40AF; }
+.urgent-j0 { background: #FF3B30; }
+.urgent-j1 { background: #FF9F0A; }
+.urgent-j2 { background: #FF9F0A; }
+.urgent-j3 { background: #34C759; }
 
 /* =========================================================
    COLONNES KANBAN
@@ -466,6 +466,30 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
 }
 .assign-dropdown > div { padding: 10px 14px; cursor: pointer; font-size: 13px; transition: var(--transition-fast); color: var(--text-primary); }
 .assign-dropdown > div:hover { background: var(--bg-hover); }
+
+/* =========================================================
+   DOSSIER CARDS
+========================================================= */
+.dossier-card { overflow: hidden; }
+.dossier-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: break-word; max-width: 100%; }
+
+/* =========================================================
+   CALENDAR
+========================================================= */
+#calendar { height: calc(100vh - 120px); overflow: hidden; }
+.fc { height: 100% !important; }
+
+/* =========================================================
+   NOTIFICATION BELL
+========================================================= */
+.notif-bell { position: relative; display: flex; align-items: center; }
+.notif-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 4px; display: flex; align-items: center; }
+.notif-count { position: absolute; top: -4px; right: -4px; background: #FF3B30; color: white; font-size: 10px; font-weight: 700; border-radius: 10px; min-width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
+.notif-dropdown { position: absolute; right: 0; top: 100%; background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); width: 300px; max-height: 400px; overflow-y: auto; z-index: 9999; border: 1px solid #e8e8ed; }
+.notif-item { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; font-size: 13px; cursor: pointer; color: var(--text-primary); }
+.notif-item:hover { background: #f5f5f7; }
+.notif-item.unread { font-weight: 600; }
+.notif-empty { padding: 24px; text-align: center; color: #86868b; font-size: 13px; }
 
 /* =========================================================
    TOAST NOTIFICATIONS

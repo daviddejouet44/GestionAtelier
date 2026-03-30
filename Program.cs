@@ -569,6 +569,32 @@ app.MapPost("/api/jobs/move", async (HttpContext ctx) =>
                     Console.WriteLine($"[WARN] UpdateDeliveryPath failed: {ex2.Message}");
                 }
 
+                // Update assignment path when file moves
+                try
+                {
+                    var assignCol = MongoDbHelper.GetCollection<BsonDocument>("assignments");
+                    var assignFilter = Builders<BsonDocument>.Filter.Eq("fullPath", src);
+                    var assignUpdate = Builders<BsonDocument>.Update.Set("fullPath", moved);
+                    assignCol.UpdateMany(assignFilter, assignUpdate);
+                }
+                catch (Exception exAssign)
+                {
+                    Console.WriteLine($"[WARN] UpdateAssignmentPath failed: {exAssign.Message}");
+                }
+
+                // Update fabrication path when file moves
+                try
+                {
+                    var fabCol = MongoDbHelper.GetCollection<BsonDocument>("fabrications");
+                    var fabFilter = Builders<BsonDocument>.Filter.Eq("fullPath", src);
+                    var fabUpdate = Builders<BsonDocument>.Update.Set("fullPath", moved);
+                    fabCol.UpdateMany(fabFilter, fabUpdate);
+                }
+                catch (Exception exFab)
+                {
+                    Console.WriteLine($"[WARN] UpdateFabricationPath failed: {exFab.Message}");
+                }
+
                 // Log file move activity
                 var token2 = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
                 var userLogin2 = "?";
@@ -981,6 +1007,23 @@ app.MapPut("/api/assignment", async (HttpContext ctx) =>
             AssignedBy   = callerName
         };
         BackendUtils.UpsertAssignment(assignment);
+
+        // Create notification for assigned operator
+        try
+        {
+            var operatorLogin = operator2.Login;
+            var notifCol = MongoDbHelper.GetCollection<BsonDocument>("notifications");
+            var fileName = Path.GetFileName(fullPath);
+            var notif = new BsonDocument
+            {
+                ["recipientLogin"] = operatorLogin,
+                ["message"] = $"Le fichier '{fileName}' vous a été affecté",
+                ["timestamp"] = DateTime.UtcNow,
+                ["read"] = false
+            };
+            notifCol.InsertOne(notif);
+        }
+        catch { /* notification failure is non-fatal */ }
 
         // Update fabrication history
         var sheet = BackendUtils.FindFabrication(fullPath);
@@ -1866,6 +1909,18 @@ app.MapPost("/api/acrobat/complete", async (HttpContext ctx) =>
             Console.WriteLine($"[INFO] Acrobat complete: suppression {sourcePath}");
         }
 
+        // Also delete matching files from Corrections and Corrections et fond perdu by base filename
+        var baseName = Path.GetFileName(printPath);
+        foreach (var corrFolder in new[] { "Corrections", "Corrections et fond perdu" })
+        {
+            var corrPath = Path.Combine(root, corrFolder, baseName);
+            if (File.Exists(corrPath) && !string.Equals(corrPath, sourcePath, StringComparison.OrdinalIgnoreCase))
+            {
+                try { File.Delete(corrPath); Console.WriteLine($"[INFO] Acrobat complete: suppression source {corrPath}"); }
+                catch (Exception exDel) { Console.WriteLine($"[WARN] Could not delete {corrPath}: {exDel.Message}"); }
+            }
+        }
+
         BackendUtils.UpdateDeliveryPath(sourcePath, printPath);
         Console.WriteLine($"[INFO] Acrobat complete: delivery mis à jour → {printPath}");
         return Results.Json(new { ok = true });
@@ -2080,6 +2135,134 @@ app.MapPost("/api/bat/reject", async (HttpContext ctx) =>
     var filter = Builders<BsonDocument>.Filter.Eq("fullPath", path);
     var update = Builders<BsonDocument>.Update.Set("status", "rejected").Set("rejectedAt", DateTime.UtcNow);
     col.UpdateOne(filter, update, new UpdateOptions { IsUpsert = true });
+    return Results.Json(new { ok = true });
+});
+
+// ======================================================
+// BAT COMMAND CONFIG
+// ======================================================
+app.MapGet("/api/config/bat-command", () =>
+{
+    var col = MongoDbHelper.GetCollection<BsonDocument>("batCommandConfig");
+    var doc = col.Find(Builders<BsonDocument>.Filter.Empty).FirstOrDefault();
+    var cmd = doc != null && doc.Contains("command") ? doc["command"].AsString :
+        @"C:\Program Files\Canon\PRISMACore\PRISMAprepare.exe ""{filePath}"" /T ""{type}"" /SP /C {qty}";
+    return Results.Json(new { ok = true, command = cmd });
+});
+
+app.MapPut("/api/config/bat-command", async (HttpContext ctx) =>
+{
+    var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+    var cmd = json.TryGetProperty("command", out var c) ? c.GetString() ?? "" : "";
+    var col = MongoDbHelper.GetCollection<BsonDocument>("batCommandConfig");
+    var doc = new BsonDocument { ["command"] = cmd };
+    col.ReplaceOne(Builders<BsonDocument>.Filter.Empty, doc, new ReplaceOptions { IsUpsert = true });
+    return Results.Json(new { ok = true });
+});
+
+// ======================================================
+// ACTION BUTTONS CONFIG
+// ======================================================
+app.MapGet("/api/config/action-buttons", () =>
+{
+    var col = MongoDbHelper.GetCollection<BsonDocument>("actionButtonsConfig");
+    var doc = col.Find(Builders<BsonDocument>.Filter.Empty).FirstOrDefault();
+    var defaults = new {
+        controller = @"C:\Program Files\Canon\PRISMACore\PrismaSync.exe",
+        prismaPrepare = @"C:\Program Files\Canon\PRISMACore\PRISMAprepare.exe",
+        print = @"C:\Program Files\Canon\PRISMACore\PRISMAprepare.exe",
+        modification = @"C:\Program Files\Canon\PRISMACore\PRISMAprepare.exe",
+        fiery = @"C:\FieryHotfolder"
+    };
+    if (doc == null) return Results.Json(new { ok = true, buttons = defaults });
+    return Results.Json(new {
+        ok = true,
+        buttons = new {
+            controller = doc.Contains("controller") ? doc["controller"].AsString : defaults.controller,
+            prismaPrepare = doc.Contains("prismaPrepare") ? doc["prismaPrepare"].AsString : defaults.prismaPrepare,
+            print = doc.Contains("print") ? doc["print"].AsString : defaults.print,
+            modification = doc.Contains("modification") ? doc["modification"].AsString : defaults.modification,
+            fiery = doc.Contains("fiery") ? doc["fiery"].AsString : defaults.fiery
+        }
+    });
+});
+
+app.MapPut("/api/config/action-buttons", async (HttpContext ctx) =>
+{
+    var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+    var buttons = json.TryGetProperty("buttons", out var b) ? b : default;
+    var doc = new BsonDocument();
+    if (buttons.ValueKind == JsonValueKind.Object)
+    {
+        if (buttons.TryGetProperty("controller", out var v1)) doc["controller"] = v1.GetString() ?? "";
+        if (buttons.TryGetProperty("prismaPrepare", out var v2)) doc["prismaPrepare"] = v2.GetString() ?? "";
+        if (buttons.TryGetProperty("print", out var v3)) doc["print"] = v3.GetString() ?? "";
+        if (buttons.TryGetProperty("modification", out var v4)) doc["modification"] = v4.GetString() ?? "";
+        if (buttons.TryGetProperty("fiery", out var v5)) doc["fiery"] = v5.GetString() ?? "";
+    }
+    var col = MongoDbHelper.GetCollection<BsonDocument>("actionButtonsConfig");
+    col.ReplaceOne(Builders<BsonDocument>.Filter.Empty, doc, new ReplaceOptions { IsUpsert = true });
+    return Results.Json(new { ok = true });
+});
+
+// ======================================================
+// DELETE PRODUCTION FOLDER
+// ======================================================
+app.MapDelete("/api/production-folder", async (string path) =>
+{
+    try
+    {
+        var root = BackendUtils.HotfoldersRoot();
+        var prodRoot = Path.GetFullPath(Path.Combine(root, "DossiersProduction"));
+        var fullPath = Path.GetFullPath(path);
+        // Security: ensure path is within production folders root using canonical paths
+        var relative = Path.GetRelativePath(prodRoot, fullPath);
+        if (relative.StartsWith("..") || Path.IsPathRooted(relative) ||
+            !fullPath.StartsWith(prodRoot, StringComparison.OrdinalIgnoreCase))
+            return Results.Json(new { ok = false, error = "Chemin non autorisé" });
+        if (Directory.Exists(fullPath))
+            Directory.Delete(fullPath, true);
+        // Remove MongoDB entry
+        var col = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+        col.DeleteMany(Builders<BsonDocument>.Filter.Or(
+            Builders<BsonDocument>.Filter.Eq("path", fullPath),
+            Builders<BsonDocument>.Filter.Eq("folderPath", fullPath)
+        ));
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// NOTIFICATIONS
+// ======================================================
+app.MapGet("/api/notifications", (string? login) =>
+{
+    if (string.IsNullOrWhiteSpace(login)) return Results.Json(new object[0]);
+    var col = MongoDbHelper.GetCollection<BsonDocument>("notifications");
+    var filter = Builders<BsonDocument>.Filter.And(
+        Builders<BsonDocument>.Filter.Eq("recipientLogin", login),
+        Builders<BsonDocument>.Filter.Eq("read", false)
+    );
+    var docs = col.Find(filter).Sort(Builders<BsonDocument>.Sort.Descending("timestamp")).Limit(20).ToList();
+    return Results.Json(docs.Select(d => new {
+        id = d["_id"].ToString(),
+        message = d.Contains("message") ? d["message"].AsString : "",
+        timestamp = d.Contains("timestamp") ? d["timestamp"].ToUniversalTime().ToString("o") : "",
+        read = d.Contains("read") && d["read"].AsBoolean
+    }));
+});
+
+app.MapPut("/api/notifications/read", async (HttpContext ctx) =>
+{
+    var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+    var login = json.TryGetProperty("login", out var l) ? l.GetString() ?? "" : "";
+    var col = MongoDbHelper.GetCollection<BsonDocument>("notifications");
+    var filter = Builders<BsonDocument>.Filter.Eq("recipientLogin", login);
+    col.UpdateMany(filter, Builders<BsonDocument>.Update.Set("read", true));
     return Results.Json(new { ok = true });
 });
 
