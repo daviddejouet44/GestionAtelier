@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <title>Gestion Atelier PRO</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="css/styles.css?v=4" />
+  <link rel="stylesheet" href="css/styles.css?v=5" />
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script>
@@ -103,9 +103,8 @@
           <div class="fab-form-group"><label>Quantité</label><input id="fab-quantite" type="number" /></div>
           <div class="fab-form-group"><label>Moteur d'impression</label><select id="fab-moteur"><option value="">— Sélectionner —</option></select></div>
           <div class="fab-form-group">
-            <label>Type de travail <button id="fab-type-import-btn" class="btn btn-sm" style="margin-left:8px;font-size:10px;">📥 Importer CSV</button></label>
+            <label>Type de travail</label>
             <select id="fab-type"><option value="">— Sélectionner —</option></select>
-            <input id="fab-type-csv-input" type="file" accept=".csv" style="display:none;" />
           </div>
           <div class="fab-form-group"><label>Format fini</label><input id="fab-format" type="text" /></div>
           <div class="fab-form-group"><label>Recto/Verso</label><select id="fab-recto-verso"><option value="">— Sélectionner —</option><option value="Oui">Oui</option><option value="Non">Non</option></select></div>
@@ -129,7 +128,7 @@
 
   </div>
 
-  <script src="js/app.js?v=19"></script>
+  <script src="js/app.js?v=20"></script>
 
 </body>
 </html>

@@ -209,7 +209,7 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
 ========================================================= */
 .kanban-col-operator {
   background: var(--bg-card); border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg); min-height: 360px; box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-lg); min-height: 400px; box-shadow: var(--shadow-sm);
   overflow: hidden; display: flex; flex-direction: column; transition: var(--transition);
 }
 .kanban-col-operator:hover { box-shadow: var(--shadow-md); }
@@ -222,15 +222,19 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
   display: none !important;
 }
 .kanban-col-operator__drop {
-  padding: 8px; overflow-y: auto; background: var(--bg-card);
-  max-height: calc(3 * 140px + 3 * 7px);
+  padding: 8px; overflow-y: auto;
+  background: var(--bg-page);
+  flex: 1;
+  min-height: 200px;
   scrollbar-width: thin;
+  border: 2px dashed transparent;
+  transition: background 0.15s, border-color 0.15s;
 }
 .kanban-col-operator__drop::-webkit-scrollbar { width: 6px; }
 .kanban-col-operator__drop::-webkit-scrollbar-track { background: transparent; }
 .kanban-col-operator__drop::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 3px; }
 .kanban-col-operator__drop.drag-over {
-  background: var(--primary-light); outline: 2px dashed var(--primary); outline-offset: -4px;
+  background: var(--primary-light); border-color: var(--primary);
 }
 
 /* =========================================================

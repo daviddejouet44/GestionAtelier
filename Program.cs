@@ -69,6 +69,152 @@ Console.WriteLine("[INFO] ContentRoot = " + app.Environment.ContentRootPath);
 }
 
 // ======================================================
+// FILE SYSTEM WATCHER — Reconcile paths on external moves
+// ======================================================
+{
+    var watchRoot = BackendUtils.HotfoldersRoot();
+    if (Directory.Exists(watchRoot))
+    {
+        var watcher = new FileSystemWatcher(watchRoot)
+        {
+            IncludeSubdirectories = true,
+            NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName,
+            Filter = "*.*",
+            EnableRaisingEvents = true
+        };
+
+        watcher.Created += async (sender, e) =>
+        {
+            try
+            {
+                // Ignore DossiersProduction sub-folder events
+                if (e.FullPath.Contains("DossiersProduction")) return;
+
+                var newPath = e.FullPath;
+                var fileName = Path.GetFileName(newPath);
+                if (string.IsNullOrWhiteSpace(fileName)) return;
+
+                await Task.Delay(BackendUtils.FileSystemSettleDelayMs); // slight delay to let the file system settle
+
+                // Reconcile assignments
+                try
+                {
+                    var assignCol = MongoDbHelper.GetCollection<BsonDocument>("assignments");
+                    // Find assignment with same filename but different path
+                    var allAssign = assignCol.Find(new BsonDocument()).ToList();
+                    foreach (var doc in allAssign)
+                    {
+                        var oldPath = doc.Contains("fullPath") ? doc["fullPath"].AsString : "";
+                        if (string.IsNullOrEmpty(oldPath)) continue;
+                        if (!string.Equals(Path.GetFileName(oldPath), fileName, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (File.Exists(oldPath)) continue; // old file still exists, not a move
+                        assignCol.UpdateOne(
+                            Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]),
+                            Builders<BsonDocument>.Update.Set("fullPath", newPath));
+                        Console.WriteLine($"[FSW] Reconciled assignment: {fileName} → {newPath}");
+                    }
+                }
+                catch (Exception exA) { Console.WriteLine($"[FSW][WARN] Assignment reconcile: {exA.Message}"); }
+
+                // Reconcile deliveries
+                try
+                {
+                    var delivCol = MongoDbHelper.GetCollection<BsonDocument>("deliveries");
+                    var allDeliveries = delivCol.Find(new BsonDocument()).ToList();
+                    foreach (var doc in allDeliveries)
+                    {
+                        var oldPath = doc.Contains("fullPath") ? doc["fullPath"].AsString : "";
+                        if (string.IsNullOrEmpty(oldPath)) continue;
+                        if (!string.Equals(Path.GetFileName(oldPath), fileName, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (File.Exists(oldPath)) continue;
+                        delivCol.UpdateOne(
+                            Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]),
+                            Builders<BsonDocument>.Update.Set("fullPath", newPath));
+                        Console.WriteLine($"[FSW] Reconciled delivery: {fileName} → {newPath}");
+                    }
+                }
+                catch (Exception exD) { Console.WriteLine($"[FSW][WARN] Delivery reconcile: {exD.Message}"); }
+
+                // Reconcile fabrications
+                try
+                {
+                    var fabCol = MongoDbHelper.GetCollection<BsonDocument>("fabrications");
+                    var allFabs = fabCol.Find(new BsonDocument()).ToList();
+                    foreach (var doc in allFabs)
+                    {
+                        var oldPath = doc.Contains("fullPath") ? doc["fullPath"].AsString : "";
+                        if (string.IsNullOrEmpty(oldPath)) continue;
+                        if (!string.Equals(Path.GetFileName(oldPath), fileName, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (File.Exists(oldPath)) continue;
+                        fabCol.UpdateOne(
+                            Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]),
+                            Builders<BsonDocument>.Update.Set("fullPath", newPath));
+                        Console.WriteLine($"[FSW] Reconciled fabrication: {fileName} → {newPath}");
+                    }
+                }
+                catch (Exception exF) { Console.WriteLine($"[FSW][WARN] Fabrication reconcile: {exF.Message}"); }
+
+                // Reconcile productionFolders — update currentFilePath and add stage
+                try
+                {
+                    var pfCol = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+                    var allPf = pfCol.Find(new BsonDocument()).ToList();
+                    foreach (var pfDoc in allPf)
+                    {
+                        var oldPath = pfDoc.Contains("currentFilePath") ? pfDoc["currentFilePath"].AsString :
+                                      (pfDoc.Contains("originalFilePath") ? pfDoc["originalFilePath"].AsString : "");
+                        if (string.IsNullOrEmpty(oldPath)) continue;
+                        if (!string.Equals(Path.GetFileName(oldPath), fileName, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (File.Exists(oldPath)) continue;
+
+                        // Determine stage from new folder name
+                        var newStage = Path.GetFileName(Path.GetDirectoryName(newPath)) ?? "";
+
+                        // Add stage entry and copy to production folder
+                        var folderPath = pfDoc.Contains("folderPath") ? pfDoc["folderPath"].AsString : "";
+                        if (!string.IsNullOrEmpty(folderPath) && Directory.Exists(folderPath))
+                        {
+                            if (BackendUtils.StageFolderMap.TryGetValue(newStage.Trim(), out var subFolder))
+                            {
+                                var stageDir = Path.Combine(folderPath, subFolder);
+                                Directory.CreateDirectory(stageDir);
+                                if (File.Exists(newPath))
+                                    File.Copy(newPath, Path.Combine(stageDir, fileName), overwrite: true);
+                            }
+                        }
+
+                        var fileEntry = new BsonDocument
+                        {
+                            ["stage"] = newStage,
+                            ["fileName"] = fileName,
+                            ["addedAt"] = DateTime.UtcNow
+                        };
+                        pfCol.UpdateOne(
+                            Builders<BsonDocument>.Filter.Eq("_id", pfDoc["_id"]),
+                            Builders<BsonDocument>.Update
+                                .Set("currentFilePath", newPath)
+                                .Set("currentStage", newStage)
+                                .Push("files", fileEntry));
+                        Console.WriteLine($"[FSW] Reconciled productionFolder: {fileName} → {newPath} (stage: {newStage})");
+                    }
+                }
+                catch (Exception exPf) { Console.WriteLine($"[FSW][WARN] ProductionFolder reconcile: {exPf.Message}"); }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[FSW][ERROR] Reconcile error for {e.FullPath}: {ex.Message}");
+            }
+        };
+
+        Console.WriteLine($"[INFO] FileSystemWatcher started on {watchRoot}");
+    }
+}
+
+// ======================================================
 // Logging (console + MongoDB)
 // ======================================================
 
@@ -654,13 +800,15 @@ app.MapPost("/api/jobs/move", async (HttpContext ctx) =>
                         Console.WriteLine($"[WARN] CopyToProductionFolderStage failed: {ex4.Message}");
                     }
 
-                    // For stages not handled by CopyToProductionFolderStageAsync, still update currentStage
+                    // For stages not handled by CopyToProductionFolderStageAsync, still update currentStage and currentFilePath
                     try
                     {
                         var pfCol = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
                         var pfFileName = Path.GetFileName(moved);
                         var pfFilter = Builders<BsonDocument>.Filter.Eq("fileName", pfFileName);
-                        var pfUpdate = Builders<BsonDocument>.Update.Set("currentStage", dstFolder);
+                        var pfUpdate = Builders<BsonDocument>.Update
+                            .Set("currentStage", dstFolder)
+                            .Set("currentFilePath", moved);
                         pfCol.UpdateMany(pfFilter, pfUpdate);
                     }
                     catch (Exception ex5)
@@ -1029,6 +1177,55 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
 
         BackendUtils.UpsertFabrication(sheet);
 
+        // Sync numeroDossier to productionFolders and rename physical folder if needed
+        if (!string.IsNullOrWhiteSpace(sheet.NumeroDossier))
+        {
+            try
+            {
+                var pfCol = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+                var pfFilter = Builders<BsonDocument>.Filter.Or(
+                    Builders<BsonDocument>.Filter.Eq("originalFilePath", sheet.FullPath),
+                    Builders<BsonDocument>.Filter.Eq("currentFilePath", sheet.FullPath),
+                    Builders<BsonDocument>.Filter.Eq("fileName", sheet.FileName)
+                );
+                var pfDoc = pfCol.Find(pfFilter).FirstOrDefault();
+                if (pfDoc != null)
+                {
+                    var oldNumeroDossier = pfDoc.Contains("numeroDossier") && pfDoc["numeroDossier"] != BsonNull.Value
+                        ? pfDoc["numeroDossier"].AsString : null;
+
+                    // Update numeroDossier in the document
+                    var pfUpdate = Builders<BsonDocument>.Update.Set("numeroDossier", sheet.NumeroDossier);
+                    pfCol.UpdateOne(Builders<BsonDocument>.Filter.Eq("_id", pfDoc["_id"]), pfUpdate);
+
+                    // Rename physical folder if numeroDossier changed
+                    if (oldNumeroDossier != sheet.NumeroDossier)
+                    {
+                        var existingFolderPath = pfDoc.Contains("folderPath") ? pfDoc["folderPath"].AsString : "";
+                        if (!string.IsNullOrEmpty(existingFolderPath) && Directory.Exists(existingFolderPath))
+                        {
+                            var safeName = BackendUtils.SafeNameRegex.Replace(Path.GetFileNameWithoutExtension(sheet.FileName ?? ""), "_");
+                            var newFolderName = $"{sheet.NumeroDossier}_{safeName}";
+                            var parentDir = Path.GetDirectoryName(existingFolderPath) ?? "";
+                            var newFolderPath = Path.Combine(parentDir, newFolderName);
+                            if (!string.Equals(existingFolderPath, newFolderPath, StringComparison.OrdinalIgnoreCase)
+                                && !Directory.Exists(newFolderPath))
+                            {
+                                Directory.Move(existingFolderPath, newFolderPath);
+                                pfCol.UpdateOne(
+                                    Builders<BsonDocument>.Filter.Eq("_id", pfDoc["_id"]),
+                                    Builders<BsonDocument>.Update.Set("folderPath", newFolderPath));
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception exPf)
+            {
+                Console.WriteLine($"[WARN] SyncNumeroDossierToProductionFolder failed: {exPf.Message}");
+            }
+        }
+
         return Results.Json(new { ok = true });
     }
     catch (Exception ex)
@@ -1089,8 +1286,107 @@ app.MapGet("/api/fabrication/pdf", (string fullPath, bool? save) =>
 });
 
 // ======================================================
-// OPÉRATEURS — liste des utilisateurs profil 2
+// FABRICATION — Export XML (for PrismaPrepare)
 // ======================================================
+app.MapGet("/api/fabrication/export-xml", async (string fullPath, HttpContext ctx) =>
+{
+    try
+    {
+        var sheet = BackendUtils.FindFabrication(fullPath);
+        if (sheet == null)
+            return Results.Json(new { ok = false, error = "Fiche introuvable" });
+
+        // Build XML job ticket using XDocument for proper escaping
+        var jobTicket = new XElement("JobTicket",
+            new XElement("FilePath",         sheet.FullPath),
+            new XElement("FileName",         sheet.FileName),
+            new XElement("NumeroDossier",    sheet.NumeroDossier ?? ""),
+            new XElement("Client",           sheet.Client ?? ""),
+            new XElement("Quantite",         sheet.Quantite?.ToString() ?? ""),
+            new XElement("MoteurImpression", sheet.MoteurImpression ?? sheet.Machine ?? ""),
+            new XElement("TypeTravail",      sheet.TypeTravail ?? ""),
+            new XElement("Format",           sheet.Format ?? ""),
+            new XElement("RectoVerso",       sheet.RectoVerso ?? ""),
+            new XElement("Media1",           sheet.Media1 ?? ""),
+            new XElement("Media2",           sheet.Media2 ?? ""),
+            new XElement("Media3",           sheet.Media3 ?? ""),
+            new XElement("Media4",           sheet.Media4 ?? ""),
+            new XElement("Faconnage",        sheet.Faconnage ?? ""),
+            new XElement("Notes",            sheet.Notes ?? ""),
+            sheet.Delai.HasValue ? new XElement("Delai", sheet.Delai.Value.ToString("yyyy-MM-dd")) : null
+        );
+        var xdoc = new XDocument(new XDeclaration("1.0", "UTF-8", null), jobTicket);
+        var xmlContent = xdoc.ToString(SaveOptions.None);
+
+        // Save XML to production folder
+        string xmlSavePath = "";
+        try
+        {
+            var pfCol = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+            var pfDoc = pfCol.Find(
+                Builders<BsonDocument>.Filter.Or(
+                    Builders<BsonDocument>.Filter.Eq("originalFilePath", sheet.FullPath),
+                    Builders<BsonDocument>.Filter.Eq("currentFilePath", sheet.FullPath),
+                    Builders<BsonDocument>.Filter.Eq("fileName", sheet.FileName)
+                )).SortByDescending(x => x["createdAt"]).FirstOrDefault();
+
+            if (pfDoc != null && pfDoc.Contains("folderPath"))
+            {
+                var folderPath = pfDoc["folderPath"].AsString;
+                Directory.CreateDirectory(folderPath);
+                xmlSavePath = Path.Combine(folderPath, "fiche.xml");
+                await File.WriteAllTextAsync(xmlSavePath, xmlContent, System.Text.Encoding.UTF8);
+            }
+        }
+        catch (Exception saveEx)
+        {
+            Console.WriteLine($"[WARN] XML save to production folder failed: {saveEx.Message}");
+        }
+
+        return Results.Json(new { ok = true, xml = xmlContent, xmlPath = xmlSavePath });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// BAT — Execute PrismaPrepare command
+// ======================================================
+app.MapPost("/api/bat/execute", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var fullPath = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
+        var xmlPath  = json.TryGetProperty("xmlPath",  out var xp) ? xp.GetString() ?? "" : "";
+
+        // Load command template from config
+        var cfgCol  = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
+        var cfg     = cfgCol.Find(new BsonDocument()).FirstOrDefault();
+        var template = cfg?.Contains("prismaCommand") == true
+            ? cfg["prismaCommand"].AsString
+            : (cfg?.Contains("prismaPrepareCommand") == true
+                ? cfg["prismaPrepareCommand"].AsString
+                : "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" /import \"{xmlPath}\" /file \"{filePath}\"");
+
+        var cmd = template
+            .Replace("{xmlPath}", xmlPath)
+            .Replace("{filePath}", fullPath)
+            .Replace("{pdfPath}", fullPath);
+
+        Console.WriteLine($"[INFO] BAT Execute: {cmd}");
+        var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c {cmd}") { UseShellExecute = true };
+        System.Diagnostics.Process.Start(psi);
+
+        return Results.Json(new { ok = true, command = cmd });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
 
 app.MapGet("/api/operators", () =>
 {
@@ -1380,7 +1676,8 @@ app.MapGet("/api/production-folders", () =>
         var result = docs.Select(d => new
         {
             _id = d["_id"].ToString(),
-            number = d.Contains("number") ? d["number"].AsInt32 : 0,
+            number = d.Contains("number") && d["number"] != BsonNull.Value ? d["number"].AsInt32 : 0,
+            numeroDossier = d.Contains("numeroDossier") && d["numeroDossier"] != BsonNull.Value ? d["numeroDossier"].AsString : "",
             fileName = d.Contains("fileName") ? d["fileName"].AsString : "",
             folderPath = d.Contains("folderPath") ? d["folderPath"].AsString : "",
             createdAt = d.Contains("createdAt") ? d["createdAt"].ToUniversalTime() : DateTime.MinValue,
@@ -1426,9 +1723,12 @@ app.MapGet("/api/production-folders/{id}", (string id) =>
         return Results.Json(new
         {
             _id = doc["_id"].ToString(),
-            number = doc.Contains("number") ? doc["number"].AsInt32 : 0,
+            number = doc.Contains("number") && doc["number"] != BsonNull.Value ? doc["number"].AsInt32 : 0,
+            numeroDossier = doc.Contains("numeroDossier") && doc["numeroDossier"] != BsonNull.Value ? doc["numeroDossier"].AsString : "",
             fileName = doc.Contains("fileName") ? doc["fileName"].AsString : "",
             folderPath = doc.Contains("folderPath") ? doc["folderPath"].AsString : "",
+            originalFilePath = doc.Contains("originalFilePath") ? doc["originalFilePath"].AsString : "",
+            currentFilePath = doc.Contains("currentFilePath") ? doc["currentFilePath"].AsString : "",
             createdAt = doc.Contains("createdAt") ? doc["createdAt"].ToUniversalTime() : DateTime.MinValue,
             currentStage = doc.Contains("currentStage") ? doc["currentStage"].AsString : "",
             fabricationSheet,
@@ -1994,6 +2294,17 @@ app.MapPost("/api/config/work-types/import", async (HttpContext ctx) =>
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
+app.MapDelete("/api/config/work-types/{name}", (string name) =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("workTypes");
+        col.DeleteMany(Builders<BsonDocument>.Filter.Eq("name", Uri.UnescapeDataString(name)));
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
 // ======================================================
 // CONFIG — Paper Catalog
 // ======================================================
@@ -2296,6 +2607,7 @@ app.MapGet("/api/config/commands", (HttpContext ctx) =>
     return Results.Json(new { ok = true, config = new {
         batCommand = doc.Contains("batCommand") ? doc["batCommand"].AsString : "",
         prismaPrepareCommand = doc.Contains("prismaPrepareCommand") ? doc["prismaPrepareCommand"].AsString : "",
+        prismaCommand = doc.Contains("prismaCommand") ? doc["prismaCommand"].AsString : "",
         printCommand = doc.Contains("printCommand") ? doc["printCommand"].AsString : "",
         modifyCommand = doc.Contains("modifyCommand") ? doc["modifyCommand"].AsString : "",
         fieryHotfolderBase = doc.Contains("fieryHotfolderBase") ? doc["fieryHotfolderBase"].AsString : "",
@@ -3163,8 +3475,20 @@ file class IntegrationsSettings
 
 file static class BackendUtils
 {
-    private static readonly System.Text.RegularExpressions.Regex SafeNameRegex =
+    public static readonly System.Text.RegularExpressions.Regex SafeNameRegex =
         new(@"[^\w\-]", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    public const int FileSystemSettleDelayMs = 500;
+
+    public static readonly IReadOnlyDictionary<string, string> StageFolderMap =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Rapport"] = "Rapport",
+            ["Prêt pour impression"] = "PDF_Impression",
+            ["BAT"] = "BAT",
+            ["PrismaPrepare"] = "PrismaPrepare",
+            ["Fin de production"] = "PDF_Imprime"
+        };
     public static string HotfoldersRoot()
     {
         var env = Environment.GetEnvironmentVariable("GA_HOTFOLDERS_ROOT");
@@ -3312,15 +3636,35 @@ file static class BackendUtils
         var col = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
         var fileName = Path.GetFileName(movedFilePath);
 
-        // Check if already exists
-        var existing = col.Find(Builders<BsonDocument>.Filter.Eq("originalFilePath", movedFilePath)).FirstOrDefault();
+        // Check if already exists (by originalFilePath or currentFilePath)
+        var existing = col.Find(
+            Builders<BsonDocument>.Filter.Or(
+                Builders<BsonDocument>.Filter.Eq("originalFilePath", movedFilePath),
+                Builders<BsonDocument>.Filter.Eq("currentFilePath", movedFilePath)
+            )).FirstOrDefault();
         if (existing != null) return;
 
-        // Get next number
-        var count = (int)col.CountDocuments(new BsonDocument()) + 1;
-        var number = count;
+        // Look up the fabrication sheet to get numeroDossier
+        var fabSheet = BackendUtils.FindFabrication(movedFilePath);
+        var numeroDossier = fabSheet?.NumeroDossier;
+
+        // Build folder name: use numeroDossier if available, else auto-increment NNN
         var safeName = SafeNameRegex.Replace(Path.GetFileNameWithoutExtension(fileName), "_");
-        var folderName = $"{number:D3}_{safeName}";
+        string folderName;
+        int? number = null;
+        if (!string.IsNullOrWhiteSpace(numeroDossier))
+        {
+            // Use the dossier number from the fabrication sheet
+            folderName = $"{numeroDossier}_{safeName}";
+        }
+        else
+        {
+            // Fall back to auto-increment counter
+            var count = (int)col.CountDocuments(new BsonDocument()) + 1;
+            number = count;
+            folderName = $"{number:D3}_{safeName}";
+        }
+
         var root = HotfoldersRoot();
         var dossiersRoot = Path.Combine(root, "DossiersProduction");
         Directory.CreateDirectory(dossiersRoot);
@@ -3335,9 +3679,11 @@ file static class BackendUtils
 
         var doc = new BsonDocument
         {
-            ["number"] = number,
+            ["number"] = number.HasValue ? (BsonValue)number.Value : BsonNull.Value,
+            ["numeroDossier"] = string.IsNullOrWhiteSpace(numeroDossier) ? BsonNull.Value : (BsonValue)numeroDossier,
             ["fileName"] = fileName,
             ["originalFilePath"] = movedFilePath,
+            ["currentFilePath"] = movedFilePath,
             ["folderPath"] = folderPath,
             ["createdAt"] = DateTime.UtcNow,
             ["currentStage"] = "Début de production",
@@ -3357,16 +3703,7 @@ file static class BackendUtils
 
     public static async Task CopyToProductionFolderStageAsync(string filePath, string stage)
     {
-        var stageFolderMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["Rapport"] = "Rapport",
-            ["Prêt pour impression"] = "PDF_Impression",
-            ["BAT"] = "BAT",
-            ["PrismaPrepare"] = "PrismaPrepare",
-            ["Fin de production"] = "PDF_Imprime"
-        };
-
-        if (!stageFolderMap.TryGetValue(stage.Trim(), out var subFolder)) return;
+        if (!StageFolderMap.TryGetValue(stage.Trim(), out var subFolder)) return;
 
         var col = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
         var fileName = Path.GetFileName(filePath);
@@ -3393,7 +3730,8 @@ file static class BackendUtils
         };
         var update = Builders<BsonDocument>.Update
             .Push("files", fileEntry)
-            .Set("currentStage", stage);
+            .Set("currentStage", stage)
+            .Set("currentFilePath", filePath);
         await col.UpdateOneAsync(Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]), update);
     }
 
