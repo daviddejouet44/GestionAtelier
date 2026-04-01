@@ -943,7 +943,7 @@ async function loadDossiersList() {
       card.innerHTML = `
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;min-width:0;">
           <div style="min-width:0;flex:1;">
-            <div class="dossier-card-name" title="${folderName}" style="font-weight:700;font-size:15px;color:#111827;">${folderName}</div>
+            <div class="dossier-card-name" title="${folderName}" style="font-weight:700;font-size:15px;color:#111827;">${folder.numeroDossier ? `<span style="font-size:12px;background:#f3f4f6;color:#374151;padding:2px 8px;border-radius:10px;margin-right:6px;">${folder.numeroDossier}</span>` : ''}${folderName}</div>
             <div style="font-size:12px;color:#6b7280;margin-top:2px;">${folder.createdAt ? new Date(folder.createdAt).toLocaleDateString("fr-FR") : ''}</div>
           </div>
         </div>
@@ -987,16 +987,34 @@ async function openDossierDetail(dossierId) {
       return;
     }
 
+    // Load the fabrication sheet from the shared /api/fabrication endpoint
+    // using the originalFilePath stored in the production folder
+    const fabFilePath = folder.originalFilePath || folder.currentFilePath || "";
+    let fab = {};
+    if (fabFilePath) {
+      try {
+        const fabResp = await fetch("/api/fabrication?fullPath=" + encodeURIComponent(fabFilePath), {
+          headers: { "Authorization": `Bearer ${authToken}` }
+        }).then(r => r.json());
+        if (fabResp && fabResp.ok !== false) fab = fabResp;
+      } catch(e) { /* use empty */ }
+    }
+    // Fallback to embedded fabricationSheet if no shared sheet found
+    if (!fab.client && !fab.numeroDossier) {
+      const embedded = folder.fabricationSheet || {};
+      if (Object.keys(embedded).length > 0) fab = embedded;
+    }
+
     const overlay = document.createElement("div");
     overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;";
 
     const modal = document.createElement("div");
     modal.style.cssText = "background:white;border-radius:16px;padding:32px;width:100%;max-width:800px;box-shadow:0 20px 60px rgba(0,0,0,0.3);";
 
-    const fab = folder.fabricationSheet || {};
+    const numeroDossier = fab.numeroDossier || folder.numeroDossier || String(folder.number||0).padStart(3,'0');
     modal.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
-        <h2 style="margin:0;font-size:22px;color:#111827;">Dossier ${String(folder.number||0).padStart(3,'0')} — ${folder.fileName||''}</h2>
+        <h2 style="margin:0;font-size:22px;color:#111827;">Dossier ${numeroDossier} — ${folder.fileName||''}</h2>
         <button id="dossier-close" style="background:none;border:none;font-size:24px;cursor:pointer;color:#6b7280;">✕</button>
       </div>
 
@@ -1011,12 +1029,16 @@ async function openDossierDetail(dossierId) {
 
       <h3 style="font-size:16px;color:#111827;margin-bottom:12px;">Fiche de fabrication</h3>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;">
-        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">DÉLAI</label><input id="df-delai" type="date" value="${fab.delai||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
+        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">DÉLAI</label><input id="df-delai" type="date" value="${fab.delai ? (() => { try { return new Date(fab.delai).toISOString().split('T')[0]; } catch(e) { return ''; } })() : ''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
+        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">N° DOSSIER</label><input id="df-numero-dossier" type="text" value="${fab.numeroDossier||folder.numeroDossier||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
         <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">CLIENT</label><input id="df-client" type="text" value="${fab.client||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
         <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">QUANTITÉ</label><input id="df-quantite" type="number" value="${fab.quantite||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
         <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">FORMAT</label><input id="df-format" type="text" value="${fab.format||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
-        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">PAPIER</label><input id="df-papier" type="text" value="${fab.papier||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
-        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">MOTEUR</label><input id="df-moteur" type="text" value="${fab.moteur||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
+        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">MOTEUR D'IMPRESSION</label><input id="df-moteur" type="text" value="${fab.moteurImpression||fab.machine||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
+        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">TYPE DE TRAVAIL</label><input id="df-type-travail" type="text" value="${fab.typeTravail||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
+        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">RECTO/VERSO</label><input id="df-recto-verso" type="text" value="${fab.rectoVerso||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
+        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">FAÇONNAGE</label><input id="df-faconnage" type="text" value="${fab.faconnage||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
+        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">PAPIER / MÉDIA 1</label><input id="df-media1" type="text" value="${fab.media1||fab.papier||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
         <div style="grid-column:1/-1;"><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">NOTES</label><textarea id="df-notes" rows="2" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">${fab.notes||''}</textarea></div>
       </div>
       <button id="df-save" class="btn btn-primary" style="margin-bottom:24px;">Enregistrer la fiche</button>
@@ -1059,24 +1081,59 @@ async function openDossierDetail(dossierId) {
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 
     modal.querySelector("#df-save").onclick = async () => {
-      const updatedFab = {
-        delai: modal.querySelector("#df-delai").value,
-        client: modal.querySelector("#df-client").value,
-        quantite: modal.querySelector("#df-quantite").value,
-        format: modal.querySelector("#df-format").value,
-        papier: modal.querySelector("#df-papier").value,
-        moteur: modal.querySelector("#df-moteur").value,
-        notes: modal.querySelector("#df-notes").value
-      };
-      const r = await fetch(`/api/production-folders/${dossierId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-        body: JSON.stringify({ fabricationSheet: updatedFab })
-      }).then(r => r.json()).catch(() => ({ ok: false }));
-      if (r.ok) {
-        showNotification("✅ Fiche enregistrée", "success");
+      // Save via the shared /api/fabrication endpoint when we have an originalFilePath
+      if (fabFilePath) {
+        const payload = {
+          fullPath: fabFilePath,
+          fileName: folder.fileName || "",
+          delai: modal.querySelector("#df-delai").value || null,
+          numeroDossier: modal.querySelector("#df-numero-dossier").value || null,
+          client: modal.querySelector("#df-client").value,
+          quantite: parseInt(modal.querySelector("#df-quantite").value, 10) || null,
+          format: modal.querySelector("#df-format").value,
+          moteurImpression: modal.querySelector("#df-moteur").value,
+          machine: modal.querySelector("#df-moteur").value,
+          typeTravail: modal.querySelector("#df-type-travail").value,
+          rectoVerso: modal.querySelector("#df-recto-verso").value,
+          faconnage: modal.querySelector("#df-faconnage").value,
+          media1: modal.querySelector("#df-media1").value,
+          notes: modal.querySelector("#df-notes").value
+        };
+        const r = await fetch("/api/fabrication", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+          body: JSON.stringify(payload)
+        }).then(r => r.json()).catch(() => ({ ok: false }));
+        if (r.ok) {
+          showNotification("✅ Fiche enregistrée", "success");
+        } else {
+          showNotification("❌ Erreur : " + (r.error || ""), "error");
+        }
       } else {
-        showNotification("❌ Erreur : " + (r.error || ""), "error");
+        // Fallback: save embedded sheet in productionFolders
+        const updatedFab = {
+          delai: modal.querySelector("#df-delai").value,
+          numeroDossier: modal.querySelector("#df-numero-dossier").value,
+          client: modal.querySelector("#df-client").value,
+          quantite: modal.querySelector("#df-quantite").value,
+          format: modal.querySelector("#df-format").value,
+          moteur: modal.querySelector("#df-moteur").value,
+          typeTravail: modal.querySelector("#df-type-travail").value,
+          rectoVerso: modal.querySelector("#df-recto-verso").value,
+          faconnage: modal.querySelector("#df-faconnage").value,
+          media1: modal.querySelector("#df-media1").value,
+          notes: modal.querySelector("#df-notes").value
+        };
+        const r = await fetch(`/api/production-folders/${dossierId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+          body: JSON.stringify({ fabricationSheet: updatedFab })
+        }).then(r => r.json()).catch(() => ({ ok: false }));
+        if (r.ok) {
+          showNotification("✅ Fiche enregistrée", "success");
+        } else {
+          showNotification("❌ Erreur : " + (r.error || ""), "error");
+        }
       }
     };
 
@@ -1367,6 +1424,7 @@ async function initSettingsView() {
         <button class="settings-tab" data-tab="paths">Chemins d'accès</button>
         <button class="settings-tab" data-tab="integrations">Prepare / Fiery</button>
         <button class="settings-tab" data-tab="print-engines">Moteurs d'impression</button>
+        <button class="settings-tab" data-tab="work-types">Types de travail</button>
         <button class="settings-tab" data-tab="fabrication-imports">Imports fiche</button>
         <button class="settings-tab" data-tab="bat-command">Commande BAT</button>
         <button class="settings-tab" data-tab="action-buttons">Boutons d'action</button>
@@ -1377,6 +1435,7 @@ async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-paths"></div>
       <div class="settings-panel hidden" id="settings-panel-integrations"></div>
       <div class="settings-panel hidden" id="settings-panel-print-engines"></div>
+      <div class="settings-panel hidden" id="settings-panel-work-types"></div>
       <div class="settings-panel hidden" id="settings-panel-fabrication-imports"></div>
       <div class="settings-panel hidden" id="settings-panel-bat-command"></div>
       <div class="settings-panel hidden" id="settings-panel-action-buttons"></div>
@@ -1409,6 +1468,7 @@ async function loadSettingsPanel(tabName, panelEl) {
     case "paths": await renderSettingsPaths(panelEl); break;
     case "integrations": await renderSettingsIntegrations(panelEl); break;
     case "print-engines": await renderSettingsPrintEngines(panelEl); break;
+    case "work-types": await renderSettingsWorkTypes(panelEl); break;
     case "fabrication-imports": await renderSettingsFabricationImports(panelEl); break;
     case "bat-command": await renderSettingsBatCommand(panelEl); break;
     case "action-buttons": await renderSettingsActionButtons(panelEl); break;
@@ -1694,11 +1754,18 @@ async function renderSettingsPaths(panel) {
 async function renderSettingsIntegrations(panel) {
   panel.innerHTML = `<h3>Prepare / Fiery — Chemins d'accès</h3><p style="color:#6b7280;">Chargement...</p>`;
   let cfg = { preparePath: "", fieryPath: "" };
+  let cmdCfg = { prismaCommand: "" };
   try {
     const resp = await fetch("/api/config/integrations", {
       headers: { "Authorization": `Bearer ${authToken}` }
     }).then(r => r.json());
     if (resp.ok && resp.config) cfg = resp.config;
+  } catch(e) { /* use defaults */ }
+  try {
+    const resp2 = await fetch("/api/config/commands", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json());
+    if (resp2.ok && resp2.config) cmdCfg = resp2.config;
   } catch(e) { /* use defaults */ }
 
   panel.innerHTML = `
@@ -1720,19 +1787,34 @@ async function renderSettingsIntegrations(panel) {
       </div>
     </div>
 
+    <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 20px; background: #f9fafb;">
+      <h4 style="margin-top: 0; margin-bottom: 12px;">Commande PrismaPrepare (bouton "PrismaPrepare" dans le Kanban)</h4>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">Variables disponibles : <code>{xmlPath}</code> (fiche XML), <code>{filePath}</code> (chemin du PDF)</p>
+      <div class="settings-form-group">
+        <label>Commande</label>
+        <input type="text" id="int-prisma-cmd" value="${(cmdCfg.prismaCommand || '').replace(/"/g,'&quot;')}" class="settings-input" style="width:100%;max-width:600px;" placeholder='Ex: "C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe" /import "{xmlPath}" /file "{filePath}"' />
+      </div>
+    </div>
+
     <button id="int-save" class="btn btn-primary">Enregistrer</button>
   `;
 
   document.getElementById("int-save").onclick = async () => {
     const preparePath = document.getElementById("int-prepare").value.trim();
     const fieryPath = document.getElementById("int-fiery").value.trim();
-    const r = await fetch("/api/config/integrations", {
+    const prismaCommand = document.getElementById("int-prisma-cmd").value.trim();
+    const r1 = await fetch("/api/config/integrations", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
       body: JSON.stringify({ preparePath, fieryPath })
     }).then(r => r.json());
-    if (r.ok) showNotification("✅ Chemins Prepare/Fiery enregistrés", "success");
-    else alert("Erreur : " + r.error);
+    const r2 = await fetch("/api/config/commands", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ prismaCommand })
+    }).then(r => r.json()).catch(() => ({ ok: true }));
+    if (r1.ok && r2.ok) showNotification("✅ Configuration Prepare/Fiery enregistrée", "success");
+    else alert("Erreur : " + (r1.error || r2.error || ""));
   };
 }
 
@@ -1883,13 +1965,102 @@ async function refreshPrintEnginesPanel(panel) {
   });
 }
 
+async function renderSettingsWorkTypes(panel) {
+  panel.innerHTML = `<h3>Types de travail</h3><p style="color:#6b7280;">Chargement...</p>`;
+  await refreshWorkTypesPanel(panel);
+}
+
+async function refreshWorkTypesPanel(panel) {
+  let types = [];
+  try {
+    const resp = await fetch("/api/config/work-types").then(r => r.json());
+    types = Array.isArray(resp) ? resp : [];
+  } catch(e) { /* use empty */ }
+
+  panel.innerHTML = `
+    <h3>Types de travail</h3>
+    <p style="color:#6b7280; margin-bottom: 16px;">Gérez la liste des types de travail disponibles dans la fiche de fabrication.</p>
+
+    <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
+      <input type="text" id="wt-new-name" placeholder="Nouveau type" class="settings-input" style="max-width:300px;" />
+      <button id="wt-add" class="btn btn-primary">Ajouter</button>
+      <label style="cursor:pointer; background:#f3f4f6; border:1px solid #e5e7eb; padding:6px 14px; border-radius:6px; font-size:13px;">
+        📥 Importer CSV
+        <input type="file" id="wt-csv-input" accept=".csv,.txt" style="display:none;" />
+      </label>
+    </div>
+
+    <div id="wt-list">
+      ${types.length === 0
+        ? '<p style="color:#9ca3af;">Aucun type configuré</p>'
+        : types.map(t => {
+            const escapedType = t.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:white;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:6px;">
+              <span style="flex:1;font-size:13px;">${t}</span>
+              <button class="btn btn-sm wt-delete" data-name="${escapedType}" style="color:#ef4444;border-color:#ef4444;">Supprimer</button>
+            </div>`;
+          }).join("")
+      }
+    </div>
+  `;
+
+  document.getElementById("wt-add").onclick = async () => {
+    const name = document.getElementById("wt-new-name").value.trim();
+    if (!name) { alert("Entrez un type de travail"); return; }
+    const formData = new FormData();
+    const blob = new Blob([name], { type: "text/plain" });
+    formData.append("file", blob, "type.csv");
+    const r = await fetch("/api/config/work-types/import", {
+      method: "POST",
+      body: formData
+    }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (r.ok) {
+      showNotification("✅ Type ajouté", "success");
+      panel._loaded = false;
+      await refreshWorkTypesPanel(panel);
+    } else { alert("Erreur : " + (r.error || "")); }
+  };
+
+  document.getElementById("wt-csv-input").onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    const r = await fetch("/api/config/work-types/import", {
+      method: "POST",
+      body: formData
+    }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (r.ok) {
+      showNotification(`✅ ${r.count || 0} type(s) importé(s)`, "success");
+      panel._loaded = false;
+      await refreshWorkTypesPanel(panel);
+    } else { alert("Erreur : " + (r.error || "")); }
+    e.target.value = "";
+  };
+
+  panel.querySelectorAll(".wt-delete").forEach(btn => {
+    btn.onclick = async () => {
+      const name = btn.dataset.name;
+      if (!confirm(`Supprimer "${name}" ?`)) return;
+      const r = await fetch(`/api/config/work-types/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(r => r.json()).catch(() => ({ ok: false }));
+      if (r.ok) {
+        showNotification("Type supprimé", "success");
+        panel._loaded = false;
+        await refreshWorkTypesPanel(panel);
+      } else { alert("Erreur : " + (r.error || "")); }
+    };
+  });
+}
+
 async function renderSettingsBatCommand(panel) {
   let cmd = "";
   try {
     const r = await fetch("/api/config/bat-command").then(r => r.json());
     if (r.ok) cmd = r.command || "";
   } catch(e) { /* use default */ }
-
   panel.innerHTML = `
     <h3>Commande BAT</h3>
     <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Utilisez <code>{filePath}</code>, <code>{type}</code> et <code>{qty}</code> comme variables.</p>
@@ -2322,35 +2493,6 @@ async function openFabrication(fullPath) {
     fabDelai.value = deliveryDate;
   } else {
     fabDelai.value = "";
-  }
-
-  // CSV import for work types
-  const fabTypeImportBtn = document.getElementById("fab-type-import-btn");
-  const fabTypeCsvInput = document.getElementById("fab-type-csv-input");
-  if (fabTypeImportBtn && fabTypeCsvInput) {
-    fabTypeImportBtn.onclick = (e) => { e.preventDefault(); fabTypeCsvInput.click(); };
-    fabTypeCsvInput.onchange = async (ev) => {
-      const file = ev.target.files[0];
-      if (!file) return;
-      const formData = new FormData();
-      formData.append("file", file);
-      const importR = await fetch("/api/config/work-types/import", {
-        method: "POST",
-        body: formData
-      }).then(r => r.json()).catch(() => ({ ok: false }));
-      if (importR.ok) {
-        showNotification("✅ Types importés", "success");
-        const types2 = await fetch("/api/config/work-types").then(r => r.json()).catch(() => []);
-        fabType.innerHTML = '<option value="">— Sélectionner —</option>';
-        types2.forEach(t => {
-          const opt = document.createElement("option");
-          opt.value = t;
-          opt.textContent = t;
-          fabType.appendChild(opt);
-        });
-      }
-      fabTypeCsvInput.value = "";
-    };
   }
 
   fabHistory.innerHTML = "";
@@ -3113,18 +3255,31 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
 
         const btnBAT = document.createElement("button");
         btnBAT.className = "btn btn-sm btn-primary";
-        btnBAT.innerHTML = "✓ BAT";
+        btnBAT.innerHTML = "🖨 PrismaPrepare";
         btnBAT.onclick = async () => {
-          const fab = await fetch("/api/fabrication?fullPath=" + encodeURIComponent(full)).then(r=>r.json()).catch(()=>({}));
-          const typeWork = fab.typeTravail || "";
-          const quantity = fab.quantite || 1;
-          const r = await fetch("/api/commands/bat", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ filePath: full, typeWork, quantity })
-          }).then(r => r.json()).catch(()=>({ok:false}));
-          if (r.ok) showNotification("✅ Commande BAT lancée", "success");
-          else showNotification("❌ " + (r.error || "Erreur"), "error");
+          btnBAT.disabled = true;
+          btnBAT.textContent = "…";
+          try {
+            // Step 1: Export XML
+            const xmlR = await fetch("/api/fabrication/export-xml?fullPath=" + encodeURIComponent(full), {
+              headers: { "Authorization": `Bearer ${authToken}` }
+            }).then(r => r.json()).catch(() => ({ ok: false }));
+            if (!xmlR.ok) {
+              showNotification("❌ Erreur export XML : " + (xmlR.error || ""), "error");
+              return;
+            }
+            // Step 2: Launch PrismaPrepare
+            const batR = await fetch("/api/bat/execute", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+              body: JSON.stringify({ fullPath: full, xmlPath: xmlR.xmlPath })
+            }).then(r => r.json()).catch(() => ({ ok: false }));
+            if (batR.ok) showNotification("✅ PrismaPrepare lancé", "success");
+            else showNotification("❌ " + (batR.error || "Erreur"), "error");
+          } finally {
+            btnBAT.disabled = false;
+            btnBAT.innerHTML = "🖨 PrismaPrepare";
+          }
         };
         actions.appendChild(btnBAT);
 
