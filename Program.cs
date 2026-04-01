@@ -590,6 +590,11 @@ app.MapGet("/api/file-stage", (string fileName) =>
 {
     try
     {
+        // Sanitize: only allow the base filename, no path traversal
+        var safeFileName = Path.GetFileName(fileName);
+        if (string.IsNullOrWhiteSpace(safeFileName))
+            return Results.Json(new { ok = false, folder = (string?)null, fullPath = (string?)null });
+
         var root = BackendUtils.HotfoldersRoot();
         var folders = new[]
         {
@@ -599,7 +604,7 @@ app.MapGet("/api/file-stage", (string fileName) =>
         };
         foreach (var folder in folders)
         {
-            var path = Path.Combine(root, folder, fileName);
+            var path = Path.Combine(root, folder, safeFileName);
             if (File.Exists(path))
                 return Results.Json(new { ok = true, folder, fullPath = path });
         }
@@ -3705,8 +3710,11 @@ file static class BackendUtils
             foreach (var d in col.Find(new BsonDocument()).ToList())
             {
                 var fullPath = d.Contains("fullPath") ? d["fullPath"].AsString : "";
-                var fileName = d.Contains("fileName") ? d["fileName"].AsString
-                             : (!string.IsNullOrEmpty(fullPath) ? Path.GetFileName(fullPath) : "");
+                string fileName;
+                if (d.Contains("fileName") && !string.IsNullOrEmpty(d["fileName"].AsString))
+                    fileName = d["fileName"].AsString;
+                else
+                    fileName = string.IsNullOrEmpty(fullPath) ? "" : Path.GetFileName(fullPath);
                 // Key by fileName (universal key resilient to path changes)
                 var key = !string.IsNullOrEmpty(fileName) ? fileName : fullPath;
                 if (!string.IsNullOrEmpty(key))

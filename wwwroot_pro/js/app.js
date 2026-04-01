@@ -2331,8 +2331,9 @@ function normalizePath(p) {
   return decodeURIComponent(p).replace(/\u00A0/g, " ").replace(/\//g, "\\").replace(/%5C/gi, "\\");
 }
 
-// Returns a normalized fileName-only key (lowercase, no path)
-// This is the universal key used for deliveriesByPath, assignmentsByPath lookups.
+// Returns a normalized fileName-only key (lowercase, no path).
+// This is the universal key for deliveriesByPath and assignmentsByPath — resilient to
+// path changes when Acrobat Pro moves files between hotfolder subfolders.
 function fnKey(pathOrName) {
   if (!pathOrName) return "";
   return (pathOrName.split(/[/\\]/).pop() || "").toLowerCase();
