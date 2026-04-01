@@ -133,9 +133,11 @@ function setupProfileUI() {
     btnProduction.style.display = "inline-block";
   } else if (currentUser.profile === 2) {
     btnSubmission.style.display = "inline-block";
+    btnProduction.style.display = "inline-block";
   } else if (currentUser.profile === 3) {
     btnSettings.style.display = "inline-block";
     btnSubmission.style.display = "inline-block";
+    btnProduction.style.display = "inline-block";
   }
 
   setupKanbanActions();
@@ -156,13 +158,12 @@ function setupKanbanActions() {
     btnKanban.style.display = "inline-block";
     btnCalendar.style.display = "inline-block";
     btnSubmission.style.display = "inline-block";
-    btnProduction.style.display = "none";
+    btnProduction.style.display = "inline-block";
   } else if (currentUser.profile === 3) {
     btnKanban.style.display = "inline-block";
     btnCalendar.style.display = "inline-block";
     btnSubmission.style.display = "inline-block";
-    // Profile 3 uses btnViewKanban (labelled "Production") — hide the duplicate
-    btnProduction.style.display = "none";
+    btnProduction.style.display = "inline-block";
   }
 }
 
@@ -292,6 +293,10 @@ async function buildProductionKanban(container) {
     title.style.background = `linear-gradient(135deg, ${cfg.color} 0%, ${darkenColor(cfg.color, 15)} 100%)`;
     title.style.color = isLight(cfg.color) ? '#1D1D1F' : '#FFFFFF';
     title.textContent = cfg.label;
+    const counterRO = document.createElement("span");
+    counterRO.className = "kanban-col-counter";
+    counterRO.textContent = "0";
+    title.appendChild(counterRO);
     col.appendChild(title);
 
     const drop = document.createElement("div");
@@ -347,10 +352,10 @@ async function refreshKanbanColumnReadOnly(folderName, col) {
       card.appendChild(sub);
 
       const full = normalizePath(job.fullPath || "");
-      const jobFileName = (job.name || "").toLowerCase();
+      const jobFileName = fnKey(full) || (job.name || "").toLowerCase();
 
-      // Assignment badge (read-only view — visible but no action; fallback by fileName)
-      const assignment = assignmentsByPath[full] || (jobFileName ? assignmentsByName[jobFileName] : null);
+      // Assignment badge (read-only view — keyed by fileName)
+      const assignment = assignmentsByPath[jobFileName];
       if (assignment) {
         const badge = document.createElement("div");
         badge.className = "assignment-badge";
@@ -358,7 +363,7 @@ async function refreshKanbanColumnReadOnly(folderName, col) {
         card.appendChild(badge);
       }
 
-      const iso = deliveriesByPath[full] || (jobFileName ? deliveriesByName[jobFileName] : null);
+      const iso = deliveriesByPath[jobFileName];
       if (iso) {
         const status = document.createElement("div");
         status.className = "kanban-card-operator-status";
@@ -585,19 +590,20 @@ async function initSubmissionCalendar() {
     eventDrop: async (info) => {
       try {
         const fullPath = normalizePath(info.event.extendedProps.fullPath);
+        const fk = fnKey(fullPath);
         const newDate = info.event.startStr.split('T')[0];
         const newTime = info.event.startStr.split('T')[1]?.substring(0, 5) || "09:00";
 
         const r = await fetch("/api/delivery", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fullPath, date: newDate, time: newTime })
+          body: JSON.stringify({ fullPath, fileName: fk, date: newDate, time: newTime })
         }).then(r => r.json());
 
         if (!r.ok) throw new Error(r.error || "Erreur");
 
-        deliveriesByPath[fullPath] = newDate;
-        deliveriesByPath[fullPath + "_time"] = newTime;
+        deliveriesByPath[fk] = newDate;
+        deliveriesByPath[fk + "_time"] = newTime;
 
         const { bg, bc, tc } = colorForEvent(fullPath, newDate);
         info.event.setProp("backgroundColor", bg);
@@ -742,7 +748,7 @@ async function refreshSubmissionView() {
       header.appendChild(info);
       body.appendChild(header);
 
-      const iso = deliveriesByPath[full];
+      const iso = deliveriesByPath[fnKey(full)];
       const status = document.createElement("div");
       status.className = `submission-card-status ${iso ? (daysDiffFromToday(iso) <= 1 ? "done" : "scheduled") : "pending"}`;
       status.textContent = iso ? `Prévu ${new Date(iso).toLocaleDateString("fr-FR")}` : "En attente";
@@ -2298,18 +2304,14 @@ const sortBy = document.getElementById("sortBy");
 let calendar = null;
 let deliveriesByPath = {};
 let assignmentsByPath = {};
-let deliveriesByName = {};
-let assignmentsByName = {};
 
 async function loadAssignments() {
   try {
     const list = await fetch("/api/assignments").then(r => r.json()).catch(() => []);
     assignmentsByPath = {};
-    assignmentsByName = {};
     list.forEach(a => {
-      if (a && a.fullPath) assignmentsByPath[normalizePath(a.fullPath)] = a;
-      const fname = (a.fileName || (a.fullPath ? a.fullPath.split("\\").pop() : "")).toLowerCase();
-      if (fname) assignmentsByName[fname] = a;
+      const fname = fnKey(a.fileName || a.fullPath || "");
+      if (fname) assignmentsByPath[fname] = a;
     });
   } catch(err) {
     console.error("Erreur loadAssignments:", err);
@@ -2327,6 +2329,13 @@ setInterval(async () => {
 function normalizePath(p) {
   if (!p) return "";
   return decodeURIComponent(p).replace(/\u00A0/g, " ").replace(/\//g, "\\").replace(/%5C/gi, "\\");
+}
+
+// Returns a normalized fileName-only key (lowercase, no path)
+// This is the universal key used for deliveriesByPath, assignmentsByPath lookups.
+function fnKey(pathOrName) {
+  if (!pathOrName) return "";
+  return (pathOrName.split(/[/\\]/).pop() || "").toLowerCase();
 }
 
 function sanitizeFolderName(s) {
@@ -2393,6 +2402,8 @@ const fabClose = document.getElementById("fab-close");
 const fabSave = document.getElementById("fab-save");
 const fabPdf = document.getElementById("fab-pdf");
 const fabFinProd = document.getElementById("fab-finprod");
+const fabPrisma = document.getElementById("fab-prisma");
+const fabBat = document.getElementById("fab-bat");
 const fabMoteur = document.getElementById("fab-moteur");
 const fabOperateur = document.getElementById("fab-operateur");
 const fabQuantite = document.getElementById("fab-quantite");
@@ -2410,14 +2421,17 @@ const fabMedia3 = document.getElementById("fab-media3");
 const fabMedia4 = document.getElementById("fab-media4");
 const fabHistory = document.getElementById("fab-history");
 const fabRemove = document.getElementById("fab-delivery-remove");
+const fabStageBanner = document.getElementById("fab-stage-banner");
 
 fabClose.onclick = () => fabModal.classList.add("hidden");
 document.addEventListener("keydown", e => { if (e.key === "Escape") fabModal.classList.add("hidden"); });
 
 async function openFabrication(fullPath) {
   fabCurrentPath = normalizePath(fullPath);
+  const fabCurrentFileName = fnKey(fabCurrentPath);
 
-  const r = await fetch("/api/fabrication?fullPath=" + encodeURIComponent(fabCurrentPath));
+  // Fetch fabrication by fileName (resilient to path changes by Acrobat Pro)
+  const r = await fetch("/api/fabrication?fileName=" + encodeURIComponent(fabCurrentFileName));
   const j = await r.json();
   const d = j.ok === false ? {} : j;
 
@@ -2476,8 +2490,8 @@ async function openFabrication(fullPath) {
   if (fabMedia3) fabMedia3.value = d.media3 || "";
   if (fabMedia4) fabMedia4.value = d.media4 || "";
 
-  // Pre-fill Délai from delivery if available
-  const deliveryDate = deliveriesByPath[fabCurrentPath];
+  // Pre-fill Délai from delivery if available (keyed by fileName)
+  const deliveryDate = deliveriesByPath[fabCurrentFileName];
   if (d.delai) {
     fabDelai.value = new Date(d.delai).toISOString().split("T")[0];
   } else if (deliveryDate) {
@@ -2494,19 +2508,36 @@ async function openFabrication(fullPath) {
   });
 
   fabRemove.onclick = async () => {
-    if (!fabCurrentPath) return;
+    if (!fabCurrentFileName) return;
     if (!confirm("Retirer du planning ?")) return;
 
-    const resp = await fetch("/api/delivery?fullPath=" + encodeURIComponent(fabCurrentPath), { method: "DELETE" }).then(r => r.json()).catch(() => ({ ok: false }));
+    const resp = await fetch("/api/delivery?fileName=" + encodeURIComponent(fabCurrentFileName), { method: "DELETE" }).then(r => r.json()).catch(() => ({ ok: false }));
     if (!resp.ok) { alert("Erreur"); return; }
 
-    delete deliveriesByPath[fabCurrentPath];
+    delete deliveriesByPath[fabCurrentFileName];
+    delete deliveriesByPath[fabCurrentFileName + "_time"];
     calendar?.refetchEvents();
     submissionCalendar?.refetchEvents();
     await refreshKanban();
     updateGlobalAlert();
     alert("Retiré du planning");
   };
+
+  // Show current stage (which folder the file is in)
+  if (fabStageBanner) {
+    fabStageBanner.style.display = "none";
+    fetch("/api/file-stage?fileName=" + encodeURIComponent(fabCurrentFileName))
+      .then(r => r.json())
+      .then(s => {
+        if (s.ok && s.folder) {
+          fabStageBanner.textContent = "📍 Étape actuelle : " + s.folder;
+          fabStageBanner.style.display = "block";
+          // Update fabCurrentPath if the file was found at a different location
+          if (s.fullPath) fabCurrentPath = normalizePath(s.fullPath);
+        }
+      })
+      .catch(() => {});
+  }
 
   fabModal.classList.remove("hidden");
 }
@@ -2522,10 +2553,11 @@ fabSave.onclick = async () => {
 
 async function saveFabrication() {
   if (!fabCurrentPath) return false;
+  const fileName = fnKey(fabCurrentPath);
 
   const payload = {
     fullPath: fabCurrentPath,
-    fileName: fabCurrentPath.split(/[/\\]/).pop() || "",
+    fileName: fileName,
     moteurImpression: fabMoteur.value,
     machine: fabMoteur.value,
     quantite: parseInt(fabQuantite.value) || null,
@@ -2601,36 +2633,53 @@ fabFinProd.onclick = async () => {
     return;
   }
 
-  const dst = normalizePath(moveResp.moved || "");
-  const oldIso = deliveriesByPath[fabCurrentPath];
-
-  if (oldIso) {
-    const oldTime = deliveriesByPath[fabCurrentPath + "_time"] || "09:00";
-    await fetch("/api/delivery?fullPath=" + encodeURIComponent(fabCurrentPath), { method: "DELETE" });
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    const r = await fetch("/api/delivery", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullPath: dst, date: oldIso, time: oldTime })
-    }).then(r => r.json()).catch(() => ({ ok: false }));
-
-    if (r.ok) {
-      delete deliveriesByPath[fabCurrentPath];
-      delete deliveriesByPath[fabCurrentPath + "_time"];
-      deliveriesByPath[dst] = oldIso;
-      deliveriesByPath[dst + "_time"] = oldTime;
-      if (calendar) calendar.refetchEvents();
-      if (submissionCalendar) submissionCalendar.refetchEvents();
-    }
-  }
-
+  // Delivery is keyed by fileName — no need to re-create it after move
   updateGlobalAlert();
   await refreshKanban();
   await refreshSubmissionView();
   fabModal.classList.add("hidden");
   alert("Fin de production marquée");
 };
+
+if (fabPrisma) {
+  fabPrisma.onclick = async () => {
+    if (!fabCurrentPath) { alert("Chemin introuvable"); return; }
+    if (!confirm("Déplacer vers PrismaPrepare ?")) return;
+    const r = await fetch("/api/jobs/move", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: fabCurrentPath, destination: "PrismaPrepare", overwrite: true })
+    }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (r.ok) {
+      if (r.moved) fabCurrentPath = normalizePath(r.moved);
+      fabModal.classList.add("hidden");
+      await refreshKanban();
+      showNotification("✅ Fichier envoyé vers PrismaPrepare", "success");
+    } else {
+      alert("Erreur : " + (r.error || ""));
+    }
+  };
+}
+
+if (fabBat) {
+  fabBat.onclick = async () => {
+    if (!fabCurrentPath) { alert("Chemin introuvable"); return; }
+    if (!confirm("Déplacer vers BAT ?")) return;
+    const r = await fetch("/api/jobs/move", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: fabCurrentPath, destination: "BAT", overwrite: true })
+    }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (r.ok) {
+      if (r.moved) fabCurrentPath = normalizePath(r.moved);
+      fabModal.classList.add("hidden");
+      await refreshKanban();
+      showNotification("✅ Fichier envoyé vers BAT", "success");
+    } else {
+      alert("Erreur : " + (r.error || ""));
+    }
+  };
+}
 
 async function renderPdfThumbnail(fullPath, container) {
   if (!window.pdfjsLib) return;
@@ -2670,7 +2719,8 @@ async function deleteFile(fullPath) {
       return;
     }
 
-    if (deliveriesByPath[fullPath]) delete deliveriesByPath[fullPath];
+    const fk = fnKey(fullPath);
+    if (deliveriesByPath[fk]) { delete deliveriesByPath[fk]; delete deliveriesByPath[fk + "_time"]; }
     updateGlobalAlert();
     await refreshKanban();
     if (submissionCalendar) submissionCalendar.refetchEvents();
@@ -2742,7 +2792,7 @@ function openPlanificationCalendar(fullPath) {
     const r = await fetch("/api/delivery", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullPath, date: dateVal, time: timeVal })
+      body: JSON.stringify({ fullPath, fileName: fnKey(fullPath), date: dateVal, time: timeVal })
     }).then(r => r.json());
 
     if (!r.ok) {
@@ -2750,8 +2800,9 @@ function openPlanificationCalendar(fullPath) {
       return;
     }
 
-    deliveriesByPath[fullPath] = dateVal;
-    deliveriesByPath[fullPath + "_time"] = timeVal;
+    const fk = fnKey(fullPath);
+    deliveriesByPath[fk] = dateVal;
+    deliveriesByPath[fk + "_time"] = timeVal;
 
     updateGlobalAlert();
     calendar?.refetchEvents();
@@ -2857,45 +2908,16 @@ async function buildKanban() {
         return;
       }
 
-      const dstFull = normalizePath(moveResp.moved || "");
-      const oldIso = deliveriesByPath[srcFull];
-      const oldTime = deliveriesByPath[srcFull + "_time"] || "09:00";
-
-      if (oldIso) {
-        if (destFolder === FOLDER_FIN_PRODUCTION) {
+      // Deliveries and assignments are keyed by fileName — no path update needed.
+      // If moving to Fin de production, optionally remove from planning.
+      if (destFolder === FOLDER_FIN_PRODUCTION) {
+        const srcFk = fnKey(srcFull);
+        if (deliveriesByPath[srcFk]) {
           const remove = confirm("Retirer du planning ?");
           if (remove) {
-            await fetch("/api/delivery?fullPath=" + encodeURIComponent(srcFull), { method: "DELETE" });
-            delete deliveriesByPath[srcFull];
-            delete deliveriesByPath[srcFull + "_time"];
-          } else {
-            await fetch("/api/delivery?fullPath=" + encodeURIComponent(srcFull), { method: "DELETE" });
-            const put = await fetch("/api/delivery", {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ fullPath: dstFull, date: oldIso, time: oldTime })
-            }).then(r => r.json()).catch(() => ({ ok: false }));
-
-            if (put.ok) {
-              delete deliveriesByPath[srcFull];
-              delete deliveriesByPath[srcFull + "_time"];
-              deliveriesByPath[dstFull] = oldIso;
-              deliveriesByPath[dstFull + "_time"] = oldTime;
-            }
-          }
-        } else {
-          await fetch("/api/delivery?fullPath=" + encodeURIComponent(srcFull), { method: "DELETE" });
-          const put = await fetch("/api/delivery", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fullPath: dstFull, date: oldIso, time: oldTime })
-          }).then(r => r.json()).catch(() => ({ ok: false }));
-
-          if (put.ok) {
-            delete deliveriesByPath[srcFull];
-            delete deliveriesByPath[srcFull + "_time"];
-            deliveriesByPath[dstFull] = oldIso;
-            deliveriesByPath[dstFull + "_time"] = oldTime;
+            await fetch("/api/delivery?fileName=" + encodeURIComponent(srcFk), { method: "DELETE" });
+            delete deliveriesByPath[srcFk];
+            delete deliveriesByPath[srcFk + "_time"];
           }
         }
       }
@@ -2986,10 +3008,10 @@ async function updateKanbanSummary() {
     const today = new Date(); today.setHours(0,0,0,0);
     const urgent = Object.entries(deliveriesByPath)
       .filter(([k]) => !k.endsWith("_time"))
-      .map(([path, date]) => {
+      .map(([name, date]) => {
         const d = new Date(date + "T00:00:00");
         const diff = Math.ceil((d - today) / 86400000);
-        return { path, date, diff, name: path.split("\\").pop() };
+        return { name, date, diff };
       })
       .filter(x => x.diff >= 0 && x.diff <= 3)
       .sort((a,b) => a.diff - b.diff);
@@ -2998,7 +3020,7 @@ async function updateKanbanSummary() {
       urgent.map(x => {
         const cls = x.diff === 0 ? "urgent-j0" : x.diff === 1 ? "urgent-j1" : x.diff === 2 ? "urgent-j2" : "urgent-j3";
         const label = x.diff === 0 ? "Aujourd'hui" : `J+${x.diff}`;
-        return `<span class="urgent-badge ${cls}" title="${x.path}">${label}: ${x.name}</span>`;
+        return `<span class="urgent-badge ${cls}" title="${x.name}">${label}: ${x.name}</span>`;
       }).join("");
 
     summaryEl.innerHTML = `
@@ -3008,7 +3030,7 @@ async function updateKanbanSummary() {
 }
 
 async function openPrintDialog(fullPath) {
-  const fab = await fetch("/api/fabrication?fullPath=" + encodeURIComponent(fullPath)).then(r=>r.json()).catch(()=>({}));
+  const fab = await fetch("/api/fabrication?fileName=" + encodeURIComponent(fnKey(fullPath))).then(r=>r.json()).catch(()=>({}));
 
   const modal = document.createElement("div");
   modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;";
@@ -3074,11 +3096,10 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
 
     // Create fingerprint including file list, assignments, and deliveries for this column
     const fingerprint = JSON.stringify(jobs.map(j => {
-      const p = normalizePath(j.fullPath || '');
-      const fn = (j.name || '').toLowerCase();
+      const fn = fnKey(j.fullPath || j.name || '');
       return (j.name || '') + '|' + j.modified + '|' + j.size
-        + '|' + ((assignmentsByPath[p] || assignmentsByName[fn] || {}).operatorName || '')
-        + '|' + (deliveriesByPath[p] || deliveriesByName[fn] || '');
+        + '|' + ((assignmentsByPath[fn] || {}).operatorName || '')
+        + '|' + (deliveriesByPath[fn] || '');
     }));
     const cacheKey = folderName + '|' + q + '|' + sort;
     if (_columnCache[cacheKey] === fingerprint) {
@@ -3136,9 +3157,9 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
       sub.textContent = `${new Date(job.modified).toLocaleDateString("fr-FR")} · ${fmtBytes(job.size)}`;
       textDiv.appendChild(sub);
 
-      // Assignment badge — look up by fullPath first, then by fileName as fallback (Acrobat Pro moves)
-      const jobFileName = (job.name || "").toLowerCase();
-      const assignment = assignmentsByPath[full] || (jobFileName ? assignmentsByName[jobFileName] : null);
+      // Assignment badge — look up by fileName (path-change resilient)
+      const jobFileName = fnKey(full);
+      const assignment = assignmentsByPath[jobFileName];
       if (assignment) {
         const badge = document.createElement("div");
         badge.className = "assignment-badge";
@@ -3146,7 +3167,7 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
         textDiv.appendChild(badge);
       }
 
-      const iso = deliveriesByPath[full] || (jobFileName ? deliveriesByName[jobFileName] : null);
+      const iso = deliveriesByPath[jobFileName];
       if (iso) {
         const status = document.createElement("div");
         status.className = "kanban-card-operator-status";
@@ -3250,25 +3271,21 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
         btnBAT.className = "btn btn-sm btn-primary";
         btnBAT.innerHTML = "🖨 PrismaPrepare";
         btnBAT.onclick = async () => {
+          if (!confirm("Déplacer vers PrismaPrepare ?")) return;
           btnBAT.disabled = true;
           btnBAT.textContent = "…";
           try {
-            // Step 1: Export XML
-            const xmlR = await fetch("/api/fabrication/export-xml?fullPath=" + encodeURIComponent(full), {
-              headers: { "Authorization": `Bearer ${authToken}` }
-            }).then(r => r.json()).catch(() => ({ ok: false }));
-            if (!xmlR.ok) {
-              showNotification("❌ Erreur export XML : " + (xmlR.error || ""), "error");
-              return;
-            }
-            // Step 2: Launch PrismaPrepare
-            const batR = await fetch("/api/bat/execute", {
+            const r = await fetch("/api/jobs/move", {
               method: "POST",
               headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-              body: JSON.stringify({ fullPath: full, xmlPath: xmlR.xmlPath })
+              body: JSON.stringify({ source: full, destination: "PrismaPrepare", overwrite: true })
             }).then(r => r.json()).catch(() => ({ ok: false }));
-            if (batR.ok) showNotification("✅ PrismaPrepare lancé", "success");
-            else showNotification("❌ " + (batR.error || "Erreur"), "error");
+            if (r.ok) {
+              showNotification("✅ Fichier envoyé vers PrismaPrepare", "success");
+              await refreshKanban();
+            } else {
+              showNotification("❌ " + (r.error || "Erreur"), "error");
+            }
           } finally {
             btnBAT.disabled = false;
             btnBAT.innerHTML = "🖨 PrismaPrepare";
@@ -3399,19 +3416,16 @@ async function openAssignDropdown(btn, fullPath) {
     item.onmouseleave = () => item.style.background = "";
     item.onclick = async () => {
       dropdown.remove();
+      const fileName = fnKey(fullPath);
       const r = await fetch("/api/assignment", {
         method: "PUT",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-        body: JSON.stringify({ fullPath, operatorId: op.id })
+        body: JSON.stringify({ fullPath, fileName, operatorId: op.id })
       }).then(r => r.json()).catch(() => ({ ok: false }));
 
       if (r.ok) {
-        const normalizedPath = normalizePath(fullPath);
-        const asgn = { fullPath, operatorName: r.operatorName || op.name, operatorId: op.id };
-        assignmentsByPath[normalizedPath] = asgn;
-        // Also update fileName-based index
-        const fname = fullPath.split(/[/\\]/).pop()?.toLowerCase();
-        if (fname) assignmentsByName[fname] = asgn;
+        const asgn = { fullPath, fileName, operatorName: r.operatorName || op.name, operatorId: op.id };
+        assignmentsByPath[fileName] = asgn;
         showNotification(`✅ Job affecté à ${r.operatorName || op.name}`, "success");
         await refreshKanban();
       } else {
@@ -3543,19 +3557,20 @@ async function initCalendar() {
     eventDrop: async (info) => {
       try {
         const fullPath = normalizePath(info.event.extendedProps.fullPath);
+        const fk = fnKey(fullPath);
         const newDate = info.event.startStr.split('T')[0];
         const newTime = info.event.startStr.split('T')[1]?.substring(0, 5) || "09:00";
 
         const r = await fetch("/api/delivery", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fullPath, date: newDate, time: newTime })
+          body: JSON.stringify({ fullPath, fileName: fk, date: newDate, time: newTime })
         }).then(r => r.json());
 
         if (!r.ok) throw new Error(r.error || "Erreur");
 
-        deliveriesByPath[fullPath] = newDate;
-        deliveriesByPath[fullPath + "_time"] = newTime;
+        deliveriesByPath[fk] = newDate;
+        deliveriesByPath[fk + "_time"] = newTime;
 
         const { bg, bc, tc } = colorForEvent(fullPath, newDate);
         info.event.setProp("backgroundColor", bg);
@@ -3595,22 +3610,16 @@ async function loadDeliveries() {
   try {
     const list = await fetch("/api/delivery").then(r => r.json()).catch(() => []);
     const newDeliveries = {};
-    const newDeliveriesByName = {};
-    
+
     list.forEach(x => {
-      const normalized = normalizePath(x.fullPath);
-      newDeliveries[normalized] = x.date;
-      newDeliveries[normalized + "_time"] = x.time || "09:00";
-      // Also index by fileName for path-change resilience (Acrobat Pro moves)
-      const fname = (x.fileName || (x.fullPath ? x.fullPath.split("\\").pop() : "")).toLowerCase();
+      const fname = fnKey(x.fileName || x.fullPath || "");
       if (fname) {
-        newDeliveriesByName[fname] = x.date;
-        newDeliveriesByName[fname + "_time"] = x.time || "09:00";
+        newDeliveries[fname] = x.date;
+        newDeliveries[fname + "_time"] = x.time || "09:00";
       }
     });
-    
+
     deliveriesByPath = newDeliveries;
-    deliveriesByName = newDeliveriesByName;
   } catch (err) {
     console.error("Erreur loadDeliveries:", err);
   }

@@ -586,6 +586,31 @@ app.MapDelete("/api/recycle/purge", () =>
 
 app.MapGet("/api/ping", () => "pong");
 
+app.MapGet("/api/file-stage", (string fileName) =>
+{
+    try
+    {
+        var root = BackendUtils.HotfoldersRoot();
+        var folders = new[]
+        {
+            "Soumission", "Début de production", "Corrections", "Corrections et fond perdu",
+            "Rapport", "Prêt pour impression", "BAT", "PrismaPrepare", "Fiery",
+            "Impression en cours", "Façonnage", "Fin de production"
+        };
+        foreach (var folder in folders)
+        {
+            var path = Path.Combine(root, folder, fileName);
+            if (File.Exists(path))
+                return Results.Json(new { ok = true, folder, fullPath = path });
+        }
+        return Results.Json(new { ok = false, folder = (string?)null, fullPath = (string?)null });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
 app.MapGet("/api/folders", () =>
 {
     var clean = BackendUtils.Hotfolders()
@@ -1032,27 +1057,57 @@ app.MapPut("/api/delivery", async (HttpContext ctx) =>
     try
     {
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
-        if (!json.TryGetProperty("fullPath", out var fpEl) ||
-            !json.TryGetProperty("date", out var dEl))
-            return Results.BadRequest("fullPath + date requis.");
+        if (!json.TryGetProperty("date", out var dEl))
+            return Results.BadRequest("date requis.");
 
-        var fullPath = fpEl.GetString()!;
-        var dateStr  = dEl.GetString()!;
+        var dateStr = dEl.GetString()!;
         if (!DateTime.TryParse(dateStr, out var dt))
             return Results.BadRequest("Format date invalide.");
 
-        var full = Path.GetFullPath(fullPath);
-
         var time = "09:00";
         if (json.TryGetProperty("time", out var tEl) && tEl.ValueKind != JsonValueKind.Null)
-        {
             time = tEl.GetString() ?? "09:00";
+
+        // Accept fileName (preferred) or derive it from fullPath
+        string fileNameKey = "";
+        string fullPathVal = "";
+        if (json.TryGetProperty("fileName", out var fnEl) && !string.IsNullOrWhiteSpace(fnEl.GetString()))
+        {
+            fileNameKey = fnEl.GetString()!;
+        }
+        else if (json.TryGetProperty("fullPath", out var fpEl) && !string.IsNullOrWhiteSpace(fpEl.GetString()))
+        {
+            fullPathVal = fpEl.GetString()!;
+            fileNameKey = Path.GetFileName(fullPathVal);
+        }
+
+        if (string.IsNullOrWhiteSpace(fileNameKey))
+            return Results.BadRequest("fileName ou fullPath requis.");
+
+        // Resolve fullPath if we only have fileName
+        if (string.IsNullOrWhiteSpace(fullPathVal))
+        {
+            // Try to locate the file
+            var root = BackendUtils.HotfoldersRoot();
+            foreach (var folder in new[] { "Soumission", "Début de production", "Corrections", "Corrections et fond perdu",
+                "Rapport", "Prêt pour impression", "BAT", "PrismaPrepare", "Fiery", "Impression en cours", "Façonnage", "Fin de production" })
+            {
+                var tryPath = Path.Combine(root, folder, fileNameKey);
+                if (File.Exists(tryPath)) { fullPathVal = tryPath; break; }
+            }
+            if (string.IsNullOrWhiteSpace(fullPathVal))
+                fullPathVal = fileNameKey; // Use fileName as placeholder if not found
+        }
+        else
+        {
+            // Normalize the provided fullPath
+            try { fullPathVal = Path.GetFullPath(fullPathVal); } catch { }
         }
 
         var delivery = new DeliveryItem
         {
-            FullPath = full,
-            FileName = Path.GetFileName(full),
+            FullPath = fullPathVal,
+            FileName = fileNameKey,
             Date     = dt.Date,
             Time     = time
         };
@@ -1066,12 +1121,24 @@ app.MapPut("/api/delivery", async (HttpContext ctx) =>
     }
 });
 
-app.MapDelete("/api/delivery", (string fullPath) =>
+app.MapDelete("/api/delivery", (HttpContext ctx) =>
 {
     try
     {
-        if (BackendUtils.DeleteDelivery(fullPath))
-            return Results.Json(new { ok = true });
+        // Accept fileName (preferred) or fullPath for backward compatibility
+        var fileName = ctx.Request.Query["fileName"].ToString();
+        var fullPath = ctx.Request.Query["fullPath"].ToString();
+
+        if (!string.IsNullOrWhiteSpace(fileName))
+        {
+            if (BackendUtils.DeleteDeliveryByFileName(fileName))
+                return Results.Json(new { ok = true });
+        }
+        else if (!string.IsNullOrWhiteSpace(fullPath))
+        {
+            if (BackendUtils.DeleteDelivery(fullPath))
+                return Results.Json(new { ok = true });
+        }
 
         return Results.Json(new { ok = false, error = "Aucune livraison trouvée." });
     }
@@ -1431,7 +1498,14 @@ app.MapGet("/api/assignment", (string fullPath) =>
 app.MapGet("/api/assignments", () =>
 {
     var list = BackendUtils.LoadAssignments();
-    var result = list.Select(a => new { fullPath = a.FullPath, fileName = Path.GetFileName(a.FullPath), operatorId = a.OperatorId, operatorName = a.OperatorName, assignedAt = a.AssignedAt, assignedBy = a.AssignedBy });
+    var result = list.Select(a => new {
+        fullPath = a.FullPath,
+        fileName = !string.IsNullOrEmpty(a.FileName) ? a.FileName : Path.GetFileName(a.FullPath),
+        operatorId = a.OperatorId,
+        operatorName = a.OperatorName,
+        assignedAt = a.AssignedAt,
+        assignedBy = a.AssignedBy
+    });
     return Results.Json(result);
 });
 
@@ -1459,11 +1533,17 @@ app.MapPut("/api/assignment", async (HttpContext ctx) =>
         }
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
-        if (!json.TryGetProperty("fullPath", out var fpEl) ||
-            !json.TryGetProperty("operatorId", out var opIdEl))
-            return Results.Json(new { ok = false, error = "fullPath et operatorId requis." });
+        if (!json.TryGetProperty("operatorId", out var opIdEl))
+            return Results.Json(new { ok = false, error = "operatorId requis." });
 
-        var fullPath = fpEl.GetString() ?? "";
+        var fullPath = json.TryGetProperty("fullPath", out var fpEl) ? (fpEl.GetString() ?? "") : "";
+        var fileNameVal = json.TryGetProperty("fileName", out var fnEl) ? (fnEl.GetString() ?? "") : "";
+        if (string.IsNullOrWhiteSpace(fileNameVal) && !string.IsNullOrWhiteSpace(fullPath))
+            fileNameVal = Path.GetFileName(fullPath);
+
+        if (string.IsNullOrWhiteSpace(fileNameVal) && string.IsNullOrWhiteSpace(fullPath))
+            return Results.Json(new { ok = false, error = "fileName ou fullPath requis." });
+
         var operatorId = opIdEl.GetString() ?? "";
 
         var users2 = BackendUtils.LoadUsers();
@@ -1474,6 +1554,7 @@ app.MapPut("/api/assignment", async (HttpContext ctx) =>
         var assignment = new AssignmentItem
         {
             FullPath     = fullPath,
+            FileName     = fileNameVal,
             OperatorId   = operatorId,
             OperatorName = operator2.Name,
             AssignedAt   = DateTime.Now,
@@ -2374,9 +2455,11 @@ app.MapGet("/api/config/paper-catalog", () =>
         {
             doc = XDocument.Load(xmlReader);
         }
+
+        // JDF format (Fiery/EFI Paper Catalog): <Media DescriptiveName="..." />
         var names = doc.Descendants()
-            .Where(el => el.Name.LocalName == "CatalogEntry" || el.Name.LocalName == "Paper" || el.Name.LocalName == "Entry")
-            .Select(el => (string?)(el.Attribute("Name") ?? el.Attribute("name") ?? el.Attribute("mediaName") ?? el.Attribute("MediaName")))
+            .Where(el => el.Name.LocalName == "Media")
+            .Select(el => (string?)(el.Attribute("DescriptiveName") ?? el.Attribute("descriptiveName")))
             .Where(n => !string.IsNullOrWhiteSpace(n))
             .Select(n => n!)
             .Distinct()
@@ -2385,7 +2468,20 @@ app.MapGet("/api/config/paper-catalog", () =>
 
         if (!names.Any())
         {
-            // Try to get all leaf text content if no attribute found
+            // Fallback: try CatalogEntry/Paper/Entry elements with Name/name attribute
+            names = doc.Descendants()
+                .Where(el => el.Name.LocalName == "CatalogEntry" || el.Name.LocalName == "Paper" || el.Name.LocalName == "Entry")
+                .Select(el => (string?)(el.Attribute("Name") ?? el.Attribute("name") ?? el.Attribute("mediaName") ?? el.Attribute("MediaName")))
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Select(n => n!)
+                .Distinct()
+                .OrderBy(n => n)
+                .ToList();
+        }
+
+        if (!names.Any())
+        {
+            // Last resort: all leaf text content
             names = doc.Descendants()
                 .Where(el => !el.HasElements && !string.IsNullOrWhiteSpace(el.Value))
                 .Select(el => el.Value.Trim())
@@ -3367,6 +3463,7 @@ file record DeliveryItem
 file record AssignmentItem
 {
     public string FullPath     { get; init; } = default!;
+    public string FileName     { get; init; } = "";
     public string OperatorId   { get; init; } = default!;
     public string OperatorName { get; init; } = default!;
     public DateTime AssignedAt { get; init; }
@@ -3608,14 +3705,18 @@ file static class BackendUtils
             foreach (var d in col.Find(new BsonDocument()).ToList())
             {
                 var fullPath = d.Contains("fullPath") ? d["fullPath"].AsString : "";
-                if (!string.IsNullOrEmpty(fullPath))
+                var fileName = d.Contains("fileName") ? d["fileName"].AsString
+                             : (!string.IsNullOrEmpty(fullPath) ? Path.GetFileName(fullPath) : "");
+                // Key by fileName (universal key resilient to path changes)
+                var key = !string.IsNullOrEmpty(fileName) ? fileName : fullPath;
+                if (!string.IsNullOrEmpty(key))
                 {
-                    result[fullPath] = new DeliveryItem
+                    result[key] = new DeliveryItem
                     {
                         FullPath = fullPath,
-                        FileName = d.Contains("fileName") ? d["fileName"].AsString : (Path.GetFileName(fullPath) ?? ""),
-                        Date     = d.Contains("date")     ? d["date"].ToLocalTime() : DateTime.MinValue,
-                        Time     = d.Contains("time")     ? d["time"].AsString : "09:00"
+                        FileName = fileName,
+                        Date     = d.Contains("date") ? d["date"].ToLocalTime() : DateTime.MinValue,
+                        Time     = d.Contains("time") ? d["time"].AsString : "09:00"
                     };
                 }
             }
@@ -3631,11 +3732,15 @@ file static class BackendUtils
     public static void UpsertDelivery(DeliveryItem item)
     {
         var col = MongoDbHelper.GetDeliveriesCollection();
-        var filter = Builders<BsonDocument>.Filter.Eq("fullPath", item.FullPath);
+        // Upsert by fileName (primary key) with fullPath fallback
+        var fileNameKey = !string.IsNullOrEmpty(item.FileName) ? item.FileName : Path.GetFileName(item.FullPath);
+        var filter = !string.IsNullOrEmpty(fileNameKey)
+            ? Builders<BsonDocument>.Filter.Eq("fileName", fileNameKey)
+            : Builders<BsonDocument>.Filter.Eq("fullPath", item.FullPath);
         var doc = new BsonDocument
         {
             ["fullPath"] = item.FullPath,
-            ["fileName"] = item.FileName,
+            ["fileName"] = fileNameKey,
             ["date"]     = item.Date,
             ["time"]     = item.Time
         };
@@ -3645,7 +3750,20 @@ file static class BackendUtils
     public static bool DeleteDelivery(string fullPath)
     {
         var col = MongoDbHelper.GetDeliveriesCollection();
-        var filter = Builders<BsonDocument>.Filter.Eq("fullPath", fullPath);
+        // Try deleting by fileName first, then by fullPath
+        var fileName = Path.GetFileName(fullPath);
+        var filter = Builders<BsonDocument>.Filter.Or(
+            Builders<BsonDocument>.Filter.Eq("fileName", fileName),
+            Builders<BsonDocument>.Filter.Eq("fullPath", fullPath)
+        );
+        var result = col.DeleteOne(filter);
+        return result.DeletedCount > 0;
+    }
+
+    public static bool DeleteDeliveryByFileName(string fileName)
+    {
+        var col = MongoDbHelper.GetDeliveriesCollection();
+        var filter = Builders<BsonDocument>.Filter.Eq("fileName", fileName);
         var result = col.DeleteOne(filter);
         return result.DeletedCount > 0;
     }
@@ -3681,8 +3799,8 @@ file static class BackendUtils
             )).FirstOrDefault();
         if (existing != null) return;
 
-        // Look up the fabrication sheet to get numeroDossier
-        var fabSheet = BackendUtils.FindFabrication(movedFilePath);
+        // Look up the fabrication sheet to get numeroDossier (prefer fileName-based lookup)
+        var fabSheet = BackendUtils.FindFabricationByName(fileName) ?? BackendUtils.FindFabrication(movedFilePath);
         var numeroDossier = fabSheet?.NumeroDossier;
 
         // Build folder name: use numeroDossier if available, else auto-increment NNN
@@ -3986,10 +4104,17 @@ file static class BackendUtils
     public static void UpsertAssignment(AssignmentItem item)
     {
         var col = MongoDbHelper.GetAssignmentsCollection();
-        var filter = Builders<BsonDocument>.Filter.Eq("fullPath", item.FullPath);
+        var fileNameKey = !string.IsNullOrEmpty(item.FileName) ? item.FileName : Path.GetFileName(item.FullPath);
+        // Upsert by fileName (universal key), fall back to fullPath for old records
+        var filter = !string.IsNullOrEmpty(fileNameKey)
+            ? Builders<BsonDocument>.Filter.Or(
+                Builders<BsonDocument>.Filter.Eq("fileName", fileNameKey),
+                Builders<BsonDocument>.Filter.Eq("fullPath", item.FullPath))
+            : Builders<BsonDocument>.Filter.Eq("fullPath", item.FullPath);
         var doc = new BsonDocument
         {
             ["fullPath"]     = item.FullPath,
+            ["fileName"]     = fileNameKey,
             ["operatorId"]   = item.OperatorId,
             ["operatorName"] = item.OperatorName,
             ["assignedAt"]   = item.AssignedAt,
@@ -4001,10 +4126,14 @@ file static class BackendUtils
     private static AssignmentItem? BsonDocToAssignment(BsonDocument d)
     {
         var fullPath = d.Contains("fullPath") ? d["fullPath"].AsString : "";
-        if (string.IsNullOrEmpty(fullPath)) return null;
+        var fileName = d.Contains("fileName") ? d["fileName"].AsString : "";
+        if (string.IsNullOrEmpty(fullPath) && string.IsNullOrEmpty(fileName)) return null;
+        if (string.IsNullOrEmpty(fileName) && !string.IsNullOrEmpty(fullPath))
+            fileName = Path.GetFileName(fullPath);
         return new AssignmentItem
         {
             FullPath     = fullPath,
+            FileName     = fileName,
             OperatorId   = d.Contains("operatorId")   ? d["operatorId"].AsString   : "",
             OperatorName = d.Contains("operatorName") ? d["operatorName"].AsString : "",
             AssignedAt   = d.Contains("assignedAt")   ? d["assignedAt"].ToUniversalTime() : DateTime.MinValue,

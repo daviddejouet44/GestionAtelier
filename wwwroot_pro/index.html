@@ -95,6 +95,7 @@
     <!-- MODALE FICHE FABRICATION -->    <div id="fab-modal" class="modal hidden">
       <div class="fab-modal-content">
         <h2>Fiche de fabrication</h2>
+        <div id="fab-stage-banner" style="display:none;margin-bottom:12px;padding:8px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:13px;color:#0369a1;font-weight:500;"></div>
         <div class="fab-form-grid">
           <div class="fab-form-group"><label>Délai</label><input id="fab-delai" type="date" /></div>
           <div class="fab-form-group"><label>Numéro de dossier</label><input id="fab-numero-dossier" type="text" /></div>
@@ -119,6 +120,8 @@
         <div class="fab-modal-buttons">
           <button id="fab-close">Fermer</button>
           <button id="fab-pdf" class="btn btn-primary">Générer PDF</button>
+          <button id="fab-prisma" class="btn btn-primary">→ PrismaPrepare</button>
+          <button id="fab-bat" class="btn btn-primary">→ BAT</button>
           <button id="fab-finprod" class="btn btn-primary">Fin de production</button>
           <button id="fab-delivery-remove" class="btn">Retirer du planning</button>
           <button id="fab-save" class="btn btn-primary">Enregistrer</button>
@@ -128,7 +131,7 @@
 
   </div>
 
-  <script src="js/app.js?v=21"></script>
+  <script src="js/app.js?v=22"></script>
 
 </body>
 </html>

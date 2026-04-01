@@ -219,7 +219,18 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
   justify-content: space-between; flex-shrink: 0;
 }
 .kanban-col-counter {
-  display: none !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.25);
+  color: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  padding: 0 6px;
+  margin-left: 8px;
 }
 .kanban-col-operator__drop {
   padding: 8px; overflow-y: auto;
