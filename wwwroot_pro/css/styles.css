@@ -193,16 +193,11 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
   border-radius: var(--radius-lg); padding: 14px 20px; margin-bottom: 16px;
   display: flex; gap: 12px; align-items: center; box-shadow: var(--shadow-sm); flex-wrap: wrap;
 }
-.kanban-summary-counts { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
-.kanban-summary-count {
-  padding: 3px 8px; background: var(--bg-subtle); border-radius: var(--radius-sm);
-  font-size: 11px; font-weight: 500; color: var(--text-secondary);
-}
-.kanban-summary-count strong { font-weight: 700; color: var(--text-primary); }
+.kanban-summary-counts { display: none !important; }
 .kanban-summary-urgent { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .urgent-badge {
-  padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; color: white;
-  max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 5px 12px; border-radius: 12px; font-size: 14px; font-weight: 600; color: white;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .urgent-j0 { background: #FF3B30; }
 .urgent-j1 { background: #FF9F0A; }
@@ -414,6 +409,7 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
 }
 .fab-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .fab-form-group { display: flex; flex-direction: column; gap: 3px; }
+.fab-full-width { grid-column: 1 / -1; }
 .fab-form-group label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); }
 .fab-form-group input, .fab-form-group select, .fab-form-group textarea {
   padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);

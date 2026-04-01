@@ -9,6 +9,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Collections.Generic;
+using System.Xml.Linq;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -1036,7 +1037,7 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
     }
 });
 
-app.MapGet("/api/fabrication/pdf", (string fullPath) =>
+app.MapGet("/api/fabrication/pdf", (string fullPath, bool? save) =>
 {
     try
     {
@@ -1048,8 +1049,38 @@ app.MapGet("/api/fabrication/pdf", (string fullPath) =>
         using var ms = new MemoryStream();
         doc.GeneratePdf(ms);
         ms.Position = 0;
+        var pdfBytes = ms.ToArray();
 
-        return Results.File(ms, "application/pdf", $"FicheFabrication-{sheet.FileName}.pdf");
+        // Optionally save PDF to source file's directory
+        if (save == true)
+        {
+            try
+            {
+                // Use the trusted sheet.FullPath (from database) instead of user-provided fullPath
+                var trustedFullPath = sheet.FullPath;
+                var srcDir = Path.GetDirectoryName(trustedFullPath);
+                if (!string.IsNullOrEmpty(srcDir))
+                {
+                    // Validate that srcDir is within the allowed hotfolders root (prevent path traversal)
+                    var hotRoot = Path.GetFullPath(BackendUtils.HotfoldersRoot());
+                    var canonicalSrcDir = Path.GetFullPath(srcDir);
+                    if (canonicalSrcDir.StartsWith(hotRoot, StringComparison.OrdinalIgnoreCase) && Directory.Exists(canonicalSrcDir))
+                    {
+                        // Sanitize filename to prevent path traversal
+                        var safeFileName = Path.GetFileName(sheet.FileName);
+                        var baseName = Path.GetFileNameWithoutExtension(safeFileName);
+                        var pdfPath = Path.Combine(canonicalSrcDir, $"{baseName}_FicheFabrication.pdf");
+                        File.WriteAllBytes(pdfPath, pdfBytes);
+                    }
+                }
+            }
+            catch (Exception saveEx)
+            {
+                Console.WriteLine($"[WARN] PDF save failed: {saveEx.Message}");
+            }
+        }
+
+        return Results.File(pdfBytes, "application/pdf", $"FicheFabrication-{sheet.FileName}.pdf");
     }
     catch (Exception ex)
     {
@@ -1911,6 +1942,118 @@ app.MapDelete("/api/config/print-engines/{name}", (HttpContext ctx, string name)
         return Results.Json(new { ok = true });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// CONFIG — Work Types
+// ======================================================
+
+app.MapGet("/api/config/work-types", () =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("workTypes");
+        var types = col.Find(FilterDefinition<BsonDocument>.Empty).ToList()
+            .Select(d => d.Contains("name") ? d["name"].AsString : "")
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .OrderBy(s => s)
+            .ToList();
+        return Results.Json(types);
+    }
+    catch (Exception) { return Results.Json(new string[0]); }
+});
+
+app.MapPost("/api/config/work-types/import", async (HttpContext ctx) =>
+{
+    try
+    {
+        var form = await ctx.Request.ReadFormAsync();
+        var file = form.Files.GetFile("file");
+        if (file == null) return Results.Json(new { ok = false, error = "Fichier manquant" });
+
+        using var reader = new StreamReader(file.OpenReadStream());
+        var content = await reader.ReadToEndAsync();
+        var lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+        var col = MongoDbHelper.GetCollection<BsonDocument>("workTypes");
+        int count = 0;
+        foreach (var line in lines)
+        {
+            var name = line.Trim().Trim('"');
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            var filter = Builders<BsonDocument>.Filter.Eq("name", name);
+            var existing = col.Find(filter).FirstOrDefault();
+            if (existing == null)
+            {
+                col.InsertOne(new BsonDocument { ["name"] = name });
+                count++;
+            }
+        }
+        return Results.Json(new { ok = true, count });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// CONFIG — Paper Catalog
+// ======================================================
+
+app.MapGet("/api/config/paper-catalog", () =>
+{
+    try
+    {
+        // Look for Paper Catalog.xml in app directory or common locations
+        var searchPaths = new[]
+        {
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Paper Catalog.xml"),
+            Path.Combine(Directory.GetCurrentDirectory(), "Paper Catalog.xml"),
+            Path.Combine(BackendUtils.HotfoldersRoot(), "..", "Paper Catalog.xml"),
+            "Paper Catalog.xml"
+        };
+
+        string? xmlPath = searchPaths.FirstOrDefault(p => File.Exists(p));
+        if (xmlPath == null)
+            return Results.Json(new string[0]);
+
+        // Load XML with secure settings to prevent XXE attacks
+        var xmlSettings = new System.Xml.XmlReaderSettings
+        {
+            DtdProcessing = System.Xml.DtdProcessing.Prohibit,
+            XmlResolver = null
+        };
+        XDocument doc;
+        using (var xmlReader = System.Xml.XmlReader.Create(xmlPath, xmlSettings))
+        {
+            doc = XDocument.Load(xmlReader);
+        }
+        var names = doc.Descendants()
+            .Where(el => el.Name.LocalName == "CatalogEntry" || el.Name.LocalName == "Paper" || el.Name.LocalName == "Entry")
+            .Select(el => (string?)(el.Attribute("Name") ?? el.Attribute("name") ?? el.Attribute("mediaName") ?? el.Attribute("MediaName")))
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Select(n => n!)
+            .Distinct()
+            .OrderBy(n => n)
+            .ToList();
+
+        if (!names.Any())
+        {
+            // Try to get all leaf text content if no attribute found
+            names = doc.Descendants()
+                .Where(el => !el.HasElements && !string.IsNullOrWhiteSpace(el.Value))
+                .Select(el => el.Value.Trim())
+                .Where(n => n.Length > 0 && n.Length < 200)
+                .Distinct()
+                .OrderBy(n => n)
+                .ToList();
+        }
+
+        return Results.Json(names);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[WARN] Paper catalog parse error: {ex.Message}");
+        return Results.Json(new string[0]);
+    }
 });
 
 // ======================================================
