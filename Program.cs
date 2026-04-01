@@ -573,22 +573,36 @@ app.MapPost("/api/jobs/move", async (HttpContext ctx) =>
                 try
                 {
                     var assignCol = MongoDbHelper.GetCollection<BsonDocument>("assignments");
-                    var assignFilter = Builders<BsonDocument>.Filter.Eq("fullPath", src);
-                    var assignUpdate = Builders<BsonDocument>.Update.Set("fullPath", moved);
-                    assignCol.UpdateMany(assignFilter, assignUpdate);
+                    var oldPathNorm = src.Replace("\\", "/");
+                    var newPathNorm = moved.Replace("\\", "/");
+                    // Update with original path (backslash)
+                    assignCol.UpdateMany(Builders<BsonDocument>.Filter.Eq("fullPath", src), Builders<BsonDocument>.Update.Set("fullPath", moved));
+                    // Also update normalized forward-slash variants
+                    assignCol.UpdateMany(Builders<BsonDocument>.Filter.Eq("fullPath", oldPathNorm), Builders<BsonDocument>.Update.Set("fullPath", newPathNorm));
                 }
                 catch (Exception exAssign)
                 {
                     Console.WriteLine($"[WARN] UpdateAssignmentPath failed: {exAssign.Message}");
                 }
 
-                // Update fabrication path when file moves
+                // Update fabrication path when file moves (also handle fabricationSheets collection)
                 try
                 {
+                    var oldPathNorm2 = src.Replace("\\", "/");
+                    var newPathNorm2 = moved.Replace("\\", "/");
                     var fabCol = MongoDbHelper.GetCollection<BsonDocument>("fabrications");
-                    var fabFilter = Builders<BsonDocument>.Filter.Eq("fullPath", src);
+                    var fabFilter = Builders<BsonDocument>.Filter.Or(
+                        Builders<BsonDocument>.Filter.Eq("fullPath", src),
+                        Builders<BsonDocument>.Filter.Eq("fullPath", oldPathNorm2));
                     var fabUpdate = Builders<BsonDocument>.Update.Set("fullPath", moved);
                     fabCol.UpdateMany(fabFilter, fabUpdate);
+                    // Also update fabricationSheets collection
+                    var fabSheetsCol = MongoDbHelper.GetCollection<BsonDocument>("fabricationSheets");
+                    fabSheetsCol.UpdateMany(
+                        Builders<BsonDocument>.Filter.Or(
+                            Builders<BsonDocument>.Filter.Eq("fullPath", src),
+                            Builders<BsonDocument>.Filter.Eq("fullPath", oldPathNorm2)),
+                        Builders<BsonDocument>.Update.Set("fullPath", moved));
                 }
                 catch (Exception exFab)
                 {
@@ -989,6 +1003,7 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             Encres           = input.Encres,
             Client           = input.Client,
             NumeroAffaire    = input.NumeroAffaire,
+            NumeroDossier    = input.NumeroDossier,
             Notes            = input.Notes,
             Faconnage        = input.Faconnage,
             Livraison        = input.Livraison,
@@ -1487,6 +1502,62 @@ app.MapGet("/api/production-folders/{id}/files/{filename}", (string id, string f
         var provider = new FileExtensionContentTypeProvider();
         if (!provider.TryGetContentType(full, out var ct)) ct = "application/octet-stream";
         return Results.File(File.OpenRead(full), ct, safeName);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// PRODUCTION FOLDERS — GLOBAL PROGRESS
+// ======================================================
+app.MapGet("/api/production-folders/global-progress", () =>
+{
+    try
+    {
+        var stageProgress = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "Début de production", 0 },
+            { "1.Reception", 0 },
+            { "Corrections", 25 },
+            { "Corrections et fond perdu", 25 },
+            { "Prêt pour impression", 50 },
+            { "6.Archivage", 50 },
+            { "BAT", 65 },
+            { "4.BAT", 65 },
+            { "PrismaPrepare", 75 },
+            { "Fiery", 75 },
+            { "Impression en cours", 75 },
+            { "Façonnage", 90 },
+            { "Fin de production", 100 }
+        };
+
+        int GetProgress(string? stage)
+        {
+            if (string.IsNullOrEmpty(stage)) return 0;
+            foreach (var kv in stageProgress)
+                if (stage.IndexOf(kv.Key, StringComparison.OrdinalIgnoreCase) >= 0)
+                    return kv.Value;
+            return 0;
+        }
+
+        var col = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+        var docs = col.Find(new BsonDocument()).SortByDescending(x => x["createdAt"]).ToList();
+        var result = docs.Select(d =>
+        {
+            var stage = d.Contains("currentStage") ? d["currentStage"].AsString : "";
+            return new
+            {
+                _id = d["_id"].ToString(),
+                number = d.Contains("number") ? d["number"].AsInt32 : 0,
+                fileName = d.Contains("fileName") ? d["fileName"].AsString : "",
+                numeroDossier = d.Contains("numeroDossier") ? d["numeroDossier"].AsString : "",
+                currentStage = stage,
+                progress = GetProgress(stage)
+            };
+        }).ToList();
+        return Results.Json(result);
     }
     catch (Exception ex)
     {
@@ -2117,10 +2188,30 @@ app.MapPost("/api/commands/bat", async (HttpContext ctx) =>
         var template = batCfg != null && batCfg.Contains("command") ? batCfg["command"].AsString :
             "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\" /T \"{type}\" /SP /C {qty}";
 
-        var cmd = BackendUtils.BuildCommandTemplate(template, filePath, typeWork, quantity);
+        var cmd = BackendUtils.BuildCommandTemplate(template, Path.GetFileName(filePath), typeWork, quantity);
         Console.WriteLine($"[INFO] BAT command: {cmd}");
         var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c {cmd}") { UseShellExecute = true };
         System.Diagnostics.Process.Start(psi);
+
+        // Store pending BAT rename so "Epreuve PDF.pdf" can be renamed to {originalName}.Epreuve.pdf
+        try
+        {
+            var batPendingCol = MongoDbHelper.GetCollection<BsonDocument>("batPending");
+            var batFolderCfg = MongoDbHelper.GetCollection<BsonDocument>("batCommandConfig")
+                .Find(Builders<BsonDocument>.Filter.Empty).FirstOrDefault();
+            var batFolder = batFolderCfg != null && batFolderCfg.Contains("batFolder")
+                ? batFolderCfg["batFolder"].AsString
+                : Path.GetDirectoryName(filePath) ?? "";
+            batPendingCol.InsertOne(new BsonDocument
+            {
+                ["sourceFileName"] = Path.GetFileNameWithoutExtension(filePath),
+                ["batFolder"] = batFolder,
+                ["createdAt"] = DateTime.UtcNow,
+                ["processed"] = false
+            });
+        }
+        catch { /* non-blocking */ }
+
         return Results.Json(new { ok = true, command = cmd });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
@@ -2268,6 +2359,39 @@ app.MapPost("/api/bat/reject", async (HttpContext ctx) =>
     var update = Builders<BsonDocument>.Update.Set("status", "rejected").Set("rejectedAt", DateTime.UtcNow);
     col.UpdateOne(filter, update, new UpdateOptions { IsUpsert = true });
     return Results.Json(new { ok = true });
+});
+
+// Process pending BAT output renames: rename "Epreuve PDF.pdf" → {sourceFileName}.Epreuve.pdf
+app.MapPost("/api/bat/process-pending", () =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("batPending");
+        var pendingFilter = Builders<BsonDocument>.Filter.Eq("processed", false);
+        var pending = col.Find(pendingFilter).ToList();
+        var renamed = 0;
+        foreach (var doc in pending)
+        {
+            var sourceName = doc.Contains("sourceFileName") ? doc["sourceFileName"].AsString : "";
+            var batFolder = doc.Contains("batFolder") ? doc["batFolder"].AsString : "";
+            if (string.IsNullOrEmpty(sourceName) || string.IsNullOrEmpty(batFolder)) continue;
+            var epreuveSrc = Path.Combine(batFolder, "Epreuve PDF.pdf");
+            if (File.Exists(epreuveSrc))
+            {
+                var dest = Path.Combine(batFolder, $"{sourceName}.Epreuve.pdf");
+                try
+                {
+                    File.Move(epreuveSrc, dest, overwrite: true);
+                    col.UpdateOne(Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]),
+                        Builders<BsonDocument>.Update.Set("processed", true));
+                    renamed++;
+                }
+                catch (Exception ex) { Console.WriteLine($"[WARN] BAT rename failed: {ex.Message}"); }
+            }
+        }
+        return Results.Json(new { ok = true, renamed });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
 // ======================================================
@@ -2779,6 +2903,7 @@ file record FabricationSheet
     public string? Encres { get; init; }
     public string? Client { get; init; }
     public string? NumeroAffaire { get; init; }
+    public string? NumeroDossier { get; init; }
     public string? Notes { get; init; }
     public DateTime? Delai { get; init; }
     public string? Media1 { get; init; }
@@ -2807,6 +2932,7 @@ file class FabricationInput
     public string? Encres { get; set; }
     public string? Client { get; set; }
     public string? NumeroAffaire { get; set; }
+    public string? NumeroDossier { get; set; }
     public string? Notes { get; set; }
     public DateTime? Delai { get; set; }
     public string? Media1 { get; set; }
@@ -3192,6 +3318,7 @@ file static class BackendUtils
             ["encres"]            = sheet.Encres            == null ? BsonNull.Value : (BsonValue)sheet.Encres,
             ["client"]            = sheet.Client            == null ? BsonNull.Value : (BsonValue)sheet.Client,
             ["numeroAffaire"]     = sheet.NumeroAffaire     == null ? BsonNull.Value : (BsonValue)sheet.NumeroAffaire,
+            ["numeroDossier"]     = sheet.NumeroDossier     == null ? BsonNull.Value : (BsonValue)sheet.NumeroDossier,
             ["notes"]             = sheet.Notes             == null ? BsonNull.Value : (BsonValue)sheet.Notes,
             ["delai"]             = sheet.Delai             == null ? BsonNull.Value : (BsonValue)sheet.Delai.Value,
             ["media1"]            = sheet.Media1            == null ? BsonNull.Value : (BsonValue)sheet.Media1,
@@ -3243,6 +3370,7 @@ file static class BackendUtils
             Encres           = GetNullableString(d, "encres"),
             Client           = GetNullableString(d, "client"),
             NumeroAffaire    = GetNullableString(d, "numeroAffaire"),
+            NumeroDossier    = GetNullableString(d, "numeroDossier"),
             Notes            = GetNullableString(d, "notes"),
             Delai            = d.Contains("delai")            && d["delai"]            != BsonNull.Value ? (DateTime?)d["delai"].ToLocalTime() : null,
             Media1           = GetNullableString(d, "media1"),
