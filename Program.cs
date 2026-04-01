@@ -2429,6 +2429,131 @@ app.MapDelete("/api/config/work-types/{name}", (string name) =>
 });
 
 // ======================================================
+// CONFIG — Hotfolder Routing (type de travail → chemin hotfolder PrismaPrepare)
+// ======================================================
+
+app.MapGet("/api/config/hotfolder-routing", () =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("hotfolderRouting");
+        var docs = col.Find(FilterDefinition<BsonDocument>.Empty).ToList()
+            .Select(d => new
+            {
+                typeTravail = d.Contains("typeTravail") ? d["typeTravail"].AsString : "",
+                hotfolderPath = d.Contains("hotfolderPath") ? d["hotfolderPath"].AsString : ""
+            })
+            .Where(r => !string.IsNullOrEmpty(r.typeTravail))
+            .ToList();
+        return Results.Json(docs);
+    }
+    catch (Exception ex) { Console.WriteLine($"[ERR] hotfolder-routing GET: {ex.Message}"); return Results.Json(new object[0]); }
+});
+
+app.MapPut("/api/config/hotfolder-routing", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var typeTravail = json.TryGetProperty("typeTravail", out var tt) ? tt.GetString() ?? "" : "";
+        var hotfolderPath = json.TryGetProperty("hotfolderPath", out var hp) ? hp.GetString() ?? "" : "";
+
+        if (string.IsNullOrEmpty(typeTravail))
+            return Results.Json(new { ok = false, error = "typeTravail manquant" });
+
+        var col = MongoDbHelper.GetCollection<BsonDocument>("hotfolderRouting");
+        var filter = Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail);
+        var doc = new BsonDocument { ["typeTravail"] = typeTravail, ["hotfolderPath"] = hotfolderPath };
+        col.ReplaceOne(filter, doc, new ReplaceOptions { IsUpsert = true });
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapDelete("/api/config/hotfolder-routing/{typeTravail}", (string typeTravail) =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("hotfolderRouting");
+        col.DeleteMany(Builders<BsonDocument>.Filter.Eq("typeTravail", Uri.UnescapeDataString(typeTravail)));
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// BAT — Envoi vers hotfolder PrismaPrepare (BAT Complet)
+// ======================================================
+
+app.MapPost("/api/bat/send-to-hotfolder", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var fileName = json.TryGetProperty("fileName", out var fn) ? fn.GetString() ?? "" : "";
+        var fullPath = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
+
+        // 1. Find fabrication record to get typeTravail
+        var fabCol = MongoDbHelper.GetCollection<BsonDocument>("fabrication");
+        BsonDocument? fabDoc = null;
+        if (!string.IsNullOrEmpty(fileName))
+            fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", fileName)).FirstOrDefault();
+        if (fabDoc == null && !string.IsNullOrEmpty(fullPath))
+            fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fullPath", fullPath)).FirstOrDefault();
+
+        var typeTravail = fabDoc != null && fabDoc.Contains("typeTravail") ? fabDoc["typeTravail"].AsString : "";
+
+        if (string.IsNullOrEmpty(typeTravail))
+            return Results.Json(new { ok = false, error = "Type de travail non défini dans la fiche de fabrication. Veuillez renseigner le type de travail avant d'effectuer un BAT Complet." });
+
+        // 2. Find hotfolder path for this typeTravail
+        var routingCol = MongoDbHelper.GetCollection<BsonDocument>("hotfolderRouting");
+        var routingDoc = routingCol.Find(Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail)).FirstOrDefault();
+
+        if (routingDoc == null || !routingDoc.Contains("hotfolderPath") || string.IsNullOrEmpty(routingDoc["hotfolderPath"].AsString))
+            return Results.Json(new { ok = false, error = $"Aucun hotfolder PrismaPrepare configuré pour le type de travail \"{typeTravail}\". Configurez-le dans Paramétrage > Routage Hotfolder." });
+
+        var hotfolderPath = routingDoc["hotfolderPath"].AsString;
+
+        // 3. Locate the actual file if fullPath not provided or doesn't exist
+        if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
+        {
+            var hotRoot = BackendUtils.HotfoldersRoot();
+            var found = Directory.GetFiles(hotRoot, fileName, SearchOption.AllDirectories).FirstOrDefault();
+            if (found != null) fullPath = found;
+        }
+
+        if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
+            return Results.Json(new { ok = false, error = $"Fichier source introuvable : {fileName}" });
+
+        // 4. Copy to hotfolder PrismaPrepare
+        if (!Directory.Exists(hotfolderPath))
+            Directory.CreateDirectory(hotfolderPath);
+
+        var hotfolderDest = Path.Combine(hotfolderPath, Path.GetFileName(fullPath));
+        File.Copy(fullPath, hotfolderDest, overwrite: true);
+        Console.WriteLine($"[BAT] Copié vers hotfolder: {hotfolderDest}");
+
+        // 5. Move file to BAT folder
+        var hotRoot2 = BackendUtils.HotfoldersRoot();
+        var batFolderPath = Path.Combine(hotRoot2, "BAT");
+        Directory.CreateDirectory(batFolderPath);
+        var batDest = Path.Combine(batFolderPath, Path.GetFileName(fullPath));
+        if (File.Exists(batDest)) File.Delete(batDest);
+        File.Move(fullPath, batDest);
+        Console.WriteLine($"[BAT] Déplacé vers BAT: {batDest}");
+
+        return Results.Json(new { ok = true, hotfolder = hotfolderPath, destination = batDest, typeTravail });
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ERR] bat/send-to-hotfolder: {ex.Message}");
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
 // CONFIG — Paper Catalog
 // ======================================================
 
