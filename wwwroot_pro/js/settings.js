@@ -808,7 +808,7 @@ async function renderSettingsBatCommand(panel) {
     const command = document.getElementById("bat-cmd-input").value;
     const r = await fetch("/api/config/bat-command", {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
       body: JSON.stringify({ command })
     }).then(r => r.json());
     if (r.ok) showNotification("Commande BAT enregistrée", "success");
@@ -848,7 +848,7 @@ async function renderSettingsActionButtons(panel) {
     };
     const r = await fetch("/api/config/action-buttons", {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
       body: JSON.stringify(data)
     }).then(r => r.json());
     if (r.ok) showNotification("Boutons d'action enregistrés", "success");

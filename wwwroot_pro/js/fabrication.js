@@ -90,16 +90,9 @@ export function initFabrication() {
     if (window._refreshSubmissionView) await window._refreshSubmissionView();
   };
 
-  // Remplacer le bouton fabPrisma par le bouton BAT (popup BAT complet/simple)
+  // Remplacer le bouton fabPrisma — il est masqué dans l'HTML, fab-bat gère tout
   if (fabPrisma) {
-    fabPrisma.textContent = "→ BAT";
-    fabPrisma.onclick = async () => {
-      if (!fabCurrentPath) { alert("Chemin introuvable"); return; }
-      openBatChoiceModal(fabCurrentPath, async () => {
-        fabModal.classList.add("hidden");
-        if (window._refreshKanban) await window._refreshKanban();
-      });
-    };
+    fabPrisma.style.display = "none"; // masqué — fab-bat le remplace
   }
 
   if (fabBat) {
