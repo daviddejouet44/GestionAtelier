@@ -125,6 +125,8 @@ function setupProfileUI() {
   if (btnRecycle) btnRecycle.style.display = "inline-block";
   if (btnDossiers) btnDossiers.style.display = "inline-block";
   if (btnDashboard) btnDashboard.style.display = currentUser.profile === 3 ? "inline-block" : "none";
+  const btnGlobalProd = document.getElementById("btnViewGlobalProd");
+  if (btnGlobalProd) btnGlobalProd.style.display = (currentUser.profile === 2 || currentUser.profile === 3) ? "inline-block" : "none";
 
   if (currentUser.profile === 1) {
     btnSubmission.style.display = "inline-block";
@@ -177,6 +179,8 @@ function hideAllViews() {
   document.getElementById("dashboard").classList.add("hidden");
   document.getElementById("dossiers").classList.add("hidden");
   document.getElementById("settings-view").classList.add("hidden");
+  const globalProdEl = document.getElementById("global-production");
+  if (globalProdEl) globalProdEl.classList.add("hidden");
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
 }
 
@@ -413,6 +417,8 @@ document.getElementById("btnViewProduction").onclick = showProduction;
 document.getElementById("btnViewRecycle").onclick = showRecycle;
 document.getElementById("btnViewDashboard").onclick = showDashboard;
 document.getElementById("btnViewDossiers").onclick = showDossiers;
+const btnViewGlobalProd = document.getElementById("btnViewGlobalProd");
+if (btnViewGlobalProd) btnViewGlobalProd.onclick = showGlobalProduction;
 
 // ======================================================
 // SOUMISSION (Profil 1)
@@ -1124,6 +1130,82 @@ function showDashboard() {
   document.getElementById("dashboard").classList.remove("hidden");
   document.getElementById("btnViewDashboard").classList.add("active");
   initDashboardView();
+}
+
+// ======================================================
+// VUE PRODUCTION GLOBALE (profils 2 et 3)
+// ======================================================
+
+function showGlobalProduction() {
+  hideAllViews();
+  const el = document.getElementById("global-production");
+  if (el) el.classList.remove("hidden");
+  const btn = document.getElementById("btnViewGlobalProd");
+  if (btn) btn.classList.add("active");
+  initGlobalProductionView();
+}
+
+const STAGE_PROGRESS = {
+  "Début de production": 0,
+  "1.Reception": 0,
+  "Corrections": 25,
+  "Corrections et fond perdu": 25,
+  "Prêt pour impression": 50,
+  "6.Archivage": 50,
+  "BAT": 65,
+  "4.BAT": 65,
+  "PrismaPrepare": 75,
+  "Fiery": 75,
+  "Impression en cours": 75,
+  "Façonnage": 90,
+  "Fin de production": 100
+};
+
+function getStageProgress(stage) {
+  if (!stage) return 0;
+  const key = Object.keys(STAGE_PROGRESS).find(k => stage.toLowerCase().includes(k.toLowerCase()));
+  return key !== undefined ? STAGE_PROGRESS[key] : 0;
+}
+
+async function initGlobalProductionView() {
+  const el = document.getElementById("global-production");
+  if (!el) return;
+  el.innerHTML = '<div style="padding:20px;color:#6b7280;">Chargement...</div>';
+
+  try {
+    const folders = await fetch("/api/production-folders/global-progress", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => []);
+
+    if (!Array.isArray(folders) || folders.length === 0) {
+      el.innerHTML = '<div style="padding:20px;color:#6b7280;">Aucun dossier de production.</div>';
+      return;
+    }
+
+    const grid = document.createElement("div");
+    grid.className = "global-prod-grid";
+
+    for (const folder of folders) {
+      const stage = folder.currentStage || "Inconnu";
+      const progress = folder.progress !== undefined ? folder.progress : getStageProgress(stage);
+      const card = document.createElement("div");
+      card.className = "global-prod-card";
+      card.innerHTML = `
+        <div class="global-prod-name">${folder.numeroDossier || folder.fileName || folder.number || 'Dossier'}</div>
+        <div class="global-prod-stage">${stage}</div>
+        <div class="global-prod-progress">
+          <div class="progress-bar" style="width:${progress}%"></div>
+        </div>
+        <span class="global-prod-percent">${progress}%</span>
+      `;
+      grid.appendChild(card);
+    }
+
+    el.innerHTML = "";
+    el.appendChild(grid);
+  } catch(err) {
+    el.innerHTML = `<div style="padding:20px;color:#dc2626;">Erreur : ${err.message}</div>`;
+  }
 }
 
 async function initDashboardView() {
@@ -2159,6 +2241,7 @@ const fabRectoVerso = document.getElementById("fab-rectoverso");
 const fabEncres = document.getElementById("fab-encres");
 const fabClient = document.getElementById("fab-client");
 const fabNumero = document.getElementById("fab-numero");
+const fabNumeroDossier = document.getElementById("fab-numero-dossier");
 const fabNotes = document.getElementById("fab-notes");
 const fabDelai = document.getElementById("fab-delai");
 const fabFaconnage = document.getElementById("fab-faconnage");
@@ -2205,6 +2288,7 @@ async function openFabrication(fullPath) {
   fabEncres.value = d.encres || "";
   fabClient.value = d.client || "";
   fabNumero.value = d.numeroAffaire || "";
+  if (fabNumeroDossier) fabNumeroDossier.value = d.numeroDossier || "";
   fabNotes.value = d.notes || "";
   fabFaconnage.value = d.faconnage || "";
   fabLivraison.value = d.livraison || "";
@@ -2271,6 +2355,7 @@ fabSave.onclick = async () => {
     encres: fabEncres.value,
     client: fabClient.value,
     numeroAffaire: fabNumero.value,
+    numeroDossier: fabNumeroDossier ? fabNumeroDossier.value || null : null,
     notes: fabNotes.value,
     faconnage: fabFaconnage.value,
     livraison: fabLivraison.value,
@@ -2787,11 +2872,27 @@ async function openPrintDialog(fullPath) {
   document.body.appendChild(modal);
 }
 
+// Store previous column data to avoid unnecessary DOM rebuilds
+const _columnCache = {};
+
 async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = false) {
   try {
     const jobs = await fetch(`/api/jobs?folder=${encodeURIComponent(folderName)}`)
       .then(r => r.json())
       .catch(() => []);
+
+    // Create fingerprint including file list, assignments, and deliveries for this column
+    const fingerprint = JSON.stringify(jobs.map(j => {
+      const p = normalizePath(j.fullPath || '');
+      return (j.name || '') + '|' + j.modified + '|' + j.size
+        + '|' + (assignmentsByPath[p] ? assignmentsByPath[p].operatorName : '')
+        + '|' + (deliveriesByPath[p] || '');
+    }));
+    const cacheKey = folderName + '|' + q + '|' + sort;
+    if (_columnCache[cacheKey] === fingerprint) {
+      return; // No changes, skip DOM rebuild
+    }
+    _columnCache[cacheKey] = fingerprint;
 
     const drop = col.querySelector(".kanban-col-operator__drop");
     drop.innerHTML = "";
@@ -3022,6 +3123,19 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
             batTracking.appendChild(btnSent);
             batTracking.appendChild(btnValidate);
             batTracking.appendChild(btnReject);
+
+            // J+2 alert: BAT sent > 2 days without validation or rejection
+            if (status.sentAt && !status.validatedAt && !status.rejectedAt) {
+              const sentDate = new Date(status.sentAt);
+              const now = new Date();
+              const diffDays = (now - sentDate) / (1000 * 60 * 60 * 24);
+              if (diffDays >= 2) {
+                const alertJ2 = document.createElement("div");
+                alertJ2.className = "bat-alert-j2";
+                alertJ2.textContent = "⚠️ BAT envoyé depuis plus de 2 jours !";
+                batTracking.appendChild(alertJ2);
+              }
+            }
           }).catch(() => { batTracking.innerHTML = ""; });
         card.appendChild(batTracking);
       }

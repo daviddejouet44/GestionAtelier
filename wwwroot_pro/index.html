@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <title>Gestion Atelier PRO</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="css/styles.css?v=3" />
+  <link rel="stylesheet" href="css/styles.css?v=4" />
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script>
@@ -75,6 +75,7 @@
         <button id="btnViewProduction" class="tab-btn" style="display:none;">Production</button>
         <button id="btnViewRecycle" class="tab-btn" style="display:none;">Corbeille</button>
         <button id="btnViewDashboard" class="tab-btn" style="display:none;">Dashboard</button>
+        <button id="btnViewGlobalProd" class="tab-btn" style="display:none;">Vue production globale</button>
       </div>
     </div>
 
@@ -87,6 +88,7 @@
       <div id="dossiers" class="hidden"></div>
       <div id="recycle" class="hidden"></div>
       <div id="dashboard" class="hidden"></div>
+      <div id="global-production" class="hidden"></div>
       <div id="settings-view" class="hidden"></div>
     </div>
 
@@ -107,6 +109,7 @@
           <div class="fab-form-group"><label>Livraison</label><input id="fab-livraison" type="text" /></div>
           <div class="fab-form-group"><label>Client</label><input id="fab-client" type="text" /></div>
           <div class="fab-form-group"><label>Numéro d'affaire</label><input id="fab-numero" type="text" /></div>
+          <div class="fab-form-group"><label>Numéro de dossier</label><input id="fab-numero-dossier" type="text" /></div>
           <div class="fab-form-group" style="grid-column: 1 / -1;"><label>Notes</label><textarea id="fab-notes" rows="3"></textarea></div>
           <!-- Champs Admin uniquement -->
           <div class="fab-form-group fab-admin-field" style="display:none;"><label>Média 1 (XML)</label><input id="fab-media1" type="text" /></div>
@@ -130,7 +133,7 @@
 
   </div>
 
-  <script src="js/app.js?v=18"></script>
+  <script src="js/app.js?v=19"></script>
 
 </body>
 </html>
