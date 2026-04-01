@@ -347,9 +347,10 @@ async function refreshKanbanColumnReadOnly(folderName, col) {
       card.appendChild(sub);
 
       const full = normalizePath(job.fullPath || "");
+      const jobFileName = (job.name || "").toLowerCase();
 
-      // Assignment badge (read-only view — visible but no action)
-      const assignment = assignmentsByPath[full];
+      // Assignment badge (read-only view — visible but no action; fallback by fileName)
+      const assignment = assignmentsByPath[full] || (jobFileName ? assignmentsByName[jobFileName] : null);
       if (assignment) {
         const badge = document.createElement("div");
         badge.className = "assignment-badge";
@@ -357,7 +358,7 @@ async function refreshKanbanColumnReadOnly(folderName, col) {
         card.appendChild(badge);
       }
 
-      const iso = deliveriesByPath[full];
+      const iso = deliveriesByPath[full] || (jobFileName ? deliveriesByName[jobFileName] : null);
       if (iso) {
         const status = document.createElement("div");
         status.className = "kanban-card-operator-status";
@@ -941,15 +942,16 @@ async function loadDossiersList() {
       card.onmouseenter = () => { card.style.boxShadow = "0 4px 20px rgba(0,0,0,0.15)"; card.style.transform = "translateY(-2px)"; };
       card.onmouseleave = () => { card.style.boxShadow = "0 2px 12px rgba(0,0,0,0.08)"; card.style.transform = ""; };
       card.innerHTML = `
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;min-width:0;">
+        <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:12px;min-width:0;">
+          ${folder.numeroDossier ? `<div style="font-size:28px;font-weight:800;color:#111827;min-width:56px;font-family:monospace;line-height:1;">${folder.numeroDossier}</div>` : ''}
           <div style="min-width:0;flex:1;">
-            <div class="dossier-card-name" title="${folderName}" style="font-weight:700;font-size:15px;color:#111827;">${folder.numeroDossier ? `<span style="font-size:12px;background:#f3f4f6;color:#374151;padding:2px 8px;border-radius:10px;margin-right:6px;">${folder.numeroDossier}</span>` : ''}${folderName}</div>
+            <div class="dossier-card-name" title="${folderName}" style="font-weight:600;font-size:14px;color:#374151;word-break:break-word;">${folderName}</div>
             <div style="font-size:12px;color:#6b7280;margin-top:2px;">${folder.createdAt ? new Date(folder.createdAt).toLocaleDateString("fr-FR") : ''}</div>
           </div>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;">${folder.currentStage || 'Début de production'}</span>
-          <span style="color:#6b7280;font-size:12px;">${folder.files ? folder.files.length : 0} fichier(s)</span>
+          <span style="color:#6b7280;font-size:12px;">${typeof folder.files === 'number' ? folder.files : 0} fichier(s)</span>
         </div>
       `;
       card.onclick = (e) => { if (e.target.closest(".btn-danger")) return; openDossierDetail(folder._id || folder.id); };
@@ -987,11 +989,21 @@ async function openDossierDetail(dossierId) {
       return;
     }
 
-    // Load the fabrication sheet from the shared /api/fabrication endpoint
-    // using the originalFilePath stored in the production folder
+    // Load the fabrication sheet using fileName (resilient to path changes by Acrobat Pro)
     const fabFilePath = folder.originalFilePath || folder.currentFilePath || "";
+    const fabFileName = folder.fileName || "";
     let fab = {};
-    if (fabFilePath) {
+    // Prefer fileName-based lookup (works even if Acrobat moved the file)
+    if (fabFileName) {
+      try {
+        const fabResp = await fetch("/api/fabrication?fileName=" + encodeURIComponent(fabFileName), {
+          headers: { "Authorization": `Bearer ${authToken}` }
+        }).then(r => r.json());
+        if (fabResp && fabResp.ok !== false) fab = fabResp;
+      } catch(e) { /* use empty */ }
+    }
+    // Fallback to path-based lookup
+    if (!fab.client && !fab.numeroDossier && fabFilePath) {
       try {
         const fabResp = await fetch("/api/fabrication?fullPath=" + encodeURIComponent(fabFilePath), {
           headers: { "Authorization": `Bearer ${authToken}` }
@@ -1081,59 +1093,33 @@ async function openDossierDetail(dossierId) {
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 
     modal.querySelector("#df-save").onclick = async () => {
-      // Save via the shared /api/fabrication endpoint when we have an originalFilePath
-      if (fabFilePath) {
-        const payload = {
-          fullPath: fabFilePath,
-          fileName: folder.fileName || "",
-          delai: modal.querySelector("#df-delai").value || null,
-          numeroDossier: modal.querySelector("#df-numero-dossier").value || null,
-          client: modal.querySelector("#df-client").value,
-          quantite: parseInt(modal.querySelector("#df-quantite").value, 10) || null,
-          format: modal.querySelector("#df-format").value,
-          moteurImpression: modal.querySelector("#df-moteur").value,
-          machine: modal.querySelector("#df-moteur").value,
-          typeTravail: modal.querySelector("#df-type-travail").value,
-          rectoVerso: modal.querySelector("#df-recto-verso").value,
-          faconnage: modal.querySelector("#df-faconnage").value,
-          media1: modal.querySelector("#df-media1").value,
-          notes: modal.querySelector("#df-notes").value
-        };
-        const r = await fetch("/api/fabrication", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-          body: JSON.stringify(payload)
-        }).then(r => r.json()).catch(() => ({ ok: false }));
-        if (r.ok) {
-          showNotification("✅ Fiche enregistrée", "success");
-        } else {
-          showNotification("❌ Erreur : " + (r.error || ""), "error");
-        }
+      // Always save via the shared /api/fabrication endpoint
+      // Use fileName as key so it works even if the file was moved by Acrobat Pro
+      const savePayload = {
+        fullPath: fabFilePath || fabFileName || "",
+        fileName: fabFileName,
+        delai: modal.querySelector("#df-delai").value || null,
+        numeroDossier: modal.querySelector("#df-numero-dossier").value || null,
+        client: modal.querySelector("#df-client").value,
+        quantite: parseInt(modal.querySelector("#df-quantite").value, 10) || null,
+        format: modal.querySelector("#df-format").value,
+        moteurImpression: modal.querySelector("#df-moteur").value,
+        machine: modal.querySelector("#df-moteur").value,
+        typeTravail: modal.querySelector("#df-type-travail").value,
+        rectoVerso: modal.querySelector("#df-recto-verso").value,
+        faconnage: modal.querySelector("#df-faconnage").value,
+        media1: modal.querySelector("#df-media1").value,
+        notes: modal.querySelector("#df-notes").value
+      };
+      const r = await fetch("/api/fabrication", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+        body: JSON.stringify(savePayload)
+      }).then(r => r.json()).catch(() => ({ ok: false }));
+      if (r.ok) {
+        showNotification("✅ Fiche enregistrée", "success");
       } else {
-        // Fallback: save embedded sheet in productionFolders
-        const updatedFab = {
-          delai: modal.querySelector("#df-delai").value,
-          numeroDossier: modal.querySelector("#df-numero-dossier").value,
-          client: modal.querySelector("#df-client").value,
-          quantite: modal.querySelector("#df-quantite").value,
-          format: modal.querySelector("#df-format").value,
-          moteur: modal.querySelector("#df-moteur").value,
-          typeTravail: modal.querySelector("#df-type-travail").value,
-          rectoVerso: modal.querySelector("#df-recto-verso").value,
-          faconnage: modal.querySelector("#df-faconnage").value,
-          media1: modal.querySelector("#df-media1").value,
-          notes: modal.querySelector("#df-notes").value
-        };
-        const r = await fetch(`/api/production-folders/${dossierId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-          body: JSON.stringify({ fabricationSheet: updatedFab })
-        }).then(r => r.json()).catch(() => ({ ok: false }));
-        if (r.ok) {
-          showNotification("✅ Fiche enregistrée", "success");
-        } else {
-          showNotification("❌ Erreur : " + (r.error || ""), "error");
-        }
+        showNotification("❌ Erreur : " + (r.error || ""), "error");
       }
     };
 
@@ -2312,13 +2298,18 @@ const sortBy = document.getElementById("sortBy");
 let calendar = null;
 let deliveriesByPath = {};
 let assignmentsByPath = {};
+let deliveriesByName = {};
+let assignmentsByName = {};
 
 async function loadAssignments() {
   try {
     const list = await fetch("/api/assignments").then(r => r.json()).catch(() => []);
     assignmentsByPath = {};
+    assignmentsByName = {};
     list.forEach(a => {
       if (a && a.fullPath) assignmentsByPath[normalizePath(a.fullPath)] = a;
+      const fname = (a.fileName || (a.fullPath ? a.fullPath.split("\\").pop() : "")).toLowerCase();
+      if (fname) assignmentsByName[fname] = a;
     });
   } catch(err) {
     console.error("Erreur loadAssignments:", err);
@@ -2534,7 +2525,7 @@ async function saveFabrication() {
 
   const payload = {
     fullPath: fabCurrentPath,
-    fileName: fabCurrentPath.split("\\").pop(),
+    fileName: fabCurrentPath.split(/[/\\]/).pop() || "",
     moteurImpression: fabMoteur.value,
     machine: fabMoteur.value,
     quantite: parseInt(fabQuantite.value) || null,
@@ -3084,9 +3075,10 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
     // Create fingerprint including file list, assignments, and deliveries for this column
     const fingerprint = JSON.stringify(jobs.map(j => {
       const p = normalizePath(j.fullPath || '');
+      const fn = (j.name || '').toLowerCase();
       return (j.name || '') + '|' + j.modified + '|' + j.size
-        + '|' + (assignmentsByPath[p] ? assignmentsByPath[p].operatorName : '')
-        + '|' + (deliveriesByPath[p] || '');
+        + '|' + ((assignmentsByPath[p] || assignmentsByName[fn] || {}).operatorName || '')
+        + '|' + (deliveriesByPath[p] || deliveriesByName[fn] || '');
     }));
     const cacheKey = folderName + '|' + q + '|' + sort;
     if (_columnCache[cacheKey] === fingerprint) {
@@ -3144,8 +3136,9 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
       sub.textContent = `${new Date(job.modified).toLocaleDateString("fr-FR")} · ${fmtBytes(job.size)}`;
       textDiv.appendChild(sub);
 
-      // Assignment badge
-      const assignment = assignmentsByPath[full];
+      // Assignment badge — look up by fullPath first, then by fileName as fallback (Acrobat Pro moves)
+      const jobFileName = (job.name || "").toLowerCase();
+      const assignment = assignmentsByPath[full] || (jobFileName ? assignmentsByName[jobFileName] : null);
       if (assignment) {
         const badge = document.createElement("div");
         badge.className = "assignment-badge";
@@ -3153,7 +3146,7 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
         textDiv.appendChild(badge);
       }
 
-      const iso = deliveriesByPath[full];
+      const iso = deliveriesByPath[full] || (jobFileName ? deliveriesByName[jobFileName] : null);
       if (iso) {
         const status = document.createElement("div");
         status.className = "kanban-card-operator-status";
@@ -3413,7 +3406,12 @@ async function openAssignDropdown(btn, fullPath) {
       }).then(r => r.json()).catch(() => ({ ok: false }));
 
       if (r.ok) {
-        assignmentsByPath[normalizePath(fullPath)] = { fullPath, operatorName: r.operatorName || op.name, operatorId: op.id };
+        const normalizedPath = normalizePath(fullPath);
+        const asgn = { fullPath, operatorName: r.operatorName || op.name, operatorId: op.id };
+        assignmentsByPath[normalizedPath] = asgn;
+        // Also update fileName-based index
+        const fname = fullPath.split(/[/\\]/).pop()?.toLowerCase();
+        if (fname) assignmentsByName[fname] = asgn;
         showNotification(`✅ Job affecté à ${r.operatorName || op.name}`, "success");
         await refreshKanban();
       } else {
@@ -3597,14 +3595,22 @@ async function loadDeliveries() {
   try {
     const list = await fetch("/api/delivery").then(r => r.json()).catch(() => []);
     const newDeliveries = {};
+    const newDeliveriesByName = {};
     
     list.forEach(x => {
       const normalized = normalizePath(x.fullPath);
       newDeliveries[normalized] = x.date;
       newDeliveries[normalized + "_time"] = x.time || "09:00";
+      // Also index by fileName for path-change resilience (Acrobat Pro moves)
+      const fname = (x.fileName || (x.fullPath ? x.fullPath.split("\\").pop() : "")).toLowerCase();
+      if (fname) {
+        newDeliveriesByName[fname] = x.date;
+        newDeliveriesByName[fname + "_time"] = x.time || "09:00";
+      }
     });
     
     deliveriesByPath = newDeliveries;
+    deliveriesByName = newDeliveriesByName;
   } catch (err) {
     console.error("Erreur loadDeliveries:", err);
   }

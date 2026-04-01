@@ -1085,9 +1085,13 @@ app.MapDelete("/api/delivery", (string fullPath) =>
 // FABRICATION
 // ======================================================
 
-app.MapGet("/api/fabrication", (string fullPath) =>
+app.MapGet("/api/fabrication", (string? fullPath, string? fileName) =>
 {
-    var sheet = BackendUtils.FindFabrication(fullPath);
+    FabricationSheet? sheet = null;
+    if (!string.IsNullOrWhiteSpace(fullPath))
+        sheet = BackendUtils.FindFabrication(fullPath);
+    if (sheet == null && !string.IsNullOrWhiteSpace(fileName))
+        sheet = BackendUtils.FindFabricationByName(fileName);
     if (sheet != null)
         return Results.Json(sheet);
 
@@ -1123,11 +1127,20 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
         if (input == null)
             return Results.Json(new { ok = false, error = "JSON vide." });
 
-        if (string.IsNullOrWhiteSpace(input.FullPath))
-            return Results.Json(new { ok = false, error = "FullPath absent." });
+        if (string.IsNullOrWhiteSpace(input.FullPath) && string.IsNullOrWhiteSpace(input.FileName))
+            return Results.Json(new { ok = false, error = "FullPath ou FileName requis." });
 
-        if (!File.Exists(input.FullPath))
-            return Results.Json(new { ok = false, error = "Fichier introuvable." });
+        // If fullPath provided but file doesn't exist, warn but proceed (file may have been moved by Acrobat)
+        if (!string.IsNullOrWhiteSpace(input.FullPath) && !File.Exists(input.FullPath))
+            Console.WriteLine($"[WARN] PUT /api/fabrication: File not found at {input.FullPath}, saving anyway (may have been moved).");
+
+        // If no fullPath provided, try to reconstruct from existing fabrication record
+        if (string.IsNullOrWhiteSpace(input.FullPath) && !string.IsNullOrWhiteSpace(input.FileName))
+        {
+            var existing = BackendUtils.FindFabricationByName(input.FileName);
+            // Use existing path if available, otherwise use fileName as placeholder key
+            input.FullPath = existing?.FullPath is { Length: > 0 } ? existing.FullPath : (input.FileName ?? "");
+        }
 
         var old = BackendUtils.FindFabrication(input.FullPath);
 
@@ -1418,7 +1431,7 @@ app.MapGet("/api/assignment", (string fullPath) =>
 app.MapGet("/api/assignments", () =>
 {
     var list = BackendUtils.LoadAssignments();
-    var result = list.Select(a => new { fullPath = a.FullPath, operatorId = a.OperatorId, operatorName = a.OperatorName, assignedAt = a.AssignedAt, assignedBy = a.AssignedBy });
+    var result = list.Select(a => new { fullPath = a.FullPath, fileName = Path.GetFileName(a.FullPath), operatorId = a.OperatorId, operatorName = a.OperatorName, assignedAt = a.AssignedAt, assignedBy = a.AssignedBy });
     return Results.Json(result);
 });
 
@@ -1673,16 +1686,40 @@ app.MapGet("/api/production-folders", () =>
     {
         var col = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
         var docs = col.Find(new BsonDocument()).SortByDescending(x => x["createdAt"]).ToList();
-        var result = docs.Select(d => new
+        var result = docs.Select(d =>
         {
-            _id = d["_id"].ToString(),
-            number = d.Contains("number") && d["number"] != BsonNull.Value ? d["number"].AsInt32 : 0,
-            numeroDossier = d.Contains("numeroDossier") && d["numeroDossier"] != BsonNull.Value ? d["numeroDossier"].AsString : "",
-            fileName = d.Contains("fileName") ? d["fileName"].AsString : "",
-            folderPath = d.Contains("folderPath") ? d["folderPath"].AsString : "",
-            createdAt = d.Contains("createdAt") ? d["createdAt"].ToUniversalTime() : DateTime.MinValue,
-            currentStage = d.Contains("currentStage") ? d["currentStage"].AsString : "",
-            files = d.Contains("files") ? d["files"].AsBsonArray.Count : 0
+            var fileName = d.Contains("fileName") ? d["fileName"].AsString : "";
+            var numeroDossier = d.Contains("numeroDossier") && d["numeroDossier"] != BsonNull.Value ? d["numeroDossier"].AsString : "";
+
+            // Enrich numeroDossier from fabrication sheet if not set on production folder
+            if (string.IsNullOrEmpty(numeroDossier) && !string.IsNullOrEmpty(fileName))
+            {
+                try
+                {
+                    var fab = BackendUtils.FindFabricationByName(fileName);
+                    if (fab != null && !string.IsNullOrEmpty(fab.NumeroDossier))
+                    {
+                        numeroDossier = fab.NumeroDossier;
+                        // Persist the synced value back to avoid future N+1 lookups
+                        col.UpdateOne(
+                            Builders<BsonDocument>.Filter.Eq("_id", d["_id"]),
+                            Builders<BsonDocument>.Update.Set("numeroDossier", numeroDossier));
+                    }
+                }
+                catch { /* non-fatal */ }
+            }
+
+            return new
+            {
+                _id = d["_id"].ToString(),
+                number = d.Contains("number") && d["number"] != BsonNull.Value ? d["number"].AsInt32 : 0,
+                numeroDossier,
+                fileName,
+                folderPath = d.Contains("folderPath") ? d["folderPath"].AsString : "",
+                createdAt = d.Contains("createdAt") ? d["createdAt"].ToUniversalTime() : DateTime.MinValue,
+                currentStage = d.Contains("currentStage") ? d["currentStage"].AsString : "",
+                files = d.Contains("files") ? d["files"].AsBsonArray.Count : 0
+            };
         }).ToList();
         return Results.Json(result);
     }
@@ -3765,7 +3802,17 @@ file static class BackendUtils
             var col = MongoDbHelper.GetFabricationsCollection();
             var filter = Builders<BsonDocument>.Filter.Eq("fullPath", fullPath);
             var doc = col.Find(filter).FirstOrDefault();
-            return doc == null ? null : BsonDocToFabricationSheet(doc);
+            if (doc != null) return BsonDocToFabricationSheet(doc);
+
+            // Fallback: look up by fileName (resilient to path changes by Acrobat Pro)
+            var fileName = Path.GetFileName(fullPath);
+            if (!string.IsNullOrEmpty(fileName))
+            {
+                filter = Builders<BsonDocument>.Filter.Eq("fileName", fileName);
+                doc = col.Find(filter).SortByDescending(x => x["_id"]).FirstOrDefault();
+                if (doc != null) return BsonDocToFabricationSheet(doc);
+            }
+            return null;
         }
         catch (Exception ex)
         {
@@ -3774,10 +3821,36 @@ file static class BackendUtils
         }
     }
 
+    public static FabricationSheet? FindFabricationByName(string fileName)
+    {
+        try
+        {
+            var col = MongoDbHelper.GetFabricationsCollection();
+            var filter = Builders<BsonDocument>.Filter.Eq("fileName", fileName);
+            // When multiple records share a fileName (e.g. file moved between folders),
+            // take the most recently inserted one (newest ObjectId = most recent).
+            var doc = col.Find(filter).SortByDescending(x => x["_id"]).FirstOrDefault();
+            return doc == null ? null : BsonDocToFabricationSheet(doc);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] FindFabricationByName MongoDB error: {ex.Message}");
+            return null;
+        }
+    }
+
     public static void UpsertFabrication(FabricationSheet sheet)
     {
         var col = MongoDbHelper.GetFabricationsCollection();
-        var filter = Builders<BsonDocument>.Filter.Eq("fullPath", sheet.FullPath);
+
+        // Primary lookup: try fullPath first, then fileName (keeps one record per file)
+        BsonDocument? existing = null;
+        if (!string.IsNullOrEmpty(sheet.FullPath))
+            existing = col.Find(Builders<BsonDocument>.Filter.Eq("fullPath", sheet.FullPath)).FirstOrDefault();
+        if (existing == null && !string.IsNullOrEmpty(sheet.FileName))
+            existing = col.Find(Builders<BsonDocument>.Filter.Eq("fileName", sheet.FileName))
+                          .SortByDescending(x => x["_id"]).FirstOrDefault();
+
         var historyArray = new BsonArray(sheet.History.Select(h => new BsonDocument
         {
             ["date"]   = h.Date,
@@ -3812,13 +3885,18 @@ file static class BackendUtils
             ["livraison"]         = sheet.Livraison         == null ? BsonNull.Value : (BsonValue)sheet.Livraison,
             ["history"]           = historyArray
         };
-        col.ReplaceOne(filter, doc, new ReplaceOptions { IsUpsert = true });
+        if (existing != null)
+            col.ReplaceOne(Builders<BsonDocument>.Filter.Eq("_id", existing["_id"]), doc);
+        else
+            col.InsertOne(doc);
     }
 
     private static FabricationSheet? BsonDocToFabricationSheet(BsonDocument d)
     {
         var fullPath = d.Contains("fullPath") ? d["fullPath"].AsString : "";
-        if (string.IsNullOrEmpty(fullPath)) return null;
+        var fileName = d.Contains("fileName") ? d["fileName"].AsString : "";
+        // Allow records that only have fileName (no fullPath yet)
+        if (string.IsNullOrEmpty(fullPath) && string.IsNullOrEmpty(fileName)) return null;
 
         var history = new List<FabricationHistory>();
         if (d.Contains("history") && d["history"].IsBsonArray)
@@ -3839,7 +3917,7 @@ file static class BackendUtils
         return new FabricationSheet
         {
             FullPath         = fullPath,
-            FileName         = d.Contains("fileName")         ? d["fileName"].AsString      : (Path.GetFileName(fullPath) ?? ""),
+            FileName         = !string.IsNullOrEmpty(fileName) ? fileName : (Path.GetFileName(fullPath) ?? ""),
             Machine          = machineVal,
             MoteurImpression = GetNullableString(d, "moteurImpression") ?? machineVal,
             Operateur        = GetNullableString(d, "operateur"),
