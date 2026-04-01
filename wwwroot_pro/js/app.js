@@ -2236,22 +2236,16 @@ const fabOperateur = document.getElementById("fab-operateur");
 const fabQuantite = document.getElementById("fab-quantite");
 const fabType = document.getElementById("fab-type");
 const fabFormat = document.getElementById("fab-format");
-const fabPapier = document.getElementById("fab-papier");
-const fabRectoVerso = document.getElementById("fab-rectoverso");
-const fabEncres = document.getElementById("fab-encres");
+const fabRectoVerso = document.getElementById("fab-recto-verso");
 const fabClient = document.getElementById("fab-client");
-const fabNumero = document.getElementById("fab-numero");
 const fabNumeroDossier = document.getElementById("fab-numero-dossier");
 const fabNotes = document.getElementById("fab-notes");
 const fabDelai = document.getElementById("fab-delai");
 const fabFaconnage = document.getElementById("fab-faconnage");
-const fabLivraison = document.getElementById("fab-livraison");
 const fabMedia1 = document.getElementById("fab-media1");
 const fabMedia2 = document.getElementById("fab-media2");
 const fabMedia3 = document.getElementById("fab-media3");
 const fabMedia4 = document.getElementById("fab-media4");
-const fabTypeDoc = document.getElementById("fab-typedoc");
-const fabNbFeuilles = document.getElementById("fab-nbfeuilles");
 const fabHistory = document.getElementById("fab-history");
 const fabRemove = document.getElementById("fab-delivery-remove");
 
@@ -2278,26 +2272,47 @@ async function openFabrication(fullPath) {
     });
   } catch(err) { console.warn("Erreur print-engines:", err); }
 
+  // Load work types from stored list
+  try {
+    const types = await fetch("/api/config/work-types").then(r => r.json()).catch(() => []);
+    fabType.innerHTML = '<option value="">— Sélectionner —</option>';
+    types.forEach(t => {
+      const opt = document.createElement("option");
+      opt.value = t;
+      opt.textContent = t;
+      fabType.appendChild(opt);
+    });
+  } catch(e) { console.warn("Erreur work-types:", e); }
+
+  // Load media options from Paper Catalog
+  try {
+    const papers = await fetch("/api/config/paper-catalog").then(r => r.json()).catch(() => []);
+    [fabMedia1, fabMedia2, fabMedia3, fabMedia4].forEach(sel => {
+      if (!sel) return;
+      sel.innerHTML = '<option value="">— Sélectionner —</option>';
+      papers.forEach(p => {
+        const opt = document.createElement("option");
+        opt.value = p;
+        opt.textContent = p;
+        sel.appendChild(opt);
+      });
+    });
+  } catch(e) { console.warn("Paper catalog error:", e); }
+
   fabMoteur.value = d.moteurImpression || d.machine || "";
   fabOperateur.value = d.operateur || "";
   fabQuantite.value = d.quantite || "";
   fabType.value = d.typeTravail || "";
   fabFormat.value = d.format || "";
-  fabPapier.value = d.papier || "";
   fabRectoVerso.value = d.rectoVerso || "";
-  fabEncres.value = d.encres || "";
   fabClient.value = d.client || "";
-  fabNumero.value = d.numeroAffaire || "";
   if (fabNumeroDossier) fabNumeroDossier.value = d.numeroDossier || "";
   fabNotes.value = d.notes || "";
   fabFaconnage.value = d.faconnage || "";
-  fabLivraison.value = d.livraison || "";
-  fabMedia1.value = d.media1 || "";
-  fabMedia2.value = d.media2 || "";
-  fabMedia3.value = d.media3 || "";
-  fabMedia4.value = d.media4 || "";
-  fabTypeDoc.value = d.typeDocument || "";
-  fabNbFeuilles.value = d.nombreFeuilles || "";
+  if (fabMedia1) fabMedia1.value = d.media1 || "";
+  if (fabMedia2) fabMedia2.value = d.media2 || "";
+  if (fabMedia3) fabMedia3.value = d.media3 || "";
+  if (fabMedia4) fabMedia4.value = d.media4 || "";
 
   // Pre-fill Délai from delivery if available
   const deliveryDate = deliveriesByPath[fabCurrentPath];
@@ -2309,10 +2324,34 @@ async function openFabrication(fullPath) {
     fabDelai.value = "";
   }
 
-  // Show/hide admin-only fields
-  document.querySelectorAll(".fab-admin-field").forEach(el => {
-    el.style.display = currentUser.profile === 3 ? "" : "none";
-  });
+  // CSV import for work types
+  const fabTypeImportBtn = document.getElementById("fab-type-import-btn");
+  const fabTypeCsvInput = document.getElementById("fab-type-csv-input");
+  if (fabTypeImportBtn && fabTypeCsvInput) {
+    fabTypeImportBtn.onclick = (e) => { e.preventDefault(); fabTypeCsvInput.click(); };
+    fabTypeCsvInput.onchange = async (ev) => {
+      const file = ev.target.files[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append("file", file);
+      const importR = await fetch("/api/config/work-types/import", {
+        method: "POST",
+        body: formData
+      }).then(r => r.json()).catch(() => ({ ok: false }));
+      if (importR.ok) {
+        showNotification("✅ Types importés", "success");
+        const types2 = await fetch("/api/config/work-types").then(r => r.json()).catch(() => []);
+        fabType.innerHTML = '<option value="">— Sélectionner —</option>';
+        types2.forEach(t => {
+          const opt = document.createElement("option");
+          opt.value = t;
+          opt.textContent = t;
+          fabType.appendChild(opt);
+        });
+      }
+      fabTypeCsvInput.value = "";
+    };
+  }
 
   fabHistory.innerHTML = "";
   (d.history || []).forEach(h => {
@@ -2341,6 +2380,15 @@ async function openFabrication(fullPath) {
 
 fabSave.onclick = async () => {
   if (!fabCurrentPath) return;
+  const ok = await saveFabrication();
+  if (ok) {
+    fabModal.classList.add("hidden");
+    showNotification("✅ Fiche enregistrée", "success");
+  }
+};
+
+async function saveFabrication() {
+  if (!fabCurrentPath) return false;
 
   const payload = {
     fullPath: fabCurrentPath,
@@ -2350,22 +2398,16 @@ fabSave.onclick = async () => {
     quantite: parseInt(fabQuantite.value) || null,
     typeTravail: fabType.value,
     format: fabFormat.value,
-    papier: fabPapier.value,
     rectoVerso: fabRectoVerso.value,
-    encres: fabEncres.value,
     client: fabClient.value,
-    numeroAffaire: fabNumero.value,
     numeroDossier: fabNumeroDossier ? fabNumeroDossier.value || null : null,
     notes: fabNotes.value,
     faconnage: fabFaconnage.value,
-    livraison: fabLivraison.value,
     delai: fabDelai.value || null,
-    media1: fabMedia1.value || null,
-    media2: fabMedia2.value || null,
-    media3: fabMedia3.value || null,
-    media4: fabMedia4.value || null,
-    typeDocument: fabTypeDoc.value || null,
-    nombreFeuilles: parseInt(fabNbFeuilles.value) || null
+    media1: fabMedia1 ? fabMedia1.value || null : null,
+    media2: fabMedia2 ? fabMedia2.value || null : null,
+    media3: fabMedia3 ? fabMedia3.value || null : null,
+    media4: fabMedia4 ? fabMedia4.value || null : null
   };
 
   const r = await fetch("/api/fabrication", {
@@ -2376,16 +2418,35 @@ fabSave.onclick = async () => {
 
   if (!r.ok) {
     alert("Erreur : " + r.error);
-    return;
+    return false;
   }
+  return true;
+}
 
-  fabModal.classList.add("hidden");
-  showNotification("✅ Fiche enregistrée", "success");
-};
-
-fabPdf.onclick = () => {
+fabPdf.onclick = async () => {
   if (!fabCurrentPath) return;
-  window.open("/api/fabrication/pdf?fullPath=" + encodeURIComponent(fabCurrentPath), "_blank", "noopener");
+
+  // Save current form data first
+  await saveFabrication();
+
+  // Generate PDF and open in new tab
+  try {
+    const r = await fetch("/api/fabrication/pdf?fullPath=" + encodeURIComponent(fabCurrentPath) + "&save=true", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    });
+
+    if (r.ok) {
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      showNotification("✅ PDF généré et enregistré dans le dossier de production", "success");
+    } else {
+      const err = await r.json().catch(() => ({}));
+      showNotification("❌ Erreur : " + (err.error || "Impossible de générer le PDF"), "error");
+    }
+  } catch(err) {
+    showNotification("❌ Erreur réseau", "error");
+  }
 };
 
 fabFinProd.onclick = async () => {
@@ -2640,15 +2701,13 @@ async function buildKanban() {
     });
 
     drop.addEventListener("drop", async (e) => {
-      if (e.dataTransfer && e.dataTransfer.files?.length) {
-        e.preventDefault();
-        drop.classList.remove("drag-over");
-        handleDesktopDrop(e, FOLDER_SOUMISSION);
-        return;
-      }
-
       e.preventDefault();
       drop.classList.remove("drag-over");
+
+      if (e.dataTransfer && e.dataTransfer.files?.length) {
+        handleDesktopDrop(e, cfg.folder);
+        return;
+      }
 
       const srcFull = normalizePath(e.dataTransfer.getData("text/plain"));
       if (!srcFull) return;
@@ -2802,7 +2861,7 @@ async function updateKanbanSummary() {
       .filter(x => x.diff >= 0 && x.diff <= 3)
       .sort((a,b) => a.diff - b.diff);
 
-    const urgentHtml = urgent.length === 0 ? '<span style="color:#9ca3af;font-size:12px;">Aucune urgence</span>' :
+    const urgentHtml = urgent.length === 0 ? '<span style="color:#9ca3af;font-size:14px;">Aucune urgence</span>' :
       urgent.map(x => {
         const cls = x.diff === 0 ? "urgent-j0" : x.diff === 1 ? "urgent-j1" : x.diff === 2 ? "urgent-j2" : "urgent-j3";
         const label = x.diff === 0 ? "Aujourd'hui" : `J+${x.diff}`;
@@ -2810,8 +2869,7 @@ async function updateKanbanSummary() {
       }).join("");
 
     summaryEl.innerHTML = `
-      <div class="kanban-summary-counts">${countsHtml}</div>
-      <div class="kanban-summary-urgent"><strong style="font-size:12px;color:#374151;margin-right:8px;">Urgences:</strong>${urgentHtml}</div>
+      <div class="kanban-summary-urgent"><strong style="font-size:16px;color:#374151;margin-right:8px;">🚨 Urgences:</strong>${urgentHtml}</div>
     `;
   } catch(e) { console.error("Erreur summary:", e); }
 }
@@ -2915,6 +2973,7 @@ async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = 
         card.draggable = true;
       }
       card.dataset.fullPath = normalizePath(job.fullPath || "");
+      card.dataset.folder = folderName;
 
       const full = normalizePath(job.fullPath || "");
 
