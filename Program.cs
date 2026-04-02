@@ -1241,7 +1241,8 @@ app.MapDelete("/api/delivery", (HttpContext ctx) =>
 
         if (!string.IsNullOrWhiteSpace(fileName))
         {
-            if (BackendUtils.DeleteDeliveryByFileName(fileName))
+            // Try deletion by fileName first, then by fullPath fallback (handles old records without fileName field)
+            if (BackendUtils.DeleteDeliveryByFileNameOrPath(fileName))
                 return Results.Json(new { ok = true });
         }
         else if (!string.IsNullOrWhiteSpace(fullPath))
@@ -2763,6 +2764,8 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
         var fileName = json.TryGetProperty("fileName", out var fn) ? fn.GetString() ?? "" : "";
         var fullPath = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
 
+        Console.WriteLine($"[BAT] copy-for-bat: fileName={fileName}, fullPath={fullPath}");
+
         // 1. Find fabrication record to get typeTravail
         var fabCol = MongoDbHelper.GetFabricationsCollection();
         BsonDocument? fabDoc = null;
@@ -2770,10 +2773,22 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
             fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", fileName)).FirstOrDefault();
         if (fabDoc == null && !string.IsNullOrEmpty(fullPath))
             fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fullPath", fullPath)).FirstOrDefault();
+        // Case-insensitive fallback: search by fileName ignoring case
+        if (fabDoc == null && !string.IsNullOrEmpty(fileName))
+            fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Regex("fileName",
+                new BsonRegularExpression($"^{System.Text.RegularExpressions.Regex.Escape(fileName)}$", "i"))).FirstOrDefault();
+
+        if (fabDoc == null)
+        {
+            Console.WriteLine($"[BAT] copy-for-bat: fiche de fabrication introuvable pour fileName={fileName}");
+            return Results.Json(new { ok = false, error = $"Fiche de fabrication introuvable pour \"{fileName}\". Veuillez ouvrir la fiche et enregistrer avant d'effectuer un BAT Complet." });
+        }
 
         var typeTravail = "";
-        if (fabDoc != null && fabDoc.Contains("typeTravail") && fabDoc["typeTravail"] != BsonNull.Value)
+        if (fabDoc.Contains("typeTravail") && fabDoc["typeTravail"].BsonType == BsonType.String)
             typeTravail = fabDoc["typeTravail"].AsString ?? "";
+
+        Console.WriteLine($"[BAT] copy-for-bat: typeTravail={typeTravail}");
 
         if (string.IsNullOrEmpty(typeTravail))
             return Results.Json(new { ok = false, error = "Type de travail non défini dans la fiche de fabrication. Veuillez renseigner le type de travail avant d'effectuer un BAT Complet." });
@@ -2782,8 +2797,14 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
         var routingCol = MongoDbHelper.GetCollection<BsonDocument>("hotfolderRouting");
         var routingDoc = routingCol.Find(Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail)).FirstOrDefault();
 
-        if (routingDoc == null || !routingDoc.Contains("hotfolderPath") || string.IsNullOrEmpty(routingDoc["hotfolderPath"].AsString))
+        if (routingDoc == null ||
+            !routingDoc.Contains("hotfolderPath") ||
+            routingDoc["hotfolderPath"].BsonType != BsonType.String ||
+            string.IsNullOrEmpty(routingDoc["hotfolderPath"].AsString))
+        {
+            Console.WriteLine($"[BAT] copy-for-bat: aucun routage hotfolder pour typeTravail={typeTravail}");
             return Results.Json(new { ok = false, error = $"Aucun hotfolder PrismaPrepare configuré pour le type de travail \"{typeTravail}\". Configurez-le dans Paramétrage > Routage Hotfolder." });
+        }
 
         var hotfolderPath = routingDoc["hotfolderPath"].AsString;
 
@@ -2793,6 +2814,7 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
             var hotRoot = BackendUtils.HotfoldersRoot();
             var found = Directory.GetFiles(hotRoot, string.IsNullOrEmpty(fileName) ? "*" : fileName, SearchOption.AllDirectories).FirstOrDefault();
             if (found != null) fullPath = found;
+            Console.WriteLine(found != null ? $"[BAT] copy-for-bat: fichier trouvé via scan: {fullPath}" : $"[BAT] copy-for-bat: fichier introuvable via scan (hotRoot={hotRoot}, fileName={fileName})");
         }
 
         if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
@@ -2839,7 +2861,7 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[ERR] bat/copy-for-bat: {ex.Message}");
+        Console.WriteLine($"[ERR] bat/copy-for-bat: {ex.Message}\n{ex.StackTrace}");
         return Results.Json(new { ok = false, error = ex.Message });
     }
 });
@@ -4159,11 +4181,7 @@ file static class BackendUtils
     public static void UpsertDelivery(DeliveryItem item)
     {
         var col = MongoDbHelper.GetDeliveriesCollection();
-        // Upsert by fileName (primary key) with fullPath fallback
         var fileNameKey = !string.IsNullOrEmpty(item.FileName) ? item.FileName : Path.GetFileName(item.FullPath);
-        var filter = !string.IsNullOrEmpty(fileNameKey)
-            ? Builders<BsonDocument>.Filter.Eq("fileName", fileNameKey)
-            : Builders<BsonDocument>.Filter.Eq("fullPath", item.FullPath);
         var doc = new BsonDocument
         {
             ["fullPath"] = item.FullPath,
@@ -4171,7 +4189,22 @@ file static class BackendUtils
             ["date"]     = item.Date,
             ["time"]     = item.Time
         };
-        col.ReplaceOne(filter, doc, new ReplaceOptions { IsUpsert = true });
+
+        // Build a broad filter covering both new records (by fileName) and old records (by fullPath).
+        // This prevents duplicate deliveries when old records lack the fileName field.
+        var filterParts = new List<FilterDefinition<BsonDocument>>();
+        if (!string.IsNullOrEmpty(fileNameKey))
+            filterParts.Add(Builders<BsonDocument>.Filter.Eq("fileName", fileNameKey));
+        if (!string.IsNullOrEmpty(item.FullPath))
+            filterParts.Add(Builders<BsonDocument>.Filter.Eq("fullPath", item.FullPath));
+        var broadFilter = filterParts.Count > 1
+            ? Builders<BsonDocument>.Filter.Or(filterParts)
+            : filterParts.Count == 1 ? filterParts[0]
+            : Builders<BsonDocument>.Filter.Eq("fileName", fileNameKey);
+
+        // Delete all matching records (removes stale duplicates), then insert fresh
+        col.DeleteMany(broadFilter);
+        col.InsertOne(doc);
     }
 
     public static bool DeleteDelivery(string fullPath)
@@ -4183,7 +4216,7 @@ file static class BackendUtils
             Builders<BsonDocument>.Filter.Eq("fileName", fileName),
             Builders<BsonDocument>.Filter.Eq("fullPath", fullPath)
         );
-        var result = col.DeleteOne(filter);
+        var result = col.DeleteMany(filter);
         return result.DeletedCount > 0;
     }
 
@@ -4191,8 +4224,32 @@ file static class BackendUtils
     {
         var col = MongoDbHelper.GetDeliveriesCollection();
         var filter = Builders<BsonDocument>.Filter.Eq("fileName", fileName);
-        var result = col.DeleteOne(filter);
+        var result = col.DeleteMany(filter);
         return result.DeletedCount > 0;
+    }
+
+    /// <summary>
+    /// Deletes deliveries matching by fileName OR by fullPath.
+    /// Handles both new records (with fileName field) and old records (fullPath-only).
+    /// </summary>
+    public static bool DeleteDeliveryByFileNameOrPath(string fileName)
+    {
+        var col = MongoDbHelper.GetDeliveriesCollection();
+        // Match by fileName field, or by fullPath that equals just the fileName (old storage format)
+        var filter = Builders<BsonDocument>.Filter.Or(
+            Builders<BsonDocument>.Filter.Eq("fileName", fileName),
+            Builders<BsonDocument>.Filter.Eq("fullPath", fileName)
+        );
+        var result = col.DeleteMany(filter);
+        if (result.DeletedCount > 0) return true;
+
+        // Fallback: use server-side regex to match old records whose fullPath ends with /fileName or \fileName
+        // Handles old records stored with a full Windows path but no fileName field
+        var escapedName = System.Text.RegularExpressions.Regex.Escape(fileName);
+        var pattern = new BsonRegularExpression($"(^|[/\\\\\\\\]){escapedName}$", "i");
+        var fallbackFilter = Builders<BsonDocument>.Filter.Regex("fullPath", pattern);
+        var fallbackResult = col.DeleteMany(fallbackFilter);
+        return fallbackResult.DeletedCount > 0;
     }
 
     public static void DeleteDeliveries(List<string> fullPaths)

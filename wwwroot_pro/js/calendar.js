@@ -181,6 +181,8 @@ export async function initCalendar() {
         info.event.setProp("backgroundColor", bg);
         info.event.setProp("borderColor", bc);
         info.event.setProp("textColor", tc);
+
+        showNotification(`✅ Planning mis à jour pour le ${newDate}`, "success");
       } catch (err) {
         alert(err.message || "Impossible de déplacer");
         info.revert();
