@@ -3,6 +3,7 @@ import { authToken, isLight, darkenColor, fnKey, normalizePath, deliveriesByPath
 
 // ======================================================
 // VUE PRODUCTION GLOBALE (profils 1, 2 et 3)
+// Affiche : numéro de dossier, étape actuelle, pourcentage d'avancement
 // ======================================================
 
 export function showGlobalProduction() {
@@ -12,13 +13,10 @@ export function showGlobalProduction() {
 
 const STAGE_PROGRESS = {
   "Début de production": 0,
-  "1.Reception": 0,
   "Corrections": 25,
   "Corrections et fond perdu": 25,
   "Prêt pour impression": 50,
-  "6.Archivage": 50,
   "BAT": 65,
-  "4.BAT": 65,
   "PrismaPrepare": 75,
   "Fiery": 75,
   "Impression en cours": 75,
@@ -32,22 +30,98 @@ function getStageProgress(stage) {
   return key !== undefined ? STAGE_PROGRESS[key] : 0;
 }
 
+function getStageColor(progress) {
+  if (progress === 0) return "#6b7280";
+  if (progress <= 25) return "#f59e0b";
+  if (progress <= 50) return "#3b82f6";
+  if (progress <= 65) return "#8b5cf6";
+  if (progress <= 75) return "#f97316";
+  if (progress <= 90) return "#06b6d4";
+  return "#22c55e";
+}
+
 export async function initGlobalProductionView() {
   const el = document.getElementById("global-production");
   if (!el) return;
   el.innerHTML = '<div style="padding:20px;color:#6b7280;">Chargement...</div>';
-  // Set grid layout for the kanban columns
-  el.style.cssText = "display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; width: 100%;";
+  el.style.cssText = "padding: 20px; width: 100%; box-sizing: border-box; overflow-y: auto;";
 
   try {
-    await buildProductionKanban(el);
+    await buildGlobalProgressView(el);
   } catch(err) {
     el.innerHTML = `<div style="padding:20px;color:#dc2626;">Erreur : ${err.message}</div>`;
   }
 }
 
+async function buildGlobalProgressView(container) {
+  const jobs = await fetch("/api/production/summary", {
+    headers: { "Authorization": `Bearer ${authToken}` }
+  }).then(r => r.json()).catch(() => []);
+
+  if (!Array.isArray(jobs) || jobs.length === 0) {
+    container.innerHTML = '<div style="padding:40px;text-align:center;color:#9ca3af;">Aucun fichier en production actuellement.</div>';
+    return;
+  }
+
+  container.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <h2 style="margin:0;font-size:20px;font-weight:700;color:#111827;">Vue production globale</h2>
+      <button id="global-prod-refresh" class="btn btn-primary btn-sm">Rafraîchir</button>
+    </div>
+    <div id="global-prod-table-wrap"></div>
+  `;
+
+  container.querySelector("#global-prod-refresh").onclick = () => buildGlobalProgressView(container);
+
+  const wrap = container.querySelector("#global-prod-table-wrap");
+
+  const table = document.createElement("div");
+  table.style.cssText = "width:100%;border-collapse:collapse;";
+
+  // Header row
+  const header = document.createElement("div");
+  header.style.cssText = "display:grid;grid-template-columns:1fr 1.5fr 1fr 2fr;gap:8px;padding:10px 16px;background:#f3f4f6;border-radius:8px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;";
+  header.innerHTML = `
+    <span>Numéro dossier</span>
+    <span>Fichier</span>
+    <span>Étape actuelle</span>
+    <span>Avancement</span>
+  `;
+  table.appendChild(header);
+
+  for (const job of jobs) {
+    const progress = getStageProgress(job.currentStage);
+    const color = getStageColor(progress);
+    const displayNum = job.numeroDossier || job.fileName || "—";
+
+    const row = document.createElement("div");
+    row.style.cssText = "display:grid;grid-template-columns:1fr 1.5fr 1fr 2fr;gap:8px;padding:12px 16px;background:white;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;align-items:center;";
+
+    row.innerHTML = `
+      <div style="font-size:14px;font-weight:700;color:#111827;font-family:monospace;">${escapeHtml(displayNum)}</div>
+      <div style="font-size:12px;color:#6b7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(job.fileName || '')}">${escapeHtml(job.fileName || '—')}</div>
+      <div>
+        <span style="background:#dbeafe;color:#1e40af;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:600;white-space:nowrap;">${escapeHtml(job.currentStage || '—')}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="flex:1;background:#e5e7eb;border-radius:99px;height:10px;overflow:hidden;">
+          <div style="width:${progress}%;background:${color};height:100%;border-radius:99px;transition:width 0.3s;"></div>
+        </div>
+        <span style="font-size:12px;font-weight:700;color:${color};min-width:32px;">${progress}%</span>
+      </div>
+    `;
+    table.appendChild(row);
+  }
+
+  wrap.appendChild(table);
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 // ======================================================
-// VUE PRODUCTION KANBAN (profil 1 et tous profils)
+// VUE PRODUCTION KANBAN (profil 2/3 — tuiles opérateur)
 // ======================================================
 
 const PRODUCTION_FOLDER_CONFIG = [
@@ -263,7 +337,7 @@ export function startProductionAutoRefresh() {
     }
     const globalProdEl = document.getElementById("global-production");
     if (globalProdEl && !globalProdEl.classList.contains("hidden")) {
-      await refreshProductionKanban(globalProdEl);
+      await initGlobalProductionView();
     }
   }, 30000);
 }
@@ -274,3 +348,4 @@ export function stopProductionAutoRefresh() {
     _productionRefreshInterval = null;
   }
 }
+
