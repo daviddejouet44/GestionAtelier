@@ -656,3 +656,140 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
   font-weight: 600;
   color: #111827;
 }
+
+/* =========================================================
+   POPUP BAT COMPLET / BAT SIMPLE
+========================================================= */
+.bat-choice-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 20000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.2s ease;
+}
+
+.bat-choice-modal {
+  background: white;
+  border-radius: 20px;
+  padding: 32px;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.2s ease;
+}
+
+.bat-choice-header {
+  margin-bottom: 24px;
+}
+
+.bat-choice-header h3 {
+  margin: 0 0 8px 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.bat-choice-filename {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.bat-choice-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.bat-choice-btn {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 20px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  width: 100%;
+  background: #f9fafb;
+  color: #111827;
+}
+
+.bat-choice-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.bat-complet-btn {
+  background: linear-gradient(135deg, #1e3a5f 0%, #2563EB 100%);
+  color: white;
+  border-color: #1e3a5f;
+}
+
+.bat-complet-btn:hover {
+  background: linear-gradient(135deg, #152b45 0%, #1d4ed8 100%);
+}
+
+.bat-simple-btn {
+  background: white;
+  border-color: #e5e7eb;
+  color: #111827;
+}
+
+.bat-simple-btn:hover {
+  background: #f9fafb;
+  border-color: #2563EB;
+}
+
+.bat-choice-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.bat-choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bat-choice-text strong {
+  font-size: 16px;
+  font-weight: 700;
+  display: block;
+}
+
+.bat-choice-text span {
+  font-size: 13px;
+  opacity: 0.8;
+  line-height: 1.4;
+}
+
+.bat-choice-cancel {
+  width: 100%;
+  padding: 10px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #6b7280;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+
+.bat-choice-cancel:hover {
+  background: #f3f4f6;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
