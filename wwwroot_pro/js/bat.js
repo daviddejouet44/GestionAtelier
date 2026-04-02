@@ -33,7 +33,7 @@ export function openBatChoiceModal(fullPath, onComplete) {
           <div class="bat-choice-icon">📄</div>
           <div class="bat-choice-text">
             <strong>BAT Simple</strong>
-            <span>Déplacement vers le dossier BAT + ouverture dans Acrobat Pro</span>
+            <span>Ouverture du fichier dans Acrobat Pro (sans déplacer le fichier)</span>
           </div>
         </button>
       </div>
@@ -92,33 +92,23 @@ async function sendBatComplet(fullPath) {
 }
 
 // ======================================================
-// BAT SIMPLE — Déplacement vers BAT + ouverture Acrobat Pro
+// BAT SIMPLE — Ouvrir dans Acrobat Pro (sans déplacer le fichier)
 // ======================================================
 async function sendBatSimple(fullPath) {
   const path = normalizePath(fullPath);
 
   try {
-    const r = await fetch("/api/jobs/move", {
+    const r = await fetch("/api/acrobat/open", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source: path, destination: "BAT", overwrite: true })
+      body: JSON.stringify({ fullPath: path })
     }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
 
-    if (!r.ok) {
-      showNotification("❌ BAT Simple : " + (r.error || "Erreur déplacement"), "error");
-      return;
+    if (r.ok) {
+      showNotification("✅ BAT Simple : fichier ouvert dans Acrobat Pro", "success");
+    } else {
+      showNotification("❌ BAT Simple : " + (r.error || "Erreur ouverture Acrobat"), "error");
     }
-
-    const batPath = r.moved || path;
-
-    // Open in Acrobat Pro
-    fetch("/api/acrobat/open", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullPath: batPath })
-    }).catch(() => {});
-
-    showNotification("✅ BAT Simple : fichier déplacé vers BAT et ouvert dans Acrobat Pro", "success");
   } catch (err) {
     showNotification("❌ BAT Simple : " + err.message, "error");
   }

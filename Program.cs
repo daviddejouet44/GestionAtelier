@@ -2495,14 +2495,16 @@ app.MapPost("/api/bat/send-to-hotfolder", async (HttpContext ctx) =>
         var fullPath = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
 
         // 1. Find fabrication record to get typeTravail
-        var fabCol = MongoDbHelper.GetCollection<BsonDocument>("fabrication");
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
         BsonDocument? fabDoc = null;
         if (!string.IsNullOrEmpty(fileName))
             fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", fileName)).FirstOrDefault();
         if (fabDoc == null && !string.IsNullOrEmpty(fullPath))
             fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fullPath", fullPath)).FirstOrDefault();
 
-        var typeTravail = fabDoc != null && fabDoc.Contains("typeTravail") ? fabDoc["typeTravail"].AsString : "";
+        var typeTravail = "";
+        if (fabDoc != null && fabDoc.Contains("typeTravail") && fabDoc["typeTravail"] != BsonNull.Value)
+            typeTravail = fabDoc["typeTravail"].AsString ?? "";
 
         if (string.IsNullOrEmpty(typeTravail))
             return Results.Json(new { ok = false, error = "Type de travail non défini dans la fiche de fabrication. Veuillez renseigner le type de travail avant d'effectuer un BAT Complet." });
