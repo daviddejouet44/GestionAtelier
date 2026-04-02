@@ -410,7 +410,7 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
 .modal {
   position: fixed; inset: 0; background: rgba(0,0,0,0.4);
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px;
+  display: flex; align-items: center; justify-content: center; z-index: 20000; padding: 20px;
 }
 .fab-modal-content {
   background: var(--bg-card); border-radius: var(--radius-xl); padding: 28px;

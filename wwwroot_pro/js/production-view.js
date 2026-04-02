@@ -36,38 +36,11 @@ export async function initGlobalProductionView() {
   const el = document.getElementById("global-production");
   if (!el) return;
   el.innerHTML = '<div style="padding:20px;color:#6b7280;">Chargement...</div>';
+  // Set grid layout for the kanban columns
+  el.style.cssText = "display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; width: 100%;";
 
   try {
-    const folders = await fetch("/api/production-folders/global-progress", {
-      headers: { "Authorization": `Bearer ${authToken}` }
-    }).then(r => r.json()).catch(() => []);
-
-    if (!Array.isArray(folders) || folders.length === 0) {
-      el.innerHTML = '<div style="padding:20px;color:#6b7280;">Aucun dossier de production.</div>';
-      return;
-    }
-
-    const grid = document.createElement("div");
-    grid.className = "global-prod-grid";
-
-    for (const folder of folders) {
-      const stage = folder.currentStage || "Inconnu";
-      const progress = folder.progress !== undefined ? folder.progress : getStageProgress(stage);
-      const card = document.createElement("div");
-      card.className = "global-prod-card";
-      card.innerHTML = `
-        <div class="global-prod-name">${folder.numeroDossier || folder.fileName || folder.number || 'Dossier'}</div>
-        <div class="global-prod-stage">${stage}</div>
-        <div class="global-prod-progress">
-          <div class="progress-bar" style="width:${progress}%"></div>
-        </div>
-        <span class="global-prod-percent">${progress}%</span>
-      `;
-      grid.appendChild(card);
-    }
-
-    el.innerHTML = "";
-    el.appendChild(grid);
+    await buildProductionKanban(el);
   } catch(err) {
     el.innerHTML = `<div style="padding:20px;color:#dc2626;">Erreur : ${err.message}</div>`;
   }
@@ -290,7 +263,7 @@ export function startProductionAutoRefresh() {
     }
     const globalProdEl = document.getElementById("global-production");
     if (globalProdEl && !globalProdEl.classList.contains("hidden")) {
-      await initGlobalProductionView();
+      await refreshProductionKanban(globalProdEl);
     }
   }, 30000);
 }
