@@ -1,5 +1,6 @@
 // dossiers.js — Dossiers de production
 import { authToken, showNotification, fnKey } from './core.js';
+import { openFabrication } from './fabrication.js';
 
 export function showDossiers() {
   // Navigation handled by app.js
@@ -40,6 +41,8 @@ export async function loadDossiersList() {
 
     folders.forEach(folder => {
       const folderName = folder.fileName || '';
+      const displayTitle = folder.numeroDossier || folderName || 'Dossier';
+      const showSubtitle = folderName && folderName !== folder.numeroDossier && folderName.toLowerCase() !== 'production';
       const card = document.createElement("div");
       card.className = "dossier-card";
       card.style.cssText = "background: white; border: 1px solid #e5e7eb; border-radius: 16px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); cursor: pointer; transition: all 0.2s;";
@@ -47,9 +50,9 @@ export async function loadDossiersList() {
       card.onmouseleave = () => { card.style.boxShadow = "0 2px 12px rgba(0,0,0,0.08)"; card.style.transform = ""; };
       card.innerHTML = `
         <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:12px;min-width:0;">
-          ${folder.numeroDossier ? `<div style="font-size:28px;font-weight:800;color:#111827;min-width:56px;font-family:monospace;line-height:1;">${folder.numeroDossier}</div>` : ''}
           <div style="min-width:0;flex:1;">
-            <div class="dossier-card-name" title="${folderName}" style="font-weight:600;font-size:14px;color:#374151;word-break:break-word;">${folderName}</div>
+            <div style="font-size:22px;font-weight:800;color:#111827;font-family:monospace;line-height:1.2;word-break:break-word;">${displayTitle}</div>
+            ${showSubtitle ? `<div class="dossier-card-name" title="${folderName}" style="font-size:12px;color:#6b7280;margin-top:4px;word-break:break-word;">${folderName}</div>` : ''}
             <div style="font-size:12px;color:#6b7280;margin-top:2px;">${folder.createdAt ? new Date(folder.createdAt).toLocaleDateString("fr-FR") : ''}</div>
           </div>
         </div>
@@ -140,20 +143,9 @@ export async function openDossierDetail(dossierId) {
       </div>
 
       <h3 style="font-size:16px;color:#111827;margin-bottom:12px;">Fiche de fabrication</h3>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;">
-        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">DÉLAI</label><input id="df-delai" type="date" value="${fab.delai ? (() => { try { return new Date(fab.delai).toISOString().split('T')[0]; } catch(e) { return ''; } })() : ''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
-        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">N° DOSSIER</label><input id="df-numero-dossier" type="text" value="${fab.numeroDossier||folder.numeroDossier||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
-        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">CLIENT</label><input id="df-client" type="text" value="${fab.client||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
-        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">QUANTITÉ</label><input id="df-quantite" type="number" value="${fab.quantite||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
-        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">FORMAT</label><input id="df-format" type="text" value="${fab.format||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
-        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">MOTEUR D'IMPRESSION</label><input id="df-moteur" type="text" value="${fab.moteurImpression||fab.machine||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
-        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">TYPE DE TRAVAIL</label><input id="df-type-travail" type="text" value="${fab.typeTravail||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
-        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">RECTO/VERSO</label><input id="df-recto-verso" type="text" value="${fab.rectoVerso||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
-        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">FAÇONNAGE</label><input id="df-faconnage" type="text" value="${fab.faconnage||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
-        <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">PAPIER / MÉDIA 1</label><input id="df-media1" type="text" value="${fab.media1||fab.papier||''}" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;" /></div>
-        <div style="grid-column:1/-1;"><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">NOTES</label><textarea id="df-notes" rows="2" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">${fab.notes||''}</textarea></div>
+      <div style="margin-bottom:24px;">
+        <button id="df-open-fiche" class="btn btn-primary">Ouvrir la fiche de fabrication</button>
       </div>
-      <button id="df-save" class="btn btn-primary" style="margin-bottom:24px;">Enregistrer la fiche</button>
 
       <h3 style="font-size:16px;color:#111827;margin-bottom:12px;">Fichiers par étape</h3>
       <div id="df-files" style="margin-bottom:24px;"></div>
@@ -191,33 +183,10 @@ export async function openDossierDetail(dossierId) {
     modal.querySelector("#dossier-close").onclick = () => overlay.remove();
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 
-    modal.querySelector("#df-save").onclick = async () => {
-      const savePayload = {
-        fullPath: fabFilePath || fabFileName || "",
-        fileName: fabFileName,
-        delai: modal.querySelector("#df-delai").value || null,
-        numeroDossier: modal.querySelector("#df-numero-dossier").value || null,
-        client: modal.querySelector("#df-client").value,
-        quantite: parseInt(modal.querySelector("#df-quantite").value, 10) || null,
-        format: modal.querySelector("#df-format").value,
-        moteurImpression: modal.querySelector("#df-moteur").value,
-        machine: modal.querySelector("#df-moteur").value,
-        typeTravail: modal.querySelector("#df-type-travail").value,
-        rectoVerso: modal.querySelector("#df-recto-verso").value,
-        faconnage: modal.querySelector("#df-faconnage").value,
-        media1: modal.querySelector("#df-media1").value,
-        notes: modal.querySelector("#df-notes").value
-      };
-      const r = await fetch("/api/fabrication", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-        body: JSON.stringify(savePayload)
-      }).then(r => r.json()).catch(() => ({ ok: false }));
-      if (r.ok) {
-        showNotification("✅ Fiche enregistrée", "success");
-      } else {
-        showNotification("❌ Erreur : " + (r.error || ""), "error");
-      }
+    modal.querySelector("#df-open-fiche").onclick = () => {
+      const fichePath = fabFilePath || fabFileName || "";
+      if (!fichePath) { showNotification("❌ Chemin du fichier introuvable", "error"); return; }
+      openFabrication(fichePath);
     };
 
     const uploadZone = modal.querySelector("#df-upload-zone");

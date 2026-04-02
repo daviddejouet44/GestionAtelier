@@ -481,17 +481,17 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             const btnSent = document.createElement("button");
             btnSent.className = "bat-status-badge bat-sent" + (status.sentAt ? " active" : "");
             btnSent.innerHTML = status.sentAt ? `ENVOYÉ ${formatDateTime(status.sentAt)}` : "MARQUER ENVOYÉ";
-            btnSent.onclick = (e) => { e.stopPropagation(); fetch("/api/bat/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
+            btnSent.onclick = (e) => { e.stopPropagation(); delete _columnCache[cacheKey]; fetch("/api/bat/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
 
             const btnValidate = document.createElement("button");
             btnValidate.className = "bat-status-badge bat-validated" + (status.validatedAt ? " active" : "");
             btnValidate.innerHTML = status.validatedAt ? `VALIDÉ ${formatDateTime(status.validatedAt)}` : "VALIDER";
-            btnValidate.onclick = (e) => { e.stopPropagation(); fetch("/api/bat/validate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
+            btnValidate.onclick = (e) => { e.stopPropagation(); delete _columnCache[cacheKey]; fetch("/api/bat/validate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
 
             const btnReject = document.createElement("button");
             btnReject.className = "bat-status-badge bat-rejected" + (status.rejectedAt ? " active" : "");
             btnReject.innerHTML = status.rejectedAt ? `REFUSÉ ${formatDateTime(status.rejectedAt)}` : "REFUSER";
-            btnReject.onclick = (e) => { e.stopPropagation(); fetch("/api/bat/reject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
+            btnReject.onclick = (e) => { e.stopPropagation(); delete _columnCache[cacheKey]; fetch("/api/bat/reject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
 
             batTracking.appendChild(btnSent);
             batTracking.appendChild(btnValidate);
