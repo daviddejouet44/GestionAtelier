@@ -217,14 +217,19 @@ Console.WriteLine("[INFO] ContentRoot = " + app.Environment.ContentRootPath);
 // ======================================================
 // TEMP_COPY FileSystemWatcher — detect Epreuve.pdf, rename → BAT_*.pdf, move to BAT
 // ======================================================
+// Declared in outer scope so the GC never collects it while the app is running.
+FileSystemWatcher? tempCopyWatcher = null;
 {
     try
     {
         var integCfg = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations");
         var tempCopyDir = integCfg?.TempCopyPath ?? "";
-        if (!string.IsNullOrWhiteSpace(tempCopyDir) && Directory.Exists(tempCopyDir))
+        if (!string.IsNullOrWhiteSpace(tempCopyDir) && Path.IsPathRooted(tempCopyDir))
         {
-            var tempCopyWatcher = new FileSystemWatcher(tempCopyDir)
+            // Create the directory if it does not yet exist so the watcher can always be started.
+            Directory.CreateDirectory(tempCopyDir);
+
+            tempCopyWatcher = new FileSystemWatcher(tempCopyDir)
             {
                 Filter = "Epreuve.pdf",
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite,
@@ -309,6 +314,12 @@ Console.WriteLine("[INFO] ContentRoot = " + app.Environment.ContentRootPath);
 
             tempCopyWatcher.Created += async (_, e) => await HandleEpreuve(e.FullPath);
             tempCopyWatcher.Changed += async (_, e) => await HandleEpreuve(e.FullPath);
+            // Also handle rename-into: some tools write a temp file then rename it to Epreuve.pdf
+            tempCopyWatcher.Renamed += async (_, e) =>
+            {
+                if (e.Name != null && e.Name.Equals("Epreuve.pdf", StringComparison.OrdinalIgnoreCase))
+                    await HandleEpreuve(e.FullPath);
+            };
 
             Console.WriteLine($"[INFO] TEMP_COPY FileSystemWatcher started on {tempCopyDir}");
         }
@@ -3557,6 +3568,8 @@ app.MapPut("/api/notifications/read", async (HttpContext ctx) =>
 // RUN
 // ======================================================
 app.Run();
+// Ensure the TEMP_COPY watcher is never GC-collected before the app exits.
+GC.KeepAlive(tempCopyWatcher);
 
 
 // ======================================================
