@@ -191,7 +191,7 @@ function showSubmission() {
 function showProduction() {
   hideAllViews();
   document.getElementById("production").classList.remove("hidden");
-  document.getElementById("btnViewProduction").classList.add("active");
+  document.getElementById("btnViewKanban").classList.add("active");
   loadAssignments().then(() => buildProductionView()).catch(err => console.error("Erreur production:", err));
 }
 
@@ -237,7 +237,6 @@ function showGlobalProduction() {
 function setupProfileUI() {
   const btnSubmission = document.getElementById("btnViewSubmission");
   const btnSettings = document.getElementById("btn-settings");
-  const btnProduction = document.getElementById("btnViewProduction");
   const btnRecycle = document.getElementById("btnViewRecycle");
   const btnDashboard = document.getElementById("btnViewDashboard");
   const btnDossiers = document.getElementById("btnViewDossiers");
@@ -255,14 +254,11 @@ function setupProfileUI() {
 
   if (currentUser.profile === 1) {
     btnSubmission.style.display = "inline-block";
-    btnProduction.style.display = "inline-block";
   } else if (currentUser.profile === 2) {
     btnSubmission.style.display = "inline-block";
-    btnProduction.style.display = "inline-block";
   } else if (currentUser.profile === 3) {
     btnSettings.style.display = "inline-block";
     btnSubmission.style.display = "inline-block";
-    btnProduction.style.display = "inline-block";
   }
 
   setupKanbanActions();
@@ -272,23 +268,19 @@ function setupKanbanActions() {
   const btnKanban = document.getElementById("btnViewKanban");
   const btnCalendar = document.getElementById("btnViewCalendar");
   const btnSubmission = document.getElementById("btnViewSubmission");
-  const btnProduction = document.getElementById("btnViewProduction");
 
   if (currentUser.profile === 1) {
-    btnKanban.style.display = "none";
+    btnKanban.style.display = "inline-block";
     btnCalendar.style.display = "none";
     btnSubmission.style.display = "inline-block";
-    btnProduction.style.display = "inline-block";
   } else if (currentUser.profile === 2) {
     btnKanban.style.display = "inline-block";
     btnCalendar.style.display = "inline-block";
     btnSubmission.style.display = "inline-block";
-    btnProduction.style.display = "inline-block";
   } else if (currentUser.profile === 3) {
     btnKanban.style.display = "inline-block";
     btnCalendar.style.display = "inline-block";
     btnSubmission.style.display = "inline-block";
-    btnProduction.style.display = "inline-block";
   }
 }
 
@@ -774,7 +766,7 @@ document.getElementById("btn-settings").onclick = showSettings;
 
 document.getElementById("btnViewKanban").onclick = () => {
   if (currentUser.profile === 1) {
-    alert("Vous n'avez accès qu'à la Soumission");
+    showProduction();
     return;
   }
   showKanban();
@@ -789,7 +781,6 @@ document.getElementById("btnViewCalendar").onclick = () => {
 };
 
 document.getElementById("btnViewSubmission").onclick = showSubmission;
-document.getElementById("btnViewProduction").onclick = showProduction;
 document.getElementById("btnViewRecycle").onclick = showRecycle;
 document.getElementById("btnViewDashboard").onclick = showDashboard;
 document.getElementById("btnViewDossiers").onclick = showDossiers;

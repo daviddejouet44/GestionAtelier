@@ -1,6 +1,5 @@
 // fabrication.js — Fiche de fabrication
-import { authToken, currentUser, deliveriesByPath, fnKey, normalizePath, showNotification, FIN_PROD_FOLDER } from './core.js';
-import { openBatChoiceModal } from './bat.js';
+import { authToken, deliveriesByPath, fnKey, normalizePath, showNotification, FIN_PROD_FOLDER } from './core.js';
 import { calendar, submissionCalendar } from './calendar.js';
 
 // ======================================================
@@ -12,7 +11,7 @@ const fabSave = document.getElementById("fab-save");
 const fabPdf = document.getElementById("fab-pdf");
 const fabFinProd = document.getElementById("fab-finprod");
 const fabPrisma = document.getElementById("fab-prisma");
-const fabBat = document.getElementById("fab-bat");
+const fabDelete = document.getElementById("fab-delete");
 const fabMoteur = document.getElementById("fab-moteur");
 const fabOperateur = document.getElementById("fab-operateur");
 const fabQuantite = document.getElementById("fab-quantite");
@@ -53,8 +52,9 @@ export function initFabrication() {
   fabPdf.onclick = async () => {
     if (!fabCurrentPath) return;
     await saveFabrication();
+    const fabCurrentFileName = fnKey(fabCurrentPath);
     try {
-      const r = await fetch("/api/fabrication/pdf?fullPath=" + encodeURIComponent(fabCurrentPath) + "&save=true", {
+      const r = await fetch("/api/fabrication/pdf?fileName=" + encodeURIComponent(fabCurrentFileName) + "&save=true", {
         headers: { "Authorization": `Bearer ${authToken}` }
       });
       if (r.ok) {
@@ -90,18 +90,27 @@ export function initFabrication() {
     if (window._refreshSubmissionView) await window._refreshSubmissionView();
   };
 
-  // Remplacer le bouton fabPrisma — il est masqué dans l'HTML, fab-bat gère tout
+  // Masquer le bouton PrismaPrepare (remplacé par le bouton BAT dans la tuile kanban)
   if (fabPrisma) {
-    fabPrisma.style.display = "none"; // masqué — fab-bat le remplace
+    fabPrisma.style.display = "none";
   }
 
-  if (fabBat) {
-    fabBat.onclick = async () => {
-      if (!fabCurrentPath) { alert("Chemin introuvable"); return; }
-      openBatChoiceModal(fabCurrentPath, async () => {
+  if (fabDelete) {
+    fabDelete.onclick = async () => {
+      if (!fabCurrentPath) return;
+      if (!confirm("Supprimer ce fichier et le déplacer vers la corbeille ?")) return;
+      const r = await fetch("/api/jobs/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+        body: JSON.stringify({ fullPath: fabCurrentPath })
+      }).then(r => r.json()).catch(() => ({ ok: false }));
+      if (r.ok) {
         fabModal.classList.add("hidden");
+        showNotification("✅ Fichier déplacé vers la corbeille", "success");
         if (window._refreshKanban) await window._refreshKanban();
-      });
+      } else {
+        showNotification("❌ Erreur : " + (r.error || "Impossible de supprimer"), "error");
+      }
     };
   }
 }

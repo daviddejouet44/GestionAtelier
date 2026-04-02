@@ -847,19 +847,15 @@ app.MapPost("/api/jobs/move", async (HttpContext ctx) =>
                     }
                 }
 
-                // Initialize BAT status entry (without sentAt) when file moves to BAT folder
+                // Reset BAT status entry to pending when file moves to BAT folder
+                // This prevents stale "Envoyé" state from previous BAT cycles
                 if (string.Equals(dstFolder.Trim(), "BAT", StringComparison.OrdinalIgnoreCase))
                 {
                     try {
                         var batCol = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
                         var batFilter = Builders<BsonDocument>.Filter.Eq("fullPath", moved);
-                        // Only create if no entry exists yet — do NOT auto-set sentAt
-                        var existing = batCol.Find(batFilter).FirstOrDefault();
-                        if (existing == null)
-                        {
-                            var batDoc = new BsonDocument { ["fullPath"] = moved, ["status"] = "pending", ["sentAt"] = BsonNull.Value, ["validatedAt"] = BsonNull.Value, ["rejectedAt"] = BsonNull.Value };
-                            batCol.InsertOne(batDoc);
-                        }
+                        var batDoc = new BsonDocument { ["fullPath"] = moved, ["status"] = "pending", ["sentAt"] = BsonNull.Value, ["validatedAt"] = BsonNull.Value, ["rejectedAt"] = BsonNull.Value };
+                        batCol.ReplaceOne(batFilter, batDoc, new ReplaceOptions { IsUpsert = true });
                     } catch { }
                 }
 
@@ -1319,11 +1315,15 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
     }
 });
 
-app.MapGet("/api/fabrication/pdf", (string fullPath, bool? save) =>
+app.MapGet("/api/fabrication/pdf", (string? fullPath, string? fileName, bool? save) =>
 {
     try
     {
-        var sheet = BackendUtils.FindFabrication(fullPath);
+        FabricationSheet? sheet = null;
+        if (!string.IsNullOrEmpty(fullPath))
+            sheet = BackendUtils.FindFabrication(fullPath);
+        if (sheet == null && !string.IsNullOrEmpty(fileName))
+            sheet = BackendUtils.FindFabricationByName(fileName);
         if (sheet == null)
             return Results.Json(new { ok = false, error = "Fiche introuvable" });
 
@@ -2537,16 +2537,23 @@ app.MapPost("/api/bat/send-to-hotfolder", async (HttpContext ctx) =>
         File.Copy(fullPath, hotfolderDest, overwrite: true);
         Console.WriteLine($"[BAT] Copié vers hotfolder: {hotfolderDest}");
 
-        // 5. Move file to BAT folder
-        var hotRoot2 = BackendUtils.HotfoldersRoot();
-        var batFolderPath = Path.Combine(hotRoot2, "BAT");
-        Directory.CreateDirectory(batFolderPath);
-        var batDest = Path.Combine(batFolderPath, Path.GetFileName(fullPath));
-        if (File.Exists(batDest)) File.Delete(batDest);
-        File.Move(fullPath, batDest);
-        Console.WriteLine($"[BAT] Déplacé vers BAT: {batDest}");
+        // 5. Store pending rename: when "Epreuve PDF.pdf" arrives in the hotfolder,
+        //    it will be renamed to "{originalName} Epreuve.pdf".
+        //    Field "batFolder" holds the watched folder path (hotfolder here, reused by process-pending).
+        try
+        {
+            var batPendingCol = MongoDbHelper.GetCollection<BsonDocument>("batPending");
+            batPendingCol.InsertOne(new BsonDocument
+            {
+                ["sourceFileName"] = Path.GetFileNameWithoutExtension(fullPath),
+                ["batFolder"] = hotfolderPath,   // watched folder = hotfolder destination
+                ["createdAt"] = DateTime.UtcNow,
+                ["processed"] = false
+            });
+        }
+        catch { /* non-blocking */ }
 
-        return Results.Json(new { ok = true, hotfolder = hotfolderPath, destination = batDest, typeTravail });
+        return Results.Json(new { ok = true, hotfolder = hotfolderPath, typeTravail });
     }
     catch (Exception ex)
     {
@@ -3098,7 +3105,7 @@ app.MapPost("/api/bat/process-pending", () =>
             var epreuveSrc = Path.Combine(batFolder, "Epreuve PDF.pdf");
             if (File.Exists(epreuveSrc))
             {
-                var dest = Path.Combine(batFolder, $"{sourceName}.Epreuve.pdf");
+                var dest = Path.Combine(batFolder, $"{sourceName} Epreuve.pdf");
                 try
                 {
                     File.Move(epreuveSrc, dest, overwrite: true);
@@ -4058,7 +4065,8 @@ file static class BackendUtils
             if (doc != null) return BsonDocToFabricationSheet(doc);
 
             // Fallback: look up by fileName (resilient to path changes by Acrobat Pro)
-            var fileName = Path.GetFileName(fullPath);
+            // Normalize to lowercase (fabrication records store fileName as lowercase via fnKey)
+            var fileName = Path.GetFileName(fullPath)?.ToLowerInvariant() ?? "";
             if (!string.IsNullOrEmpty(fileName))
             {
                 filter = Builders<BsonDocument>.Filter.Eq("fileName", fileName);
@@ -4079,7 +4087,9 @@ file static class BackendUtils
         try
         {
             var col = MongoDbHelper.GetFabricationsCollection();
-            var filter = Builders<BsonDocument>.Filter.Eq("fileName", fileName);
+            // Normalize to lowercase (fabrication records store fileName as lowercase via fnKey)
+            var lowerFileName = (fileName ?? "").ToLowerInvariant();
+            var filter = Builders<BsonDocument>.Filter.Eq("fileName", lowerFileName);
             // When multiple records share a fileName (e.g. file moved between folders),
             // take the most recently inserted one (newest ObjectId = most recent).
             var doc = col.Find(filter).SortByDescending(x => x["_id"]).FirstOrDefault();

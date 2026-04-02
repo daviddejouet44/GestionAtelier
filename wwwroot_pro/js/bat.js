@@ -26,7 +26,7 @@ export function openBatChoiceModal(fullPath, onComplete) {
           <div class="bat-choice-icon">🖨</div>
           <div class="bat-choice-text">
             <strong>BAT Complet</strong>
-            <span>Copie vers le hotfolder PrismaPrepare (selon le type de travail) + déplacement vers le dossier BAT</span>
+            <span>Copie vers le hotfolder PrismaPrepare (selon le type de travail). Le fichier Epreuve PDF.pdf sera renommé automatiquement en {nom} Epreuve.pdf</span>
           </div>
         </button>
         <button class="bat-choice-btn bat-simple-btn" id="bat-simple-btn">
@@ -80,7 +80,7 @@ async function sendBatComplet(fullPath) {
 
     if (r.ok) {
       showNotification(
-        `✅ BAT Complet : copié vers hotfolder${r.hotfolder ? " (" + r.hotfolder + ")" : ""} et déplacé vers BAT`,
+        `✅ BAT Complet : copié vers hotfolder${r.hotfolder ? " (" + r.hotfolder + ")" : ""}. En attente de l'épreuve PDF...`,
         "success"
       );
     } else {
