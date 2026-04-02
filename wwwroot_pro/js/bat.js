@@ -26,7 +26,7 @@ export function openBatChoiceModal(fullPath, onComplete) {
           <div class="bat-choice-icon">🖨</div>
           <div class="bat-choice-text">
             <strong>BAT Complet</strong>
-            <span>Copie vers le hotfolder PrismaPrepare (selon le type de travail). Le fichier Epreuve PDF.pdf sera renommé automatiquement en {nom} Epreuve.pdf</span>
+            <span>Copie vers TEMP_COPY et le hotfolder PrismaPrepare (selon le type de travail). Le fichier Epreuve.pdf sera automatiquement renommé en BAT_{nom}.pdf et déplacé dans la tuile BAT.</span>
           </div>
         </button>
         <button class="bat-choice-btn bat-simple-btn" id="bat-simple-btn">
@@ -65,14 +65,14 @@ export function openBatChoiceModal(fullPath, onComplete) {
 }
 
 // ======================================================
-// BAT COMPLET — Copie vers hotfolder PrismaPrepare + déplacement vers BAT
+// BAT COMPLET — Copie vers TEMP_COPY + hotfolder PrismaPrepare (sans déplacer le fichier source)
 // ======================================================
 async function sendBatComplet(fullPath) {
   const path = normalizePath(fullPath);
   const fileName = fnKey(path);
 
   try {
-    const r = await fetch("/api/bat/send-to-hotfolder", {
+    const r = await fetch("/api/bat/copy-for-bat", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
       body: JSON.stringify({ fileName, fullPath: path })
@@ -80,7 +80,7 @@ async function sendBatComplet(fullPath) {
 
     if (r.ok) {
       showNotification(
-        `✅ BAT Complet : copié vers hotfolder${r.hotfolder ? " (" + r.hotfolder + ")" : ""}. En attente de l'épreuve PDF...`,
+        `✅ BAT Complet : copié vers TEMP_COPY et hotfolder${r.hotfolder ? " (" + r.hotfolder + ")" : ""}. En attente de l'épreuve PrismaPrepare...`,
         "success"
       );
     } else {

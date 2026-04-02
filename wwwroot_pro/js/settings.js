@@ -371,7 +371,7 @@ async function renderSettingsPaths(panel) {
 // ======================================================
 async function renderSettingsIntegrations(panel) {
   panel.innerHTML = `<h3>Prepare / Fiery — Chemins d'accès</h3><p style="color:#6b7280;">Chargement...</p>`;
-  let cfg = { preparePath: "", fieryPath: "" };
+  let cfg = { preparePath: "", fieryPath: "", tempCopyPath: "" };
   let cmdCfg = { prismaCommand: "" };
   try {
     const resp = await fetch("/api/config/integrations", {
@@ -406,6 +406,15 @@ async function renderSettingsIntegrations(panel) {
     </div>
 
     <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 20px; background: #f9fafb;">
+      <h4 style="margin-top: 0; margin-bottom: 12px;">Workflow BAT — Dossier temporaire TEMP_COPY</h4>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">Dossier dans lequel PrismaPrepare dépose le fichier <code>Epreuve.pdf</code>. Le backend surveille ce dossier et renomme automatiquement le fichier en <code>BAT_nom.pdf</code> avant de le déplacer dans la tuile BAT.</p>
+      <div class="settings-form-group">
+        <label>Chemin TEMP_COPY</label>
+        <input type="text" id="int-temp-copy" value="${cfg.tempCopyPath || ''}" class="settings-input" style="width:100%;max-width:500px;" placeholder="Ex: C:\\FluxAtelier\\Base\\TEMP_COPY" />
+      </div>
+    </div>
+
+    <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 20px; background: #f9fafb;">
       <h4 style="margin-top: 0; margin-bottom: 12px;">Commande PrismaPrepare</h4>
       <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">Variables disponibles : <code>{xmlPath}</code> (fiche XML), <code>{filePath}</code> (chemin du PDF)</p>
       <div class="settings-form-group">
@@ -420,11 +429,12 @@ async function renderSettingsIntegrations(panel) {
   document.getElementById("int-save").onclick = async () => {
     const preparePath = document.getElementById("int-prepare").value.trim();
     const fieryPath = document.getElementById("int-fiery").value.trim();
+    const tempCopyPath = document.getElementById("int-temp-copy").value.trim();
     const prismaCommand = document.getElementById("int-prisma-cmd").value.trim();
     const r1 = await fetch("/api/config/integrations", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ preparePath, fieryPath })
+      body: JSON.stringify({ preparePath, fieryPath, tempCopyPath })
     }).then(r => r.json());
     const r2 = await fetch("/api/config/commands", {
       method: "PUT",

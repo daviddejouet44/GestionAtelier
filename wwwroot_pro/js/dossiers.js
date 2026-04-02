@@ -39,10 +39,24 @@ export async function loadDossiersList() {
     const grid = document.createElement("div");
     grid.style.cssText = "display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;";
 
-    folders.forEach(folder => {
+    // Fetch real-time file stage for each folder in parallel
+    const stageResults = await Promise.all(folders.map(async folder => {
+      const fn = folder.fileName || '';
+      if (!fn) return null;
+      try {
+        const res = await fetch("/api/file-stage?fileName=" + encodeURIComponent(fn), {
+          headers: { "Authorization": `Bearer ${authToken}` }
+        }).then(r => r.json()).catch(() => null);
+        return (res && res.ok && res.folder) ? res.folder : null;
+      } catch { return null; }
+    }));
+
+    folders.forEach((folder, idx) => {
       const folderName = folder.fileName || '';
       const displayTitle = folder.numeroDossier || folderName || 'Dossier';
       const showSubtitle = folderName && folderName !== folder.numeroDossier && folderName.toLowerCase() !== 'production';
+      // Use real-time stage from file-stage scan, fallback to stored value
+      const realStage = stageResults[idx] || folder.currentStage || 'Début de production';
       const card = document.createElement("div");
       card.className = "dossier-card";
       card.style.cssText = "background: white; border: 1px solid #e5e7eb; border-radius: 16px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); cursor: pointer; transition: all 0.2s;";
@@ -57,7 +71,7 @@ export async function loadDossiersList() {
           </div>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;">${folder.currentStage || 'Début de production'}</span>
+          <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;">${realStage}</span>
           <span style="color:#6b7280;font-size:12px;">${typeof folder.files === 'number' ? folder.files : 0} fichier(s)</span>
         </div>
       `;

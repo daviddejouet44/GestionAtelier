@@ -215,6 +215,115 @@ Console.WriteLine("[INFO] ContentRoot = " + app.Environment.ContentRootPath);
 }
 
 // ======================================================
+// TEMP_COPY FileSystemWatcher — detect Epreuve.pdf, rename → BAT_*.pdf, move to BAT
+// ======================================================
+{
+    try
+    {
+        var integCfg = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations");
+        var tempCopyDir = integCfg?.TempCopyPath ?? "";
+        if (!string.IsNullOrWhiteSpace(tempCopyDir) && Directory.Exists(tempCopyDir))
+        {
+            var tempCopyWatcher = new FileSystemWatcher(tempCopyDir)
+            {
+                Filter = "Epreuve.pdf",
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite,
+                EnableRaisingEvents = true
+            };
+
+            async Task HandleEpreuve(string epreuvePath)
+            {
+                try
+                {
+                    await Task.Delay(BackendUtils.FileSystemSettleDelayMs * 4);
+                    if (!File.Exists(epreuvePath)) return;
+
+                    // Find the most recent unprocessed batPending entry for TEMP_COPY
+                    var batPendingCol = MongoDbHelper.GetCollection<BsonDocument>("batPending");
+                    var pending = batPendingCol.Find(
+                        Builders<BsonDocument>.Filter.And(
+                            Builders<BsonDocument>.Filter.Eq("processed", false),
+                            Builders<BsonDocument>.Filter.Eq("batFolder", tempCopyDir)
+                        )
+                    ).SortByDescending(d => d["createdAt"]).FirstOrDefault();
+
+                    string sourceFileName = pending != null && pending.Contains("sourceFileName")
+                        ? pending["sourceFileName"].AsString : "";
+
+                    // Also try scanning TEMP_COPY for the original (non-Epreuve) file
+                    if (string.IsNullOrEmpty(sourceFileName))
+                    {
+                        var others = Directory.GetFiles(tempCopyDir)
+                            .Where(f => !Path.GetFileName(f).Equals("Epreuve.pdf", StringComparison.OrdinalIgnoreCase))
+                            .OrderByDescending(f => new FileInfo(f).LastWriteTime)
+                            .FirstOrDefault();
+                        if (others != null)
+                            sourceFileName = Path.GetFileNameWithoutExtension(others);
+                    }
+
+                    if (string.IsNullOrEmpty(sourceFileName))
+                    {
+                        Console.WriteLine("[TEMP_COPY] Cannot determine job name for Epreuve.pdf — skipping rename.");
+                        return;
+                    }
+
+                    // Rename Epreuve.pdf → BAT_{sourceFileName}.pdf
+                    var batFileName = $"BAT_{sourceFileName}.pdf";
+                    var renamedPath = Path.Combine(tempCopyDir, batFileName);
+                    File.Move(epreuvePath, renamedPath, overwrite: true);
+                    Console.WriteLine($"[TEMP_COPY] Renamed Epreuve.pdf → {batFileName}");
+
+                    // Move BAT_{sourceFileName}.pdf to the BAT production folder
+                    var (ok, err) = BackendUtils.MoveFileToDestFolder(renamedPath, "BAT");
+                    if (ok)
+                        Console.WriteLine($"[TEMP_COPY] Moved {batFileName} to BAT folder");
+                    else
+                        Console.WriteLine($"[TEMP_COPY][WARN] Move to BAT failed: {err}");
+
+                    // Delete the original copy of the source file in TEMP_COPY
+                    var originalInTemp = Directory.GetFiles(tempCopyDir)
+                        .Where(f =>
+                            Path.GetFileNameWithoutExtension(f).Equals(sourceFileName, StringComparison.OrdinalIgnoreCase) &&
+                            !Path.GetFileName(f).StartsWith("BAT_", StringComparison.OrdinalIgnoreCase) &&
+                            !Path.GetFileName(f).Equals("Epreuve.pdf", StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                    foreach (var orig in originalInTemp)
+                    {
+                        try { File.Delete(orig); Console.WriteLine($"[TEMP_COPY] Deleted temp file {Path.GetFileName(orig)}"); }
+                        catch (Exception exDel) { Console.WriteLine($"[TEMP_COPY][WARN] Delete temp file: {exDel.Message}"); }
+                    }
+
+                    // Mark batPending as processed
+                    if (pending != null)
+                    {
+                        batPendingCol.UpdateOne(
+                            Builders<BsonDocument>.Filter.Eq("_id", pending["_id"]),
+                            Builders<BsonDocument>.Update.Set("processed", true));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[TEMP_COPY][ERROR] HandleEpreuve: {ex.Message}");
+                }
+            }
+
+            tempCopyWatcher.Created += async (_, e) => await HandleEpreuve(e.FullPath);
+            tempCopyWatcher.Changed += async (_, e) => await HandleEpreuve(e.FullPath);
+
+            Console.WriteLine($"[INFO] TEMP_COPY FileSystemWatcher started on {tempCopyDir}");
+        }
+        else
+        {
+            Console.WriteLine("[INFO] TEMP_COPY path not configured — FileSystemWatcher not started.");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[WARN] TEMP_COPY watcher init failed: {ex.Message}");
+    }
+}
+
+// ======================================================
 // Logging (console + MongoDB)
 // ======================================================
 
@@ -2020,6 +2129,85 @@ app.MapGet("/api/production-folders/global-progress", () =>
 });
 
 // ======================================================
+// PRODUCTION — Summary (physical scan of all production folders)
+// ======================================================
+app.MapGet("/api/production/summary", () =>
+{
+    try
+    {
+        var root = BackendUtils.HotfoldersRoot();
+        var productionFolders = new[]
+        {
+            "Début de production", "Corrections", "Corrections et fond perdu",
+            "Prêt pour impression", "BAT", "PrismaPrepare", "Fiery",
+            "Impression en cours", "Façonnage", "Fin de production"
+        };
+
+        var stageProgress = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "Début de production", 0 },
+            { "Corrections", 25 },
+            { "Corrections et fond perdu", 25 },
+            { "Prêt pour impression", 50 },
+            { "BAT", 65 },
+            { "PrismaPrepare", 75 },
+            { "Fiery", 75 },
+            { "Impression en cours", 75 },
+            { "Façonnage", 90 },
+            { "Fin de production", 100 }
+        };
+
+        int GetProgress(string? stage)
+        {
+            if (string.IsNullOrEmpty(stage)) return 0;
+            foreach (var kv in stageProgress)
+                if (stage.IndexOf(kv.Key, StringComparison.OrdinalIgnoreCase) >= 0)
+                    return kv.Value;
+            return 0;
+        }
+
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+        var allFabs = fabCol.Find(new BsonDocument()).ToList();
+
+        var entries = new List<object>();
+        foreach (var folder in productionFolders)
+        {
+            var dir = Path.Combine(root, folder);
+            if (!Directory.Exists(dir)) continue;
+            foreach (var filePath in Directory.EnumerateFiles(dir))
+            {
+                var fName = Path.GetFileName(filePath);
+                // Find matching fabrication by fileName or fullPath
+                var fab = allFabs.FirstOrDefault(f =>
+                    (f.Contains("fileName") && string.Equals(f["fileName"].AsString, fName, StringComparison.OrdinalIgnoreCase)) ||
+                    (f.Contains("fullPath") && string.Equals(Path.GetFileName(f["fullPath"].AsString), fName, StringComparison.OrdinalIgnoreCase)));
+
+                var numeroDossier = fab != null && fab.Contains("numeroDossier") ? fab["numeroDossier"].AsString : "";
+                var client = fab != null && fab.Contains("client") ? fab["client"].AsString : "";
+                var typeTravail = fab != null && fab.Contains("typeTravail") ? fab["typeTravail"].AsString : "";
+
+                entries.Add(new
+                {
+                    fileName = fName,
+                    fullPath = filePath,
+                    currentStage = folder,
+                    progress = GetProgress(folder),
+                    numeroDossier,
+                    client,
+                    typeTravail
+                });
+            }
+        }
+
+        return Results.Json(entries);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
 // DEBUG — Endpoints
 // ======================================================
 var summaries = app.Services.GetRequiredService<EndpointDataSource>().Endpoints
@@ -2240,7 +2428,7 @@ app.MapGet("/api/config/integrations", (HttpContext ctx) =>
 
         var cfg = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations")
             ?? new IntegrationsSettings();
-        return Results.Json(new { ok = true, config = new { preparePath = cfg.PreparePath, fieryPath = cfg.FieryPath } });
+        return Results.Json(new { ok = true, config = new { preparePath = cfg.PreparePath, fieryPath = cfg.FieryPath, tempCopyPath = cfg.TempCopyPath } });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
@@ -2261,6 +2449,7 @@ app.MapPut("/api/config/integrations", async (HttpContext ctx) =>
 
         if (json.TryGetProperty("preparePath", out var pp)) existing.PreparePath = pp.GetString() ?? "";
         if (json.TryGetProperty("fieryPath", out var fp)) existing.FieryPath = fp.GetString() ?? "";
+        if (json.TryGetProperty("tempCopyPath", out var tcp)) existing.TempCopyPath = tcp.GetString() ?? "";
 
         MongoDbHelper.UpsertSettings("integrations", existing);
         return Results.Json(new { ok = true });
@@ -2558,6 +2747,99 @@ app.MapPost("/api/bat/send-to-hotfolder", async (HttpContext ctx) =>
     catch (Exception ex)
     {
         Console.WriteLine($"[ERR] bat/send-to-hotfolder: {ex.Message}");
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// BAT — Copie vers TEMP_COPY + hotfolder PrismaPrepare (nouveau workflow BAT Complet)
+// ======================================================
+
+app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var fileName = json.TryGetProperty("fileName", out var fn) ? fn.GetString() ?? "" : "";
+        var fullPath = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
+
+        // 1. Find fabrication record to get typeTravail
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+        BsonDocument? fabDoc = null;
+        if (!string.IsNullOrEmpty(fileName))
+            fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", fileName)).FirstOrDefault();
+        if (fabDoc == null && !string.IsNullOrEmpty(fullPath))
+            fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fullPath", fullPath)).FirstOrDefault();
+
+        var typeTravail = "";
+        if (fabDoc != null && fabDoc.Contains("typeTravail") && fabDoc["typeTravail"] != BsonNull.Value)
+            typeTravail = fabDoc["typeTravail"].AsString ?? "";
+
+        if (string.IsNullOrEmpty(typeTravail))
+            return Results.Json(new { ok = false, error = "Type de travail non défini dans la fiche de fabrication. Veuillez renseigner le type de travail avant d'effectuer un BAT Complet." });
+
+        // 2. Find hotfolder path for this typeTravail
+        var routingCol = MongoDbHelper.GetCollection<BsonDocument>("hotfolderRouting");
+        var routingDoc = routingCol.Find(Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail)).FirstOrDefault();
+
+        if (routingDoc == null || !routingDoc.Contains("hotfolderPath") || string.IsNullOrEmpty(routingDoc["hotfolderPath"].AsString))
+            return Results.Json(new { ok = false, error = $"Aucun hotfolder PrismaPrepare configuré pour le type de travail \"{typeTravail}\". Configurez-le dans Paramétrage > Routage Hotfolder." });
+
+        var hotfolderPath = routingDoc["hotfolderPath"].AsString;
+
+        // 3. Locate the actual file if fullPath not provided or doesn't exist
+        if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
+        {
+            var hotRoot = BackendUtils.HotfoldersRoot();
+            var found = Directory.GetFiles(hotRoot, string.IsNullOrEmpty(fileName) ? "*" : fileName, SearchOption.AllDirectories).FirstOrDefault();
+            if (found != null) fullPath = found;
+        }
+
+        if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
+            return Results.Json(new { ok = false, error = $"Fichier source introuvable : {fileName}" });
+
+        var sourceBaseName = Path.GetFileNameWithoutExtension(fullPath);
+
+        // 4. Get TEMP_COPY path from settings
+        var integCfg = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations") ?? new IntegrationsSettings();
+        var tempCopyPath = integCfg.TempCopyPath ?? "";
+        if (string.IsNullOrWhiteSpace(tempCopyPath))
+            return Results.Json(new { ok = false, error = "Chemin TEMP_COPY non configuré dans Paramétrage > Prepare / Fiery." });
+
+        Directory.CreateDirectory(tempCopyPath);
+
+        // 5. Copy to TEMP_COPY (original stays in place)
+        var tempCopyDest = Path.Combine(tempCopyPath, Path.GetFileName(fullPath));
+        File.Copy(fullPath, tempCopyDest, overwrite: true);
+        Console.WriteLine($"[BAT] Copié vers TEMP_COPY: {tempCopyDest}");
+
+        // 6. Copy to hotfolder PrismaPrepare
+        if (!Directory.Exists(hotfolderPath))
+            Directory.CreateDirectory(hotfolderPath);
+
+        var hotfolderDest = Path.Combine(hotfolderPath, Path.GetFileName(fullPath));
+        File.Copy(fullPath, hotfolderDest, overwrite: true);
+        Console.WriteLine($"[BAT] Copié vers hotfolder PrismaPrepare: {hotfolderDest}");
+
+        // 7. Store pending rename in MongoDB so TEMP_COPY watcher can find the job name
+        try
+        {
+            var batPendingCol = MongoDbHelper.GetCollection<BsonDocument>("batPending");
+            batPendingCol.InsertOne(new BsonDocument
+            {
+                ["sourceFileName"] = sourceBaseName,
+                ["batFolder"] = tempCopyPath,
+                ["createdAt"] = DateTime.UtcNow,
+                ["processed"] = false
+            });
+        }
+        catch { /* non-blocking */ }
+
+        return Results.Json(new { ok = true, hotfolder = hotfolderPath, tempCopy = tempCopyPath, typeTravail });
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ERR] bat/copy-for-bat: {ex.Message}");
         return Results.Json(new { ok = false, error = ex.Message });
     }
 });
@@ -3740,6 +4022,9 @@ file class IntegrationsSettings
 
     [JsonPropertyName("fieryPath")]
     public string FieryPath { get; set; } = "";
+
+    [JsonPropertyName("tempCopyPath")]
+    public string TempCopyPath { get; set; } = "";
 }
 
 // ======================================================
