@@ -68,6 +68,15 @@ export async function buildKanban() {
       col.insertBefore(acrobatBtn, drop);
     }
 
+    if (cfg.folder === "BAT") {
+      const acrobatOnlineBtn = document.createElement("button");
+      acrobatOnlineBtn.className = "btn btn-acrobat";
+      acrobatOnlineBtn.innerHTML = "📄 Acrobat Online";
+      acrobatOnlineBtn.style.cssText = "margin: 0 15px 10px 15px; width: calc(100% - 30px);";
+      acrobatOnlineBtn.onclick = () => window.open("https://www.adobe.com/files#", "_blank", "noopener");
+      col.insertBefore(acrobatOnlineBtn, drop);
+    }
+
     drop.addEventListener("dragover", e => {
       e.preventDefault();
       drop.classList.add("drag-over");

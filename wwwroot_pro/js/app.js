@@ -46,28 +46,41 @@ window._handleDesktopDrop = handleDesktopDrop;
 // ======================================================
 // UTILITAIRE — ALERTE GLOBALE
 // ======================================================
-function updateGlobalAlert() {
+async function updateGlobalAlert() {
   const dates = Object.values(deliveriesByPath).filter(v => typeof v === 'string' && v.match(/\d{4}-\d{2}-\d{2}/));
-  if (!dates.length) {
-    globalAlert.style.display = "none";
-    return;
-  }
 
-  let min = +Infinity;
-  for (const iso of dates) min = Math.min(min, daysDiffFromToday(iso));
+  let minDays = +Infinity;
+  for (const iso of dates) minDays = Math.min(minDays, daysDiffFromToday(iso));
 
-  if (min <= 1) {
-    globalAlert.textContent = "Urgences J-1";
-    globalAlert.className = "global-alert";
-  } else if (min <= 3) {
+  // Check BAT pending alerts
+  let batAlerts = [];
+  try {
+    batAlerts = await fetch("/api/alerts/bat-pending", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => []);
+    if (!Array.isArray(batAlerts)) batAlerts = [];
+  } catch { batAlerts = []; }
+
+  const hasBatAlerts = batAlerts.length > 0;
+
+  if (minDays <= 1 || hasBatAlerts) {
+    const parts = [];
+    if (minDays <= 1) parts.push("Urgences J-1");
+    else if (minDays <= 3) parts.push("Attention : < 3 jours");
+    if (hasBatAlerts) {
+      if (batAlerts.length === 1) parts.push(batAlerts[0].message || `⚠️ BAT en attente : ${batAlerts[0].fileName}`);
+      else parts.push(`⚠️ ${batAlerts.length} BAT(s) en attente sans réponse`);
+    }
+    globalAlert.textContent = parts.join(" | ");
+    globalAlert.className = "global-alert" + (minDays <= 1 ? "" : " orange");
+    globalAlert.style.display = "block";
+  } else if (minDays <= 3) {
     globalAlert.textContent = "Attention : < 3 jours";
     globalAlert.className = "global-alert orange";
+    globalAlert.style.display = "block";
   } else {
     globalAlert.style.display = "none";
-    return;
   }
-
-  globalAlert.style.display = "block";
 }
 
 // ======================================================

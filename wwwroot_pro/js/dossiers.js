@@ -134,6 +134,17 @@ export async function openDossierDetail(dossierId) {
       if (Object.keys(embedded).length > 0) fab = embedded;
     }
 
+    // Get real-time stage from physical scan (handles Acrobat moves and BAT_ prefix)
+    let realTimeStage = folder.currentStage || 'Début de production';
+    if (fabFileName) {
+      try {
+        const stageRes = await fetch("/api/file-stage?fileName=" + encodeURIComponent(fabFileName), {
+          headers: { "Authorization": `Bearer ${authToken}` }
+        }).then(r => r.json()).catch(() => null);
+        if (stageRes && stageRes.ok && stageRes.folder) realTimeStage = stageRes.folder;
+      } catch(e) { /* use stored stage */ }
+    }
+
     const overlay = document.createElement("div");
     overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;";
 
@@ -149,7 +160,7 @@ export async function openDossierDetail(dossierId) {
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
         <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">ÉTAPE ACTUELLE</label>
-          <span style="background:#dbeafe;color:#1e40af;padding:6px 12px;border-radius:20px;font-size:13px;font-weight:500;">${folder.currentStage||'Début de production'}</span>
+          <span style="background:#dbeafe;color:#1e40af;padding:6px 12px;border-radius:20px;font-size:13px;font-weight:500;">${realTimeStage}</span>
         </div>
         <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">DATE DE CRÉATION</label>
           <span style="font-size:14px;color:#111827;">${folder.createdAt ? new Date(folder.createdAt).toLocaleDateString("fr-FR") : '—'}</span>

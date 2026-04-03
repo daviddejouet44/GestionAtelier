@@ -722,12 +722,19 @@ app.MapGet("/api/file-stage", (string fileName) =>
             "Rapport", "Prêt pour impression", "BAT", "PrismaPrepare", "Fiery",
             "Impression en cours", "Façonnage", "Fin de production"
         };
+        // 1. Physical scan for the file itself
         foreach (var folder in folders)
         {
             var path = Path.Combine(root, folder, safeFileName);
             if (File.Exists(path))
                 return Results.Json(new { ok = true, folder, fullPath = path });
         }
+        // 2. Check for BAT_{fileName} in the BAT folder — the BAT version represents the stage
+        var batName = "BAT_" + safeFileName;
+        var batPath = Path.Combine(root, "BAT", batName);
+        if (File.Exists(batPath))
+            return Results.Json(new { ok = true, folder = "BAT", fullPath = batPath, isBatVersion = true });
+
         return Results.Json(new { ok = false, folder = (string?)null, fullPath = (string?)null });
     }
     catch (Exception ex)
@@ -1332,6 +1339,10 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
         }
 
         var old = BackendUtils.FindFabrication(input.FullPath);
+        // Extra fallback: look up by fileName to ensure media and other fields are preserved
+        // even when the file was moved to a different folder (fullPath changes but fileName doesn't)
+        if (old == null && !string.IsNullOrWhiteSpace(input.FileName))
+            old = BackendUtils.FindFabricationByName(input.FileName);
 
         // Admin-only fields: only profile 3 can update Media1-4, TypeDocument, NombreFeuilles
         var isAdmin = (userProfile == 3);
@@ -2181,6 +2192,19 @@ app.MapGet("/api/production/summary", () =>
         var fabCol = MongoDbHelper.GetFabricationsCollection();
         var allFabs = fabCol.Find(new BsonDocument()).ToList();
 
+        // Build a set of BAT_ files found in the BAT folder for quick lookup
+        var batDir = Path.Combine(root, "BAT");
+        var batFilesInBatFolder = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (Directory.Exists(batDir))
+        {
+            foreach (var f in Directory.EnumerateFiles(batDir))
+            {
+                var n = Path.GetFileName(f);
+                if (n.StartsWith("BAT_", StringComparison.OrdinalIgnoreCase))
+                    batFilesInBatFolder.Add(n);
+            }
+        }
+
         var entries = new List<object>();
         foreach (var folder in productionFolders)
         {
@@ -2189,6 +2213,16 @@ app.MapGet("/api/production/summary", () =>
             foreach (var filePath in Directory.EnumerateFiles(dir))
             {
                 var fName = Path.GetFileName(filePath);
+                // Skip BAT_ files — they are represented as a stage of the original job
+                if (fName.StartsWith("BAT_", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                // Determine effective stage: if BAT_{fName} exists in the BAT folder, stage is BAT
+                var effectiveStage = folder;
+                var batVariant = "BAT_" + fName;
+                if (batFilesInBatFolder.Contains(batVariant))
+                    effectiveStage = "BAT";
+
                 // Find matching fabrication by fileName or fullPath
                 var fab = allFabs.FirstOrDefault(f =>
                     (f.Contains("fileName") && string.Equals(f["fileName"].AsString, fName, StringComparison.OrdinalIgnoreCase)) ||
@@ -2202,8 +2236,8 @@ app.MapGet("/api/production/summary", () =>
                 {
                     fileName = fName,
                     fullPath = filePath,
-                    currentStage = folder,
-                    progress = GetProgress(folder),
+                    currentStage = effectiveStage,
+                    progress = GetProgress(effectiveStage),
                     numeroDossier,
                     client,
                     typeTravail
@@ -3445,7 +3479,8 @@ app.MapGet("/api/config/bat-command", () =>
     var doc = col.Find(Builders<BsonDocument>.Filter.Empty).FirstOrDefault();
     var cmd = doc != null && doc.Contains("command") ? doc["command"].AsString :
         @"C:\Program Files\Canon\PRISMACore\PRISMAprepare.exe ""{filePath}"" /T ""{type}"" /SP /C {qty}";
-    return Results.Json(new { ok = true, command = cmd });
+    var alertDelayHours = doc != null && doc.Contains("batAlertDelayHours") ? doc["batAlertDelayHours"].AsInt32 : 48;
+    return Results.Json(new { ok = true, command = cmd, batAlertDelayHours = alertDelayHours });
 });
 
 app.MapPut("/api/config/bat-command", async (HttpContext ctx) =>
@@ -3453,9 +3488,80 @@ app.MapPut("/api/config/bat-command", async (HttpContext ctx) =>
     var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
     var cmd = json.TryGetProperty("command", out var c) ? c.GetString() ?? "" : "";
     var col = MongoDbHelper.GetCollection<BsonDocument>("batCommandConfig");
-    var doc = new BsonDocument { ["command"] = cmd };
+    var existing = col.Find(Builders<BsonDocument>.Filter.Empty).FirstOrDefault();
+    var doc = existing ?? new BsonDocument();
+    doc["command"] = cmd;
+    if (json.TryGetProperty("batAlertDelayHours", out var dh))
+        doc["batAlertDelayHours"] = dh.ValueKind == JsonValueKind.Number ? dh.GetInt32() : 48;
     col.ReplaceOne(Builders<BsonDocument>.Filter.Empty, doc, new ReplaceOptions { IsUpsert = true });
     return Results.Json(new { ok = true });
+});
+
+// ======================================================
+// ALERTS — BAT EN ATTENTE
+// ======================================================
+app.MapGet("/api/alerts/bat-pending", () =>
+{
+    try
+    {
+        var root = BackendUtils.HotfoldersRoot();
+        var batDir = Path.Combine(root, "BAT");
+        if (!Directory.Exists(batDir))
+            return Results.Json(new List<object>());
+
+        // Get configured delay (default 48h)
+        var cfgCol = MongoDbHelper.GetCollection<BsonDocument>("batCommandConfig");
+        var cfgDoc = cfgCol.Find(Builders<BsonDocument>.Filter.Empty).FirstOrDefault();
+        var delayHours = cfgDoc != null && cfgDoc.Contains("batAlertDelayHours") ? cfgDoc["batAlertDelayHours"].AsInt32 : 48;
+
+        // Get all bat statuses to filter out validated/rejected
+        var batStatusCol = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
+        var allStatuses = batStatusCol.Find(new BsonDocument()).ToList();
+
+        var alerts = new List<object>();
+        foreach (var filePath in Directory.EnumerateFiles(batDir))
+        {
+            var fName = Path.GetFileName(filePath);
+            var fi = new FileInfo(filePath);
+            var ageHours = (DateTime.UtcNow - fi.CreationTimeUtc).TotalHours;
+            if (ageHours < delayHours) continue;
+
+            // Check if validated or rejected
+            var normalizedPath = filePath.Replace('/', '\\');
+            var status = allStatuses.FirstOrDefault(s =>
+            {
+                var sp = s.Contains("fullPath") ? s["fullPath"].AsString : "";
+                return string.Equals(sp.Replace('/', '\\'), normalizedPath, StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(Path.GetFileName(sp), fName, StringComparison.OrdinalIgnoreCase);
+            });
+
+            var validatedAt = status != null && status.Contains("validatedAt") && status["validatedAt"] != BsonNull.Value
+                ? status["validatedAt"].ToUniversalTime() : (DateTime?)null;
+            var rejectedAt = status != null && status.Contains("rejectedAt") && status["rejectedAt"] != BsonNull.Value
+                ? status["rejectedAt"].ToUniversalTime() : (DateTime?)null;
+
+            if (validatedAt.HasValue || rejectedAt.HasValue) continue;
+
+            var days = (int)Math.Floor(ageHours / 24);
+            var ageHoursInt = (int)Math.Floor(ageHours);
+            alerts.Add(new
+            {
+                fileName = fName,
+                fullPath = filePath,
+                createdAt = fi.CreationTimeUtc,
+                ageHours = ageHoursInt,
+                ageDays = days,
+                message = days >= 1
+                    ? $"⚠️ BAT en attente depuis {days} jour(s) : {fName}"
+                    : $"⚠️ BAT en attente depuis {ageHoursInt}h : {fName}"
+            });
+        }
+        return Results.Json(alerts);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
 });
 
 // ======================================================
