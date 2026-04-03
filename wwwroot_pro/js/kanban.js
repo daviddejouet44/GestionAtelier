@@ -507,9 +507,15 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         const asgn = assignmentsByPath[fn];
         if (!asgn) return false;
         if (_kanbanOperatorFilter === "mine") {
-          // Match against current user login or name
-          return asgn.operatorId === (currentUser?.id || currentUser?.login || "")
-            || asgn.operatorName === (currentUser?.name || currentUser?.login || "");
+          // Only match if current user has a non-empty identity
+          const myId = currentUser?.id || "";
+          const myLogin = currentUser?.login || "";
+          const myName = currentUser?.name || "";
+          if (!myId && !myLogin && !myName) return false;
+          return (myId && asgn.operatorId === myId)
+            || (myLogin && asgn.operatorId === myLogin)
+            || (myName && asgn.operatorName === myName)
+            || (myLogin && asgn.operatorName === myLogin);
         }
         return asgn.operatorId === _kanbanOperatorFilter;
       });

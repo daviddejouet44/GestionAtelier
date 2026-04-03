@@ -84,7 +84,11 @@ export async function loadDossiersList() {
       "Impression en cours", "Façonnage", "Fin de production"
     ];
     function stageIndex(s) {
-      const idx = STAGE_ORDER.findIndex(k => (s || '').toLowerCase().includes(k.toLowerCase()));
+      if (!s) return 0;
+      const lower = s.toLowerCase();
+      // Prefer exact match first to avoid substring confusion
+      let idx = STAGE_ORDER.findIndex(k => k.toLowerCase() === lower);
+      if (idx < 0) idx = STAGE_ORDER.findIndex(k => lower.includes(k.toLowerCase()));
       return idx >= 0 ? idx : 0;
     }
 
