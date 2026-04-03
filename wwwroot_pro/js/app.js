@@ -164,7 +164,7 @@ async function handleDesktopDrop(e, destFolder) {
 // NAVIGATION — MASQUER TOUTES LES VUES
 // ======================================================
 function hideAllViews() {
-  document.getElementById("kanban").classList.add("hidden");
+  document.getElementById("kanban-layout").classList.add("hidden");
   document.getElementById("calendar").classList.add("hidden");
   document.getElementById("submission").classList.add("hidden");
   document.getElementById("production").classList.add("hidden");
@@ -172,6 +172,8 @@ function hideAllViews() {
   document.getElementById("dashboard").classList.add("hidden");
   document.getElementById("dossiers").classList.add("hidden");
   document.getElementById("settings-view").classList.add("hidden");
+  document.getElementById("bat-view").classList.add("hidden");
+  document.getElementById("rapport-view").classList.add("hidden");
   const globalProdEl = document.getElementById("global-production");
   if (globalProdEl) globalProdEl.classList.add("hidden");
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
@@ -179,9 +181,10 @@ function hideAllViews() {
 
 function showKanban() {
   hideAllViews();
-  document.getElementById("kanban").classList.remove("hidden");
+  document.getElementById("kanban-layout").classList.remove("hidden");
   document.getElementById("btnViewKanban").classList.add("active");
   refreshKanban();
+  buildKanbanSidebar();
 }
 
 async function showCalendar() {
@@ -245,14 +248,283 @@ function showGlobalProduction() {
 }
 
 // ======================================================
-// SETUP PROFILS
+// BAT VIEW
 // ======================================================
+function showBatView() {
+  hideAllViews();
+  document.getElementById("bat-view").classList.remove("hidden");
+  const btn = document.getElementById("btnViewBat");
+  if (btn) btn.classList.add("active");
+  buildBatView();
+}
+
+async function buildBatView() {
+  const container = document.getElementById("bat-view");
+  if (!container) return;
+  container.innerHTML = `
+    <div class="settings-container">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <h2 style="margin:0;font-size:20px;font-weight:700;color:#111827;">Bon à tirer (BAT)</h2>
+        <div style="display:flex;gap:10px;">
+          <button id="bat-view-adobe" class="btn btn-acrobat">📄 Acrobat Online</button>
+          <button id="bat-view-refresh" class="btn btn-primary">Rafraîchir</button>
+        </div>
+      </div>
+      <div id="bat-view-list"><p style="color:#6b7280;">Chargement...</p></div>
+    </div>
+  `;
+  container.querySelector("#bat-view-adobe").onclick = () => window.open("https://www.adobe.com/files#", "_blank", "noopener");
+  container.querySelector("#bat-view-refresh").onclick = buildBatView;
+
+  const listEl = container.querySelector("#bat-view-list");
+  try {
+    const jobs = await fetch("/api/jobs?folder=" + encodeURIComponent("BAT")).then(r => r.json()).catch(() => []);
+    if (!Array.isArray(jobs) || jobs.length === 0) {
+      listEl.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:40px;">Aucun fichier en BAT</p>';
+      return;
+    }
+    listEl.innerHTML = "";
+    for (const job of jobs) {
+      const full = normalizePath(job.fullPath || "");
+      const card = document.createElement("div");
+      card.style.cssText = "background:white;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:10px;display:flex;flex-direction:column;gap:10px;";
+
+      const topRow = document.createElement("div");
+      topRow.style.cssText = "display:flex;align-items:center;gap:12px;";
+
+      const badge = document.createElement("div");
+      badge.style.cssText = "font-weight:700;font-size:13px;color:#BC0024;font-family:monospace;padding:4px 8px;background:#fee2e2;border-radius:4px;flex-shrink:0;";
+      badge.textContent = "PDF";
+
+      const info = document.createElement("div");
+      info.style.cssText = "flex:1;min-width:0;";
+      info.innerHTML = `
+        <div style="font-weight:600;font-size:14px;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${job.name || '—'}</div>
+        <div style="font-size:12px;color:#6b7280;">${new Date(job.modified).toLocaleDateString("fr-FR")} · ${fmtBytes(job.size)}</div>
+      `;
+
+      const btnOpen = document.createElement("button");
+      btnOpen.className = "btn btn-sm";
+      btnOpen.textContent = "Ouvrir";
+      btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full), "_blank", "noopener");
+
+      topRow.appendChild(badge);
+      topRow.appendChild(info);
+      topRow.appendChild(btnOpen);
+
+      const trackingEl = document.createElement("div");
+      trackingEl.className = "bat-tracking";
+
+      card.appendChild(topRow);
+      card.appendChild(trackingEl);
+      listEl.appendChild(card);
+      try {
+        const status = await fetch(`/api/bat/status?path=${encodeURIComponent(full)}`).then(r => r.json()).catch(() => ({}));
+        const btnSent = document.createElement("button");
+        btnSent.className = "bat-status-badge bat-sent" + (status.sentAt ? " active" : "");
+        btnSent.textContent = status.sentAt ? `ENVOYÉ` : "MARQUER ENVOYÉ";
+        btnSent.onclick = () => fetch("/api/bat/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(buildBatView);
+
+        const btnValidate = document.createElement("button");
+        btnValidate.className = "bat-status-badge bat-validated" + (status.validatedAt ? " active" : "");
+        btnValidate.textContent = status.validatedAt ? "VALIDÉ" : "VALIDER";
+        btnValidate.onclick = () => fetch("/api/bat/validate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(buildBatView);
+
+        const btnReject = document.createElement("button");
+        btnReject.className = "bat-status-badge bat-rejected" + (status.rejectedAt ? " active" : "");
+        btnReject.textContent = status.rejectedAt ? "REFUSÉ" : "REFUSER";
+        btnReject.onclick = () => fetch("/api/bat/reject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(buildBatView);
+
+        trackingEl.appendChild(btnSent);
+        trackingEl.appendChild(btnValidate);
+        trackingEl.appendChild(btnReject);
+
+        if (status.sentAt && !status.validatedAt && !status.rejectedAt) {
+          const MS_PER_HOUR = 3600000;
+          const ageHours = (Date.now() - new Date(status.sentAt)) / MS_PER_HOUR;
+          if (ageHours >= 48) {
+            const alertEl = document.createElement("div");
+            alertEl.className = "bat-alert-j2";
+            alertEl.textContent = `⚠️ BAT envoyé depuis ${Math.floor(ageHours/24)} jour(s) sans réponse !`;
+            trackingEl.appendChild(alertEl);
+          }
+        }
+      } catch(e) { /* ignore */ }
+    }
+  } catch(err) {
+    listEl.innerHTML = `<p style="color:#ef4444;">Erreur : ${err.message}</p>`;
+  }
+}
+
+// ======================================================
+// RAPPORT VIEW
+// ======================================================
+function showRapportView() {
+  hideAllViews();
+  document.getElementById("rapport-view").classList.remove("hidden");
+  const btn = document.getElementById("btnViewRapport");
+  if (btn) btn.classList.add("active");
+  buildRapportView();
+}
+
+async function buildRapportView() {
+  const container = document.getElementById("rapport-view");
+  if (!container) return;
+  container.innerHTML = `
+    <div class="settings-container">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <h2 style="margin:0;font-size:20px;font-weight:700;color:#111827;">Rapport</h2>
+        <button id="rapport-view-refresh" class="btn btn-primary">Rafraîchir</button>
+      </div>
+      <div id="rapport-view-list"><p style="color:#6b7280;">Chargement...</p></div>
+    </div>
+  `;
+  container.querySelector("#rapport-view-refresh").onclick = buildRapportView;
+
+  const listEl = container.querySelector("#rapport-view-list");
+  try {
+    const jobs = await fetch("/api/jobs?folder=" + encodeURIComponent("Rapport")).then(r => r.json()).catch(() => []);
+    if (!Array.isArray(jobs) || jobs.length === 0) {
+      listEl.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:40px;">Aucun fichier en Rapport</p>';
+      return;
+    }
+    listEl.innerHTML = "";
+    for (const job of jobs) {
+      const full = normalizePath(job.fullPath || "");
+      const card = document.createElement("div");
+      card.style.cssText = "background:white;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:12px;";
+
+      const badge = document.createElement("div");
+      badge.style.cssText = "font-weight:700;font-size:13px;color:#BC0024;font-family:monospace;padding:4px 8px;background:#fee2e2;border-radius:4px;flex-shrink:0;";
+      badge.textContent = "PDF";
+
+      const info = document.createElement("div");
+      info.style.cssText = "flex:1;min-width:0;";
+      info.innerHTML = `
+        <div style="font-weight:600;font-size:14px;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${job.name || '—'}</div>
+        <div style="font-size:12px;color:#6b7280;">${new Date(job.modified).toLocaleDateString("fr-FR")} · ${fmtBytes(job.size)}</div>
+      `;
+
+      const btnOpen = document.createElement("button");
+      btnOpen.className = "btn btn-sm";
+      btnOpen.textContent = "Ouvrir";
+      btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full), "_blank", "noopener");
+
+      const btnFiche = document.createElement("button");
+      btnFiche.className = "btn btn-sm";
+      btnFiche.textContent = "Fiche";
+      btnFiche.onclick = () => { if (window._openFabrication) window._openFabrication(full); };
+
+      card.appendChild(badge);
+      card.appendChild(info);
+      card.appendChild(btnOpen);
+      card.appendChild(btnFiche);
+      listEl.appendChild(card);
+    }
+  } catch(err) {
+    listEl.innerHTML = `<p style="color:#ef4444;">Erreur : ${err.message}</p>`;
+  }
+}
+
+// ======================================================
+// SIDEBAR KANBAN (panneau latéral)
+// ======================================================
+async function buildKanbanSidebar() {
+  const sidebar = document.getElementById("kanban-sidebar");
+  if (!sidebar) return;
+  sidebar.innerHTML = '<div style="padding:12px;color:#6b7280;font-size:12px;">Chargement...</div>';
+
+  try {
+    // --- Section 1: Calendrier semaine compact ---
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const weekDays = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      weekDays.push(d);
+    }
+
+    const weekJobsHtml = weekDays.map(d => {
+      const iso = d.toISOString().split("T")[0];
+      const jobs = Object.entries(deliveriesByPath)
+        .filter(([k, v]) => !k.endsWith("_time") && v === iso)
+        .map(([k]) => k);
+      const label = d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
+      const isToday = iso === today.toISOString().split("T")[0];
+      return `
+        <div style="padding:6px 0;border-bottom:1px solid #f0f0f0;">
+          <div style="font-size:11px;font-weight:${isToday ? '700' : '500'};color:${isToday ? '#BC0024' : '#374151'};">${label}</div>
+          ${jobs.length > 0
+            ? jobs.map(j => `<div style="font-size:10px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;margin-top:2px;">📋 ${j}</div>`).join("")
+            : `<div style="font-size:10px;color:#9ca3af;margin-top:2px;">—</div>`}
+        </div>
+      `;
+    }).join("");
+
+    // --- Section 2: Vue production globale compacte ---
+    let prodRows = "";
+    try {
+      const prodJobs = await fetch("/api/production/summary", {
+        headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(r => r.json()).catch(() => []);
+
+      const STAGE_PROGRESS = {
+        "Début de production": 0, "Corrections": 25, "Corrections et fond perdu": 25,
+        "Prêt pour impression": 50, "BAT": 65, "PrismaPrepare": 75, "Fiery": 75,
+        "Impression en cours": 75, "Façonnage": 90, "Fin de production": 100
+      };
+      const STAGE_LABELS = {
+        "Début de production": "Jobs à traiter", "Corrections": "Preflight",
+        "Corrections et fond perdu": "Preflight fp", "Prêt pour impression": "En attente"
+      };
+
+      if (Array.isArray(prodJobs) && prodJobs.length > 0) {
+        prodRows = prodJobs.slice(0, 8).map(job => {
+          const stageLabel = STAGE_LABELS[job.currentStage] || job.currentStage || "—";
+          const progress = Object.entries(STAGE_PROGRESS).find(([k]) => (job.currentStage || "").includes(k))?.[1] ?? 0;
+          const color = progress === 100 ? "#22c55e" : progress >= 75 ? "#f97316" : progress >= 50 ? "#3b82f6" : "#f59e0b";
+          return `
+            <div style="padding:6px 0;border-bottom:1px solid #f0f0f0;">
+              <div style="font-size:11px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${job.numeroDossier || job.fileName || '—'}</div>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
+                <div style="flex:1;background:#e5e7eb;border-radius:4px;height:6px;overflow:hidden;">
+                  <div style="width:${progress}%;height:100%;background:${color};border-radius:4px;"></div>
+                </div>
+                <span style="font-size:10px;color:#6b7280;white-space:nowrap;">${stageLabel}</span>
+              </div>
+            </div>
+          `;
+        }).join("");
+      } else {
+        prodRows = '<div style="font-size:11px;color:#9ca3af;padding:8px 0;">Aucun job en production</div>';
+      }
+    } catch(e) {
+      prodRows = '<div style="font-size:11px;color:#9ca3af;">—</div>';
+    }
+
+    sidebar.innerHTML = `
+      <div class="kanban-sidebar-section">
+        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">📅 Cette semaine</div>
+        ${weekJobsHtml}
+      </div>
+      <div class="kanban-sidebar-section">
+        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">📊 Production</div>
+        ${prodRows}
+      </div>
+    `;
+  } catch(e) {
+    sidebar.innerHTML = '<div style="padding:12px;color:#9ca3af;font-size:12px;">—</div>';
+  }
+}
 function setupProfileUI() {
   const btnSubmission = document.getElementById("btnViewSubmission");
   const btnSettings = document.getElementById("btn-settings");
   const btnRecycle = document.getElementById("btnViewRecycle");
   const btnDashboard = document.getElementById("btnViewDashboard");
   const btnDossiers = document.getElementById("btnViewDossiers");
+  const btnBat = document.getElementById("btnViewBat");
+  const btnRapport = document.getElementById("btnViewRapport");
   const userInfo = document.getElementById("user-info");
 
   userInfo.textContent = `${currentUser.name} (Profil ${currentUser.profile})`;
@@ -260,6 +532,8 @@ function setupProfileUI() {
   if (btnRecycle) btnRecycle.style.display = "inline-block";
   if (btnDossiers) btnDossiers.style.display = "inline-block";
   if (btnDashboard) btnDashboard.style.display = currentUser.profile === 3 ? "inline-block" : "none";
+  if (btnBat) btnBat.style.display = "inline-block";
+  if (btnRapport) btnRapport.style.display = "inline-block";
 
   // Vue production globale visible pour TOUS les profils (1, 2, 3)
   const btnGlobalProd = document.getElementById("btnViewGlobalProd");
@@ -799,6 +1073,10 @@ document.getElementById("btnViewDashboard").onclick = showDashboard;
 document.getElementById("btnViewDossiers").onclick = showDossiers;
 const btnViewGlobalProd = document.getElementById("btnViewGlobalProd");
 if (btnViewGlobalProd) btnViewGlobalProd.onclick = showGlobalProduction;
+const btnViewBat = document.getElementById("btnViewBat");
+if (btnViewBat) btnViewBat.onclick = showBatView;
+const btnViewRapport = document.getElementById("btnViewRapport");
+if (btnViewRapport) btnViewRapport.onclick = showRapportView;
 
 // ======================================================
 // DRAG & DROP GLOBAL
@@ -814,11 +1092,13 @@ document.addEventListener("drop", e => {
 // AUTO-REFRESH KANBAN (toutes les 30s)
 // ======================================================
 setInterval(async () => {
-  if (kanbanDiv.classList.contains("hidden")) return;
+  const layout = document.getElementById("kanban-layout");
+  if (!layout || layout.classList.contains("hidden")) return;
   await loadDeliveries();
   await loadAssignments();
   updateGlobalAlert();
   await refreshKanban();
+  buildKanbanSidebar();
 }, 30000);
 
 // ======================================================

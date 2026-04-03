@@ -716,24 +716,30 @@ app.MapGet("/api/file-stage", (string fileName) =>
             return Results.Json(new { ok = false, folder = (string?)null, fullPath = (string?)null });
 
         var root = BackendUtils.HotfoldersRoot();
+        // Scan in order from most advanced to least advanced so the first match is the real current stage
         var folders = new[]
         {
-            "Soumission", "Début de production", "Corrections", "Corrections et fond perdu",
-            "Rapport", "Prêt pour impression", "BAT", "PrismaPrepare", "Fiery",
-            "Impression en cours", "Façonnage", "Fin de production"
+            // Most advanced first
+            "Fin de production", "Façonnage", "Impression en cours",
+            "Fiery", "PrismaPrepare", "BAT",
+            // Mid-production
+            "Prêt pour impression", "Corrections et fond perdu", "Corrections",
+            // Early/admin stages
+            "Rapport", "Début de production", "Soumission"
         };
-        // 1. Physical scan for the file itself
+        // 1. Check for BAT_{fileName} in the BAT folder first — BAT version takes precedence
+        var batName = "BAT_" + safeFileName;
+        var batPath = Path.Combine(root, "BAT", batName);
+        if (File.Exists(batPath))
+            return Results.Json(new { ok = true, folder = "BAT", fullPath = batPath, isBatVersion = true });
+
+        // 2. Physical scan for the file itself, most advanced folder first
         foreach (var folder in folders)
         {
             var path = Path.Combine(root, folder, safeFileName);
             if (File.Exists(path))
                 return Results.Json(new { ok = true, folder, fullPath = path });
         }
-        // 2. Check for BAT_{fileName} in the BAT folder — the BAT version represents the stage
-        var batName = "BAT_" + safeFileName;
-        var batPath = Path.Combine(root, "BAT", batName);
-        if (File.Exists(batPath))
-            return Results.Json(new { ok = true, folder = "BAT", fullPath = batPath, isBatVersion = true });
 
         return Results.Json(new { ok = false, folder = (string?)null, fullPath = (string?)null });
     }
@@ -1371,10 +1377,10 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             Livraison        = input.Livraison,
             Delai            = input.Delai,
 
-            Media1        = isAdmin ? input.Media1        : old?.Media1,
-            Media2        = isAdmin ? input.Media2        : old?.Media2,
-            Media3        = isAdmin ? input.Media3        : old?.Media3,
-            Media4        = isAdmin ? input.Media4        : old?.Media4,
+            Media1        = input.Media1        ?? old?.Media1,
+            Media2        = input.Media2        ?? old?.Media2,
+            Media3        = input.Media3        ?? old?.Media3,
+            Media4        = input.Media4        ?? old?.Media4,
             TypeDocument  = isAdmin ? input.TypeDocument  : old?.TypeDocument,
             NombreFeuilles = isAdmin ? input.NombreFeuilles : old?.NombreFeuilles,
 

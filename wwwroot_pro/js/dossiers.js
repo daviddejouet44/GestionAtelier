@@ -2,6 +2,17 @@
 import { authToken, showNotification, fnKey } from './core.js';
 import { openFabrication } from './fabrication.js';
 
+const STAGE_DISPLAY_LABELS = {
+  "Début de production": "Jobs à traiter",
+  "Corrections": "Preflight",
+  "Corrections et fond perdu": "Preflight avec fond perdu",
+  "Prêt pour impression": "En attente"
+};
+
+function getStageLabelDisplay(stage) {
+  return STAGE_DISPLAY_LABELS[stage] || stage;
+}
+
 export function showDossiers() {
   // Navigation handled by app.js
   initDossiersView();
@@ -57,6 +68,7 @@ export async function loadDossiersList() {
       const showSubtitle = folderName && folderName !== folder.numeroDossier && folderName.toLowerCase() !== 'production';
       // Use real-time stage from file-stage scan, fallback to stored value
       const realStage = stageResults[idx] || folder.currentStage || 'Début de production';
+      const stageDisplayLabel = getStageLabelDisplay(realStage);
       const card = document.createElement("div");
       card.className = "dossier-card";
       card.style.cssText = "background: white; border: 1px solid #e5e7eb; border-radius: 16px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); cursor: pointer; transition: all 0.2s;";
@@ -71,7 +83,7 @@ export async function loadDossiersList() {
           </div>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;">${realStage}</span>
+          <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;">${stageDisplayLabel}</span>
           <span style="color:#6b7280;font-size:12px;">${typeof folder.files === 'number' ? folder.files : 0} fichier(s)</span>
         </div>
       `;
@@ -160,7 +172,7 @@ export async function openDossierDetail(dossierId) {
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
         <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">ÉTAPE ACTUELLE</label>
-          <span style="background:#dbeafe;color:#1e40af;padding:6px 12px;border-radius:20px;font-size:13px;font-weight:500;">${realTimeStage}</span>
+          <span style="background:#dbeafe;color:#1e40af;padding:6px 12px;border-radius:20px;font-size:13px;font-weight:500;">${getStageLabelDisplay(realTimeStage)}</span>
         </div>
         <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">DATE DE CRÉATION</label>
           <span style="font-size:14px;color:#111827;">${folder.createdAt ? new Date(folder.createdAt).toLocaleDateString("fr-FR") : '—'}</span>

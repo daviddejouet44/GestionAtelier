@@ -101,7 +101,7 @@ async function buildGlobalProgressView(container) {
       <div style="font-size:14px;font-weight:700;color:#111827;font-family:monospace;">${escapeHtml(displayNum)}</div>
       <div style="font-size:12px;color:#6b7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(job.fileName || '')}">${escapeHtml(job.fileName || '—')}</div>
       <div>
-        <span style="background:#dbeafe;color:#1e40af;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:600;white-space:nowrap;">${escapeHtml(job.currentStage || '—')}</span>
+        <span style="background:#dbeafe;color:#1e40af;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:600;white-space:nowrap;">${escapeHtml(getStageLabelDisplay(job.currentStage) || '—')}</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
         <div style="flex:1;background:#e5e7eb;border-radius:99px;height:10px;overflow:hidden;">
@@ -120,17 +120,26 @@ function escapeHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+const STAGE_DISPLAY_LABELS = {
+  "Début de production": "Jobs à traiter",
+  "Corrections": "Preflight",
+  "Corrections et fond perdu": "Preflight avec fond perdu",
+  "Prêt pour impression": "En attente"
+};
+
+function getStageLabelDisplay(stage) {
+  return STAGE_DISPLAY_LABELS[stage] || stage;
+}
+
 // ======================================================
 // VUE PRODUCTION KANBAN (profil 2/3 — tuiles opérateur)
 // ======================================================
 
 const PRODUCTION_FOLDER_CONFIG = [
-  { folder: "Début de production", label: "Début de production", color: "#5fa8c4" },
-  { folder: "Corrections", label: "Corrections", color: "#e0e0e0" },
-  { folder: "Corrections et fond perdu", label: "Corrections et fond perdu", color: "#e0e0e0" },
-  { folder: "Rapport", label: "Rapport", color: "#cccccc" },
-  { folder: "Prêt pour impression", label: "Prêt pour impression", color: "#b8b8b8" },
-  { folder: "BAT", label: "BAT", color: "#a3a3a3" },
+  { folder: "Début de production", label: "Jobs à traiter", color: "#5fa8c4" },
+  { folder: "Corrections", label: "Preflight", color: "#e0e0e0" },
+  { folder: "Corrections et fond perdu", label: "Preflight avec fond perdu", color: "#e0e0e0" },
+  { folder: "Prêt pour impression", label: "En attente", color: "#b8b8b8" },
   { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#8f8f8f" },
   { folder: "Fiery", label: "Fiery", color: "#8f8f8f" },
   { folder: "Impression en cours", label: "Impression en cours", color: "#7a7a7a" },
