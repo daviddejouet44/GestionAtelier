@@ -328,7 +328,7 @@ async function loadPdfDetails(fileName, folder, container) {
           canvas.height = viewport.height;
           await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
           canvas.style.display = "block";
-        } catch(e) { /* thumbnail failed silently */ }
+        } catch(e) { console.warn("PDF thumbnail failed for", pdfFullPath, e); /* thumbnail failed silently */ }
       }
     }
 

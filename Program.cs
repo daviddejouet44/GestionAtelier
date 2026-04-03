@@ -2553,6 +2553,7 @@ app.MapPost("/api/settings/faconnage-import", async (HttpContext ctx) =>
         var content = await reader.ReadToEndAsync();
         var labels = content
             .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+            // Only the first comma-separated column is used as the option label
             .Select(l => l.Split(',').First().Trim().Trim('"'))
             .Where(l => !string.IsNullOrEmpty(l))
             .Distinct()

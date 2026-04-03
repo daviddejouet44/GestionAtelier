@@ -195,7 +195,7 @@ export async function openFabrication(fullPath) {
       if (Array.isArray(d.faconnage)) {
         checked = d.faconnage;
       } else if (typeof d.faconnage === 'string' && d.faconnage.startsWith('[')) {
-        try { checked = JSON.parse(d.faconnage); } catch {}
+        try { checked = JSON.parse(d.faconnage); } catch(e) { console.warn("faconnage JSON.parse error:", e); }
       }
       if (!Array.isArray(options) || options.length === 0) {
         fabFaconnageContainer.innerHTML = '<span style="color:#9ca3af;font-size:12px;">Aucune option — importer un CSV dans Paramétrage &gt; Façonnage</span>';
