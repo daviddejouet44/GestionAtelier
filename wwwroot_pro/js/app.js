@@ -42,6 +42,7 @@ window._updateGlobalAlert = updateGlobalAlert;
 window._renderPdfThumbnail = renderPdfThumbnail;
 window._deleteFile = deleteFile;
 window._handleDesktopDrop = handleDesktopDrop;
+window._openPlanificationCalendar = openPlanificationCalendar;
 
 // ======================================================
 // UTILITAIRE — ALERTE GLOBALE
@@ -176,6 +177,9 @@ function hideAllViews() {
   document.getElementById("rapport-view").classList.add("hidden");
   const globalProdEl = document.getElementById("global-production");
   if (globalProdEl) globalProdEl.classList.add("hidden");
+  // Hide kanban-specific controls
+  const filterBarEl = document.getElementById("kanban-filter-bar");
+  if (filterBarEl) filterBarEl.style.display = "none";
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
 }
 
@@ -183,6 +187,9 @@ function showKanban() {
   hideAllViews();
   document.getElementById("kanban-layout").classList.remove("hidden");
   document.getElementById("btnViewKanban").classList.add("active");
+  // Show kanban-specific filter bar
+  const filterBarEl = document.getElementById("kanban-filter-bar");
+  if (filterBarEl) filterBarEl.style.display = "";
   refreshKanban();
   buildKanbanSidebar();
 }
@@ -277,6 +284,16 @@ async function buildBatView() {
   container.querySelector("#bat-view-refresh").onclick = buildBatView;
 
   const listEl = container.querySelector("#bat-view-list");
+
+  // Helper: format a date/time for display
+  const fmtDT = (dt) => {
+    if (!dt) return null;
+    const d = new Date(dt);
+    const date = d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const time = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    return `${date} à ${time}`;
+  };
+
   try {
     const jobs = await fetch("/api/jobs?folder=" + encodeURIComponent("BAT")).then(r => r.json()).catch(() => []);
     if (!Array.isArray(jobs) || jobs.length === 0) {
@@ -290,27 +307,62 @@ async function buildBatView() {
       card.style.cssText = "background:white;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:10px;display:flex;flex-direction:column;gap:10px;";
 
       const topRow = document.createElement("div");
-      topRow.style.cssText = "display:flex;align-items:center;gap:12px;";
+      topRow.style.cssText = "display:flex;align-items:flex-start;gap:12px;";
 
-      const badge = document.createElement("div");
-      badge.style.cssText = "font-weight:700;font-size:13px;color:#BC0024;font-family:monospace;padding:4px 8px;background:#fee2e2;border-radius:4px;flex-shrink:0;";
-      badge.textContent = "PDF";
+      // Thumbnail
+      const thumbDiv = document.createElement("div");
+      thumbDiv.style.cssText = "width:56px;height:72px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#BC0024;overflow:hidden;flex-shrink:0;";
+      thumbDiv.textContent = "PDF";
+      if ((job.name || "").toLowerCase().endsWith(".pdf") && window._renderPdfThumbnail) {
+        window._renderPdfThumbnail(full, thumbDiv).catch(() => {});
+      }
+
+      const infoAndActions = document.createElement("div");
+      infoAndActions.style.cssText = "flex:1;min-width:0;";
 
       const info = document.createElement("div");
-      info.style.cssText = "flex:1;min-width:0;";
+      info.style.cssText = "margin-bottom:8px;";
       info.innerHTML = `
         <div style="font-weight:600;font-size:14px;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${job.name || '—'}</div>
         <div style="font-size:12px;color:#6b7280;">${new Date(job.modified).toLocaleDateString("fr-FR")} · ${fmtBytes(job.size)}</div>
       `;
+
+      const btnRow = document.createElement("div");
+      btnRow.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;";
 
       const btnOpen = document.createElement("button");
       btnOpen.className = "btn btn-sm";
       btnOpen.textContent = "Ouvrir";
       btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full), "_blank", "noopener");
 
-      topRow.appendChild(badge);
-      topRow.appendChild(info);
-      topRow.appendChild(btnOpen);
+      const btnAcrobat = document.createElement("button");
+      btnAcrobat.className = "btn btn-sm btn-acrobat";
+      btnAcrobat.textContent = "📄 Ouvrir dans Acrobat";
+      btnAcrobat.onclick = () => window.open("https://www.adobe.com/files#", "_blank", "noopener");
+
+      const btnDelete = document.createElement("button");
+      btnDelete.className = "btn btn-sm btn-danger";
+      btnDelete.textContent = "🗑 Supprimer";
+      btnDelete.onclick = async () => {
+        if (!confirm(`Supprimer le BAT "${job.name}" ?`)) return;
+        const r = await fetch("/api/jobs/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fullPath: full })
+        }).then(r => r.json()).catch(() => ({ ok: false }));
+        if (r.ok) { showNotification("✅ BAT supprimé", "success"); buildBatView(); }
+        else showNotification("❌ Erreur : " + (r.error || ""), "error");
+      };
+
+      btnRow.appendChild(btnOpen);
+      btnRow.appendChild(btnAcrobat);
+      btnRow.appendChild(btnDelete);
+
+      infoAndActions.appendChild(info);
+      infoAndActions.appendChild(btnRow);
+
+      topRow.appendChild(thumbDiv);
+      topRow.appendChild(infoAndActions);
 
       const trackingEl = document.createElement("div");
       trackingEl.className = "bat-tracking";
@@ -320,20 +372,36 @@ async function buildBatView() {
       listEl.appendChild(card);
       try {
         const status = await fetch(`/api/bat/status?path=${encodeURIComponent(full)}`).then(r => r.json()).catch(() => ({}));
+
         const btnSent = document.createElement("button");
         btnSent.className = "bat-status-badge bat-sent" + (status.sentAt ? " active" : "");
-        btnSent.textContent = status.sentAt ? `ENVOYÉ` : "MARQUER ENVOYÉ";
-        btnSent.onclick = () => fetch("/api/bat/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(buildBatView);
+        const sentLabel = status.sentAt ? `✅ ENVOYÉ` : "MARQUER ENVOYÉ";
+        const sentTs = status.sentAt ? fmtDT(status.sentAt) : null;
+        btnSent.innerHTML = sentTs
+          ? `${sentLabel}<br><small style="font-size:9px;font-weight:400;text-transform:none;">le ${sentTs}</small>`
+          : sentLabel;
+        btnSent.style.lineHeight = sentTs ? "1.3" : "";
+        btnSent.onclick = () => fetch("/api/bat/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(buildBatView);
 
         const btnValidate = document.createElement("button");
         btnValidate.className = "bat-status-badge bat-validated" + (status.validatedAt ? " active" : "");
-        btnValidate.textContent = status.validatedAt ? "VALIDÉ" : "VALIDER";
-        btnValidate.onclick = () => fetch("/api/bat/validate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(buildBatView);
+        const validateLabel = status.validatedAt ? "✅ VALIDÉ" : "VALIDER";
+        const validateTs = status.validatedAt ? fmtDT(status.validatedAt) : null;
+        btnValidate.innerHTML = validateTs
+          ? `${validateLabel}<br><small style="font-size:9px;font-weight:400;text-transform:none;">le ${validateTs}</small>`
+          : validateLabel;
+        btnValidate.style.lineHeight = validateTs ? "1.3" : "";
+        btnValidate.onclick = () => fetch("/api/bat/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(buildBatView);
 
         const btnReject = document.createElement("button");
         btnReject.className = "bat-status-badge bat-rejected" + (status.rejectedAt ? " active" : "");
-        btnReject.textContent = status.rejectedAt ? "REFUSÉ" : "REFUSER";
-        btnReject.onclick = () => fetch("/api/bat/reject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(buildBatView);
+        const rejectLabel = status.rejectedAt ? "❌ REFUSÉ" : "REFUSER";
+        const rejectTs = status.rejectedAt ? fmtDT(status.rejectedAt) : null;
+        btnReject.innerHTML = rejectTs
+          ? `${rejectLabel}<br><small style="font-size:9px;font-weight:400;text-transform:none;">le ${rejectTs}</small>`
+          : rejectLabel;
+        btnReject.style.lineHeight = rejectTs ? "1.3" : "";
+        btnReject.onclick = () => fetch("/api/bat/reject", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(buildBatView);
 
         trackingEl.appendChild(btnSent);
         trackingEl.appendChild(btnValidate);
@@ -345,13 +413,13 @@ async function buildBatView() {
           if (ageHours >= 48) {
             const alertEl = document.createElement("div");
             alertEl.className = "bat-alert-j2";
-            alertEl.textContent = `⚠️ BAT envoyé depuis ${Math.floor(ageHours/24)} jour(s) sans réponse !`;
+            alertEl.textContent = `⚠️ BAT envoyé depuis ${Math.floor(ageHours / 24)} jour(s) sans réponse !`;
             trackingEl.appendChild(alertEl);
           }
         }
-      } catch(e) { /* ignore */ }
+      } catch (e) { /* ignore */ }
     }
-  } catch(err) {
+  } catch (err) {
     listEl.innerHTML = `<p style="color:#ef4444;">Erreur : ${err.message}</p>`;
   }
 }

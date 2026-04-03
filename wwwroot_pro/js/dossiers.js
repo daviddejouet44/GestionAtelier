@@ -126,10 +126,10 @@ export async function loadDossiersList() {
         </div>
       `;
 
-      // Click opens detail of first folder
+      // Click opens grouped dossier detail (all PDFs)
       card.onclick = (e) => {
         if (e.target.closest(".btn-danger")) return;
-        openDossierDetail(items[0].folder._id || items[0].folder.id);
+        openGroupedDossierDetail(numeroDossier, items);
       };
 
       grid.appendChild(card);
@@ -181,7 +181,137 @@ export async function loadDossiersList() {
   }
 }
 
-export async function openDossierDetail(dossierId) {
+// ======================================================
+// DOSSIER REGROUPÉ — Detail avec tous les PDFs
+// ======================================================
+export async function openGroupedDossierDetail(numeroDossier, items) {
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;";
+
+  const modal = document.createElement("div");
+  modal.style.cssText = "background:white;border-radius:16px;padding:32px;width:100%;max-width:860px;box-shadow:0 20px 60px rgba(0,0,0,0.3);";
+  modal.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+      <h2 style="margin:0;font-size:22px;color:#111827;">Dossier <strong>${numeroDossier}</strong> — ${items.length} fichier(s)</h2>
+      <button id="grp-dossier-close" style="background:none;border:none;font-size:24px;cursor:pointer;color:#6b7280;">✕</button>
+    </div>
+    <div id="grp-dossier-items"></div>
+  `;
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  modal.querySelector("#grp-dossier-close").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  const itemsEl = modal.querySelector("#grp-dossier-items");
+
+  for (const { folder, realStage } of items) {
+    const fn = folder.fileName || "";
+    const item = document.createElement("div");
+    item.style.cssText = "border:1px solid #e5e7eb;border-radius:12px;margin-bottom:12px;overflow:hidden;";
+
+    // Accordion header
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#f9fafb;cursor:pointer;gap:12px;";
+    header.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+        <span style="font-size:11px;font-weight:700;color:#BC0024;font-family:monospace;padding:3px 7px;background:#fee2e2;border-radius:4px;flex-shrink:0;">PDF</span>
+        <span style="font-size:13px;font-weight:600;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${fn}</span>
+      </div>
+      <span style="background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap;flex-shrink:0;">${getStageLabelDisplay(realStage)}</span>
+      <span class="accordion-arrow" style="color:#6b7280;font-size:14px;flex-shrink:0;">▶</span>
+    `;
+
+    const body = document.createElement("div");
+    body.style.cssText = "display:none;padding:16px;border-top:1px solid #e5e7eb;";
+
+    let expanded = false;
+    header.onclick = async () => {
+      expanded = !expanded;
+      body.style.display = expanded ? "block" : "none";
+      header.querySelector(".accordion-arrow").textContent = expanded ? "▼" : "▶";
+      if (expanded && !body.dataset.loaded) {
+        body.dataset.loaded = "1";
+        await loadPdfDetails(fn, folder, body);
+      }
+    };
+
+    item.appendChild(header);
+    item.appendChild(body);
+    itemsEl.appendChild(item);
+  }
+}
+
+async function loadPdfDetails(fileName, folder, container) {
+  container.innerHTML = '<p style="color:#6b7280;font-size:13px;">Chargement...</p>';
+  try {
+    // Load fabrication sheet
+    let fab = {};
+    if (fileName) {
+      const fabResp = await fetch("/api/fabrication?fileName=" + encodeURIComponent(fileName), {
+        headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(r => r.json()).catch(() => null);
+      if (fabResp && fabResp.ok !== false) fab = fabResp;
+    }
+
+    // Get real-time stage
+    let stage = folder.currentStage || "Début de production";
+    if (fileName) {
+      const stageRes = await fetch("/api/file-stage?fileName=" + encodeURIComponent(fileName), {
+        headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(r => r.json()).catch(() => null);
+      if (stageRes && stageRes.ok && stageRes.folder) stage = stageRes.folder;
+    }
+
+    const fld = (label, value) => value ? `<div style="margin-bottom:6px;"><span style="font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;">${label}</span><div style="font-size:13px;color:#111827;">${value}</div></div>` : "";
+
+    const history = Array.isArray(fab.history) ? fab.history : [];
+    const historyHtml = history.length === 0
+      ? '<span style="color:#9ca3af;font-size:12px;">Aucun historique</span>'
+      : history.map(h => `<div style="font-size:12px;color:#374151;padding:3px 0;border-bottom:1px solid #f3f4f6;">${new Date(h.date).toLocaleDateString("fr-FR", {day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})} — ${h.user||''} — ${h.action||''}</div>`).join("");
+
+    container.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+        ${fld("Étape actuelle", `<span style="background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:12px;">${getStageLabelDisplay(stage)}</span>`)}
+        ${fld("Numéro de dossier", fab.numeroDossier)}
+        ${fld("Client", fab.client)}
+        ${fld("Opérateur", fab.operateur)}
+        ${fld("Quantité", fab.quantite)}
+        ${fld("Type de travail", fab.typeTravail)}
+        ${fld("Format fini", fab.format)}
+        ${fld("Moteur d'impression", fab.moteurImpression || fab.machine)}
+        ${fld("Recto/Verso", fab.rectoVerso)}
+        ${fld("Façonnage", fab.faconnage)}
+        ${fld("Délai", fab.delai ? new Date(fab.delai).toLocaleDateString("fr-FR") : null)}
+        ${fld("Note", fab.notes)}
+      </div>
+      ${(fab.media1 || fab.media2 || fab.media3 || fab.media4) ? `
+      <div style="margin-bottom:16px;">
+        <div style="font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;margin-bottom:6px;">Médias</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          ${fab.media1 ? `<span style="background:#f3f4f6;color:#374151;padding:4px 10px;border-radius:6px;font-size:12px;">Media 1: ${fab.media1}</span>` : ""}
+          ${fab.media2 ? `<span style="background:#f3f4f6;color:#374151;padding:4px 10px;border-radius:6px;font-size:12px;">Media 2: ${fab.media2}</span>` : ""}
+          ${fab.media3 ? `<span style="background:#f3f4f6;color:#374151;padding:4px 10px;border-radius:6px;font-size:12px;">Media 3: ${fab.media3}</span>` : ""}
+          ${fab.media4 ? `<span style="background:#f3f4f6;color:#374151;padding:4px 10px;border-radius:6px;font-size:12px;">Media 4: ${fab.media4}</span>` : ""}
+        </div>
+      </div>` : ""}
+      <div style="margin-bottom:12px;">
+        <div style="font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;margin-bottom:6px;">Historique des mouvements</div>
+        <div style="max-height:150px;overflow-y:auto;">${historyHtml}</div>
+      </div>
+      <button class="btn btn-sm btn-primary" id="pdf-open-fiche-${encodeURIComponent(fileName)}">Ouvrir la fiche de fabrication</button>
+    `;
+    container.querySelector(`#pdf-open-fiche-${encodeURIComponent(fileName)}`)?.addEventListener("click", () => {
+      const path = (folder.originalFilePath || folder.currentFilePath || fileName || "");
+      if (path && window._openFabrication) window._openFabrication(path);
+      else if (window._openFabrication) window._openFabrication(fileName);
+    });
+  } catch (err) {
+    container.innerHTML = `<p style="color:#ef4444;font-size:13px;">Erreur : ${err.message}</p>`;
+  }
+}
+
+
   try {
     const folder = await fetch(`/api/production-folders/${dossierId}`, {
       headers: { "Authorization": `Bearer ${authToken}` }

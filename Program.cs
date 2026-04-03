@@ -298,6 +298,38 @@ FileSystemWatcher? tempCopyWatcher = null;
                         catch (Exception exDel) { Console.WriteLine($"[TEMP_COPY][WARN] Delete temp file: {exDel.Message}"); }
                     }
 
+                    // Create BAT ready notification for the operator who requested the BAT
+                    try
+                    {
+                        var requestedBy = pending != null && pending.Contains("requestedBy") ? pending["requestedBy"].AsString : "";
+                        if (!string.IsNullOrEmpty(requestedBy))
+                        {
+                            // Try to get numeroDossier from fabrication sheet
+                            var fabCol2 = MongoDbHelper.GetFabricationsCollection();
+                            var fabDoc2 = fabCol2.Find(Builders<BsonDocument>.Filter.Or(
+                                Builders<BsonDocument>.Filter.Regex("fileName",
+                                    new BsonRegularExpression($"^{System.Text.RegularExpressions.Regex.Escape(sourceFileName)}", "i")),
+                                Builders<BsonDocument>.Filter.Eq("fileName", sourceFileName + ".pdf")
+                            )).FirstOrDefault();
+                            var numeroDossier = fabDoc2 != null && fabDoc2.Contains("numeroDossier") && fabDoc2["numeroDossier"].BsonType == BsonType.String
+                                ? fabDoc2["numeroDossier"].AsString : sourceFileName;
+
+                            var notifCol = MongoDbHelper.GetCollection<BsonDocument>("notifications");
+                            notifCol.InsertOne(new BsonDocument
+                            {
+                                ["type"] = "bat_ready",
+                                ["message"] = $"✅ Le BAT pour le dossier {numeroDossier} est prêt !",
+                                ["fileName"] = batFileName,
+                                ["numeroDossier"] = numeroDossier,
+                                ["recipientLogin"] = requestedBy,
+                                ["read"] = false,
+                                ["timestamp"] = DateTime.UtcNow
+                            });
+                            Console.WriteLine($"[TEMP_COPY] Notification BAT prêt créée pour {requestedBy} (dossier {numeroDossier})");
+                        }
+                    }
+                    catch (Exception exNotif) { Console.WriteLine($"[TEMP_COPY][WARN] Create notification: {exNotif.Message}"); }
+
                     // Mark batPending as processed
                     if (pending != null)
                     {
@@ -3127,8 +3159,9 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
         var fileName = json.TryGetProperty("fileName", out var fn) ? fn.GetString() ?? "" : "";
         var fullPath = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
+        var requestedBy = json.TryGetProperty("requestedBy", out var rb) ? rb.GetString() ?? "" : "";
 
-        Console.WriteLine($"[BAT] copy-for-bat: fileName={fileName}, fullPath={fullPath}");
+        Console.WriteLine($"[BAT] copy-for-bat: fileName={fileName}, fullPath={fullPath}, requestedBy={requestedBy}");
 
         // 1. Find fabrication record to get typeTravail
         var fabCol = MongoDbHelper.GetFabricationsCollection();
@@ -3207,7 +3240,7 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
         File.Copy(fullPath, hotfolderDest, overwrite: true);
         Console.WriteLine($"[BAT] Copié vers hotfolder PrismaPrepare: {hotfolderDest}");
 
-        // 7. Store pending rename in MongoDB so TEMP_COPY watcher can find the job name
+        // 7. Store pending rename in MongoDB so TEMP_COPY watcher can find the job name + requestedBy for notification
         try
         {
             var batPendingCol = MongoDbHelper.GetCollection<BsonDocument>("batPending");
@@ -3216,7 +3249,8 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
                 ["sourceFileName"] = sourceBaseName,
                 ["batFolder"] = tempCopyPath,
                 ["createdAt"] = DateTime.UtcNow,
-                ["processed"] = false
+                ["processed"] = false,
+                ["requestedBy"] = requestedBy
             });
         }
         catch { /* non-blocking */ }
@@ -3973,7 +4007,10 @@ app.MapGet("/api/notifications", (string? login) =>
     var docs = col.Find(filter).Sort(Builders<BsonDocument>.Sort.Descending("timestamp")).Limit(20).ToList();
     return Results.Json(docs.Select(d => new {
         id = d["_id"].ToString(),
+        type = d.Contains("type") ? d["type"].AsString : "general",
         message = d.Contains("message") ? d["message"].AsString : "",
+        fileName = d.Contains("fileName") ? d["fileName"].AsString : "",
+        numeroDossier = d.Contains("numeroDossier") ? d["numeroDossier"].AsString : "",
         timestamp = d.Contains("timestamp") ? d["timestamp"].ToUniversalTime().ToString("o") : "",
         read = d.Contains("read") && d["read"].AsBoolean
     }));
