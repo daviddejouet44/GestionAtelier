@@ -254,16 +254,26 @@ async function loadPdfDetails(fileName, folder, container) {
       if (fabResp && fabResp.ok !== false) fab = fabResp;
     }
 
-    // Get real-time stage
+    // Get real-time stage (also captures fullPath for thumbnail)
     let stage = folder.currentStage || "Début de production";
+    let pdfFullPath = folder.originalFilePath || folder.currentFilePath || "";
     if (fileName) {
       const stageRes = await fetch("/api/file-stage?fileName=" + encodeURIComponent(fileName), {
         headers: { "Authorization": `Bearer ${authToken}` }
       }).then(r => r.json()).catch(() => null);
       if (stageRes && stageRes.ok && stageRes.folder) stage = stageRes.folder;
+      if (stageRes && stageRes.fullPath) pdfFullPath = stageRes.fullPath;
     }
 
     const fld = (label, value) => value ? `<div style="margin-bottom:6px;"><span style="font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;">${label}</span><div style="font-size:13px;color:#111827;">${value}</div></div>` : "";
+
+    // Façonnage display: handle array or string
+    let faconnageDisplay = "";
+    if (Array.isArray(fab.faconnage) && fab.faconnage.length > 0) {
+      faconnageDisplay = fab.faconnage.join(", ");
+    } else if (typeof fab.faconnage === 'string' && fab.faconnage) {
+      faconnageDisplay = fab.faconnage;
+    }
 
     const history = Array.isArray(fab.history) ? fab.history : [];
     const historyHtml = history.length === 0
@@ -271,19 +281,22 @@ async function loadPdfDetails(fileName, folder, container) {
       : history.map(h => `<div style="font-size:12px;color:#374151;padding:3px 0;border-bottom:1px solid #f3f4f6;">${new Date(h.date).toLocaleDateString("fr-FR", {day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})} — ${h.user||''} — ${h.action||''}</div>`).join("");
 
     container.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-        ${fld("Étape actuelle", `<span style="background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:12px;">${getStageLabelDisplay(stage)}</span>`)}
-        ${fld("Numéro de dossier", fab.numeroDossier)}
-        ${fld("Client", fab.client)}
-        ${fld("Opérateur", fab.operateur)}
-        ${fld("Quantité", fab.quantite)}
-        ${fld("Type de travail", fab.typeTravail)}
-        ${fld("Format fini", fab.format)}
-        ${fld("Moteur d'impression", fab.moteurImpression || fab.machine)}
-        ${fld("Recto/Verso", fab.rectoVerso)}
-        ${fld("Façonnage", fab.faconnage)}
-        ${fld("Délai", fab.delai ? new Date(fab.delai).toLocaleDateString("fr-FR") : null)}
-        ${fld("Note", fab.notes)}
+      <div style="display:flex;gap:16px;margin-bottom:16px;align-items:flex-start;">
+        <canvas id="thumb-${encodeURIComponent(fileName)}" style="border:1px solid #e5e7eb;border-radius:8px;max-width:120px;flex-shrink:0;display:none;"></canvas>
+        <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          ${fld("Étape actuelle", `<span style="background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:12px;">${getStageLabelDisplay(stage)}</span>`)}
+          ${fld("Numéro de dossier", fab.numeroDossier)}
+          ${fld("Client", fab.client)}
+          ${fld("Opérateur", fab.operateur)}
+          ${fld("Quantité", fab.quantite)}
+          ${fld("Type de travail", fab.typeTravail)}
+          ${fld("Format fini", fab.format)}
+          ${fld("Moteur d'impression", fab.moteurImpression || fab.machine)}
+          ${fld("Recto/Verso", fab.rectoVerso)}
+          ${fld("Façonnage", faconnageDisplay)}
+          ${fld("Délai", fab.delai ? new Date(fab.delai).toLocaleDateString("fr-FR") : null)}
+          ${fld("Note", fab.notes)}
+        </div>
       </div>
       ${(fab.media1 || fab.media2 || fab.media3 || fab.media4) ? `
       <div style="margin-bottom:16px;">
@@ -301,8 +314,26 @@ async function loadPdfDetails(fileName, folder, container) {
       </div>
       <button class="btn btn-sm btn-primary" id="pdf-open-fiche-${encodeURIComponent(fileName)}">Ouvrir la fiche de fabrication</button>
     `;
+
+    // Render PDF thumbnail using pdf.js
+    if (pdfFullPath && typeof pdfjsLib !== 'undefined') {
+      const canvas = container.querySelector(`#thumb-${encodeURIComponent(fileName)}`);
+      if (canvas) {
+        try {
+          const pdfUrl = "/api/file?path=" + encodeURIComponent(pdfFullPath);
+          const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
+          const page = await pdf.getPage(1);
+          const viewport = page.getViewport({ scale: 0.4 });
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+          canvas.style.display = "block";
+        } catch(e) { console.warn("PDF thumbnail failed for", pdfFullPath, e); /* thumbnail failed silently */ }
+      }
+    }
+
     container.querySelector(`#pdf-open-fiche-${encodeURIComponent(fileName)}`)?.addEventListener("click", () => {
-      const path = (folder.originalFilePath || folder.currentFilePath || fileName || "");
+      const path = (folder.originalFilePath || folder.currentFilePath || pdfFullPath || fileName || "");
       if (path && window._openFabrication) window._openFabrication(path);
       else if (window._openFabrication) window._openFabrication(fileName);
     });

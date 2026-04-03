@@ -47,6 +47,9 @@ Directory.CreateDirectory(recyclePath);
 
 var app = builder.Build();
 
+// QuestPDF community license
+QuestPDF.Settings.License = LicenseType.Community;
+
 Console.WriteLine("[INFO] ContentRoot = " + app.Environment.ContentRootPath);
 
 // ======================================================
@@ -1566,7 +1569,7 @@ app.MapGet("/api/fabrication/export-xml", async (string fullPath, HttpContext ct
             new XElement("Media2",           sheet.Media2 ?? ""),
             new XElement("Media3",           sheet.Media3 ?? ""),
             new XElement("Media4",           sheet.Media4 ?? ""),
-            new XElement("Faconnage",        sheet.Faconnage ?? ""),
+            new XElement("Faconnage",        sheet.Faconnage != null ? string.Join(", ", sheet.Faconnage) : ""),
             new XElement("Notes",            sheet.Notes ?? ""),
             sheet.Delai.HasValue ? new XElement("Delai", sheet.Delai.Value.ToString("yyyy-MM-dd")) : null
         );
@@ -1942,6 +1945,22 @@ app.MapGet("/api/production-folders", () =>
     {
         var col = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
         var docs = col.Find(new BsonDocument()).SortByDescending(x => x["createdAt"]).ToList();
+
+        // Orphan cleanup: remove folders whose physical directory no longer exists
+        var idsToDelete = new List<ObjectId>();
+        var hotRoot = BackendUtils.HotfoldersRoot();
+        foreach (var d in docs)
+        {
+            var fp = d.Contains("folderPath") ? d["folderPath"].AsString : "";
+            if (!string.IsNullOrEmpty(fp) && !Directory.Exists(fp))
+                idsToDelete.Add(d["_id"].AsObjectId);
+        }
+        if (idsToDelete.Count > 0)
+        {
+            col.DeleteMany(Builders<BsonDocument>.Filter.In("_id", idsToDelete));
+            docs = docs.Where(d => !idsToDelete.Contains(d["_id"].AsObjectId)).ToList();
+        }
+
         var result = docs.Select(d =>
         {
             var fileName = d.Contains("fileName") ? d["fileName"].AsString : "";
@@ -2497,8 +2516,63 @@ app.MapPut("/api/config/fabrication-imports", async (HttpContext ctx) =>
 });
 
 // ======================================================
-// CONFIG — Integrations (Prepare / Fiery)
+// SETTINGS — Façonnage options (CSV import)
 // ======================================================
+
+app.MapGet("/api/settings/faconnage-options", () =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("faconnageOptions");
+        var docs = col.Find(new BsonDocument()).ToList();
+        var labels = docs.Select(d => d.Contains("label") ? d["label"].AsString : "").Where(s => !string.IsNullOrEmpty(s)).ToList();
+        return Results.Json(labels);
+    }
+    catch { return Results.Json(new List<string>()); }
+});
+
+app.MapPost("/api/settings/faconnage-import", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        if (!ctx.Request.HasFormContentType)
+            return Results.Json(new { ok = false, error = "Form data required" });
+
+        var form = await ctx.Request.ReadFormAsync();
+        var file = form.Files.GetFile("file");
+        if (file == null)
+            return Results.Json(new { ok = false, error = "Fichier CSV requis" });
+
+        using var reader = new System.IO.StreamReader(file.OpenReadStream());
+        var content = await reader.ReadToEndAsync();
+        var labels = content
+            .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+            // Only the first comma-separated column is used as the option label
+            .Select(l => l.Split(',').First().Trim().Trim('"'))
+            .Where(l => !string.IsNullOrEmpty(l))
+            .Distinct()
+            .ToList();
+
+        if (labels.Count == 0)
+            return Results.Json(new { ok = false, error = "Aucune option trouvée dans le CSV" });
+
+        var col = MongoDbHelper.GetCollection<BsonDocument>("faconnageOptions");
+        col.DeleteMany(new BsonDocument());
+        var docs = labels.Select(l => new BsonDocument { ["label"] = l }).ToList();
+        col.InsertMany(docs);
+
+        return Results.Json(new { ok = true, count = labels.Count });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+
 
 app.MapGet("/api/config/integrations", (HttpContext ctx) =>
 {
@@ -4419,7 +4493,7 @@ file record FabricationSheet
     public string? Media4 { get; init; }
     public string? TypeDocument { get; init; }
     public int? NombreFeuilles { get; init; }
-    public string? Faconnage { get; init; }
+    public List<string>? Faconnage { get; init; }
     public string? Livraison { get; init; }
     public List<FabricationHistory> History { get; init; } = new();
 }
@@ -4448,7 +4522,7 @@ file class FabricationInput
     public string? Media4 { get; set; }
     public string? TypeDocument { get; set; }
     public int? NombreFeuilles { get; set; }
-    public string? Faconnage { get; set; }
+    public List<string>? Faconnage { get; set; }
     public string? Livraison { get; set; }
 }
 
@@ -4964,7 +5038,9 @@ file static class BackendUtils
             ["media4"]            = sheet.Media4            == null ? BsonNull.Value : (BsonValue)sheet.Media4,
             ["typeDocument"]      = sheet.TypeDocument      == null ? BsonNull.Value : (BsonValue)sheet.TypeDocument,
             ["nombreFeuilles"]    = sheet.NombreFeuilles    == null ? BsonNull.Value : (BsonValue)(int)sheet.NombreFeuilles,
-            ["faconnage"]         = sheet.Faconnage         == null ? BsonNull.Value : (BsonValue)sheet.Faconnage,
+            ["faconnage"]         = sheet.Faconnage == null
+                                        ? BsonNull.Value
+                                        : (BsonValue)new BsonArray(sheet.Faconnage),
             ["livraison"]         = sheet.Livraison         == null ? BsonNull.Value : (BsonValue)sheet.Livraison,
             ["history"]           = historyArray
         };
@@ -5021,7 +5097,11 @@ file static class BackendUtils
             Media4           = GetNullableString(d, "media4"),
             TypeDocument     = GetNullableString(d, "typeDocument"),
             NombreFeuilles   = d.Contains("nombreFeuilles")   && d["nombreFeuilles"]   != BsonNull.Value ? (int?)d["nombreFeuilles"].AsInt32 : null,
-            Faconnage        = GetNullableString(d, "faconnage"),
+            Faconnage        = d.Contains("faconnage") && d["faconnage"] != BsonNull.Value
+                               ? (d["faconnage"].IsBsonArray
+                                  ? d["faconnage"].AsBsonArray.Select(v => v.AsString).ToList()
+                                  : new List<string> { d["faconnage"].AsString })
+                               : null,
             Livraison        = GetNullableString(d, "livraison"),
             History          = history
         };
@@ -5176,7 +5256,7 @@ file static class PdfUtils
                     col.Item().Text($"Papier : {s.Papier}");
                     col.Item().Text($"Recto/Verso : {s.RectoVerso}");
                     col.Item().Text($"Encres : {s.Encres}");
-                    col.Item().Text($"Façonnage : {s.Faconnage}");
+                    col.Item().Text($"Façonnage : {(s.Faconnage != null && s.Faconnage.Count > 0 ? string.Join(", ", s.Faconnage) : "—")}");
                     col.Item().Text($"Livraison : {s.Livraison}");
                     col.Item().Text($"Client : {s.Client}");
                     col.Item().Text($"N° affaire : {s.NumeroAffaire}");
