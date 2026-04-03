@@ -179,9 +179,31 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
 }
 
 /* =========================================================
+   KANBAN FILTER BAR (between toolbar and global-alert)
+========================================================= */
+.kanban-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 32px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-light);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+/* =========================================================
    KANBAN LAYOUT (avec panneau latéral)
 ========================================================= */
 .kanban-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.kanban-area {
   display: flex;
   gap: 16px;
   align-items: flex-start;
@@ -229,8 +251,9 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
 ========================================================= */
 .kanban-summary {
   background: var(--bg-card); border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg); padding: 14px 20px; margin-bottom: 16px;
+  border-radius: var(--radius-lg); padding: 14px 20px; margin-bottom: 0;
   display: flex; gap: 12px; align-items: center; box-shadow: var(--shadow-sm); flex-wrap: wrap;
+  width: 100%;
 }
 .kanban-summary-counts { display: none !important; }
 .kanban-summary-urgent { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }

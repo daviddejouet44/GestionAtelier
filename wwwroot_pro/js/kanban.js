@@ -129,16 +129,11 @@ export async function buildKanban() {
     kanbanDiv.appendChild(col);
   }
 
-  // Summary bar
-  let summaryEl = document.getElementById("kanban-summary");
-  if (!summaryEl) {
-    summaryEl = document.createElement("div");
-    summaryEl.id = "kanban-summary";
-    summaryEl.className = "kanban-summary";
-    kanbanDiv.parentNode?.insertBefore(summaryEl, kanbanDiv);
-  }
+  // Summary bar — now static in HTML, just reference it
+  const summaryEl = document.getElementById("kanban-summary");
+  if (summaryEl) summaryEl.style.display = "none"; // hidden until updateKanbanSummary populates it
 
-  // Filter bar (date + operator) — inserted after summary, before kanban
+  // Filter bar (date + operator) — uses static #kanban-filter-bar from HTML
   buildKanbanFilterBar();
 
   await refreshKanban();
@@ -153,16 +148,12 @@ export async function buildKanban() {
 function buildKanbanFilterBar() {
   let filterBar = document.getElementById("kanban-filter-bar");
   if (!filterBar) {
+    // Fallback: create inline if static placeholder not found
     filterBar = document.createElement("div");
     filterBar.id = "kanban-filter-bar";
     filterBar.style.cssText = "display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 20px;background:#f9fafb;border-bottom:1px solid #e5e7eb;font-size:13px;";
-    // Insert after summary bar, before kanban
-    const summaryEl = document.getElementById("kanban-summary");
-    if (summaryEl && summaryEl.nextSibling) {
-      summaryEl.parentNode?.insertBefore(filterBar, summaryEl.nextSibling);
-    } else {
-      kanbanDiv.parentNode?.insertBefore(filterBar, kanbanDiv);
-    }
+    kanbanDiv.parentNode?.insertBefore(filterBar, kanbanDiv);
+
   }
   filterBar.innerHTML = "";
 
@@ -359,6 +350,7 @@ export async function updateKanbanSummary() {
     summaryEl.innerHTML = `
       <div class="kanban-summary-urgent"><strong style="font-size:16px;color:#374151;margin-right:8px;">🚨 Urgences:</strong>${urgentHtml}</div>
     `;
+    summaryEl.style.display = ""; // show now that content is ready
   } catch(e) { console.error("Erreur summary:", e); }
 }
 
@@ -610,6 +602,13 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         actions.appendChild(btnOpen);
         actions.appendChild(btnFiche);
         actions.appendChild(btnAssign);
+
+        // Planning button — opens the planning dialog
+        const btnPlan = document.createElement("button");
+        btnPlan.className = "btn btn-sm";
+        btnPlan.textContent = "📅 Planifier";
+        btnPlan.onclick = () => { if (window._openPlanificationCalendar) window._openPlanificationCalendar(full); };
+        actions.appendChild(btnPlan);
 
         // BAT button — ouvre popup BAT complet / BAT simple
         const btnBAT = document.createElement("button");

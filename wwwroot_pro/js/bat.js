@@ -1,5 +1,5 @@
 // bat.js — Gestion BAT : popup BAT complet / BAT simple + envoi hotfolder
-import { authToken, normalizePath, fnKey, showNotification } from './core.js';
+import { authToken, currentUser, normalizePath, fnKey, showNotification } from './core.js';
 
 // ======================================================
 // POPUP CHOIX BAT
@@ -75,7 +75,7 @@ async function sendBatComplet(fullPath) {
     const r = await fetch("/api/bat/copy-for-bat", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ fileName, fullPath: path })
+      body: JSON.stringify({ fileName, fullPath: path, requestedBy: currentUser?.login || "" })
     }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
 
     if (r.ok) {
