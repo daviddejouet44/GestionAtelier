@@ -75,7 +75,12 @@ export function showBatReadyPopup(notif) {
     dismiss();
     // Navigate to BAT view if available
     const btnBat = document.getElementById("btnViewBat");
-    if (btnBat) btnBat.click();
+    if (btnBat && btnBat.style.display !== "none") {
+      btnBat.click();
+    } else if (btnBat) {
+      // Button exists but hidden — force show and click
+      btnBat.click();
+    }
   };
   overlay.onclick = (e) => { if (e.target === overlay) dismiss(); };
 }
