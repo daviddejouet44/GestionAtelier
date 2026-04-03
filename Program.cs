@@ -369,6 +369,9 @@ FileSystemWatcher? tempCopyWatcher = null;
                 finally
                 {
                     batRenameSem.Release();
+                    // Release BAT serialization lock so the next file can be sent
+                    BatSerializationState.Release();
+                    Console.WriteLine("[TEMP_COPY] BAT serialization lock released.");
                 }
             }
 
@@ -3486,6 +3489,7 @@ app.MapPost("/api/bat/send-to-hotfolder", async (HttpContext ctx) =>
 
 app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
 {
+    bool lockAcquired = false;
     try
     {
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -3494,6 +3498,17 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
         var requestedBy = json.TryGetProperty("requestedBy", out var rb) ? rb.GetString() ?? "" : "";
 
         Console.WriteLine($"[BAT] copy-for-bat: fileName={fileName}, fullPath={fullPath}, requestedBy={requestedBy}");
+
+        // 0. Check BAT serialization — only one BAT at a time
+        var displayName = !string.IsNullOrEmpty(fileName) ? fileName : (Path.GetFileName(fullPath) ?? "unknown");
+        if (!BatSerializationState.TryAcquire(displayName))
+        {
+            var (_, currentFile, startedAt) = BatSerializationState.Get();
+            var elapsed = (DateTime.UtcNow - startedAt).TotalSeconds;
+            Console.WriteLine($"[BAT] copy-for-bat: BAT déjà en cours pour {currentFile} (depuis {elapsed:0}s) — rejet de {fileName}");
+            return Results.Json(new { ok = false, error = "bat_in_progress", message = $"Un BAT est en cours de génération pour \"{currentFile}\". Veuillez patienter avant d'en envoyer un nouveau." });
+        }
+        lockAcquired = true;
 
         // 1. Find fabrication record to get typeTravail
         var fabCol = MongoDbHelper.GetFabricationsCollection();
@@ -3587,12 +3602,20 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
         }
         catch { /* non-blocking */ }
 
+        // Lock is intentionally NOT released here — HandleEpreuve (FSW) releases it when Epreuve.pdf is processed
+        lockAcquired = false;
         return Results.Json(new { ok = true, hotfolder = hotfolderPath, tempCopy = tempCopyPath, typeTravail });
     }
     catch (Exception ex)
     {
         Console.WriteLine($"[ERR] bat/copy-for-bat: {ex.Message}\n{ex.StackTrace}");
         return Results.Json(new { ok = false, error = ex.Message });
+    }
+    finally
+    {
+        // Release lock on any error path (lockAcquired remains true only if an exception occurred
+        // after acquiring the lock but before the successful return clears it)
+        if (lockAcquired) BatSerializationState.Release();
     }
 });
 
@@ -4086,6 +4109,18 @@ app.MapGet("/api/bat/status", (HttpContext ctx) =>
         sentAt = doc.Contains("sentAt") && doc["sentAt"] != BsonNull.Value ? doc["sentAt"].ToUniversalTime() : (DateTime?)null,
         validatedAt = doc.Contains("validatedAt") && doc["validatedAt"] != BsonNull.Value ? doc["validatedAt"].ToUniversalTime() : (DateTime?)null,
         rejectedAt = doc.Contains("rejectedAt") && doc["rejectedAt"] != BsonNull.Value ? doc["rejectedAt"].ToUniversalTime() : (DateTime?)null
+    });
+});
+
+// GET /api/bat/serialization-status — returns whether a BAT is currently being generated
+app.MapGet("/api/bat/serialization-status", () =>
+{
+    var (inProgress, currentFileName, startedAt) = BatSerializationState.Get();
+    return Results.Json(new
+    {
+        inProgress,
+        currentFileName = currentFileName ?? "",
+        startedAt = inProgress ? startedAt : (DateTime?)null
     });
 });
 
@@ -4860,6 +4895,65 @@ file class IntegrationsSettings
 
     [JsonPropertyName("prismaPrepareExePath")]
     public string PrismaPrepareExePath { get; set; } = "";
+}
+
+// ======================================================
+// BAT SERIALIZATION STATE — Prevent concurrent BAT processing
+// ======================================================
+// In-memory state + 5-minute timeout safety
+static class BatSerializationState
+{
+    private static readonly object _lock = new();
+    private static bool _inProgress = false;
+    private static string? _currentFileName = null;
+    private static DateTime _startedAt = DateTime.MinValue;
+    private const int TimeoutMinutes = 5;
+
+    public static (bool inProgress, string? currentFileName, DateTime startedAt) Get()
+    {
+        lock (_lock)
+        {
+            // Auto-reset if timed out
+            if (_inProgress && (DateTime.UtcNow - _startedAt).TotalMinutes >= TimeoutMinutes)
+            {
+                Console.WriteLine($"[BAT][WARN] BAT serialization timeout — auto-reset (was: {_currentFileName})");
+                _inProgress = false;
+                _currentFileName = null;
+                _startedAt = DateTime.MinValue;
+            }
+            return (_inProgress, _currentFileName, _startedAt);
+        }
+    }
+
+    public static bool TryAcquire(string fileName)
+    {
+        lock (_lock)
+        {
+            // Auto-reset if timed out
+            if (_inProgress && (DateTime.UtcNow - _startedAt).TotalMinutes >= TimeoutMinutes)
+            {
+                Console.WriteLine($"[BAT][WARN] BAT serialization timeout — auto-reset (was: {_currentFileName})");
+                _inProgress = false;
+                _currentFileName = null;
+                _startedAt = DateTime.MinValue;
+            }
+            if (_inProgress) return false;
+            _inProgress = true;
+            _currentFileName = fileName;
+            _startedAt = DateTime.UtcNow;
+            return true;
+        }
+    }
+
+    public static void Release()
+    {
+        lock (_lock)
+        {
+            _inProgress = false;
+            _currentFileName = null;
+            _startedAt = DateTime.MinValue;
+        }
+    }
 }
 
 // ======================================================

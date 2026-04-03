@@ -158,6 +158,7 @@ const PRODUCTION_FOLDER_CONFIG = [
   { folder: "Corrections", label: "Preflight", color: "#e0e0e0" },
   { folder: "Corrections et fond perdu", label: "Preflight avec fond perdu", color: "#e0e0e0" },
   { folder: "Prêt pour impression", label: "En attente", color: "#b8b8b8" },
+  { folder: "BAT", label: "BAT", color: "#8b5cf6" },
   { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#8f8f8f" },
   { folder: "Fiery", label: "Fiery", color: "#8f8f8f" },
   { folder: "Impression en cours", label: "Impression en cours", color: "#7a7a7a" },

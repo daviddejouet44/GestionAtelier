@@ -53,7 +53,21 @@ async function updateGlobalAlert() {
   let minDays = +Infinity;
   for (const iso of dates) minDays = Math.min(minDays, daysDiffFromToday(iso));
 
-  // Check BAT pending alerts
+  // Check BAT prêt — unread bat_ready notifications
+  let batReadyAlerts = [];
+  try {
+    const login = currentUser?.login;
+    if (login) {
+      const notifs = await fetch(`/api/notifications?login=${encodeURIComponent(login)}`, {
+        headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(r => r.json()).catch(() => []);
+      if (Array.isArray(notifs)) {
+        batReadyAlerts = notifs.filter(n => !n.read && n.type === 'bat_ready');
+      }
+    }
+  } catch { batReadyAlerts = []; }
+
+  // Check BAT pending alerts (BAT files without response after delay)
   let batAlerts = [];
   try {
     batAlerts = await fetch("/api/alerts/bat-pending", {
@@ -62,12 +76,22 @@ async function updateGlobalAlert() {
     if (!Array.isArray(batAlerts)) batAlerts = [];
   } catch { batAlerts = []; }
 
+  const hasBatReady = batReadyAlerts.length > 0;
   const hasBatAlerts = batAlerts.length > 0;
 
-  if (minDays <= 1 || hasBatAlerts) {
+  if (minDays <= 1 || hasBatReady || hasBatAlerts) {
     const parts = [];
     if (minDays <= 1) parts.push("Urgences J-1");
     else if (minDays <= 3) parts.push("Attention : < 3 jours");
+    if (hasBatReady) {
+      if (batReadyAlerts.length === 1) {
+        const n = batReadyAlerts[0];
+        const label = n.numeroDossier || n.fileName || "—";
+        parts.push(`🔔 BAT prêt pour ${label}`);
+      } else {
+        parts.push(`🔔 ${batReadyAlerts.length} BAT(s) prêt(s)`);
+      }
+    }
     if (hasBatAlerts) {
       if (batAlerts.length === 1) parts.push(batAlerts[0].message || `⚠️ BAT en attente : ${batAlerts[0].fileName}`);
       else parts.push(`⚠️ ${batAlerts.length} BAT(s) en attente sans réponse`);

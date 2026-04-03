@@ -207,29 +207,65 @@ export async function openGroupedDossierDetail(numeroDossier, items) {
 
   for (const { folder, realStage } of items) {
     const fn = folder.fileName || "";
+    const folderId = folder._id || folder.id || "";
+    const folderPath = folder.folderPath || "";
     const item = document.createElement("div");
     item.style.cssText = "border:1px solid #e5e7eb;border-radius:12px;margin-bottom:12px;overflow:hidden;";
 
     // Accordion header
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#f9fafb;cursor:pointer;gap:12px;";
-    header.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
-        <span style="font-size:11px;font-weight:700;color:#BC0024;font-family:monospace;padding:3px 7px;background:#fee2e2;border-radius:4px;flex-shrink:0;">PDF</span>
-        <span style="font-size:13px;font-weight:600;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${fn}</span>
-      </div>
-      <span style="background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap;flex-shrink:0;">${getStageLabelDisplay(realStage)}</span>
-      <span class="accordion-arrow" style="color:#6b7280;font-size:14px;flex-shrink:0;">▶</span>
+
+    const leftInfo = document.createElement("div");
+    leftInfo.style.cssText = "display:flex;align-items:center;gap:10px;min-width:0;flex:1;";
+    leftInfo.innerHTML = `
+      <span style="font-size:11px;font-weight:700;color:#BC0024;font-family:monospace;padding:3px 7px;background:#fee2e2;border-radius:4px;flex-shrink:0;">PDF</span>
+      <span style="font-size:13px;font-weight:600;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${fn}</span>
     `;
+
+    const stageSpan = document.createElement("span");
+    stageSpan.style.cssText = "background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap;flex-shrink:0;";
+    stageSpan.textContent = getStageLabelDisplay(realStage);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "btn btn-danger btn-sm";
+    deleteBtn.textContent = "🗑 Supprimer";
+    deleteBtn.style.cssText = "flex-shrink:0;font-size:11px;padding:3px 8px;";
+    deleteBtn.onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Supprimer "${fn}" du dossier ?`)) return;
+      const path = folderPath || "";
+      const r = await fetch(`/api/production-folder?path=${encodeURIComponent(path)}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+      if (r.ok) {
+        showNotification(`✅ "${fn}" supprimé`, "success");
+        item.remove();
+      } else {
+        showNotification("❌ " + (r.error || "Erreur suppression"), "error");
+      }
+    };
+
+    const arrowSpan = document.createElement("span");
+    arrowSpan.className = "accordion-arrow";
+    arrowSpan.style.cssText = "color:#6b7280;font-size:14px;flex-shrink:0;";
+    arrowSpan.textContent = "▶";
+
+    header.appendChild(leftInfo);
+    header.appendChild(stageSpan);
+    header.appendChild(deleteBtn);
+    header.appendChild(arrowSpan);
 
     const body = document.createElement("div");
     body.style.cssText = "display:none;padding:16px;border-top:1px solid #e5e7eb;";
 
     let expanded = false;
-    header.onclick = async () => {
+    header.onclick = async (e) => {
+      if (e.target.closest(".btn-danger")) return;
       expanded = !expanded;
       body.style.display = expanded ? "block" : "none";
-      header.querySelector(".accordion-arrow").textContent = expanded ? "▼" : "▶";
+      arrowSpan.textContent = expanded ? "▼" : "▶";
       if (expanded && !body.dataset.loaded) {
         body.dataset.loaded = "1";
         await loadPdfDetails(fn, folder, body);
@@ -239,6 +275,38 @@ export async function openGroupedDossierDetail(numeroDossier, items) {
     item.appendChild(header);
     item.appendChild(body);
     itemsEl.appendChild(item);
+  }
+
+  // Upload zone at the bottom — use the first folder's ID
+  const firstFolderId = items[0]?.folder?._id || items[0]?.folder?.id || "";
+  if (firstFolderId) {
+    const uploadSection = document.createElement("div");
+    uploadSection.style.cssText = "margin-top:20px;";
+    uploadSection.innerHTML = `
+      <h3 style="font-size:16px;color:#111827;margin-bottom:12px;">Ajouter un fichier</h3>
+      <div style="border:2px dashed #e5e7eb;border-radius:12px;padding:20px;text-align:center;cursor:pointer;" id="grp-upload-zone">
+        <p style="color:#6b7280;margin:0;">Cliquez ou déposez un fichier (PDF, Excel, Word, PSD, InDesign...)</p>
+        <input type="file" id="grp-upload-input" style="display:none;" multiple />
+      </div>
+    `;
+    modal.querySelector("#grp-dossier-items").after(uploadSection);
+
+    const uploadZone = uploadSection.querySelector("#grp-upload-zone");
+    const uploadInput = uploadSection.querySelector("#grp-upload-input");
+    uploadZone.onclick = () => uploadInput.click();
+    uploadZone.addEventListener("dragover", e => { e.preventDefault(); uploadZone.style.background = "#f3f4f6"; });
+    uploadZone.addEventListener("dragleave", () => { uploadZone.style.background = ""; });
+    uploadZone.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      uploadZone.style.background = "";
+      const files = Array.from(e.dataTransfer.files || []);
+      if (files.length) await uploadGroupedDossierFiles(firstFolderId, files, overlay);
+    });
+    uploadInput.addEventListener("change", async (e) => {
+      const files = Array.from(e.target.files || []);
+      if (files.length) await uploadGroupedDossierFiles(firstFolderId, files, overlay);
+      uploadInput.value = "";
+    });
   }
 }
 
@@ -499,4 +567,23 @@ async function uploadDossierFiles(dossierId, files, overlay) {
   }
   overlay.remove();
   openDossierDetail(dossierId);
+}
+
+async function uploadGroupedDossierFiles(dossierId, files, overlay) {
+  for (const file of files) {
+    const formData = new FormData();
+    formData.append("file", file);
+    const r = await fetch(`/api/production-folders/${dossierId}/upload`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${authToken}` },
+      body: formData
+    }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (r.ok) {
+      showNotification(`✅ ${file.name} ajouté`, "success");
+    } else {
+      showNotification(`❌ Erreur upload ${file.name}`, "error");
+    }
+  }
+  overlay.remove();
+  loadDossiersList();
 }
