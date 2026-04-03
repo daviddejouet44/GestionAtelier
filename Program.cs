@@ -3056,7 +3056,7 @@ app.MapGet("/api/config/prisma-prepare-routing", () =>
         });
         return Results.Json(result);
     }
-    catch (Exception ex) { return Results.Json(new object[0]); }
+    catch (Exception ex) { Console.WriteLine($"[ERR] prisma-prepare-routing GET: {ex.Message}"); return Results.Json(new object[0]); }
 });
 
 app.MapPut("/api/config/prisma-prepare-routing", async (HttpContext ctx) =>

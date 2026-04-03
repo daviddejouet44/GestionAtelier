@@ -546,11 +546,12 @@ async function buildKanbanSidebar() {
         .map(([k]) => k);
       const label = d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
       const isToday = iso === todayIso;
+      function escHtml(s) { return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
       return `
         <div style="padding:6px 0;border-bottom:1px solid #f0f0f0;">
           <div style="font-size:11px;font-weight:${isToday ? '700' : '500'};color:${isToday ? '#BC0024' : '#374151'};">${label}</div>
           ${jobs.length > 0
-            ? jobs.map(j => `<div style="font-size:11px;background:#dbeafe;color:#1e40af;border-radius:6px;padding:3px 8px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;font-weight:500;" title="${j}">📄 ${j}</div>`).join("")
+            ? jobs.map(j => `<div style="font-size:11px;background:#dbeafe;color:#1e40af;border-radius:6px;padding:3px 8px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;font-weight:500;" title="${escHtml(j)}">📄 ${escHtml(j)}</div>`).join("")
             : `<div style="font-size:10px;color:#9ca3af;margin-top:2px;">—</div>`}
         </div>
       `;
