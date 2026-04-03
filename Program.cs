@@ -1847,9 +1847,14 @@ app.MapPost("/api/acrobat/open", async (HttpContext ctx) =>
         if (!File.Exists(full))
             return Results.Json(new { ok = false, error = "Fichier introuvable" });
 
-        var exe = @"C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe";
+        // Use configurable Acrobat path from settings
+        var pathsCfg = MongoDbHelper.GetSettings<PathsSettings>("paths");
+        var exe = (!string.IsNullOrWhiteSpace(pathsCfg?.AcrobatExePath))
+            ? pathsCfg!.AcrobatExePath
+            : @"C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe";
+
         if (!File.Exists(exe))
-            return Results.Json(new { ok = false, error = "Acrobat.exe introuvable" });
+            return Results.Json(new { ok = false, error = $"Acrobat.exe introuvable : {exe}. Configurez le chemin dans Paramétrage > Chemins d'accès." });
 
         var psi = new System.Diagnostics.ProcessStartInfo(exe, $"\"{full}\"")
         {
@@ -1874,9 +1879,13 @@ app.MapPost("/api/acrobat", () =>
 {
     try
     {
-        var exe = @"C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe";
+        var pathsCfg = MongoDbHelper.GetSettings<PathsSettings>("paths");
+        var exe = (!string.IsNullOrWhiteSpace(pathsCfg?.AcrobatExePath))
+            ? pathsCfg!.AcrobatExePath
+            : @"C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe";
+
         if (!File.Exists(exe))
-            return Results.Json(new { ok = false, error = "Acrobat.exe introuvable" });
+            return Results.Json(new { ok = false, error = $"Acrobat.exe introuvable : {exe}. Configurez le chemin dans Paramétrage > Chemins d'accès." });
 
         var psi = new System.Diagnostics.ProcessStartInfo(exe)
         {
@@ -2434,7 +2443,7 @@ app.MapGet("/api/config/paths", (HttpContext ctx) =>
 
         var cfg = MongoDbHelper.GetSettings<PathsSettings>("paths")
             ?? new PathsSettings { HotfoldersRoot = BackendUtils.HotfoldersRoot(), RecycleBinPath = recyclePath };
-        return Results.Json(new { ok = true, config = new { hotfoldersRoot = cfg.HotfoldersRoot, recycleBinPath = cfg.RecycleBinPath } });
+        return Results.Json(new { ok = true, config = new { hotfoldersRoot = cfg.HotfoldersRoot, recycleBinPath = cfg.RecycleBinPath, acrobatExePath = cfg.AcrobatExePath } });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
@@ -2457,6 +2466,8 @@ app.MapPut("/api/config/paths", async (HttpContext ctx) =>
             existing.HotfoldersRoot = hrEl.GetString()!;
         if (json.TryGetProperty("recycleBinPath", out var rbEl))
             existing.RecycleBinPath = rbEl.GetString() ?? existing.RecycleBinPath;
+        if (json.TryGetProperty("acrobatExePath", out var aeEl))
+            existing.AcrobatExePath = aeEl.GetString() ?? existing.AcrobatExePath;
 
         MongoDbHelper.UpsertSettings("paths", existing);
         return Results.Json(new { ok = true });
@@ -3030,6 +3041,53 @@ app.MapDelete("/api/config/direct-print-routing", async (HttpContext ctx) =>
 });
 
 // ======================================================
+// ROUTAGE PRISMA PREPARE (action "Ouvrir dans PrismaPrepare")
+// ======================================================
+
+app.MapGet("/api/config/prisma-prepare-routing", () =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("prismaPrepareRouting");
+        var docs = col.Find(new BsonDocument()).ToList();
+        var result = docs.Select(d => new {
+            typeTravail = d.Contains("typeTravail") ? d["typeTravail"].AsString : "",
+            hotfolderPath = d.Contains("hotfolderPath") ? d["hotfolderPath"].AsString : ""
+        });
+        return Results.Json(result);
+    }
+    catch (Exception ex) { return Results.Json(new object[0]); }
+});
+
+app.MapPut("/api/config/prisma-prepare-routing", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var typeTravail = json.TryGetProperty("typeTravail", out var tt) ? tt.GetString() ?? "" : "";
+        var hotfolderPath = json.TryGetProperty("hotfolderPath", out var hp) ? hp.GetString() ?? "" : "";
+        if (string.IsNullOrWhiteSpace(typeTravail)) return Results.Json(new { ok = false, error = "typeTravail manquant" });
+        var col = MongoDbHelper.GetCollection<BsonDocument>("prismaPrepareRouting");
+        var filter = Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail);
+        var doc = new BsonDocument { ["typeTravail"] = typeTravail, ["hotfolderPath"] = hotfolderPath };
+        col.ReplaceOne(filter, doc, new ReplaceOptions { IsUpsert = true });
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapDelete("/api/config/prisma-prepare-routing/{typeTravail}", (string typeTravail) =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("prismaPrepareRouting");
+        col.DeleteMany(Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail));
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
 // PRINT — Send to print (Fiery / PrismaSync / Direct)
 // ======================================================
 
@@ -3198,12 +3256,12 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
         }
         else if (action == "prisma-prepare")
         {
-            // Routage PrismaPrepare: typeTravail → hotfolder PrismaPrepare (reuse hotfolderRouting)
-            var hfCol = MongoDbHelper.GetCollection<BsonDocument>("hotfolderRouting");
-            var hfDoc = hfCol.Find(Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail)).FirstOrDefault();
-            if (hfDoc == null || !hfDoc.Contains("hotfolderPath") || string.IsNullOrEmpty(hfDoc["hotfolderPath"].AsString))
-                return Results.Json(new { ok = false, error = $"Aucun hotfolder PrismaPrepare configuré pour le type de travail \"{typeTravail}\". Configurez-le dans Paramétrage > Routage Hotfolder BAT PrismaPrepare." });
-            copyDestPath = hfDoc["hotfolderPath"].AsString;
+            // Routage PrismaPrepare: typeTravail → hotfolder PrismaPrepare (dedicated collection)
+            var ppCol = MongoDbHelper.GetCollection<BsonDocument>("prismaPrepareRouting");
+            var ppDoc = ppCol.Find(Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail)).FirstOrDefault();
+            if (ppDoc == null || !ppDoc.Contains("hotfolderPath") || string.IsNullOrEmpty(ppDoc["hotfolderPath"].AsString))
+                return Results.Json(new { ok = false, error = $"Aucun hotfolder PrismaPrepare configuré pour le type de travail \"{typeTravail}\". Configurez-le dans Paramétrage > Routage Impression (section 2)." });
+            copyDestPath = ppDoc["hotfolderPath"].AsString;
             tileFolder = "PrismaPrepare";
         }
         else if (action == "direct-print")
@@ -4724,6 +4782,9 @@ file class PathsSettings
 
     [JsonPropertyName("recycleBinPath")]
     public string RecycleBinPath { get; set; } = "";
+
+    [JsonPropertyName("acrobatExePath")]
+    public string AcrobatExePath { get; set; } = @"C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe";
 }
 
 file class FabricationImportsSettings

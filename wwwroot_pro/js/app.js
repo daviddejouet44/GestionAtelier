@@ -462,6 +462,19 @@ async function buildRapportView() {
       const card = document.createElement("div");
       card.style.cssText = "background:white;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:12px;";
 
+      const thumbDiv = document.createElement("div");
+      thumbDiv.style.cssText = "width:60px;height:70px;flex-shrink:0;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;";
+      if ((job.name || "").toLowerCase().endsWith(".pdf") && window._renderPdfThumbnail) {
+        thumbDiv.textContent = "";
+        const canvas = document.createElement("canvas");
+        canvas.style.cssText = "width:100%;height:100%;object-fit:contain;";
+        thumbDiv.appendChild(canvas);
+        window._renderPdfThumbnail(full, thumbDiv).catch(() => { thumbDiv.textContent = "PDF"; });
+      } else {
+        thumbDiv.textContent = "PDF";
+        thumbDiv.style.cssText += "font-weight:700;font-size:12px;color:#BC0024;font-family:monospace;";
+      }
+
       const badge = document.createElement("div");
       badge.style.cssText = "font-weight:700;font-size:13px;color:#BC0024;font-family:monospace;padding:4px 8px;background:#fee2e2;border-radius:4px;flex-shrink:0;";
       badge.textContent = "PDF";
@@ -483,6 +496,7 @@ async function buildRapportView() {
       btnFiche.textContent = "Fiche";
       btnFiche.onclick = () => { if (window._openFabrication) window._openFabrication(full); };
 
+      card.appendChild(thumbDiv);
       card.appendChild(badge);
       card.appendChild(info);
       card.appendChild(btnOpen);
@@ -503,28 +517,40 @@ async function buildKanbanSidebar() {
   sidebar.innerHTML = '<div style="padding:12px;color:#6b7280;font-size:12px;">Chargement...</div>';
 
   try {
-    // --- Section 1: Calendrier semaine compact ---
+    // --- Section 1: Calendrier semaine compact (lun-ven) ---
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+
+    // Local ISO date string (avoids UTC timezone offset bug)
+    function localIso(d) {
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+    const todayIso = localIso(today);
+
+    // Find Monday of the current week (Mon–Fri only)
+    const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+
     const weekDays = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
+    for (let i = 0; i < 5; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
       weekDays.push(d);
     }
 
     const weekJobsHtml = weekDays.map(d => {
-      const iso = d.toISOString().split("T")[0];
+      const iso = localIso(d);
       const jobs = Object.entries(deliveriesByPath)
         .filter(([k, v]) => !k.endsWith("_time") && v === iso)
         .map(([k]) => k);
       const label = d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
-      const isToday = iso === today.toISOString().split("T")[0];
+      const isToday = iso === todayIso;
       return `
         <div style="padding:6px 0;border-bottom:1px solid #f0f0f0;">
           <div style="font-size:11px;font-weight:${isToday ? '700' : '500'};color:${isToday ? '#BC0024' : '#374151'};">${label}</div>
           ${jobs.length > 0
-            ? jobs.map(j => `<div style="font-size:10px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;margin-top:2px;">📋 ${j}</div>`).join("")
+            ? jobs.map(j => `<div style="font-size:11px;background:#dbeafe;color:#1e40af;border-radius:6px;padding:3px 8px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;font-weight:500;" title="${j}">📄 ${j}</div>`).join("")
             : `<div style="font-size:10px;color:#9ca3af;margin-top:2px;">—</div>`}
         </div>
       `;
