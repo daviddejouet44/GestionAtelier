@@ -251,15 +251,20 @@ FileSystemWatcher? tempCopyWatcher = null;
                     if (!File.Exists(epreuvePath)) return;
 
                     // Wait for file to be fully written and not locked (retry loop)
+                    bool fileUnlocked = false;
                     for (int retry = 0; retry < 10; retry++)
                     {
                         try
                         {
+                            // Open and immediately close to verify file is not locked
                             using var fs = File.Open(epreuvePath, FileMode.Open, FileAccess.Read, FileShare.None);
+                            fileUnlocked = true;
                             break;
                         }
                         catch (IOException) { await Task.Delay(500); }
                     }
+                    if (!fileUnlocked)
+                        Console.WriteLine("[TEMP_COPY][WARN] Epreuve.pdf still locked after retries, proceeding anyway.");
                     if (!File.Exists(epreuvePath)) return;
 
                     // Find the OLDEST unprocessed batPending entry for TEMP_COPY (FIFO queue)
