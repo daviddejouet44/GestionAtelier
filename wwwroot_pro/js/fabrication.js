@@ -11,7 +11,7 @@ const fabSave = document.getElementById("fab-save");
 const fabPdf = document.getElementById("fab-pdf");
 const fabFinProd = document.getElementById("fab-finprod");
 const fabPrisma = document.getElementById("fab-prisma");
-const fabDelete = document.getElementById("fab-delete");
+
 const fabMoteur = document.getElementById("fab-moteur");
 const fabOperateur = document.getElementById("fab-operateur");
 const fabQuantite = document.getElementById("fab-quantite");
@@ -22,7 +22,7 @@ const fabClient = document.getElementById("fab-client");
 const fabNumeroDossier = document.getElementById("fab-numero-dossier");
 const fabNotes = document.getElementById("fab-notes");
 const fabDelai = document.getElementById("fab-delai");
-const fabFaconnage = document.getElementById("fab-faconnage");
+const fabFaconnageContainer = document.getElementById("fab-faconnage-container");
 const fabMedia1 = document.getElementById("fab-media1");
 const fabMedia2 = document.getElementById("fab-media2");
 const fabMedia3 = document.getElementById("fab-media3");
@@ -120,25 +120,6 @@ export function initFabrication() {
   if (fabPrisma) {
     fabPrisma.style.display = "none";
   }
-
-  if (fabDelete) {
-    fabDelete.onclick = async () => {
-      if (!fabCurrentPath) return;
-      if (!confirm("Supprimer ce fichier et le déplacer vers la corbeille ?")) return;
-      const r = await fetch("/api/jobs/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-        body: JSON.stringify({ fullPath: fabCurrentPath })
-      }).then(r => r.json()).catch(() => ({ ok: false }));
-      if (r.ok) {
-        fabModal.classList.add("hidden");
-        showNotification("✅ Fichier déplacé vers la corbeille", "success");
-        if (window._refreshKanban) await window._refreshKanban();
-      } else {
-        showNotification("❌ Erreur : " + (r.error || "Impossible de supprimer"), "error");
-      }
-    };
-  }
 }
 
 // ======================================================
@@ -202,7 +183,42 @@ export async function openFabrication(fullPath) {
   fabClient.value = d.client || "";
   if (fabNumeroDossier) { fabNumeroDossier.value = d.numeroDossier || ""; fabNumeroDossier.style.borderColor = ""; fabNumeroDossier.style.boxShadow = ""; }
   fabNotes.value = d.notes || "";
-  fabFaconnage.value = d.faconnage || "";
+
+  // Load façonnage options and render checkboxes
+  if (fabFaconnageContainer) {
+    fabFaconnageContainer.innerHTML = '<span style="color:#9ca3af;font-size:12px;">Chargement...</span>';
+    try {
+      const options = await fetch("/api/settings/faconnage-options", {
+        headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(r => r.json()).catch(() => []);
+      let checked = [];
+      if (Array.isArray(d.faconnage)) {
+        checked = d.faconnage;
+      } else if (typeof d.faconnage === 'string' && d.faconnage.startsWith('[')) {
+        try { checked = JSON.parse(d.faconnage); } catch {}
+      }
+      if (!Array.isArray(options) || options.length === 0) {
+        fabFaconnageContainer.innerHTML = '<span style="color:#9ca3af;font-size:12px;">Aucune option — importer un CSV dans Paramétrage &gt; Façonnage</span>';
+      } else {
+        fabFaconnageContainer.innerHTML = "";
+        options.forEach(opt => {
+          const label = document.createElement("label");
+          label.style.cssText = "display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;";
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.className = "fab-faconnage-cb";
+          cb.value = opt;
+          cb.checked = checked.includes(opt);
+          label.appendChild(cb);
+          label.appendChild(document.createTextNode(opt));
+          fabFaconnageContainer.appendChild(label);
+        });
+      }
+    } catch(e) {
+      fabFaconnageContainer.innerHTML = '<span style="color:#9ca3af;font-size:12px;">Erreur chargement options</span>';
+    }
+  }
+
   if (fabMedia1) fabMedia1.value = d.media1 || "";
   if (fabMedia2) fabMedia2.value = d.media2 || "";
   if (fabMedia3) fabMedia3.value = d.media3 || "";
@@ -276,7 +292,9 @@ export async function saveFabrication() {
     client: fabClient.value,
     numeroDossier: fabNumeroDossier ? fabNumeroDossier.value || null : null,
     notes: fabNotes.value,
-    faconnage: fabFaconnage.value,
+    faconnage: fabFaconnageContainer
+      ? Array.from(fabFaconnageContainer.querySelectorAll('.fab-faconnage-cb:checked')).map(cb => cb.value)
+      : [],
     delai: fabDelai.value || null,
     media1: fabMedia1 ? fabMedia1.value || null : null,
     media2: fabMedia2 ? fabMedia2.value || null : null,
