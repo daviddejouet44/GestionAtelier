@@ -72,6 +72,20 @@ async function sendBatComplet(fullPath) {
   const fileName = fnKey(path);
 
   try {
+    // Check serialization status — only one BAT at a time
+    const status = await fetch("/api/bat/serialization-status", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => null);
+
+    if (status && status.inProgress) {
+      const currentFile = status.currentFileName || "un fichier";
+      showNotification(
+        `⏳ BAT en cours de génération pour "${currentFile}". Veuillez patienter avant d'en envoyer un nouveau.`,
+        "warning"
+      );
+      return;
+    }
+
     const r = await fetch("/api/bat/copy-for-bat", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
@@ -83,6 +97,9 @@ async function sendBatComplet(fullPath) {
         `✅ BAT Complet : copié vers TEMP_COPY et hotfolder${r.hotfolder ? " (" + r.hotfolder + ")" : ""}. En attente de l'épreuve PrismaPrepare...`,
         "success"
       );
+    } else if (r.error === "bat_in_progress") {
+      const msg = r.message || "Un BAT est déjà en cours de génération. Veuillez patienter.";
+      showNotification(`⏳ ${msg}`, "warning");
     } else {
       showNotification("❌ BAT Complet : " + (r.error || "Erreur inconnue"), "error");
     }
