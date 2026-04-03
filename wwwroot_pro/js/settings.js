@@ -801,9 +801,10 @@ async function renderSettingsFabricationImports(panel) {
 // ======================================================
 async function renderSettingsBatCommand(panel) {
   let cmd = "";
+  let alertDelayHours = 48;
   try {
     const r = await fetch("/api/config/bat-command").then(r => r.json());
-    if (r.ok) cmd = r.command || "";
+    if (r.ok) { cmd = r.command || ""; alertDelayHours = r.batAlertDelayHours ?? 48; }
   } catch(e) { /* use default */ }
   panel.innerHTML = `
     <h3>Commande BAT</h3>
@@ -812,14 +813,21 @@ async function renderSettingsBatCommand(panel) {
       <label>Commande</label>
       <input type="text" id="bat-cmd-input" value="${(cmd || '').replace(/"/g,'&quot;')}" class="settings-input" style="width:100%;max-width:600px;" />
     </div>
+    <div class="settings-form-group" style="margin-top:16px;">
+      <label>Délai alerte BAT sans réponse (heures)</label>
+      <input type="number" id="bat-alert-delay-input" value="${alertDelayHours}" min="1" class="settings-input" style="width:120px;" />
+      <p style="color:#6b7280;font-size:12px;margin-top:4px;">Affiche une alerte dans le bandeau si un BAT reste sans validation/refus après ce délai. Défaut : 48h.</p>
+    </div>
     <button id="bat-cmd-save" class="btn btn-primary" style="margin-top:10px;">Enregistrer</button>
   `;
   document.getElementById("bat-cmd-save").onclick = async () => {
     const command = document.getElementById("bat-cmd-input").value;
+    const rawDelay = parseInt(document.getElementById("bat-alert-delay-input").value);
+    const batAlertDelayHours = (rawDelay > 0) ? rawDelay : 48;
     const r = await fetch("/api/config/bat-command", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ command })
+      body: JSON.stringify({ command, batAlertDelayHours })
     }).then(r => r.json());
     if (r.ok) showNotification("Commande BAT enregistrée", "success");
     else alert("Erreur");
