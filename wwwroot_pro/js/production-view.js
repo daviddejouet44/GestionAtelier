@@ -54,13 +54,27 @@ export async function initGlobalProductionView() {
 }
 
 async function buildGlobalProgressView(container) {
-  const jobs = await fetch("/api/production/summary", {
-    headers: { "Authorization": `Bearer ${authToken}` }
-  }).then(r => r.json()).catch(() => []);
+  const [jobs, assignments] = await Promise.all([
+    fetch("/api/production/summary", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => []),
+    fetch("/api/assignments", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => [])
+  ]);
 
   if (!Array.isArray(jobs) || jobs.length === 0) {
     container.innerHTML = '<div style="padding:40px;text-align:center;color:#9ca3af;">Aucun fichier en production actuellement.</div>';
     return;
+  }
+
+  // Build assignment lookup by fileName key
+  const assignMap = {};
+  if (Array.isArray(assignments)) {
+    assignments.forEach(a => {
+      const key = (a.fileName || (a.fullPath || "").split(/[/\\]/).pop() || "").toLowerCase();
+      if (key) assignMap[key] = a.operatorName || "";
+    });
   }
 
   container.innerHTML = `
@@ -80,11 +94,12 @@ async function buildGlobalProgressView(container) {
 
   // Header row
   const header = document.createElement("div");
-  header.style.cssText = "display:grid;grid-template-columns:1fr 1.5fr 1fr 2fr;gap:8px;padding:10px 16px;background:#f3f4f6;border-radius:8px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;";
+  header.style.cssText = "display:grid;grid-template-columns:1fr 1.5fr 1fr 1fr 2fr;gap:8px;padding:10px 16px;background:#f3f4f6;border-radius:8px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;";
   header.innerHTML = `
     <span>Numéro dossier</span>
     <span>Fichier</span>
     <span>Étape actuelle</span>
+    <span>Affecté à</span>
     <span>Avancement</span>
   `;
   table.appendChild(header);
@@ -93,9 +108,11 @@ async function buildGlobalProgressView(container) {
     const progress = getStageProgress(job.currentStage);
     const color = getStageColor(progress);
     const displayNum = job.numeroDossier || job.fileName || "—";
+    const fileKey = (job.fileName || "").toLowerCase();
+    const operatorName = assignMap[fileKey] || "";
 
     const row = document.createElement("div");
-    row.style.cssText = "display:grid;grid-template-columns:1fr 1.5fr 1fr 2fr;gap:8px;padding:12px 16px;background:white;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;align-items:center;";
+    row.style.cssText = "display:grid;grid-template-columns:1fr 1.5fr 1fr 1fr 2fr;gap:8px;padding:12px 16px;background:white;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;align-items:center;";
 
     row.innerHTML = `
       <div style="font-size:14px;font-weight:700;color:#111827;font-family:monospace;">${escapeHtml(displayNum)}</div>
@@ -103,6 +120,7 @@ async function buildGlobalProgressView(container) {
       <div>
         <span style="background:#dbeafe;color:#1e40af;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:600;white-space:nowrap;">${escapeHtml(getStageLabelDisplay(job.currentStage) || '—')}</span>
       </div>
+      <div style="font-size:12px;${operatorName ? 'color:#111827;font-weight:500;' : 'color:#9ca3af;font-style:italic;'}">${escapeHtml(operatorName || 'Non assigné')}</div>
       <div style="display:flex;align-items:center;gap:10px;">
         <div style="flex:1;background:#e5e7eb;border-radius:99px;height:10px;overflow:hidden;">
           <div style="width:${progress}%;background:${color};height:100%;border-radius:99px;transition:width 0.3s;"></div>

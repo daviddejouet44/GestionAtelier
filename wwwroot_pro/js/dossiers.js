@@ -46,10 +46,6 @@ export async function loadDossiersList() {
       return;
     }
 
-    listEl.innerHTML = "";
-    const grid = document.createElement("div");
-    grid.style.cssText = "display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;";
-
     // Fetch real-time file stage for each folder in parallel
     const stageResults = await Promise.all(folders.map(async folder => {
       const fn = folder.fileName || '';
@@ -62,12 +58,87 @@ export async function loadDossiersList() {
       } catch { return null; }
     }));
 
+    // Group folders by numeroDossier
+    const grouped = {}; // numeroDossier → [{ folder, realStage }]
+    const ungrouped = []; // folders with no numeroDossier
+
     folders.forEach((folder, idx) => {
-      const folderName = folder.fileName || '';
-      const displayTitle = folder.numeroDossier || folderName || 'Dossier';
-      const showSubtitle = folderName && folderName !== folder.numeroDossier && folderName.toLowerCase() !== 'production';
-      // Use real-time stage from file-stage scan, fallback to stored value
       const realStage = stageResults[idx] || folder.currentStage || 'Début de production';
+      const num = (folder.numeroDossier || '').trim();
+      if (num) {
+        if (!grouped[num]) grouped[num] = [];
+        grouped[num].push({ folder, realStage });
+      } else {
+        ungrouped.push({ folder, realStage });
+      }
+    });
+
+    listEl.innerHTML = "";
+    const grid = document.createElement("div");
+    grid.style.cssText = "display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;";
+
+    // STAGE ordering for "least advanced" logic
+    const STAGE_ORDER = [
+      "Début de production", "Corrections", "Corrections et fond perdu",
+      "Prêt pour impression", "BAT", "PrismaPrepare", "Fiery",
+      "Impression en cours", "Façonnage", "Fin de production"
+    ];
+    function stageIndex(s) {
+      if (!s) return 0;
+      const lower = s.toLowerCase();
+      // Prefer exact match first to avoid substring confusion
+      let idx = STAGE_ORDER.findIndex(k => k.toLowerCase() === lower);
+      if (idx < 0) idx = STAGE_ORDER.findIndex(k => lower.includes(k.toLowerCase()));
+      return idx >= 0 ? idx : 0;
+    }
+
+    // Render grouped dossiers
+    for (const [numeroDossier, items] of Object.entries(grouped)) {
+      // Global stage = least advanced among all files
+      const globalStage = items.reduce((worst, { realStage }) => {
+        return stageIndex(realStage) < stageIndex(worst) ? realStage : worst;
+      }, items[0].realStage);
+
+      const card = document.createElement("div");
+      card.className = "dossier-card";
+      card.style.cssText = "background: white; border: 1px solid #e5e7eb; border-radius: 16px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); cursor: pointer; transition: all 0.2s;";
+      card.onmouseenter = () => { card.style.boxShadow = "0 4px 20px rgba(0,0,0,0.15)"; card.style.transform = "translateY(-2px)"; };
+      card.onmouseleave = () => { card.style.boxShadow = "0 2px 12px rgba(0,0,0,0.08)"; card.style.transform = ""; };
+
+      const filesHtml = items.map(({ folder, realStage }) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid #f3f4f6;margin-top:4px;">
+          <span style="font-size:11px;color:#374151;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;" title="${folder.fileName || ''}">${folder.fileName || '—'}</span>
+          <span style="background:#f3f4f6;color:#6b7280;padding:2px 6px;border-radius:8px;font-size:10px;white-space:nowrap;margin-left:4px;">${getStageLabelDisplay(realStage)}</span>
+        </div>
+      `).join('');
+
+      card.innerHTML = `
+        <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:12px;min-width:0;">
+          <div style="min-width:0;flex:1;">
+            <div style="font-size:22px;font-weight:800;color:#111827;font-family:monospace;line-height:1.2;word-break:break-word;">${numeroDossier}</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:2px;">${items.length} fichier(s)</div>
+          </div>
+        </div>
+        <div style="margin-bottom:10px;">${filesHtml}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;" title="Étape la moins avancée">${getStageLabelDisplay(globalStage)}</span>
+          <span style="color:#6b7280;font-size:11px;">étape globale</span>
+        </div>
+      `;
+
+      // Click opens detail of first folder
+      card.onclick = (e) => {
+        if (e.target.closest(".btn-danger")) return;
+        openDossierDetail(items[0].folder._id || items[0].folder.id);
+      };
+
+      grid.appendChild(card);
+    }
+
+    // Render ungrouped dossiers (no numeroDossier)
+    ungrouped.forEach(({ folder, realStage }) => {
+      const folderName = folder.fileName || '';
+      const displayTitle = folderName || 'Dossier';
       const stageDisplayLabel = getStageLabelDisplay(realStage);
       const card = document.createElement("div");
       card.className = "dossier-card";
@@ -77,8 +148,7 @@ export async function loadDossiersList() {
       card.innerHTML = `
         <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:12px;min-width:0;">
           <div style="min-width:0;flex:1;">
-            <div style="font-size:22px;font-weight:800;color:#111827;font-family:monospace;line-height:1.2;word-break:break-word;">${displayTitle}</div>
-            ${showSubtitle ? `<div class="dossier-card-name" title="${folderName}" style="font-size:12px;color:#6b7280;margin-top:4px;word-break:break-word;">${folderName}</div>` : ''}
+            <div style="font-size:16px;font-weight:600;color:#374151;line-height:1.2;word-break:break-word;">${displayTitle}</div>
             <div style="font-size:12px;color:#6b7280;margin-top:2px;">${folder.createdAt ? new Date(folder.createdAt).toLocaleDateString("fr-FR") : ''}</div>
           </div>
         </div>

@@ -7,6 +7,10 @@ const searchInput = document.getElementById("searchInput");
 const sortBy = document.getElementById("sortBy");
 const _columnCache = {};
 
+// Kanban filter state
+let _kanbanDateFilter = ""; // ISO date string "YYYY-MM-DD" or ""
+let _kanbanOperatorFilter = ""; // "all", "mine", or operatorId string
+
 // ======================================================
 // BUILD KANBAN
 // ======================================================
@@ -134,10 +138,161 @@ export async function buildKanban() {
     kanbanDiv.parentNode?.insertBefore(summaryEl, kanbanDiv);
   }
 
+  // Filter bar (date + operator) — inserted after summary, before kanban
+  buildKanbanFilterBar();
+
   await refreshKanban();
 
   if (searchInput) searchInput.oninput = () => refreshKanban();
   if (sortBy) sortBy.onchange = () => refreshKanban();
+}
+
+// ======================================================
+// FILTER BAR
+// ======================================================
+function buildKanbanFilterBar() {
+  let filterBar = document.getElementById("kanban-filter-bar");
+  if (!filterBar) {
+    filterBar = document.createElement("div");
+    filterBar.id = "kanban-filter-bar";
+    filterBar.style.cssText = "display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 20px;background:#f9fafb;border-bottom:1px solid #e5e7eb;font-size:13px;";
+    // Insert after summary bar, before kanban
+    const summaryEl = document.getElementById("kanban-summary");
+    if (summaryEl && summaryEl.nextSibling) {
+      summaryEl.parentNode?.insertBefore(filterBar, summaryEl.nextSibling);
+    } else {
+      kanbanDiv.parentNode?.insertBefore(filterBar, kanbanDiv);
+    }
+  }
+  filterBar.innerHTML = "";
+
+  // Date filter
+  const dateLabel = document.createElement("label");
+  dateLabel.style.cssText = "font-weight:600;color:#374151;white-space:nowrap;";
+  dateLabel.textContent = "Filtrer par jour :";
+  filterBar.appendChild(dateLabel);
+
+  const dateInput = document.createElement("input");
+  dateInput.type = "date";
+  dateInput.id = "kanban-date-filter";
+  dateInput.className = "settings-input";
+  dateInput.style.cssText = "padding:4px 8px;font-size:13px;";
+  dateInput.value = _kanbanDateFilter;
+  dateInput.onchange = () => {
+    _kanbanDateFilter = dateInput.value;
+    Object.keys(_columnCache).forEach(k => delete _columnCache[k]);
+    updateFilterIndicator();
+    refreshKanban();
+  };
+  filterBar.appendChild(dateInput);
+
+  const btnToday = document.createElement("button");
+  btnToday.className = "btn btn-sm";
+  btnToday.textContent = "Aujourd'hui";
+  btnToday.onclick = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    dateInput.value = today;
+    _kanbanDateFilter = today;
+    Object.keys(_columnCache).forEach(k => delete _columnCache[k]);
+    updateFilterIndicator();
+    refreshKanban();
+  };
+  filterBar.appendChild(btnToday);
+
+  // Separator
+  const sep = document.createElement("span");
+  sep.style.cssText = "color:#d1d5db;margin:0 4px;";
+  sep.textContent = "|";
+  filterBar.appendChild(sep);
+
+  // Operator filter
+  const opLabel = document.createElement("label");
+  opLabel.style.cssText = "font-weight:600;color:#374151;white-space:nowrap;";
+  opLabel.textContent = "Opérateur :";
+  filterBar.appendChild(opLabel);
+
+  const opSelect = document.createElement("select");
+  opSelect.id = "kanban-operator-filter";
+  opSelect.className = "settings-input";
+  opSelect.style.cssText = "padding:4px 8px;font-size:13px;min-width:140px;";
+
+  const optAll = document.createElement("option");
+  optAll.value = "all";
+  optAll.textContent = "Tous";
+  opSelect.appendChild(optAll);
+
+  const optMine = document.createElement("option");
+  optMine.value = "mine";
+  optMine.textContent = "Mes jobs";
+  opSelect.appendChild(optMine);
+
+  // Load operators for admin/operator
+  fetch("/api/operators").then(r => r.json()).then(resp => {
+    const operators = resp.operators || [];
+    operators.forEach(op => {
+      const opt = document.createElement("option");
+      opt.value = op.id;
+      opt.textContent = op.name;
+      opSelect.appendChild(opt);
+    });
+    opSelect.value = _kanbanOperatorFilter || "all";
+  }).catch(() => {});
+
+  opSelect.value = _kanbanOperatorFilter || "all";
+  opSelect.onchange = () => {
+    _kanbanOperatorFilter = opSelect.value;
+    Object.keys(_columnCache).forEach(k => delete _columnCache[k]);
+    updateFilterIndicator();
+    refreshKanban();
+  };
+  filterBar.appendChild(opSelect);
+
+  // Reset all filters button
+  const btnReset = document.createElement("button");
+  btnReset.id = "kanban-filter-reset";
+  btnReset.className = "btn btn-sm";
+  btnReset.textContent = "Réinitialiser";
+  btnReset.style.display = (_kanbanDateFilter || (_kanbanOperatorFilter && _kanbanOperatorFilter !== "all")) ? "inline-block" : "none";
+  btnReset.onclick = () => {
+    _kanbanDateFilter = "";
+    _kanbanOperatorFilter = "all";
+    dateInput.value = "";
+    opSelect.value = "all";
+    Object.keys(_columnCache).forEach(k => delete _columnCache[k]);
+    updateFilterIndicator();
+    refreshKanban();
+  };
+  filterBar.appendChild(btnReset);
+
+  // Filter indicator
+  const indicator = document.createElement("span");
+  indicator.id = "kanban-filter-indicator";
+  indicator.style.cssText = "font-size:12px;color:#6b7280;margin-left:4px;";
+  filterBar.appendChild(indicator);
+
+  updateFilterIndicator();
+}
+
+function updateFilterIndicator() {
+  const indicator = document.getElementById("kanban-filter-indicator");
+  const resetBtn = document.getElementById("kanban-filter-reset");
+  if (!indicator) return;
+
+  const parts = [];
+  if (_kanbanDateFilter) {
+    parts.push(`Jour : ${new Date(_kanbanDateFilter + "T00:00:00").toLocaleDateString("fr-FR")}`);
+  }
+  if (_kanbanOperatorFilter && _kanbanOperatorFilter !== "all") {
+    parts.push(_kanbanOperatorFilter === "mine" ? "Mes jobs" : "Opérateur sélectionné");
+  }
+
+  if (parts.length > 0) {
+    indicator.textContent = "Filtré : " + parts.join(" · ");
+    if (resetBtn) resetBtn.style.display = "inline-block";
+  } else {
+    indicator.textContent = "";
+    if (resetBtn) resetBtn.style.display = "none";
+  }
 }
 
 // ======================================================
@@ -208,62 +363,103 @@ export async function updateKanbanSummary() {
 }
 
 // ======================================================
-// DIALOG IMPRESSION
+// DIALOG IMPRESSION — remplacé par openActionsDropdown
+// (conservé pour compatibilité)
 // ======================================================
 export async function openPrintDialog(fullPath) {
-  const fab = await fetch("/api/fabrication?fileName=" + encodeURIComponent(fnKey(fullPath))).then(r=>r.json()).catch(()=>({}));
+  openActionsDropdown(null, fullPath);
+}
 
-  const modal = document.createElement("div");
-  modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;";
-  modal.innerHTML = `
-    <div style="background:white;border-radius:16px;padding:32px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-      <h3 style="margin:0 0 20px;font-size:18px;color:#111;">Options d'impression</h3>
-      <p style="color:#6b7280;font-size:13px;margin-bottom:20px;">Fichier: <strong>${fullPath.split("\\").pop()}</strong></p>
-      <div style="display:flex;flex-direction:column;gap:10px;">
-        <button class="btn btn-primary print-opt" data-action="controller">Envoyer vers le contrôleur</button>
-        <button class="btn btn-primary print-opt" data-action="prisma">Envoyer vers PrismaPrepare</button>
-        <button class="btn btn-primary print-opt" data-action="print">Envoyer en impression</button>
-        <button class="btn btn-primary print-opt" data-action="modify">Modification</button>
-        <button class="btn btn-primary print-opt" data-action="fiery">Envoyer sur Fiery</button>
-      </div>
-      <button id="print-dialog-close" class="btn" style="margin-top:16px;width:100%;">Annuler</button>
-    </div>
+// ======================================================
+// ACTIONS DROPDOWN (En attente)
+// ======================================================
+export async function openActionsDropdown(btnEl, fullPath) {
+  document.querySelectorAll(".actions-dropdown").forEach(d => d.remove());
+
+  const dropdown = document.createElement("div");
+  dropdown.className = "actions-dropdown";
+  dropdown.style.cssText = `
+    position: fixed; background: white; border: 1px solid #e5e7eb;
+    border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+    z-index: 9999; min-width: 220px; overflow: hidden; padding: 4px 0;
   `;
 
-  const printActions = {
-    controller: { endpoint: "/api/commands/send-controller" },
-    prisma: { endpoint: "/api/commands/send-prisma" },
-    print: { endpoint: "/api/commands/send-print" },
-    modify: { endpoint: "/api/commands/modify" },
-    fiery: { endpoint: "/api/commands/send-fiery" }
-  };
+  const items = [
+    { label: "Envoyer en impression", action: "send-to-print" },
+    { label: "Ouvrir dans PrismaPrepare", action: "open-prisma" },
+    { label: "Impression directe", action: "direct-print" }
+  ];
 
-  modal.querySelectorAll(".print-opt").forEach(btn => {
-    btn.onclick = async () => {
-      const action = btn.dataset.action;
-      const cfg = printActions[action];
-      try {
-        const r = await fetch(cfg.endpoint, {
-          method: "POST",
-          headers: {"Content-Type":"application/json"},
-          body: JSON.stringify({ filePath: fullPath, product: fab.typeTravail || "", fabricationData: fab })
-        }).then(r => r.json()).catch(()=>({ok:false,error:"Erreur réseau"}));
-
-        if (r.ok) {
-          showNotification(`✅ Action lancée`, "success");
-          modal.remove();
-          await refreshKanban();
-        } else {
-          showNotification("❌ " + (r.error || "Erreur"), "error");
-        }
-      } catch(e) {
-        showNotification("❌ " + e.message, "error");
-      }
+  items.forEach(item => {
+    const el = document.createElement("div");
+    el.style.cssText = "padding: 10px 16px; cursor: pointer; font-size: 13px; color: #111827; transition: background 0.15s; white-space: nowrap;";
+    el.textContent = item.label;
+    el.onmouseenter = () => el.style.background = "#f3f4f6";
+    el.onmouseleave = () => el.style.background = "";
+    el.onclick = async () => {
+      dropdown.remove();
+      await handlePrintAction(item.action, fullPath);
     };
+    dropdown.appendChild(el);
   });
 
-  modal.querySelector("#print-dialog-close").onclick = () => modal.remove();
-  document.body.appendChild(modal);
+  document.body.appendChild(dropdown);
+
+  // Position relative to button if provided, else center
+  if (btnEl) {
+    const rect = btnEl.getBoundingClientRect();
+    const dropW = 220;
+    let left = rect.left + window.scrollX;
+    if (left + dropW > window.innerWidth) left = window.innerWidth - dropW - 8;
+    dropdown.style.top = (rect.bottom + window.scrollY + 4) + "px";
+    dropdown.style.left = left + "px";
+  } else {
+    dropdown.style.top = "50%";
+    dropdown.style.left = "50%";
+    dropdown.style.transform = "translate(-50%, -50%)";
+  }
+
+  setTimeout(() => {
+    document.addEventListener("click", function closeDropdown(e) {
+      if (!dropdown.contains(e.target)) {
+        dropdown.remove();
+        document.removeEventListener("click", closeDropdown);
+      }
+    });
+  }, 10);
+}
+
+async function handlePrintAction(action, fullPath) {
+  const fileName = fnKey(fullPath);
+
+  if (action === "open-prisma") {
+    // Open in PrismaPrepare using configured executable/URL
+    try {
+      const r = await fetch("/api/jobs/open-in-prismaprepare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+        body: JSON.stringify({ fileName, fullPath })
+      }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+      if (r.ok) showNotification("✅ Ouverture dans PrismaPrepare lancée", "success");
+      else showNotification("❌ " + (r.error || "Erreur"), "error");
+    } catch(e) { showNotification("❌ " + e.message, "error"); }
+    return;
+  }
+
+  try {
+    const r = await fetch("/api/jobs/send-to-print", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ fileName, fullPath, action })
+    }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+
+    if (r.ok) {
+      showNotification(`✅ ${r.message || "Envoi effectué"}`, "success");
+      await refreshKanban();
+    } else {
+      showNotification("❌ " + (r.error || "Erreur"), "error");
+    }
+  } catch(e) { showNotification("❌ " + e.message, "error"); }
 }
 
 // ======================================================
@@ -280,7 +476,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       return (j.name || '') + '|' + j.modified + '|' + j.size
         + '|' + ((assignmentsByPath[fn] || {}).operatorName || '')
         + '|' + (deliveriesByPath[fn] || '');
-    }));
+    })) + '|' + _kanbanDateFilter + '|' + (_kanbanOperatorFilter || 'all');
     const cacheKey = folderName + '|' + q + '|' + sort;
     if (_columnCache[cacheKey] === fingerprint) return;
     _columnCache[cacheKey] = fingerprint;
@@ -289,8 +485,40 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
     drop.innerHTML = "";
 
     let filtered = jobs;
+
+    // Text search filter
     if (q) {
-      filtered = jobs.filter(j => (j.name || "").toLowerCase().includes(q.toLowerCase()));
+      filtered = filtered.filter(j => (j.name || "").toLowerCase().includes(q.toLowerCase()));
+    }
+
+    // Date filter — only show jobs whose deliveryDate matches selected date
+    if (_kanbanDateFilter) {
+      filtered = filtered.filter(j => {
+        const fn = fnKey(j.fullPath || j.name || '');
+        const iso = deliveriesByPath[fn];
+        return iso && iso === _kanbanDateFilter;
+      });
+    }
+
+    // Operator filter
+    if (_kanbanOperatorFilter && _kanbanOperatorFilter !== "all") {
+      filtered = filtered.filter(j => {
+        const fn = fnKey(j.fullPath || j.name || '');
+        const asgn = assignmentsByPath[fn];
+        if (!asgn) return false;
+        if (_kanbanOperatorFilter === "mine") {
+          // Only match if current user has a non-empty identity
+          const myId = currentUser?.id || "";
+          const myLogin = currentUser?.login || "";
+          const myName = currentUser?.name || "";
+          if (!myId && !myLogin && !myName) return false;
+          return (myId && asgn.operatorId === myId)
+            || (myLogin && asgn.operatorId === myLogin)
+            || (myName && asgn.operatorName === myName)
+            || (myLogin && asgn.operatorName === myLogin);
+        }
+        return asgn.operatorId === _kanbanOperatorFilter;
+      });
     }
 
     if (sort === "name_asc") filtered.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -396,8 +624,8 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
 
         const btnPrint = document.createElement("button");
         btnPrint.className = "btn btn-sm btn-primary";
-        btnPrint.innerHTML = "Actions";
-        btnPrint.onclick = () => openPrintDialog(full);
+        btnPrint.innerHTML = "Actions ▾";
+        btnPrint.onclick = (e) => { e.stopPropagation(); openActionsDropdown(btnPrint, full); };
         actions.appendChild(btnPrint);
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {

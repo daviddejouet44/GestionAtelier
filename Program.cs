@@ -2480,7 +2480,7 @@ app.MapGet("/api/config/integrations", (HttpContext ctx) =>
 
         var cfg = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations")
             ?? new IntegrationsSettings();
-        return Results.Json(new { ok = true, config = new { preparePath = cfg.PreparePath, fieryPath = cfg.FieryPath, tempCopyPath = cfg.TempCopyPath } });
+        return Results.Json(new { ok = true, config = new { preparePath = cfg.PreparePath, fieryPath = cfg.FieryPath, tempCopyPath = cfg.TempCopyPath, prismaPrepareExePath = cfg.PrismaPrepareExePath } });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
@@ -2502,6 +2502,7 @@ app.MapPut("/api/config/integrations", async (HttpContext ctx) =>
         if (json.TryGetProperty("preparePath", out var pp)) existing.PreparePath = pp.GetString() ?? "";
         if (json.TryGetProperty("fieryPath", out var fp)) existing.FieryPath = fp.GetString() ?? "";
         if (json.TryGetProperty("tempCopyPath", out var tcp)) existing.TempCopyPath = tcp.GetString() ?? "";
+        if (json.TryGetProperty("prismaPrepareExePath", out var ppe)) existing.PrismaPrepareExePath = ppe.GetString() ?? "";
 
         MongoDbHelper.UpsertSettings("integrations", existing);
         return Results.Json(new { ok = true });
@@ -2721,6 +2722,318 @@ app.MapDelete("/api/config/hotfolder-routing/{typeTravail}", (string typeTravail
         return Results.Json(new { ok = true });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// CONFIG — Fiery Routing (type de travail → hotfolder Fiery)
+// ======================================================
+
+app.MapGet("/api/config/fiery-routing", () =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("fieryRouting");
+        var docs = col.Find(FilterDefinition<BsonDocument>.Empty).ToList()
+            .Select(d => new
+            {
+                typeTravail = d.Contains("typeTravail") ? d["typeTravail"].AsString : "",
+                hotfolderPath = d.Contains("hotfolderPath") ? d["hotfolderPath"].AsString : ""
+            })
+            .Where(r => !string.IsNullOrEmpty(r.typeTravail))
+            .ToList();
+        return Results.Json(docs);
+    }
+    catch (Exception ex) { Console.WriteLine($"[ERR] fiery-routing GET: {ex.Message}"); return Results.Json(new object[0]); }
+});
+
+app.MapPut("/api/config/fiery-routing", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var typeTravail = json.TryGetProperty("typeTravail", out var tt) ? tt.GetString() ?? "" : "";
+        var hotfolderPath = json.TryGetProperty("hotfolderPath", out var hp) ? hp.GetString() ?? "" : "";
+        if (string.IsNullOrEmpty(typeTravail))
+            return Results.Json(new { ok = false, error = "typeTravail manquant" });
+        var col = MongoDbHelper.GetCollection<BsonDocument>("fieryRouting");
+        var filter = Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail);
+        var doc = new BsonDocument { ["typeTravail"] = typeTravail, ["hotfolderPath"] = hotfolderPath };
+        col.ReplaceOne(filter, doc, new ReplaceOptions { IsUpsert = true });
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapDelete("/api/config/fiery-routing/{typeTravail}", (string typeTravail) =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("fieryRouting");
+        col.DeleteMany(Builders<BsonDocument>.Filter.Eq("typeTravail", Uri.UnescapeDataString(typeTravail)));
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// CONFIG — PrismaSync Routing (presse/moteur → workflow)
+// ======================================================
+
+app.MapGet("/api/config/prismasync-routing", () =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("prismaSyncRouting");
+        var docs = col.Find(FilterDefinition<BsonDocument>.Empty).ToList()
+            .Select(d => new
+            {
+                printEngine = d.Contains("printEngine") ? d["printEngine"].AsString : "",
+                workflowPath = d.Contains("workflowPath") ? d["workflowPath"].AsString : ""
+            })
+            .Where(r => !string.IsNullOrEmpty(r.printEngine))
+            .ToList();
+        return Results.Json(docs);
+    }
+    catch (Exception ex) { Console.WriteLine($"[ERR] prismasync-routing GET: {ex.Message}"); return Results.Json(new object[0]); }
+});
+
+app.MapPut("/api/config/prismasync-routing", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var printEngine = json.TryGetProperty("printEngine", out var pe) ? pe.GetString() ?? "" : "";
+        var workflowPath = json.TryGetProperty("workflowPath", out var wp) ? wp.GetString() ?? "" : "";
+        if (string.IsNullOrEmpty(printEngine))
+            return Results.Json(new { ok = false, error = "printEngine manquant" });
+        var col = MongoDbHelper.GetCollection<BsonDocument>("prismaSyncRouting");
+        var filter = Builders<BsonDocument>.Filter.Eq("printEngine", printEngine);
+        var doc = new BsonDocument { ["printEngine"] = printEngine, ["workflowPath"] = workflowPath };
+        col.ReplaceOne(filter, doc, new ReplaceOptions { IsUpsert = true });
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapDelete("/api/config/prismasync-routing/{printEngine}", (string printEngine) =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("prismaSyncRouting");
+        col.DeleteMany(Builders<BsonDocument>.Filter.Eq("printEngine", Uri.UnescapeDataString(printEngine)));
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// CONFIG — Direct Print Routing (type de travail + moteur → hotfolder)
+// ======================================================
+
+app.MapGet("/api/config/direct-print-routing", () =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("directPrintRouting");
+        var docs = col.Find(FilterDefinition<BsonDocument>.Empty).ToList()
+            .Select(d => new
+            {
+                typeTravail = d.Contains("typeTravail") ? d["typeTravail"].AsString : "",
+                printEngine = d.Contains("printEngine") ? d["printEngine"].AsString : "",
+                hotfolderPath = d.Contains("hotfolderPath") ? d["hotfolderPath"].AsString : ""
+            })
+            .Where(r => !string.IsNullOrEmpty(r.typeTravail))
+            .ToList();
+        return Results.Json(docs);
+    }
+    catch (Exception ex) { Console.WriteLine($"[ERR] direct-print-routing GET: {ex.Message}"); return Results.Json(new object[0]); }
+});
+
+app.MapPut("/api/config/direct-print-routing", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var typeTravail = json.TryGetProperty("typeTravail", out var tt) ? tt.GetString() ?? "" : "";
+        var printEngine = json.TryGetProperty("printEngine", out var pe) ? pe.GetString() ?? "" : "";
+        var hotfolderPath = json.TryGetProperty("hotfolderPath", out var hp) ? hp.GetString() ?? "" : "";
+        if (string.IsNullOrEmpty(typeTravail))
+            return Results.Json(new { ok = false, error = "typeTravail manquant" });
+        var col = MongoDbHelper.GetCollection<BsonDocument>("directPrintRouting");
+        var filter = Builders<BsonDocument>.Filter.And(
+            Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail),
+            Builders<BsonDocument>.Filter.Eq("printEngine", printEngine));
+        var doc = new BsonDocument { ["typeTravail"] = typeTravail, ["printEngine"] = printEngine, ["hotfolderPath"] = hotfolderPath };
+        col.ReplaceOne(filter, doc, new ReplaceOptions { IsUpsert = true });
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapDelete("/api/config/direct-print-routing", async (HttpContext ctx) =>
+{
+    try
+    {
+        var typeTravail = ctx.Request.Query["typeTravail"].ToString();
+        var printEngine = ctx.Request.Query["printEngine"].ToString();
+        var col = MongoDbHelper.GetCollection<BsonDocument>("directPrintRouting");
+        var filter = Builders<BsonDocument>.Filter.And(
+            Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail),
+            Builders<BsonDocument>.Filter.Eq("printEngine", printEngine));
+        col.DeleteMany(filter);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// PRINT — Send to print (Fiery / PrismaSync / Direct)
+// ======================================================
+
+app.MapPost("/api/jobs/send-to-print", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var fileName = json.TryGetProperty("fileName", out var fn) ? fn.GetString() ?? "" : "";
+        var fullPath = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
+        var action = json.TryGetProperty("action", out var ac) ? ac.GetString() ?? "" : "";
+
+        // Find the actual file if fullPath not provided or doesn't exist
+        if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
+        {
+            var hotRoot = BackendUtils.HotfoldersRoot();
+            if (!string.IsNullOrEmpty(fileName))
+            {
+                var found = Directory.GetFiles(hotRoot, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (found != null) fullPath = found;
+            }
+        }
+
+        if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
+            return Results.Json(new { ok = false, error = $"Fichier introuvable : {fileName}" });
+
+        // Get fabrication data for routing
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+        BsonDocument? fabDoc = null;
+        if (!string.IsNullOrEmpty(fileName))
+            fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", fileName)).FirstOrDefault();
+        if (fabDoc == null && !string.IsNullOrEmpty(fullPath))
+            fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fullPath", fullPath)).FirstOrDefault();
+
+        var typeTravail = fabDoc != null && fabDoc.Contains("typeTravail") ? fabDoc["typeTravail"].AsString : "";
+        var moteurImpression = fabDoc != null && fabDoc.Contains("moteurImpression") ? fabDoc["moteurImpression"].AsString : "";
+        if (string.IsNullOrEmpty(moteurImpression) && fabDoc != null && fabDoc.Contains("printEngine"))
+            moteurImpression = fabDoc["printEngine"].AsString;
+
+        string destPath;
+
+        if (action == "send-to-print")
+        {
+            // Route to Fiery or PrismaSync based on print engine
+            var engineLower = (moteurImpression ?? "").ToLowerInvariant();
+            if (engineLower.Contains("fiery"))
+            {
+                // Fiery routing: typeTravail → hotfolder
+                var fieryCol = MongoDbHelper.GetCollection<BsonDocument>("fieryRouting");
+                var fieryDoc = fieryCol.Find(Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail)).FirstOrDefault();
+                if (fieryDoc == null || !fieryDoc.Contains("hotfolderPath") || string.IsNullOrEmpty(fieryDoc["hotfolderPath"].AsString))
+                    return Results.Json(new { ok = false, error = $"Aucun hotfolder Fiery configuré pour le type de travail \"{typeTravail}\". Configurez-le dans Paramétrage > Routage Impression." });
+                destPath = fieryDoc["hotfolderPath"].AsString;
+            }
+            else
+            {
+                // PrismaSync routing: printEngine → workflow
+                var syncCol = MongoDbHelper.GetCollection<BsonDocument>("prismaSyncRouting");
+                var syncDoc = syncCol.Find(Builders<BsonDocument>.Filter.Eq("printEngine", moteurImpression)).FirstOrDefault();
+                if (syncDoc == null || !syncDoc.Contains("workflowPath") || string.IsNullOrEmpty(syncDoc["workflowPath"].AsString))
+                    return Results.Json(new { ok = false, error = $"Aucun workflow PrismaSync configuré pour le moteur \"{moteurImpression}\". Configurez-le dans Paramétrage > Routage Impression." });
+                destPath = syncDoc["workflowPath"].AsString;
+            }
+        }
+        else if (action == "direct-print")
+        {
+            // Direct print routing: typeTravail + printEngine → hotfolder
+            var dpCol = MongoDbHelper.GetCollection<BsonDocument>("directPrintRouting");
+            var dpFilter = Builders<BsonDocument>.Filter.And(
+                Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail),
+                Builders<BsonDocument>.Filter.Eq("printEngine", moteurImpression));
+            var dpDoc = dpCol.Find(dpFilter).FirstOrDefault();
+            // Fallback: match only typeTravail if combined not found
+            if (dpDoc == null)
+                dpDoc = dpCol.Find(Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail)).FirstOrDefault();
+            if (dpDoc == null || !dpDoc.Contains("hotfolderPath") || string.IsNullOrEmpty(dpDoc["hotfolderPath"].AsString))
+                return Results.Json(new { ok = false, error = $"Aucun hotfolder d'impression directe configuré pour le type \"{typeTravail}\" / moteur \"{moteurImpression}\". Configurez-le dans Paramétrage > Routage Impression." });
+            destPath = dpDoc["hotfolderPath"].AsString;
+        }
+        else
+        {
+            return Results.Json(new { ok = false, error = $"Action inconnue : {action}" });
+        }
+
+        if (!Directory.Exists(destPath))
+            Directory.CreateDirectory(destPath);
+
+        var dest = Path.Combine(destPath, Path.GetFileName(fullPath));
+        File.Copy(fullPath, dest, overwrite: true);
+        Console.WriteLine($"[PRINT] {action}: copié vers {dest}");
+
+        return Results.Json(new { ok = true, message = $"Fichier envoyé vers {destPath}", destPath });
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ERR] send-to-print: {ex.Message}");
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// PRINT — Open in PrismaPrepare
+// ======================================================
+
+app.MapPost("/api/jobs/open-in-prismaprepare", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var fileName = json.TryGetProperty("fileName", out var fn) ? fn.GetString() ?? "" : "";
+        var fullPath = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
+
+        // Find the actual file
+        if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
+        {
+            var hotRoot = BackendUtils.HotfoldersRoot();
+            if (!string.IsNullOrEmpty(fileName))
+            {
+                var found = Directory.GetFiles(hotRoot, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (found != null) fullPath = found;
+            }
+        }
+
+        if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
+            return Results.Json(new { ok = false, error = $"Fichier introuvable : {fileName}" });
+
+        // Get PrismaPrepare path from settings
+        var integCfg = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations") ?? new IntegrationsSettings();
+        var prismaPrepPath = integCfg.PrismaPrepareExePath ?? "";
+
+        if (string.IsNullOrWhiteSpace(prismaPrepPath))
+            return Results.Json(new { ok = false, error = "Chemin PrismaPrepare non configuré dans Paramétrage > Routage Impression." });
+
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = prismaPrepPath,
+            Arguments = $"\"{fullPath}\"",
+            UseShellExecute = true
+        });
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ERR] open-in-prismaprepare: {ex.Message}");
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
 });
 
 // ======================================================
@@ -4172,6 +4485,9 @@ file class IntegrationsSettings
 
     [JsonPropertyName("tempCopyPath")]
     public string TempCopyPath { get; set; } = "";
+
+    [JsonPropertyName("prismaPrepareExePath")]
+    public string PrismaPrepareExePath { get; set; } = "";
 }
 
 // ======================================================
