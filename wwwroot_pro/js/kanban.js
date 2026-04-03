@@ -377,9 +377,10 @@ export async function openActionsDropdown(btnEl, fullPath) {
   `;
 
   const items = [
-    { label: "Envoyer en impression", action: "send-to-print" },
-    { label: "Ouvrir dans PrismaPrepare", action: "open-prisma" },
-    { label: "Impression directe", action: "direct-print" }
+    { label: "Envoyer vers PrismaSync", action: "prismasync" },
+    { label: "Ouvrir dans PrismaPrepare", action: "prisma-prepare" },
+    { label: "Impression directe", action: "direct-print" },
+    { label: "Envoyer dans Fiery", action: "fiery" }
   ];
 
   items.forEach(item => {
@@ -424,22 +425,8 @@ export async function openActionsDropdown(btnEl, fullPath) {
 async function handlePrintAction(action, fullPath) {
   const fileName = fnKey(fullPath);
 
-  if (action === "open-prisma") {
-    // Open in PrismaPrepare using configured executable/URL
-    try {
-      const r = await fetch("/api/jobs/open-in-prismaprepare", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-        body: JSON.stringify({ fileName, fullPath })
-      }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
-      if (r.ok) showNotification("✅ Ouverture dans PrismaPrepare lancée", "success");
-      else showNotification("❌ " + (r.error || "Erreur"), "error");
-    } catch(e) { showNotification("❌ " + e.message, "error"); }
-    return;
-  }
-
   try {
-    const r = await fetch("/api/jobs/send-to-print", {
+    const r = await fetch("/api/jobs/send-to-action", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
       body: JSON.stringify({ fileName, fullPath, action })

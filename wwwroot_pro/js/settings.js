@@ -20,14 +20,13 @@ export async function initSettingsView() {
         <button class="settings-tab active" data-tab="accounts">Comptes &amp; Rôles</button>
         <button class="settings-tab" data-tab="schedule">Plages horaires</button>
         <button class="settings-tab" data-tab="paths">Chemins d'accès</button>
-        <button class="settings-tab" data-tab="integrations">Prepare / Fiery</button>
+        <button class="settings-tab" data-tab="integrations">Workflow BAT</button>
         <button class="settings-tab" data-tab="print-engines">Moteurs d'impression</button>
         <button class="settings-tab" data-tab="work-types">Types de travail</button>
-        <button class="settings-tab" data-tab="hotfolder-routing">Routage Hotfolder</button>
+        <button class="settings-tab" data-tab="hotfolder-routing">Routage Hotfolder BAT PrismaPrepare</button>
         <button class="settings-tab" data-tab="print-routing">Routage Impression</button>
         <button class="settings-tab" data-tab="fabrication-imports">Imports fiche</button>
         <button class="settings-tab" data-tab="bat-command">Commande BAT</button>
-        <button class="settings-tab" data-tab="action-buttons">Boutons d'action</button>
         <button class="settings-tab" data-tab="faconnage">Façonnage</button>
         <button class="settings-tab" data-tab="logs">Logs</button>
       </div>
@@ -41,7 +40,6 @@ export async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-print-routing"></div>
       <div class="settings-panel hidden" id="settings-panel-fabrication-imports"></div>
       <div class="settings-panel hidden" id="settings-panel-bat-command"></div>
-      <div class="settings-panel hidden" id="settings-panel-action-buttons"></div>
       <div class="settings-panel hidden" id="settings-panel-faconnage"></div>
       <div class="settings-panel hidden" id="settings-panel-logs"></div>
     </div>
@@ -77,7 +75,6 @@ export async function loadSettingsPanel(tabName, panelEl) {
     case "print-routing": await renderSettingsPrintRouting(panelEl); break;
     case "fabrication-imports": await renderSettingsFabricationImports(panelEl); break;
     case "bat-command": await renderSettingsBatCommand(panelEl); break;
-    case "action-buttons": await renderSettingsActionButtons(panelEl); break;
     case "faconnage": await renderSettingsFaconnage(panelEl); break;
     case "logs": await renderSettingsLogs(panelEl); break;
   }
@@ -373,59 +370,27 @@ async function renderSettingsPaths(panel) {
 }
 
 // ======================================================
-// PREPARE / FIERY
+// WORKFLOW BAT
 // ======================================================
 async function renderSettingsIntegrations(panel) {
-  panel.innerHTML = `<h3>Prepare / Fiery — Chemins d'accès</h3><p style="color:#6b7280;">Chargement...</p>`;
-  let cfg = { preparePath: "", fieryPath: "", tempCopyPath: "" };
-  let cmdCfg = { prismaCommand: "" };
+  panel.innerHTML = `<h3>Workflow BAT</h3><p style="color:#6b7280;">Chargement...</p>`;
+  let cfg = { tempCopyPath: "" };
   try {
     const resp = await fetch("/api/config/integrations", {
       headers: { "Authorization": `Bearer ${authToken}` }
     }).then(r => r.json());
     if (resp.ok && resp.config) cfg = resp.config;
   } catch(e) { /* use defaults */ }
-  try {
-    const resp2 = await fetch("/api/config/commands", {
-      headers: { "Authorization": `Bearer ${authToken}` }
-    }).then(r => r.json());
-    if (resp2.ok && resp2.config) cmdCfg = resp2.config;
-  } catch(e) { /* use defaults */ }
 
   panel.innerHTML = `
-    <h3>Prepare / Fiery — Chemins d'accès</h3>
+    <h3>Workflow BAT</h3>
 
     <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 20px; background: #f9fafb;">
-      <h4 style="margin-top: 0; margin-bottom: 12px;">Prepare</h4>
-      <div class="settings-form-group">
-        <label>Chemin vers Prepare</label>
-        <input type="text" id="int-prepare" value="${cfg.preparePath || ''}" class="settings-input" style="width:100%;max-width:500px;" placeholder="Ex: C:\\Prepare\\prepare.exe" />
-      </div>
-    </div>
-
-    <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 20px; background: #f9fafb;">
-      <h4 style="margin-top: 0; margin-bottom: 12px;">Fiery</h4>
-      <div class="settings-form-group">
-        <label>Chemin vers Fiery</label>
-        <input type="text" id="int-fiery" value="${cfg.fieryPath || ''}" class="settings-input" style="width:100%;max-width:500px;" placeholder="Ex: C:\\Fiery\\fiery.exe" />
-      </div>
-    </div>
-
-    <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 20px; background: #f9fafb;">
-      <h4 style="margin-top: 0; margin-bottom: 12px;">Workflow BAT — Dossier temporaire TEMP_COPY</h4>
+      <h4 style="margin-top: 0; margin-bottom: 12px;">Dossier temporaire TEMP_COPY</h4>
       <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">Dossier dans lequel PrismaPrepare dépose le fichier <code>Epreuve.pdf</code>. Le backend surveille ce dossier et renomme automatiquement le fichier en <code>BAT_nom.pdf</code> avant de le déplacer dans la tuile BAT.</p>
       <div class="settings-form-group">
         <label>Chemin TEMP_COPY</label>
-        <input type="text" id="int-temp-copy" value="${cfg.tempCopyPath || ''}" class="settings-input" style="width:100%;max-width:500px;" placeholder="Ex: C:\\FluxAtelier\\Base\\TEMP_COPY" />
-      </div>
-    </div>
-
-    <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 20px; background: #f9fafb;">
-      <h4 style="margin-top: 0; margin-bottom: 12px;">Commande PrismaPrepare</h4>
-      <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">Variables disponibles : <code>{xmlPath}</code> (fiche XML), <code>{filePath}</code> (chemin du PDF)</p>
-      <div class="settings-form-group">
-        <label>Commande</label>
-        <input type="text" id="int-prisma-cmd" value="${(cmdCfg.prismaCommand || '').replace(/"/g,'&quot;')}" class="settings-input" style="width:100%;max-width:600px;" />
+        <input type="text" id="int-temp-copy" value="${(cfg.tempCopyPath || '').replace(/"/g,'&quot;')}" class="settings-input" style="width:100%;max-width:500px;" placeholder="Ex: C:\\FluxAtelier\\Base\\TEMP_COPY" />
       </div>
     </div>
 
@@ -433,22 +398,14 @@ async function renderSettingsIntegrations(panel) {
   `;
 
   document.getElementById("int-save").onclick = async () => {
-    const preparePath = document.getElementById("int-prepare").value.trim();
-    const fieryPath = document.getElementById("int-fiery").value.trim();
     const tempCopyPath = document.getElementById("int-temp-copy").value.trim();
-    const prismaCommand = document.getElementById("int-prisma-cmd").value.trim();
-    const r1 = await fetch("/api/config/integrations", {
+    const r = await fetch("/api/config/integrations", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ preparePath, fieryPath, tempCopyPath })
+      body: JSON.stringify({ tempCopyPath })
     }).then(r => r.json());
-    const r2 = await fetch("/api/config/commands", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ prismaCommand })
-    }).then(r => r.json()).catch(() => ({ ok: true }));
-    if (r1.ok && r2.ok) showNotification("✅ Configuration Prepare/Fiery enregistrée", "success");
-    else alert("Erreur : " + (r1.error || r2.error || ""));
+    if (r.ok) showNotification("✅ Configuration Workflow BAT enregistrée", "success");
+    else alert("Erreur : " + (r.error || ""));
   };
 }
 
@@ -659,7 +616,7 @@ async function refreshWorkTypesPanel(panel) {
 // ROUTAGE HOTFOLDER (NOUVEAU)
 // ======================================================
 async function renderSettingsHotfolderRouting(panel) {
-  panel.innerHTML = `<h3>Routage Hotfolder PrismaPrepare</h3><p style="color:#6b7280;">Chargement...</p>`;
+  panel.innerHTML = `<h3>Routage Hotfolder BAT PrismaPrepare</h3><p style="color:#6b7280;">Chargement...</p>`;
   await refreshHotfolderRoutingPanel(panel);
 }
 
@@ -678,7 +635,7 @@ async function refreshHotfolderRoutingPanel(panel) {
   const typeOptions = types.map(t => `<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join("");
 
   panel.innerHTML = `
-    <h3>Routage Hotfolder PrismaPrepare</h3>
+    <h3>Routage Hotfolder BAT PrismaPrepare</h3>
     <p style="color:#6b7280; margin-bottom: 16px;">
       Configurez le chemin du hotfolder PrismaPrepare pour chaque type de travail.
       Quand un BAT Complet est lancé, le fichier est copié vers le hotfolder correspondant au type de travail de la fiche.
@@ -762,7 +719,7 @@ async function refreshHotfolderRoutingPanel(panel) {
 }
 
 // ======================================================
-// ROUTAGE IMPRESSION (Fiery, PrismaSync, Impression directe)
+// ROUTAGE IMPRESSION (Actions du bouton "Actions" dans la tuile "En attente")
 // ======================================================
 async function renderSettingsPrintRouting(panel) {
   panel.innerHTML = `<h3>Routage Impression</h3><p style="color:#6b7280;">Chargement...</p>`;
@@ -771,22 +728,19 @@ async function renderSettingsPrintRouting(panel) {
 
 async function refreshPrintRoutingPanel(panel) {
   let fieryRoutings = [], prismaSyncRoutings = [], directPrintRoutings = [], types = [], engines = [];
-  let integ = {};
   try {
-    const [r1, r2, r3, r4, r5, r6] = await Promise.all([
+    const [r1, r2, r3, r4, r5] = await Promise.all([
       fetch("/api/config/fiery-routing").then(r => r.json()).catch(() => []),
       fetch("/api/config/prismasync-routing").then(r => r.json()).catch(() => []),
       fetch("/api/config/direct-print-routing").then(r => r.json()).catch(() => []),
       fetch("/api/config/work-types").then(r => r.json()).catch(() => []),
-      fetch("/api/config/print-engines").then(r => r.json()).catch(() => []),
-      fetch("/api/config/integrations").then(r => r.json()).catch(() => ({ ok: false }))
+      fetch("/api/config/print-engines").then(r => r.json()).catch(() => [])
     ]);
     fieryRoutings = Array.isArray(r1) ? r1 : [];
     prismaSyncRoutings = Array.isArray(r2) ? r2 : [];
     directPrintRoutings = Array.isArray(r3) ? r3 : [];
     types = Array.isArray(r4) ? r4 : [];
     engines = Array.isArray(r5) ? r5 : (r5.engines || []);
-    if (r6.ok) integ = r6.config || {};
   } catch(e) { /* use empty */ }
 
   const typeOptions = types.map(t => `<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join("");
@@ -797,82 +751,81 @@ async function refreshPrintRoutingPanel(panel) {
 
   panel.innerHTML = `
     <h3>Routage Impression</h3>
-    <p style="color:#6b7280;margin-bottom:20px;">Configurez le routage des fichiers vers les différents contrôleurs d'impression.</p>
+    <p style="color:#6b7280;margin-bottom:20px;">Configurez le routage des fichiers pour chaque action du bouton <strong>Actions</strong> de la tuile <em>En attente</em>.</p>
 
-    <!-- PrismaPrepare exe path -->
+    <!-- Sous-section 1 : Routage PrismaSync -->
     <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:20px;margin-bottom:24px;">
-      <h4 style="margin:0 0 12px;">Chemin PrismaPrepare</h4>
-      <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Chemin de l'exécutable ou URL pour ouvrir un fichier dans PrismaPrepare.</p>
-      <div style="display:flex;gap:8px;align-items:flex-end;">
-        <div style="flex:1;">
-          <input type="text" id="pr-prisma-exe" value="${(integ.prismaPrepareExePath||'').replace(/"/g,'&quot;')}" placeholder="Ex: C:\\Program Files\\PrismaPrepare\\PrismaPrepare.exe" class="settings-input" style="width:100%;" />
-        </div>
-        <button id="pr-prisma-exe-save" class="btn btn-primary">Enregistrer</button>
-      </div>
-    </div>
-
-    <!-- Fiery routing -->
-    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:20px;margin-bottom:24px;">
-      <h4 style="margin:0 0 8px;">Routage Fiery</h4>
-      <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Pour chaque type de travail, configurez le chemin du hotfolder Fiery.</p>
+      <h4 style="margin:0 0 8px;">1. Routage PrismaSync</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Pour l'action <strong>Envoyer vers PrismaSync</strong> : mapping Type de travail + Moteur d'impression + Médias → Contrôleur PrismaSync. Le PDF est déplacé dans la tuile <em>Impression en cours</em>.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
         <div>
           <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Type de travail</label>
-          <select id="fiery-type" class="settings-input" style="min-width:200px;">
+          <select id="psync-type" class="settings-input" style="min-width:180px;">
             <option value="">— Sélectionner —</option>${typeOptions}
           </select>
         </div>
-        <div style="flex:1;min-width:250px;">
-          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Chemin hotfolder Fiery</label>
-          <input type="text" id="fiery-path" placeholder="Ex: C:\\Flux\\Fiery\\Brochures" class="settings-input" style="width:100%;" />
-        </div>
-        <button id="fiery-save" class="btn btn-primary">Enregistrer</button>
-      </div>
-      <div id="fiery-list">
-        ${fieryRoutings.length === 0 ? '<p style="color:#9ca3af;">Aucun routage Fiery configuré</p>' :
-          fieryRoutings.map(r => `
-            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:white;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;">
-              <div style="flex:0 0 200px;"><strong style="font-size:13px;">${r.typeTravail}</strong></div>
-              <div style="flex:1;font-size:12px;color:#6b7280;font-family:monospace;word-break:break-all;">${r.hotfolderPath||'—'}</div>
-              <button class="btn btn-sm fiery-edit" data-type="${(r.typeTravail||'').replace(/"/g,'&quot;')}" data-path="${(r.hotfolderPath||'').replace(/"/g,'&quot;')}">Modifier</button>
-              <button class="btn btn-sm fiery-delete" data-type="${(r.typeTravail||'').replace(/"/g,'&quot;')}" style="color:#ef4444;border-color:#ef4444;">Supprimer</button>
-            </div>`).join('')}
-      </div>
-    </div>
-
-    <!-- PrismaSync routing -->
-    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:20px;margin-bottom:24px;">
-      <h4 style="margin:0 0 8px;">Routage PrismaSync</h4>
-      <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Pour chaque moteur d'impression PrismaSync, configurez le chemin du workflow.</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
         <div>
           <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Moteur d'impression</label>
-          <select id="psync-engine" class="settings-input" style="min-width:200px;">
+          <select id="psync-engine" class="settings-input" style="min-width:180px;">
             <option value="">— Sélectionner —</option>${engineOptions}
           </select>
         </div>
+        <div style="min-width:120px;">
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Média 1</label>
+          <input type="text" id="psync-media1" placeholder="Ex: 135g couché" class="settings-input" style="width:100%;" />
+        </div>
+        <div style="min-width:120px;">
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Média 2</label>
+          <input type="text" id="psync-media2" placeholder="(optionnel)" class="settings-input" style="width:100%;" />
+        </div>
+        <div style="min-width:120px;">
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Média 3</label>
+          <input type="text" id="psync-media3" placeholder="(optionnel)" class="settings-input" style="width:100%;" />
+        </div>
+        <div style="min-width:120px;">
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Média 4</label>
+          <input type="text" id="psync-media4" placeholder="(optionnel)" class="settings-input" style="width:100%;" />
+        </div>
         <div style="flex:1;min-width:250px;">
-          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Chemin workflow PrismaSync</label>
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Chemin contrôleur PrismaSync</label>
           <input type="text" id="psync-path" placeholder="Ex: C:\\Flux\\PrismaSync\\Presse1" class="settings-input" style="width:100%;" />
         </div>
+        <input type="hidden" id="psync-edit-id" value="" />
         <button id="psync-save" class="btn btn-primary">Enregistrer</button>
       </div>
       <div id="psync-list">
         ${prismaSyncRoutings.length === 0 ? '<p style="color:#9ca3af;">Aucun routage PrismaSync configuré</p>' :
           prismaSyncRoutings.map(r => `
-            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:white;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;">
-              <div style="flex:0 0 200px;"><strong style="font-size:13px;">${r.printEngine}</strong></div>
-              <div style="flex:1;font-size:12px;color:#6b7280;font-family:monospace;word-break:break-all;">${r.workflowPath||'—'}</div>
-              <button class="btn btn-sm psync-edit" data-engine="${(r.printEngine||'').replace(/"/g,'&quot;')}" data-path="${(r.workflowPath||'').replace(/"/g,'&quot;')}">Modifier</button>
-              <button class="btn btn-sm psync-delete" data-engine="${(r.printEngine||'').replace(/"/g,'&quot;')}" style="color:#ef4444;border-color:#ef4444;">Supprimer</button>
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:white;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;flex-wrap:wrap;">
+              <div style="flex:0 0 160px;"><strong style="font-size:13px;">${r.typeTravail||'—'}</strong></div>
+              <div style="flex:0 0 140px;font-size:12px;color:#6b7280;">${r.moteurImpression||'—'}</div>
+              <div style="flex:0 0 120px;font-size:11px;color:#9ca3af;">${[r.media1,r.media2,r.media3,r.media4].filter(Boolean).join(', ')||'—'}</div>
+              <div style="flex:1;font-size:12px;color:#6b7280;font-family:monospace;word-break:break-all;">${r.prismaSyncPath||'—'}</div>
+              <button class="btn btn-sm psync-edit"
+                data-id="${(r._id||'').replace(/"/g,'&quot;')}"
+                data-type="${(r.typeTravail||'').replace(/"/g,'&quot;')}"
+                data-engine="${(r.moteurImpression||'').replace(/"/g,'&quot;')}"
+                data-media1="${(r.media1||'').replace(/"/g,'&quot;')}"
+                data-media2="${(r.media2||'').replace(/"/g,'&quot;')}"
+                data-media3="${(r.media3||'').replace(/"/g,'&quot;')}"
+                data-media4="${(r.media4||'').replace(/"/g,'&quot;')}"
+                data-path="${(r.prismaSyncPath||'').replace(/"/g,'&quot;')}">Modifier</button>
+              <button class="btn btn-sm psync-delete" data-id="${(r._id||'').replace(/"/g,'&quot;')}" style="color:#ef4444;border-color:#ef4444;">Supprimer</button>
             </div>`).join('')}
       </div>
     </div>
 
-    <!-- Direct print routing -->
+    <!-- Sous-section 2 : Chemin PrismaPrepare -->
     <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:20px;margin-bottom:24px;">
-      <h4 style="margin:0 0 8px;">Routage Impression directe</h4>
-      <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Pour chaque combinaison type de travail + moteur d'impression, configurez le hotfolder PrismaPrepare.</p>
+      <h4 style="margin:0 0 8px;">2. Chemin PrismaPrepare</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:8px;">Pour l'action <strong>Ouvrir dans PrismaPrepare</strong> : le routage utilise le Type de travail de la fiche pour trouver le hotfolder PrismaPrepare (même table que le routage BAT PrismaPrepare). Le PDF est déplacé dans la tuile <em>PrismaPrepare</em>.</p>
+      <p style="font-size:13px;color:#374151;background:#dbeafe;border:1px solid #bfdbfe;border-radius:6px;padding:10px;">ℹ️ Configurez les chemins hotfolder PrismaPrepare par type de travail dans l'onglet <strong>Routage Hotfolder BAT PrismaPrepare</strong>.</p>
+    </div>
+
+    <!-- Sous-section 3 : Routage Impression directe -->
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:20px;margin-bottom:24px;">
+      <h4 style="margin:0 0 8px;">3. Routage Impression directe</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Pour l'action <strong>Impression directe</strong> : mapping Type de travail + Moteur d'impression → Hotfolder d'impression directe. Le PDF est déplacé dans la tuile <em>Impression en cours</em>.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
         <div>
           <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Type de travail</label>
@@ -904,69 +857,79 @@ async function refreshPrintRoutingPanel(panel) {
             </div>`).join('')}
       </div>
     </div>
+
+    <!-- Sous-section 4 : Routage Fiery -->
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:20px;margin-bottom:24px;">
+      <h4 style="margin:0 0 8px;">4. Routage Fiery</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Pour l'action <strong>Envoyer dans Fiery</strong> : mapping Type de travail → Hotfolder Fiery. Le PDF est déplacé dans la tuile <em>Fiery</em>.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+        <div>
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Type de travail</label>
+          <select id="fiery-type" class="settings-input" style="min-width:200px;">
+            <option value="">— Sélectionner —</option>${typeOptions}
+          </select>
+        </div>
+        <div style="flex:1;min-width:250px;">
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Chemin hotfolder Fiery</label>
+          <input type="text" id="fiery-path" placeholder="Ex: C:\\Flux\\Fiery\\Brochures" class="settings-input" style="width:100%;" />
+        </div>
+        <button id="fiery-save" class="btn btn-primary">Enregistrer</button>
+      </div>
+      <div id="fiery-list">
+        ${fieryRoutings.length === 0 ? '<p style="color:#9ca3af;">Aucun routage Fiery configuré</p>' :
+          fieryRoutings.map(r => `
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:white;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;">
+              <div style="flex:0 0 200px;"><strong style="font-size:13px;">${r.typeTravail}</strong></div>
+              <div style="flex:1;font-size:12px;color:#6b7280;font-family:monospace;word-break:break-all;">${r.hotfolderPath||'—'}</div>
+              <button class="btn btn-sm fiery-edit" data-type="${(r.typeTravail||'').replace(/"/g,'&quot;')}" data-path="${(r.hotfolderPath||'').replace(/"/g,'&quot;')}">Modifier</button>
+              <button class="btn btn-sm fiery-delete" data-type="${(r.typeTravail||'').replace(/"/g,'&quot;')}" style="color:#ef4444;border-color:#ef4444;">Supprimer</button>
+            </div>`).join('')}
+      </div>
+    </div>
   `;
-
-  // PrismaPrepare exe save
-  panel.querySelector("#pr-prisma-exe-save").onclick = async () => {
-    const prismaPrepareExePath = panel.querySelector("#pr-prisma-exe").value.trim();
-    const r = await fetch("/api/config/integrations", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ prismaPrepareExePath })
-    }).then(r => r.json()).catch(() => ({ ok: false }));
-    if (r.ok) showNotification("✅ Chemin PrismaPrepare enregistré", "success");
-    else alert("Erreur : " + (r.error || ""));
-  };
-
-  // Fiery save
-  panel.querySelector("#fiery-save").onclick = async () => {
-    const typeTravail = panel.querySelector("#fiery-type").value;
-    const hotfolderPath = panel.querySelector("#fiery-path").value.trim();
-    if (!typeTravail) { alert("Sélectionnez un type de travail"); return; }
-    if (!hotfolderPath) { alert("Entrez un chemin hotfolder Fiery"); return; }
-    const r = await fetch("/api/config/fiery-routing", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ typeTravail, hotfolderPath })
-    }).then(r => r.json()).catch(() => ({ ok: false }));
-    if (r.ok) { showNotification("✅ Routage Fiery enregistré", "success"); panel._loaded = false; await refreshPrintRoutingPanel(panel); }
-    else alert("Erreur : " + (r.error || ""));
-  };
-  panel.querySelectorAll(".fiery-edit").forEach(btn => {
-    btn.onclick = () => { panel.querySelector("#fiery-type").value = btn.dataset.type; panel.querySelector("#fiery-path").value = btn.dataset.path; };
-  });
-  panel.querySelectorAll(".fiery-delete").forEach(btn => {
-    btn.onclick = async () => {
-      if (!confirm(`Supprimer le routage Fiery pour "${btn.dataset.type}" ?`)) return;
-      const r = await fetch(`/api/config/fiery-routing/${encodeURIComponent(btn.dataset.type)}`, {
-        method: "DELETE", headers: { "Authorization": `Bearer ${authToken}` }
-      }).then(r => r.json()).catch(() => ({ ok: false }));
-      if (r.ok) { showNotification("Routage supprimé", "success"); panel._loaded = false; await refreshPrintRoutingPanel(panel); }
-      else alert("Erreur : " + (r.error || ""));
-    };
-  });
 
   // PrismaSync save
   panel.querySelector("#psync-save").onclick = async () => {
-    const printEngine = panel.querySelector("#psync-engine").value;
-    const workflowPath = panel.querySelector("#psync-path").value.trim();
-    if (!printEngine) { alert("Sélectionnez un moteur d'impression"); return; }
-    if (!workflowPath) { alert("Entrez un chemin workflow PrismaSync"); return; }
+    const typeTravail = panel.querySelector("#psync-type").value;
+    const moteurImpression = panel.querySelector("#psync-engine").value;
+    const media1 = panel.querySelector("#psync-media1").value.trim();
+    const media2 = panel.querySelector("#psync-media2").value.trim();
+    const media3 = panel.querySelector("#psync-media3").value.trim();
+    const media4 = panel.querySelector("#psync-media4").value.trim();
+    const prismaSyncPath = panel.querySelector("#psync-path").value.trim();
+    const editId = panel.querySelector("#psync-edit-id").value.trim();
+    if (!typeTravail) { alert("Sélectionnez un type de travail"); return; }
+    if (!moteurImpression) { alert("Sélectionnez un moteur d'impression"); return; }
+    if (!prismaSyncPath) { alert("Entrez un chemin contrôleur PrismaSync"); return; }
+    const body = { typeTravail, moteurImpression, media1, media2, media3, media4, prismaSyncPath };
+    if (editId) body._id = editId;
     const r = await fetch("/api/config/prismasync-routing", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ printEngine, workflowPath })
+      body: JSON.stringify(body)
     }).then(r => r.json()).catch(() => ({ ok: false }));
-    if (r.ok) { showNotification("✅ Routage PrismaSync enregistré", "success"); panel._loaded = false; await refreshPrintRoutingPanel(panel); }
-    else alert("Erreur : " + (r.error || ""));
+    if (r.ok) {
+      showNotification("✅ Routage PrismaSync enregistré", "success");
+      panel._loaded = false;
+      await refreshPrintRoutingPanel(panel);
+    } else { alert("Erreur : " + (r.error || "")); }
   };
   panel.querySelectorAll(".psync-edit").forEach(btn => {
-    btn.onclick = () => { panel.querySelector("#psync-engine").value = btn.dataset.engine; panel.querySelector("#psync-path").value = btn.dataset.path; };
+    btn.onclick = () => {
+      panel.querySelector("#psync-type").value = btn.dataset.type;
+      panel.querySelector("#psync-engine").value = btn.dataset.engine;
+      panel.querySelector("#psync-media1").value = btn.dataset.media1 || "";
+      panel.querySelector("#psync-media2").value = btn.dataset.media2 || "";
+      panel.querySelector("#psync-media3").value = btn.dataset.media3 || "";
+      panel.querySelector("#psync-media4").value = btn.dataset.media4 || "";
+      panel.querySelector("#psync-path").value = btn.dataset.path;
+      panel.querySelector("#psync-edit-id").value = btn.dataset.id || "";
+    };
   });
   panel.querySelectorAll(".psync-delete").forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm(`Supprimer le routage PrismaSync pour "${btn.dataset.engine}" ?`)) return;
-      const r = await fetch(`/api/config/prismasync-routing/${encodeURIComponent(btn.dataset.engine)}`, {
+      if (!confirm("Supprimer ce routage PrismaSync ?")) return;
+      const r = await fetch(`/api/config/prismasync-routing/${encodeURIComponent(btn.dataset.id)}`, {
         method: "DELETE", headers: { "Authorization": `Bearer ${authToken}` }
       }).then(r => r.json()).catch(() => ({ ok: false }));
       if (r.ok) { showNotification("Routage supprimé", "success"); panel._loaded = false; await refreshPrintRoutingPanel(panel); }
@@ -998,8 +961,36 @@ async function refreshPrintRoutingPanel(panel) {
   });
   panel.querySelectorAll(".dp-delete").forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm(`Supprimer ce routage impression directe ?`)) return;
+      if (!confirm("Supprimer ce routage impression directe ?")) return;
       const r = await fetch(`/api/config/direct-print-routing?typeTravail=${encodeURIComponent(btn.dataset.type)}&printEngine=${encodeURIComponent(btn.dataset.engine)}`, {
+        method: "DELETE", headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(r => r.json()).catch(() => ({ ok: false }));
+      if (r.ok) { showNotification("Routage supprimé", "success"); panel._loaded = false; await refreshPrintRoutingPanel(panel); }
+      else alert("Erreur : " + (r.error || ""));
+    };
+  });
+
+  // Fiery save
+  panel.querySelector("#fiery-save").onclick = async () => {
+    const typeTravail = panel.querySelector("#fiery-type").value;
+    const hotfolderPath = panel.querySelector("#fiery-path").value.trim();
+    if (!typeTravail) { alert("Sélectionnez un type de travail"); return; }
+    if (!hotfolderPath) { alert("Entrez un chemin hotfolder Fiery"); return; }
+    const r = await fetch("/api/config/fiery-routing", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ typeTravail, hotfolderPath })
+    }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (r.ok) { showNotification("✅ Routage Fiery enregistré", "success"); panel._loaded = false; await refreshPrintRoutingPanel(panel); }
+    else alert("Erreur : " + (r.error || ""));
+  };
+  panel.querySelectorAll(".fiery-edit").forEach(btn => {
+    btn.onclick = () => { panel.querySelector("#fiery-type").value = btn.dataset.type; panel.querySelector("#fiery-path").value = btn.dataset.path; };
+  });
+  panel.querySelectorAll(".fiery-delete").forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm(`Supprimer le routage Fiery pour "${btn.dataset.type}" ?`)) return;
+      const r = await fetch(`/api/config/fiery-routing/${encodeURIComponent(btn.dataset.type)}`, {
         method: "DELETE", headers: { "Authorization": `Bearer ${authToken}` }
       }).then(r => r.json()).catch(() => ({ ok: false }));
       if (r.ok) { showNotification("Routage supprimé", "success"); panel._loaded = false; await refreshPrintRoutingPanel(panel); }
