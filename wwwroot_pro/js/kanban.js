@@ -41,11 +41,36 @@ export async function buildKanban() {
     title.className = "kanban-col-operator__title";
     title.style.background = `linear-gradient(135deg, ${cfg.color} 0%, ${darkenColor(cfg.color, 15)} 100%)`;
     title.style.color = isLight(cfg.color) ? '#1D1D1F' : '#FFFFFF';
-    title.textContent = cfg.label;
+    const labelSpan = document.createElement("span");
+    labelSpan.textContent = cfg.label;
+    labelSpan.style.flex = "1";
+    title.appendChild(labelSpan);
+
+    // Bouton "Ouvrir dans Acrobat Pro" dans l'en-tête des colonnes Preflight
+    if (cfg.folder === "Corrections" || cfg.folder === "Corrections et fond perdu") {
+      const btnAcrobat = document.createElement("button");
+      btnAcrobat.className = "btn btn-acrobat";
+      btnAcrobat.textContent = "Ouvrir dans Acrobat Pro";
+      btnAcrobat.style.cssText = "font-size:10px;padding:2px 7px;flex-shrink:0;margin-right:6px;";
+      btnAcrobat.title = "Lancer Adobe Acrobat Pro (sans ouvrir de fichier)";
+      btnAcrobat.onclick = async (e) => {
+        e.stopPropagation();
+        try {
+          const resp = await fetch("/api/acrobat", { method: "POST" });
+          const data = await resp.json().catch(() => ({}));
+          if (!data.ok) showNotification("❌ " + (data.error || "Erreur lancement Acrobat"), "error");
+        } catch (err) {
+          showNotification("❌ " + err.message, "error");
+        }
+      };
+      title.appendChild(btnAcrobat);
+    }
+
     const counter = document.createElement("span");
     counter.className = "kanban-col-counter";
     counter.textContent = "0";
     title.appendChild(counter);
+
     col.appendChild(title);
 
     const drop = document.createElement("div");
