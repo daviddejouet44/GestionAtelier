@@ -244,6 +244,8 @@ export async function openGroupedDossierDetail(numeroDossier, items) {
 
 async function loadPdfDetails(fileName, folder, container) {
   container.innerHTML = '<p style="color:#6b7280;font-size:13px;">Chargement...</p>';
+  // Generate a safe DOM ID (no special characters that break querySelector)
+  const safeId = 'pdf_' + Math.random().toString(36).slice(2, 9);
   try {
     // Load fabrication sheet
     let fab = {};
@@ -282,7 +284,7 @@ async function loadPdfDetails(fileName, folder, container) {
 
     container.innerHTML = `
       <div style="display:flex;gap:16px;margin-bottom:16px;align-items:flex-start;">
-        <canvas id="thumb-${encodeURIComponent(fileName)}" style="border:1px solid #e5e7eb;border-radius:8px;max-width:120px;flex-shrink:0;display:none;"></canvas>
+        <canvas id="thumb-${safeId}" style="border:1px solid #e5e7eb;border-radius:8px;max-width:120px;flex-shrink:0;display:none;"></canvas>
         <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           ${fld("Étape actuelle", `<span style="background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:12px;">${getStageLabelDisplay(stage)}</span>`)}
           ${fld("Numéro de dossier", fab.numeroDossier)}
@@ -312,12 +314,12 @@ async function loadPdfDetails(fileName, folder, container) {
         <div style="font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;margin-bottom:6px;">Historique des mouvements</div>
         <div style="max-height:150px;overflow-y:auto;">${historyHtml}</div>
       </div>
-      <button class="btn btn-sm btn-primary" id="pdf-open-fiche-${encodeURIComponent(fileName)}">Ouvrir la fiche de fabrication</button>
+      <button class="btn btn-sm btn-primary" id="pdf-open-fiche-${safeId}">Ouvrir la fiche de fabrication</button>
     `;
 
     // Render PDF thumbnail using pdf.js
     if (pdfFullPath && typeof pdfjsLib !== 'undefined') {
-      const canvas = container.querySelector(`#thumb-${encodeURIComponent(fileName)}`);
+      const canvas = document.getElementById('thumb-' + safeId);
       if (canvas) {
         try {
           const pdfUrl = "/api/file?path=" + encodeURIComponent(pdfFullPath);
@@ -332,7 +334,7 @@ async function loadPdfDetails(fileName, folder, container) {
       }
     }
 
-    container.querySelector(`#pdf-open-fiche-${encodeURIComponent(fileName)}`)?.addEventListener("click", () => {
+    document.getElementById('pdf-open-fiche-' + safeId)?.addEventListener("click", () => {
       const path = (folder.originalFilePath || folder.currentFilePath || pdfFullPath || fileName || "");
       if (path && window._openFabrication) window._openFabrication(path);
       else if (window._openFabrication) window._openFabrication(fileName);

@@ -239,21 +239,42 @@ FileSystemWatcher? tempCopyWatcher = null;
                 EnableRaisingEvents = true
             };
 
+            // Mutex to prevent concurrent Epreuve.pdf processing (race condition fix)
+            var batRenameSem = new SemaphoreSlim(1, 1);
+
             async Task HandleEpreuve(string epreuvePath)
             {
+                await batRenameSem.WaitAsync();
                 try
                 {
                     await Task.Delay(BackendUtils.FileSystemSettleDelayMs * 4);
                     if (!File.Exists(epreuvePath)) return;
 
-                    // Find the most recent unprocessed batPending entry for TEMP_COPY
+                    // Wait for file to be fully written and not locked (retry loop)
+                    bool fileUnlocked = false;
+                    for (int retry = 0; retry < 10; retry++)
+                    {
+                        try
+                        {
+                            // Open and immediately close to verify file is not locked
+                            using var fs = File.Open(epreuvePath, FileMode.Open, FileAccess.Read, FileShare.None);
+                            fileUnlocked = true;
+                            break;
+                        }
+                        catch (IOException) { await Task.Delay(500); }
+                    }
+                    if (!fileUnlocked)
+                        Console.WriteLine("[TEMP_COPY][WARN] Epreuve.pdf still locked after retries, proceeding anyway.");
+                    if (!File.Exists(epreuvePath)) return;
+
+                    // Find the OLDEST unprocessed batPending entry for TEMP_COPY (FIFO queue)
                     var batPendingCol = MongoDbHelper.GetCollection<BsonDocument>("batPending");
                     var pending = batPendingCol.Find(
                         Builders<BsonDocument>.Filter.And(
                             Builders<BsonDocument>.Filter.Eq("processed", false),
                             Builders<BsonDocument>.Filter.Eq("batFolder", tempCopyDir)
                         )
-                    ).SortByDescending(d => d["createdAt"]).FirstOrDefault();
+                    ).SortBy(d => d["createdAt"]).FirstOrDefault();
 
                     string sourceFileName = pending != null && pending.Contains("sourceFileName")
                         ? pending["sourceFileName"].AsString : "";
@@ -344,6 +365,10 @@ FileSystemWatcher? tempCopyWatcher = null;
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[TEMP_COPY][ERROR] HandleEpreuve: {ex.Message}");
+                }
+                finally
+                {
+                    batRenameSem.Release();
                 }
             }
 

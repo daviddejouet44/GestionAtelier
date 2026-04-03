@@ -338,7 +338,18 @@ async function buildBatView() {
       const btnAcrobat = document.createElement("button");
       btnAcrobat.className = "btn btn-sm btn-acrobat";
       btnAcrobat.textContent = "📄 Ouvrir dans Acrobat";
-      btnAcrobat.onclick = () => window.open("https://www.adobe.com/files#", "_blank", "noopener");
+      btnAcrobat.onclick = async () => {
+        try {
+          const r = await fetch("/api/acrobat/open", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fullPath: full })
+          }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+          if (!r.ok) showNotification("❌ " + (r.error || "Erreur ouverture Acrobat"), "error");
+        } catch (err) {
+          showNotification("❌ " + err.message, "error");
+        }
+      };
 
       const btnDelete = document.createElement("button");
       btnDelete.className = "btn btn-sm btn-danger";
