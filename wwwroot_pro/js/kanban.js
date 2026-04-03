@@ -12,12 +12,10 @@ const _columnCache = {};
 // ======================================================
 export async function buildKanban() {
   const folderConfig = [
-    { folder: "Début de production", label: "Début de production", color: "#5fa8c4" },
-    { folder: "Corrections", label: "Corrections", color: "#e0e0e0" },
-    { folder: "Corrections et fond perdu", label: "Corrections et fond perdu", color: "#e0e0e0" },
-    { folder: "Rapport", label: "Rapport", color: "#cccccc" },
-    { folder: "Prêt pour impression", label: "Prêt pour impression", color: "#b8b8b8" },
-    { folder: "BAT", label: "BAT", color: "#a3a3a3" },
+    { folder: "Début de production", label: "Jobs à traiter", color: "#5fa8c4" },
+    { folder: "Corrections", label: "Preflight", color: "#e0e0e0" },
+    { folder: "Corrections et fond perdu", label: "Preflight avec fond perdu", color: "#e0e0e0" },
+    { folder: "Prêt pour impression", label: "En attente", color: "#b8b8b8" },
     { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#8f8f8f" },
     { folder: "Fiery", label: "Fiery", color: "#8f8f8f" },
     { folder: "Impression en cours", label: "Impression en cours", color: "#7a7a7a" },
@@ -69,12 +67,7 @@ export async function buildKanban() {
     }
 
     if (cfg.folder === "BAT") {
-      const acrobatOnlineBtn = document.createElement("button");
-      acrobatOnlineBtn.className = "btn btn-acrobat";
-      acrobatOnlineBtn.innerHTML = "📄 Acrobat Online";
-      acrobatOnlineBtn.style.cssText = "margin: 0 15px 10px 15px; width: calc(100% - 30px);";
-      acrobatOnlineBtn.onclick = () => window.open("https://www.adobe.com/files#", "_blank", "noopener");
-      col.insertBefore(acrobatOnlineBtn, drop);
+      // BAT column removed from kanban (now a separate view)
     }
 
     drop.addEventListener("dragover", e => {
@@ -171,7 +164,7 @@ export async function updateKanbanSummary() {
   if (!summaryEl) return;
 
   try {
-    const folders = ["Début de production","Corrections","Corrections et fond perdu","Rapport","Prêt pour impression","BAT","PrismaPrepare","Fiery","Impression en cours","Façonnage","Fin de production"];
+    const folders = ["Début de production","Corrections","Corrections et fond perdu","Prêt pour impression","PrismaPrepare","Fiery","Impression en cours","Façonnage","Fin de production"];
     const counts = {};
     for (const f of folders) {
       const jobs = await fetch(`/api/jobs?folder=${encodeURIComponent(f)}`).then(r => r.json()).catch(() => []);
@@ -179,12 +172,10 @@ export async function updateKanbanSummary() {
     }
 
     const labelMap = {
-      "Début de production": "Début prod",
-      "Corrections": "Corrections",
-      "Corrections et fond perdu": "Corr. fp",
-      "Rapport": "Rapport",
-      "Prêt pour impression": "Prêt impr.",
-      "BAT": "BAT",
+      "Début de production": "Jobs à traiter",
+      "Corrections": "Preflight",
+      "Corrections et fond perdu": "Preflight fp",
+      "Prêt pour impression": "En attente",
       "PrismaPrepare": "Prisma",
       "Fiery": "Fiery",
       "Impression en cours": "Impression",
@@ -387,66 +378,12 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       btnDelete.textContent = "Corbeille";
       btnDelete.onclick = () => { if (window._deleteFile) window._deleteFile(full); };
 
-      if (folderName === "Rapport") {
-        actions.appendChild(btnOpen);
-        const btnAcrobat = document.createElement("button");
-        btnAcrobat.className = "btn btn-sm";
-        btnAcrobat.innerHTML = "Acrobat Pro";
-        btnAcrobat.onclick = () => {
-          fetch("/api/acrobat/open", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ fullPath: full })
-          }).then(r => r.json()).then(r => {
-            if (!r.ok) showNotification("❌ " + (r.error || "Erreur"), "error");
-          });
-        };
-        actions.appendChild(btnAcrobat);
-
-        const btnDelSrc = document.createElement("button");
-        btnDelSrc.className = "btn btn-sm";
-        btnDelSrc.style.cssText = "color:#dc2626;border-color:#dc2626;";
-        btnDelSrc.innerHTML = "Supprimer source";
-        btnDelSrc.onclick = async () => {
-          if (!confirm("Supprimer le fichier source dans Corrections / Corrections et fond perdu ?")) return;
-          const r = await fetch("/api/jobs/delete-corrections-source", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ fileName: jobFileName })
-          }).then(r => r.json()).catch(() => ({ok: false}));
-          if (r.ok) { showNotification("✅ Source supprimée", "success"); await refreshKanban(); }
-          else showNotification("❌ " + (r.error || "Erreur"), "error");
-        };
-        actions.appendChild(btnDelSrc);
-
-        if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
-          actions.appendChild(btnDelete);
-        }
-      } else if (folderName === "BAT") {
-        actions.appendChild(btnOpen);
-        actions.appendChild(btnAssign);
-        const btnAcrobatBat = document.createElement("button");
-        btnAcrobatBat.className = "btn btn-sm";
-        btnAcrobatBat.innerHTML = "Acrobat";
-        btnAcrobatBat.onclick = () => {
-          fetch("/api/acrobat/open", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ fullPath: full })
-          }).then(r => r.json()).then(r => {
-            if (!r.ok) showNotification("❌ " + (r.error || "Erreur"), "error");
-          });
-        };
-        actions.appendChild(btnAcrobatBat);
-        if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
-          actions.appendChild(btnDelete);
-        }
-      } else if (folderName === "Prêt pour impression") {
+      if (folderName === "Prêt pour impression") {
         actions.appendChild(btnOpen);
         actions.appendChild(btnFiche);
         actions.appendChild(btnAssign);
 
-        // BAT button (remplace PrismaPrepare) — ouvre popup BAT complet / BAT simple
+        // BAT button — ouvre popup BAT complet / BAT simple
         const btnBAT = document.createElement("button");
         btnBAT.className = "btn btn-sm btn-primary";
         btnBAT.innerHTML = "→ BAT";
@@ -459,7 +396,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
 
         const btnPrint = document.createElement("button");
         btnPrint.className = "btn btn-sm btn-primary";
-        btnPrint.innerHTML = "Imprimer";
+        btnPrint.innerHTML = "Actions";
         btnPrint.onclick = () => openPrintDialog(full);
         actions.appendChild(btnPrint);
 
@@ -476,50 +413,6 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       }
 
       card.appendChild(actions);
-
-      // BAT tracking pour la colonne BAT
-      if (folderName === "BAT") {
-        const batTracking = document.createElement("div");
-        batTracking.className = "bat-tracking";
-        batTracking.innerHTML = '<span style="color:var(--text-tertiary);font-size:10px;">Chargement...</span>';
-        fetch(`/api/bat/status?path=${encodeURIComponent(full)}`)
-          .then(r => r.json())
-          .then(status => {
-            batTracking.innerHTML = "";
-
-            const btnSent = document.createElement("button");
-            btnSent.className = "bat-status-badge bat-sent" + (status.sentAt ? " active" : "");
-            btnSent.innerHTML = status.sentAt ? `ENVOYÉ ${formatDateTime(status.sentAt)}` : "MARQUER ENVOYÉ";
-            btnSent.onclick = (e) => { e.stopPropagation(); delete _columnCache[cacheKey]; fetch("/api/bat/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
-
-            const btnValidate = document.createElement("button");
-            btnValidate.className = "bat-status-badge bat-validated" + (status.validatedAt ? " active" : "");
-            btnValidate.innerHTML = status.validatedAt ? `VALIDÉ ${formatDateTime(status.validatedAt)}` : "VALIDER";
-            btnValidate.onclick = (e) => { e.stopPropagation(); delete _columnCache[cacheKey]; fetch("/api/bat/validate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
-
-            const btnReject = document.createElement("button");
-            btnReject.className = "bat-status-badge bat-rejected" + (status.rejectedAt ? " active" : "");
-            btnReject.innerHTML = status.rejectedAt ? `REFUSÉ ${formatDateTime(status.rejectedAt)}` : "REFUSER";
-            btnReject.onclick = (e) => { e.stopPropagation(); delete _columnCache[cacheKey]; fetch("/api/bat/reject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fullPath:full})}).then(()=>refreshKanban()); };
-
-            batTracking.appendChild(btnSent);
-            batTracking.appendChild(btnValidate);
-            batTracking.appendChild(btnReject);
-
-            if (status.sentAt && !status.validatedAt && !status.rejectedAt) {
-              const sentDate = new Date(status.sentAt);
-              const now = new Date();
-              const diffDays = (now - sentDate) / (1000 * 60 * 60 * 24);
-              if (diffDays >= 2) {
-                const alertJ2 = document.createElement("div");
-                alertJ2.className = "bat-alert-j2";
-                alertJ2.textContent = "⚠️ BAT envoyé depuis plus de 2 jours !";
-                batTracking.appendChild(alertJ2);
-              }
-            }
-          }).catch(() => { batTracking.innerHTML = ""; });
-        card.appendChild(batTracking);
-      }
 
       if (!readOnly) {
         card.addEventListener("dragstart", (e) => {

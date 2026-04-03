@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <title>Gestion Atelier PRO</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="css/styles.css?v=5" />
+  <link rel="stylesheet" href="css/styles.css?v=6" />
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script>
@@ -72,6 +72,8 @@
         <button id="btnViewCalendar" class="tab-btn">Calendrier</button>
         <button id="btnViewDossiers" class="tab-btn" style="display:none;">Dossiers</button>
         <button id="btnViewSubmission" class="tab-btn" style="display:none;">Soumission</button>
+        <button id="btnViewBat" class="tab-btn" style="display:none;">BAT</button>
+        <button id="btnViewRapport" class="tab-btn" style="display:none;">Rapport</button>
         <button id="btnViewGlobalProd" class="tab-btn" style="display:none;">Vue production globale</button>
         <button id="btnViewDashboard" class="tab-btn" style="display:none;">Dashboard</button>
         <button id="btnViewRecycle" class="tab-btn" style="display:none;">Corbeille</button>
@@ -80,11 +82,16 @@
 
     <!-- CONTAINER -->
     <div class="container">
-      <div id="kanban"></div>
+      <div id="kanban-layout" class="kanban-layout hidden">
+        <div id="kanban"></div>
+        <aside id="kanban-sidebar" class="kanban-sidebar"></aside>
+      </div>
       <div id="calendar" class="hidden"></div>
       <div id="submission" class="submission hidden"></div>
       <div id="production" class="production-view hidden"></div>
       <div id="dossiers" class="hidden"></div>
+      <div id="bat-view" class="hidden"></div>
+      <div id="rapport-view" class="hidden"></div>
       <div id="recycle" class="hidden"></div>
       <div id="dashboard" class="hidden"></div>
       <div id="global-production" class="hidden"></div>
@@ -97,13 +104,13 @@
         <div id="fab-stage-banner" style="display:none;margin-bottom:12px;padding:8px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:13px;color:#0369a1;font-weight:500;"></div>
         <div class="fab-form-grid">
           <div class="fab-form-group"><label>Délai</label><input id="fab-delai" type="date" /></div>
-          <div class="fab-form-group"><label>Numéro de dossier</label><input id="fab-numero-dossier" type="text" /></div>
+          <div class="fab-form-group"><label>Numéro de dossier <span class="required-star">*</span></label><input id="fab-numero-dossier" type="text" /></div>
           <div class="fab-form-group"><label>Client</label><input id="fab-client" type="text" /></div>
           <div class="fab-form-group"><label>Opérateur</label><input id="fab-operateur" type="text" readonly style="background:#f3f4f6;cursor:not-allowed;" /></div>
           <div class="fab-form-group"><label>Quantité</label><input id="fab-quantite" type="number" /></div>
           <div class="fab-form-group"><label>Moteur d'impression</label><select id="fab-moteur"><option value="">— Sélectionner —</option></select></div>
           <div class="fab-form-group">
-            <label>Type de travail</label>
+            <label>Type de travail <span class="required-star">*</span></label>
             <select id="fab-type"><option value="">— Sélectionner —</option></select>
           </div>
           <div class="fab-form-group"><label>Format fini</label><input id="fab-format" type="text" /></div>
@@ -130,7 +137,7 @@
 
   </div>
 
-  <script type="module" src="js/app.js?v=23"></script>
+  <script type="module" src="js/app.js?v=24"></script>
 
 </body>
 </html>

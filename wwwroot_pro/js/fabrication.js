@@ -42,6 +42,32 @@ export function initFabrication() {
 
   fabSave.onclick = async () => {
     if (!fabCurrentPath) return;
+
+    // Validate required fields
+    let hasError = false;
+    if (!fabNumeroDossier || !fabNumeroDossier.value.trim()) {
+      if (fabNumeroDossier) {
+        fabNumeroDossier.style.borderColor = "#ef4444";
+        fabNumeroDossier.style.boxShadow = "0 0 0 3px rgba(239,68,68,0.2)";
+      }
+      hasError = true;
+    } else {
+      if (fabNumeroDossier) { fabNumeroDossier.style.borderColor = ""; fabNumeroDossier.style.boxShadow = ""; }
+    }
+    if (!fabType || !fabType.value) {
+      if (fabType) {
+        fabType.style.borderColor = "#ef4444";
+        fabType.style.boxShadow = "0 0 0 3px rgba(239,68,68,0.2)";
+      }
+      hasError = true;
+    } else {
+      if (fabType) { fabType.style.borderColor = ""; fabType.style.boxShadow = ""; }
+    }
+    if (hasError) {
+      showNotification("❌ Numéro de dossier et Type de travail sont obligatoires", "error");
+      return;
+    }
+
     const ok = await saveFabrication();
     if (ok) {
       fabModal.classList.add("hidden");
@@ -170,10 +196,11 @@ export async function openFabrication(fullPath) {
   fabOperateur.value = d.operateur || "";
   fabQuantite.value = d.quantite || "";
   fabType.value = d.typeTravail || "";
+  if (fabType) { fabType.style.borderColor = ""; fabType.style.boxShadow = ""; }
   fabFormat.value = d.format || "";
   fabRectoVerso.value = d.rectoVerso || "";
   fabClient.value = d.client || "";
-  if (fabNumeroDossier) fabNumeroDossier.value = d.numeroDossier || "";
+  if (fabNumeroDossier) { fabNumeroDossier.value = d.numeroDossier || ""; fabNumeroDossier.style.borderColor = ""; fabNumeroDossier.style.boxShadow = ""; }
   fabNotes.value = d.notes || "";
   fabFaconnage.value = d.faconnage || "";
   if (fabMedia1) fabMedia1.value = d.media1 || "";

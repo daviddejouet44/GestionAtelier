@@ -179,11 +179,50 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
 }
 
 /* =========================================================
+   KANBAN LAYOUT (avec panneau latéral)
+========================================================= */
+.kanban-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  width: 100%;
+}
+
+#kanban {
+  flex: 1;
+  min-width: 0;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+}
+
+.kanban-sidebar {
+  width: 270px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-self: flex-start;
+  max-height: 80vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.kanban-sidebar::-webkit-scrollbar { width: 4px; }
+.kanban-sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.kanban-sidebar-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+@media (max-width: 1100px) {
+  .kanban-sidebar { display: none; }
+}
+
+/* =========================================================
    KANBAN GRID
 ========================================================= */
-#kanban {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; width: 100%;
-}
 
 /* =========================================================
    KANBAN SUMMARY
@@ -236,7 +275,8 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
   padding: 8px; overflow-y: auto;
   background: var(--bg-page);
   flex: 1;
-  min-height: 200px;
+  max-height: 420px;
+  min-height: 160px;
   scrollbar-width: thin;
   border: 2px dashed transparent;
   transition: background 0.15s, border-color 0.15s;
@@ -426,6 +466,7 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
 .fab-form-group { display: flex; flex-direction: column; gap: 3px; }
 .fab-full-width { grid-column: 1 / -1; }
 .fab-form-group label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); }
+.required-star { color: #ef4444; font-weight: 700; margin-left: 2px; }
 .fab-form-group input, .fab-form-group select, .fab-form-group textarea {
   padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
   font-size: 13px; background: var(--bg-subtle); color: var(--text-primary); outline: none; transition: var(--transition-fast);
