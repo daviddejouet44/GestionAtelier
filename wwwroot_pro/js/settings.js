@@ -335,7 +335,7 @@ function getFrenchPublicHolidays(year) {
 // ======================================================
 async function renderSettingsPaths(panel) {
   panel.innerHTML = `<h3>Chemins d'accès aux dossiers</h3><p style="color:#6b7280;">Chargement...</p>`;
-  let cfg = { hotfoldersRoot: "C:\\Flux", recycleBinPath: "" };
+  let cfg = { hotfoldersRoot: "C:\\Flux", recycleBinPath: "", acrobatExePath: "" };
   try {
     const resp = await fetch("/api/config/paths", {
       headers: { "Authorization": `Bearer ${authToken}` }
@@ -353,16 +353,22 @@ async function renderSettingsPaths(panel) {
       <label>Chemin corbeille</label>
       <input type="text" id="paths-recycle" value="${cfg.recycleBinPath || ''}" class="settings-input" style="width: 100%; max-width: 500px;" placeholder="Ex: C:\\Corbeille" />
     </div>
+    <div class="settings-form-group">
+      <label>Chemin Adobe Acrobat Pro (Acrobat.exe)</label>
+      <input type="text" id="paths-acrobat" value="${(cfg.acrobatExePath || '').replace(/"/g,'&quot;')}" class="settings-input" style="width: 100%; max-width: 500px;" placeholder="Ex: C:\\Program Files\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe" />
+      <p style="font-size:12px;color:#6b7280;margin-top:4px;">Utilisé pour l'action BAT Simple (ouvrir dans Acrobat Pro).</p>
+    </div>
     <button id="paths-save" class="btn btn-primary" style="margin-top: 10px;">Enregistrer les chemins</button>
   `;
 
   document.getElementById("paths-save").onclick = async () => {
     const hotfoldersRoot = document.getElementById("paths-hotfolders").value.trim();
     const recycleBinPath = document.getElementById("paths-recycle").value.trim();
+    const acrobatExePath = document.getElementById("paths-acrobat").value.trim();
     const r = await fetch("/api/config/paths", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ hotfoldersRoot, recycleBinPath })
+      body: JSON.stringify({ hotfoldersRoot, recycleBinPath, acrobatExePath })
     }).then(r => r.json());
     if (r.ok) showNotification("✅ Chemins enregistrés", "success");
     else alert("Erreur : " + r.error);
@@ -727,20 +733,22 @@ async function renderSettingsPrintRouting(panel) {
 }
 
 async function refreshPrintRoutingPanel(panel) {
-  let fieryRoutings = [], prismaSyncRoutings = [], directPrintRoutings = [], types = [], engines = [];
+  let fieryRoutings = [], prismaSyncRoutings = [], directPrintRoutings = [], prismaPrepareRoutings = [], types = [], engines = [];
   try {
-    const [r1, r2, r3, r4, r5] = await Promise.all([
+    const [r1, r2, r3, r4, r5, r6] = await Promise.all([
       fetch("/api/config/fiery-routing").then(r => r.json()).catch(() => []),
       fetch("/api/config/prismasync-routing").then(r => r.json()).catch(() => []),
       fetch("/api/config/direct-print-routing").then(r => r.json()).catch(() => []),
       fetch("/api/config/work-types").then(r => r.json()).catch(() => []),
-      fetch("/api/config/print-engines").then(r => r.json()).catch(() => [])
+      fetch("/api/config/print-engines").then(r => r.json()).catch(() => []),
+      fetch("/api/config/prisma-prepare-routing").then(r => r.json()).catch(() => [])
     ]);
     fieryRoutings = Array.isArray(r1) ? r1 : [];
     prismaSyncRoutings = Array.isArray(r2) ? r2 : [];
     directPrintRoutings = Array.isArray(r3) ? r3 : [];
     types = Array.isArray(r4) ? r4 : [];
     engines = Array.isArray(r5) ? r5 : (r5.engines || []);
+    prismaPrepareRoutings = Array.isArray(r6) ? r6 : [];
   } catch(e) { /* use empty */ }
 
   const typeOptions = types.map(t => `<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join("");
@@ -815,11 +823,33 @@ async function refreshPrintRoutingPanel(panel) {
       </div>
     </div>
 
-    <!-- Sous-section 2 : Chemin PrismaPrepare -->
+    <!-- Sous-section 2 : Routage PrismaPrepare -->
     <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:20px;margin-bottom:24px;">
-      <h4 style="margin:0 0 8px;">2. Chemin PrismaPrepare</h4>
-      <p style="color:#6b7280;font-size:13px;margin-bottom:8px;">Pour l'action <strong>Ouvrir dans PrismaPrepare</strong> : le routage utilise le Type de travail de la fiche pour trouver le hotfolder PrismaPrepare (même table que le routage BAT PrismaPrepare). Le PDF est déplacé dans la tuile <em>PrismaPrepare</em>.</p>
-      <p style="font-size:13px;color:#374151;background:#dbeafe;border:1px solid #bfdbfe;border-radius:6px;padding:10px;">ℹ️ Configurez les chemins hotfolder PrismaPrepare par type de travail dans l'onglet <strong>Routage Hotfolder BAT PrismaPrepare</strong>.</p>
+      <h4 style="margin:0 0 8px;">2. Routage PrismaPrepare</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Pour l'action <strong>Ouvrir dans PrismaPrepare</strong> : mapping Type de travail → Chemin hotfolder PrismaPrepare. Le PDF est déplacé dans la tuile <em>PrismaPrepare</em>.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+        <div>
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Type de travail</label>
+          <select id="pp-type" class="settings-input" style="min-width:200px;">
+            <option value="">— Sélectionner —</option>${typeOptions}
+          </select>
+        </div>
+        <div style="flex:1;min-width:250px;">
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Chemin hotfolder PrismaPrepare</label>
+          <input type="text" id="pp-path" placeholder="Ex: C:\\Flux\\PrismaPrepare\\Brochures" class="settings-input" style="width:100%;" />
+        </div>
+        <button id="pp-save" class="btn btn-primary">Enregistrer</button>
+      </div>
+      <div id="pp-list">
+        ${prismaPrepareRoutings.length === 0 ? '<p style="color:#9ca3af;">Aucun routage PrismaPrepare configuré</p>' :
+          prismaPrepareRoutings.map(r => `
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:white;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;">
+              <div style="flex:0 0 200px;"><strong style="font-size:13px;">${r.typeTravail}</strong></div>
+              <div style="flex:1;font-size:12px;color:#6b7280;font-family:monospace;word-break:break-all;">${r.hotfolderPath||'—'}</div>
+              <button class="btn btn-sm pp-edit" data-type="${(r.typeTravail||'').replace(/"/g,'&quot;')}" data-path="${(r.hotfolderPath||'').replace(/"/g,'&quot;')}">Modifier</button>
+              <button class="btn btn-sm pp-delete" data-type="${(r.typeTravail||'').replace(/"/g,'&quot;')}" style="color:#ef4444;border-color:#ef4444;">Supprimer</button>
+            </div>`).join('')}
+      </div>
     </div>
 
     <!-- Sous-section 3 : Routage Impression directe -->
@@ -991,6 +1021,34 @@ async function refreshPrintRoutingPanel(panel) {
     btn.onclick = async () => {
       if (!confirm(`Supprimer le routage Fiery pour "${btn.dataset.type}" ?`)) return;
       const r = await fetch(`/api/config/fiery-routing/${encodeURIComponent(btn.dataset.type)}`, {
+        method: "DELETE", headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(r => r.json()).catch(() => ({ ok: false }));
+      if (r.ok) { showNotification("Routage supprimé", "success"); panel._loaded = false; await refreshPrintRoutingPanel(panel); }
+      else alert("Erreur : " + (r.error || ""));
+    };
+  });
+
+  // PrismaPrepare save
+  panel.querySelector("#pp-save").onclick = async () => {
+    const typeTravail = panel.querySelector("#pp-type").value;
+    const hotfolderPath = panel.querySelector("#pp-path").value.trim();
+    if (!typeTravail) { alert("Sélectionnez un type de travail"); return; }
+    if (!hotfolderPath) { alert("Entrez un chemin hotfolder PrismaPrepare"); return; }
+    const r = await fetch("/api/config/prisma-prepare-routing", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ typeTravail, hotfolderPath })
+    }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (r.ok) { showNotification("✅ Routage PrismaPrepare enregistré", "success"); panel._loaded = false; await refreshPrintRoutingPanel(panel); }
+    else alert("Erreur : " + (r.error || ""));
+  };
+  panel.querySelectorAll(".pp-edit").forEach(btn => {
+    btn.onclick = () => { panel.querySelector("#pp-type").value = btn.dataset.type; panel.querySelector("#pp-path").value = btn.dataset.path; };
+  });
+  panel.querySelectorAll(".pp-delete").forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm(`Supprimer le routage PrismaPrepare pour "${btn.dataset.type}" ?`)) return;
+      const r = await fetch(`/api/config/prisma-prepare-routing/${encodeURIComponent(btn.dataset.type)}`, {
         method: "DELETE", headers: { "Authorization": `Bearer ${authToken}` }
       }).then(r => r.json()).catch(() => ({ ok: false }));
       if (r.ok) { showNotification("Routage supprimé", "success"); panel._loaded = false; await refreshPrintRoutingPanel(panel); }

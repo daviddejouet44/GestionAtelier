@@ -53,23 +53,6 @@ export async function buildKanban() {
     drop.dataset.folder = cfg.folder;
     col.appendChild(drop);
 
-    if (cfg.folder === "Corrections" || cfg.folder === "Corrections et fond perdu") {
-      const acrobatBtn = document.createElement("button");
-      acrobatBtn.className = "btn btn-acrobat";
-      acrobatBtn.textContent = "Ouvrir dans Acrobat Pro";
-      acrobatBtn.style.cssText = "margin: 0 15px 10px 15px; width: calc(100% - 30px);";
-      acrobatBtn.onclick = async () => {
-        try {
-          const resp = await fetch("/api/acrobat", { method: "POST" });
-          if (!resp.ok) throw new Error("Erreur au lancement d'Acrobat");
-          alert("Acrobat Pro est en cours de lancement...");
-        } catch (err) {
-          alert("❌ " + err.message);
-        }
-      };
-      col.insertBefore(acrobatBtn, drop);
-    }
-
     if (cfg.folder === "BAT") {
       // BAT column removed from kanban (now a separate view)
     }
@@ -585,7 +568,21 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       btnDelete.textContent = "Corbeille";
       btnDelete.onclick = () => { if (window._deleteFile) window._deleteFile(full); };
 
-      if (folderName === "Prêt pour impression") {
+      if (folderName === "Début de production") {
+        actions.appendChild(btnOpen);
+        actions.appendChild(btnFiche);
+        actions.appendChild(btnAssign);
+
+        const btnPlan = document.createElement("button");
+        btnPlan.className = "btn btn-sm";
+        btnPlan.textContent = "📅 Planifier";
+        btnPlan.onclick = () => { if (window._openPlanificationCalendar) window._openPlanificationCalendar(full); };
+        actions.appendChild(btnPlan);
+
+        if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          actions.appendChild(btnDelete);
+        }
+      } else if (folderName === "Prêt pour impression") {
         actions.appendChild(btnOpen);
         actions.appendChild(btnFiche);
         actions.appendChild(btnAssign);
