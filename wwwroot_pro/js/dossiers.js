@@ -312,7 +312,7 @@ async function loadPdfDetails(fileName, folder, container) {
 }
 
 
-async function openDossierDetail(dossierId) {
+export async function openDossierDetail(dossierId) {
   try {
     const folder = await fetch(`/api/production-folders/${dossierId}`, {
       headers: { "Authorization": `Bearer ${authToken}` }
