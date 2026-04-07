@@ -273,7 +273,7 @@ FileSystemWatcher? tempCopyWatcher = null;
                         Console.WriteLine("[BAT_FSW][WARN] Epreuve.pdf still locked after retries, proceeding anyway.");
                     if (!File.Exists(epreuvePath)) return;
 
-                    // Step 1 (PRIORITY): Read the most recent PrismaPrepare log and extract the source file name
+                    // Step 1 (PRIORITY): Extract source name from the PrismaPrepare LOG FILE NAME
                     string prismaLogContent = "";
                     string sourceFileName = "";
                     try
@@ -291,15 +291,33 @@ FileSystemWatcher? tempCopyWatcher = null;
                         {
                             prismaLogContent = File.ReadAllText(logFile);
                             Console.WriteLine($"[BAT_FSW] PrismaPrepare log found: {Path.GetFileName(logFile)}");
-                            var inputMatch = System.Text.RegularExpressions.Regex.Match(
-                                prismaLogContent,
-                                @"fichier d'entr[eé]e\s*:\s*([^\r\n]+?\.pdf)",
+
+                            // Extract source name from log FILE NAME (most reliable)
+                            // Pattern: YYYY-MM-DD_HH-MM-SS_{sourceName}_WARNING.log or _SUCCESS.log
+                            var logFileName = Path.GetFileNameWithoutExtension(logFile); // removes .log
+                            var logNameMatch = System.Text.RegularExpressions.Regex.Match(
+                                logFileName,
+                                @"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_(.+?)_(WARNING|SUCCESS)$",
                                 System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
-                            if (inputMatch.Success)
+                            if (logNameMatch.Success)
                             {
-                                var rawName = inputMatch.Groups[1].Value.Trim();
-                                sourceFileName = Path.GetFileNameWithoutExtension(Path.GetFileName(rawName));
-                                Console.WriteLine($"[BAT_FSW] sourceFileName from PrismaPrepare log: {sourceFileName}");
+                                sourceFileName = logNameMatch.Groups[1].Value.Trim();
+                                Console.WriteLine($"[BAT_FSW] sourceFileName from log file name: {sourceFileName}");
+                            }
+
+                            // Fallback: parse log CONTENT for "fichier d'entrée : XXX.pdf"
+                            if (string.IsNullOrEmpty(sourceFileName))
+                            {
+                                var inputMatch = System.Text.RegularExpressions.Regex.Match(
+                                    prismaLogContent,
+                                    @"fichier d'entr[eé]e\s*:\s*([^\r\n]+?\.pdf)",
+                                    System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+                                if (inputMatch.Success)
+                                {
+                                    var rawName = inputMatch.Groups[1].Value.Trim();
+                                    sourceFileName = Path.GetFileNameWithoutExtension(Path.GetFileName(rawName));
+                                    Console.WriteLine($"[BAT_FSW] sourceFileName from log content: {sourceFileName}");
+                                }
                             }
                         }
                     }
