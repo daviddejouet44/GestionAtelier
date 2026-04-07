@@ -390,6 +390,31 @@ FileSystemWatcher? tempCopyWatcher = null;
                             Builders<BsonDocument>.Filter.Eq("_id", pending["_id"]),
                             Builders<BsonDocument>.Update.Set("processed", true));
                     }
+
+                    // Delete PrismaPrepare log files from output folder
+                    try
+                    {
+                        var logFiles = Directory.GetFiles(outputDir, "*.log")
+                            .Where(f =>
+                            {
+                                var fn = Path.GetFileName(f);
+                                return fn.EndsWith("_WARNING.log", StringComparison.OrdinalIgnoreCase)
+                                    || fn.EndsWith("_SUCCESS.log", StringComparison.OrdinalIgnoreCase);
+                            });
+                        foreach (var logFile in logFiles)
+                        {
+                            try
+                            {
+                                File.Delete(logFile);
+                                Console.WriteLine($"[BAT_FSW] Deleted PrismaPrepare log: {Path.GetFileName(logFile)}");
+                            }
+                            catch (Exception exDelLog) { Console.WriteLine($"[BAT_FSW][WARN] Delete log file: {exDelLog.Message}"); }
+                        }
+                    }
+                    catch (Exception exLogs) { Console.WriteLine($"[BAT_FSW][WARN] Log cleanup: {exLogs.Message}"); }
+
+                    // Store last completed info for progress endpoint
+                    BatSerializationState.SetLastCompleted(batFileName, prismaLogContent);
                 }
                 catch (Exception ex)
                 {
@@ -4154,6 +4179,26 @@ app.MapGet("/api/bat/serialization-status", () =>
     });
 });
 
+// GET /api/bat/progress — returns real-time progress info for the operator
+app.MapGet("/api/bat/progress", () =>
+{
+    var (inProgress, currentFileName, startedAt) = BatSerializationState.Get();
+    var (lastCompletedFileName, lastCompletedAt, lastPrismaLog) = BatSerializationState.GetLastCompleted();
+    double elapsedSeconds = inProgress ? (DateTime.UtcNow - startedAt).TotalSeconds : 0;
+    string status = inProgress ? "processing" : (lastCompletedFileName != null ? "completed" : "idle");
+    return Results.Json(new
+    {
+        inProgress,
+        currentFileName = currentFileName ?? "",
+        startedAt = inProgress ? startedAt : (DateTime?)null,
+        elapsedSeconds = (int)Math.Round(elapsedSeconds),
+        status,
+        lastCompletedFileName = lastCompletedFileName ?? "",
+        lastCompletedAt = lastCompletedAt.HasValue ? lastCompletedAt : (DateTime?)null,
+        lastPrismaLog = lastPrismaLog ?? ""
+    });
+});
+
 app.MapPost("/api/bat/send", async (HttpContext ctx) =>
 {
     var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -4936,21 +4981,26 @@ file class IntegrationsSettings
 // ======================================================
 // BAT SERIALIZATION STATE — Prevent concurrent BAT processing
 // ======================================================
-// In-memory state + 2-minute timeout safety
+// In-memory state + 60-second timeout safety
 static class BatSerializationState
 {
     private static readonly object _lock = new();
     private static bool _inProgress = false;
     private static string? _currentFileName = null;
     private static DateTime _startedAt = DateTime.MinValue;
-    private const int TimeoutMinutes = 2;
+    private const int TimeoutSeconds = 60;
+
+    // Last completed BAT info (updated by HandleEpreuve on success)
+    private static string? _lastCompletedFileName = null;
+    private static DateTime? _lastCompletedAt = null;
+    private static string? _lastPrismaLog = null;
 
     public static (bool inProgress, string? currentFileName, DateTime startedAt) Get()
     {
         lock (_lock)
         {
             // Auto-reset if timed out
-            if (_inProgress && (DateTime.UtcNow - _startedAt).TotalMinutes >= TimeoutMinutes)
+            if (_inProgress && (DateTime.UtcNow - _startedAt).TotalSeconds >= TimeoutSeconds)
             {
                 Console.WriteLine($"[BAT][WARN] BAT serialization timeout — auto-reset (was: {_currentFileName})");
                 _inProgress = false;
@@ -4961,12 +5011,30 @@ static class BatSerializationState
         }
     }
 
+    public static (string? lastCompletedFileName, DateTime? lastCompletedAt, string? lastPrismaLog) GetLastCompleted()
+    {
+        lock (_lock)
+        {
+            return (_lastCompletedFileName, _lastCompletedAt, _lastPrismaLog);
+        }
+    }
+
+    public static void SetLastCompleted(string fileName, string prismaLog)
+    {
+        lock (_lock)
+        {
+            _lastCompletedFileName = fileName;
+            _lastCompletedAt = DateTime.UtcNow;
+            _lastPrismaLog = prismaLog;
+        }
+    }
+
     public static bool TryAcquire(string fileName)
     {
         lock (_lock)
         {
             // Auto-reset if timed out
-            if (_inProgress && (DateTime.UtcNow - _startedAt).TotalMinutes >= TimeoutMinutes)
+            if (_inProgress && (DateTime.UtcNow - _startedAt).TotalSeconds >= TimeoutSeconds)
             {
                 Console.WriteLine($"[BAT][WARN] BAT serialization timeout — auto-reset (was: {_currentFileName})");
                 _inProgress = false;
