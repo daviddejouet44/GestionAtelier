@@ -5135,7 +5135,7 @@ static class BatSerializationState
     private static bool _inProgress = false;
     private static string? _currentFileName = null;
     private static DateTime _startedAt = DateTime.MinValue;
-    private const int TimeoutSeconds = 120;
+    private const int TimeoutSeconds = 120; // PrismaPrepare prend typiquement 30-40s; 120s offre une marge suffisante
 
     // Current workflow step (updated at key moments in HandleEpreuve / copy-for-bat)
     private static string _currentStep = "";
