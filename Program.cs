@@ -293,8 +293,8 @@ FileSystemWatcher? tempCopyWatcher = null;
                             Console.WriteLine($"[BAT_FSW] PrismaPrepare log found: {Path.GetFileName(logFile)}");
                             var inputMatch = System.Text.RegularExpressions.Regex.Match(
                                 prismaLogContent,
-                                @"fichier d'entrée\s*:\s*([^\s\\/:*?""<>|]+\.pdf)",
-                                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                                @"fichier d'entr[eé]e\s*:\s*([^\r\n]+?\.pdf)",
+                                System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
                             if (inputMatch.Success)
                             {
                                 var rawName = inputMatch.Groups[1].Value.Trim();
