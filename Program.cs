@@ -283,7 +283,8 @@ FileSystemWatcher? tempCopyWatcher = null;
                             {
                                 var fn = Path.GetFileName(f);
                                 return fn.EndsWith("_WARNING.log", StringComparison.OrdinalIgnoreCase)
-                                    || fn.EndsWith("_SUCCESS.log", StringComparison.OrdinalIgnoreCase);
+                                    || fn.EndsWith("_SUCCESS.log", StringComparison.OrdinalIgnoreCase)
+                                    || fn.EndsWith("_OK.log", StringComparison.OrdinalIgnoreCase);
                             })
                             .OrderByDescending(f => new FileInfo(f).LastWriteTime)
                             .FirstOrDefault();
@@ -432,7 +433,8 @@ FileSystemWatcher? tempCopyWatcher = null;
                             {
                                 var fn = Path.GetFileName(f);
                                 return fn.EndsWith("_WARNING.log", StringComparison.OrdinalIgnoreCase)
-                                    || fn.EndsWith("_SUCCESS.log", StringComparison.OrdinalIgnoreCase);
+                                    || fn.EndsWith("_SUCCESS.log", StringComparison.OrdinalIgnoreCase)
+                                    || fn.EndsWith("_OK.log", StringComparison.OrdinalIgnoreCase);
                             });
                         foreach (var logFile in logFiles)
                         {
@@ -5133,7 +5135,7 @@ static class BatSerializationState
     private static bool _inProgress = false;
     private static string? _currentFileName = null;
     private static DateTime _startedAt = DateTime.MinValue;
-    private const int TimeoutSeconds = 30;
+    private const int TimeoutSeconds = 120; // PrismaPrepare prend typiquement 30-40s; 120s offre une marge suffisante
 
     // Current workflow step (updated at key moments in HandleEpreuve / copy-for-bat)
     private static string _currentStep = "";
