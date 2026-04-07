@@ -47,11 +47,20 @@ export function showBatReadyPopup(notif) {
 
   const box = document.createElement("div");
   box.className = "notification-popup";
-  box.style.cssText = "background:white;border-radius:14px;padding:24px 28px;box-shadow:0 12px 40px rgba(0,0,0,0.25);max-width:400px;width:90%;border-left:5px solid #22c55e;";
+  box.style.cssText = "background:white;border-radius:14px;padding:24px 28px;box-shadow:0 12px 40px rgba(0,0,0,0.25);max-width:520px;width:90%;border-left:5px solid #22c55e;";
+
+  const logHtml = notif.prismaLog
+    ? `<details style="margin-bottom:16px;">
+        <summary style="cursor:pointer;font-size:13px;color:#6b7280;font-weight:600;">📋 Rapport PrismaPrepare</summary>
+        <pre style="margin-top:8px;font-size:11px;background:#f3f4f6;border-radius:6px;padding:10px;overflow-x:auto;white-space:pre-wrap;max-height:160px;overflow-y:auto;">${notif.prismaLog.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
+      </details>`
+    : "";
+
   box.innerHTML = `
     <div style="font-size:22px;margin-bottom:8px;">✅</div>
     <div style="font-size:16px;font-weight:700;color:#111827;margin-bottom:6px;">BAT prêt !</div>
     <div style="font-size:14px;color:#374151;margin-bottom:16px;">Le BAT pour le dossier <strong>${numeroDossier}</strong> est prêt et disponible dans la vue BAT.</div>
+    ${logHtml}
     <div style="display:flex;gap:10px;">
       <button id="bat-ready-popup-view" class="btn btn-primary btn-sm">Voir le BAT</button>
       <button id="bat-ready-popup-ok" class="btn btn-sm">Fermer</button>
