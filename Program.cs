@@ -273,34 +273,9 @@ FileSystemWatcher? tempCopyWatcher = null;
                         Console.WriteLine("[BAT_FSW][WARN] Epreuve.pdf still locked after retries, proceeding anyway.");
                     if (!File.Exists(epreuvePath)) return;
 
-                    // Find the OLDEST unprocessed batPending entry (FIFO queue)
-                    var batPendingCol = MongoDbHelper.GetCollection<BsonDocument>("batPending");
-                    var pending = batPendingCol.Find(
-                        Builders<BsonDocument>.Filter.Eq("processed", false)
-                    ).SortBy(d => d["createdAt"]).FirstOrDefault();
-
-                    string sourceFileName = pending != null && pending.Contains("sourceFileName")
-                        ? pending["sourceFileName"].AsString : "";
-
-                    // Fallback: scan TEMP_COPY for the original (non-Epreuve) file
-                    if (string.IsNullOrEmpty(sourceFileName) && !string.IsNullOrWhiteSpace(tempCopyDir) && Directory.Exists(tempCopyDir))
-                    {
-                        var others = Directory.GetFiles(tempCopyDir)
-                            .Where(f => !Path.GetFileName(f).Equals("Epreuve.pdf", StringComparison.OrdinalIgnoreCase))
-                            .OrderByDescending(f => new FileInfo(f).LastWriteTime)
-                            .FirstOrDefault();
-                        if (others != null)
-                            sourceFileName = Path.GetFileNameWithoutExtension(others);
-                    }
-
-                    if (string.IsNullOrEmpty(sourceFileName))
-                    {
-                        Console.WriteLine("[BAT_FSW] Cannot determine job name for Epreuve.pdf — skipping rename.");
-                        return;
-                    }
-
-                    // Read PrismaPrepare log file for operator tracking info
+                    // === 1. Read PrismaPrepare log FIRST (most reliable source for the original file name) ===
                     string prismaLogContent = "";
+                    string sourceFileName = "";
                     try
                     {
                         var logFile = Directory.GetFiles(outputDir, "*.log")
@@ -316,9 +291,54 @@ FileSystemWatcher? tempCopyWatcher = null;
                         {
                             prismaLogContent = File.ReadAllText(logFile);
                             Console.WriteLine($"[BAT_FSW] PrismaPrepare log found: {Path.GetFileName(logFile)}");
+
+                            // Parse "fichier d'entrée : XXX.pdf"
+                            var inputMatch = System.Text.RegularExpressions.Regex.Match(
+                                prismaLogContent,
+                                @"fichier d'entr[eé]e\s*:\s*(.+?\.pdf)",
+                                System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+                            if (inputMatch.Success)
+                            {
+                                sourceFileName = Path.GetFileNameWithoutExtension(inputMatch.Groups[1].Value.Trim());
+                                Console.WriteLine($"[BAT_FSW] Source file name from PrismaPrepare log: {sourceFileName}");
+                            }
                         }
                     }
                     catch (Exception exLog) { Console.WriteLine($"[BAT_FSW][WARN] Reading PrismaPrepare log: {exLog.Message}"); }
+
+                    // === 2. Fallback: batPending MongoDB (also needed for requestedBy) ===
+                    var batPendingCol = MongoDbHelper.GetCollection<BsonDocument>("batPending");
+                    var pending = batPendingCol.Find(
+                        Builders<BsonDocument>.Filter.Eq("processed", false)
+                    ).SortBy(d => d["createdAt"]).FirstOrDefault();
+
+                    if (string.IsNullOrEmpty(sourceFileName))
+                    {
+                        sourceFileName = pending != null && pending.Contains("sourceFileName")
+                            ? pending["sourceFileName"].AsString : "";
+                        if (!string.IsNullOrEmpty(sourceFileName))
+                            Console.WriteLine($"[BAT_FSW] Source file name from batPending: {sourceFileName}");
+                    }
+
+                    // === 3. Last resort: scan TEMP_COPY for the original (non-Epreuve) file ===
+                    if (string.IsNullOrEmpty(sourceFileName) && !string.IsNullOrWhiteSpace(tempCopyDir) && Directory.Exists(tempCopyDir))
+                    {
+                        var others = Directory.GetFiles(tempCopyDir)
+                            .Where(f => !Path.GetFileName(f).Equals("Epreuve.pdf", StringComparison.OrdinalIgnoreCase))
+                            .OrderByDescending(f => new FileInfo(f).LastWriteTime)
+                            .FirstOrDefault();
+                        if (others != null)
+                        {
+                            sourceFileName = Path.GetFileNameWithoutExtension(others);
+                            Console.WriteLine($"[BAT_FSW] Source file name from TEMP_COPY scan: {sourceFileName}");
+                        }
+                    }
+
+                    if (string.IsNullOrEmpty(sourceFileName))
+                    {
+                        Console.WriteLine("[BAT_FSW] Cannot determine job name for Epreuve.pdf — skipping rename.");
+                        return;
+                    }
 
                     // Rename Epreuve.pdf → BAT_{sourceFileName}.pdf (in outputDir)
                     BatSerializationState.SetStep("renaming");
