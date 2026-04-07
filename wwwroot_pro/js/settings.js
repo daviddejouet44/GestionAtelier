@@ -380,7 +380,7 @@ async function renderSettingsPaths(panel) {
 // ======================================================
 async function renderSettingsIntegrations(panel) {
   panel.innerHTML = `<h3>Workflow BAT</h3><p style="color:#6b7280;">Chargement...</p>`;
-  let cfg = { tempCopyPath: "" };
+  let cfg = { tempCopyPath: "", prismaPrepareOutputPath: "" };
   try {
     const resp = await fetch("/api/config/integrations", {
       headers: { "Authorization": `Bearer ${authToken}` }
@@ -393,10 +393,19 @@ async function renderSettingsIntegrations(panel) {
 
     <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 20px; background: #f9fafb;">
       <h4 style="margin-top: 0; margin-bottom: 12px;">Dossier temporaire TEMP_COPY</h4>
-      <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">Dossier dans lequel PrismaPrepare dépose le fichier <code>Epreuve.pdf</code>. Le backend surveille ce dossier et renomme automatiquement le fichier en <code>BAT_nom.pdf</code> avant de le déplacer dans la tuile BAT.</p>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">Dossier dans lequel le bouton BAT copie le PDF source pour conserver son nom d'origine. Ce nom est utilisé pour renommer l'épreuve générée par PrismaPrepare.</p>
       <div class="settings-form-group">
         <label>Chemin TEMP_COPY</label>
         <input type="text" id="int-temp-copy" value="${(cfg.tempCopyPath || '').replace(/"/g,'&quot;')}" class="settings-input" style="width:100%;max-width:500px;" placeholder="Ex: C:\\FluxAtelier\\Base\\TEMP_COPY" />
+      </div>
+    </div>
+
+    <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 20px; background: #f9fafb;">
+      <h4 style="margin-top: 0; margin-bottom: 12px;">Dossier de sortie PrismaPrepare</h4>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">Dossier dans lequel PrismaPrepare dépose le fichier <code>Epreuve.pdf</code> et le fichier log de suivi. Le backend surveille ce dossier pour renommer automatiquement le fichier en <code>BAT_nom.pdf</code> et le déplacer dans la tuile BAT.</p>
+      <div class="settings-form-group">
+        <label>Chemin sortie PrismaPrepare</label>
+        <input type="text" id="int-prisma-output" value="${(cfg.prismaPrepareOutputPath || '').replace(/"/g,'&quot;')}" class="settings-input" style="width:100%;max-width:500px;" placeholder="Ex: C:\\FluxAtelier\\Base\\Sortie" />
       </div>
     </div>
 
@@ -405,10 +414,11 @@ async function renderSettingsIntegrations(panel) {
 
   document.getElementById("int-save").onclick = async () => {
     const tempCopyPath = document.getElementById("int-temp-copy").value.trim();
+    const prismaPrepareOutputPath = document.getElementById("int-prisma-output").value.trim();
     const r = await fetch("/api/config/integrations", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ tempCopyPath })
+      body: JSON.stringify({ tempCopyPath, prismaPrepareOutputPath })
     }).then(r => r.json());
     if (r.ok) showNotification("✅ Configuration Workflow BAT enregistrée", "success");
     else alert("Erreur : " + (r.error || ""));

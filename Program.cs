@@ -218,7 +218,7 @@ Console.WriteLine("[INFO] ContentRoot = " + app.Environment.ContentRootPath);
 }
 
 // ======================================================
-// TEMP_COPY FileSystemWatcher — detect Epreuve.pdf, rename → BAT_*.pdf, move to BAT
+// PrismaPrepare Output FileSystemWatcher — detect Epreuve.pdf, rename → BAT_*.pdf, move to BAT
 // ======================================================
 // Declared in outer scope so the GC never collects it while the app is running.
 FileSystemWatcher? tempCopyWatcher = null;
@@ -227,12 +227,16 @@ FileSystemWatcher? tempCopyWatcher = null;
     {
         var integCfg = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations");
         var tempCopyDir = integCfg?.TempCopyPath ?? "";
-        if (!string.IsNullOrWhiteSpace(tempCopyDir) && Path.IsPathRooted(tempCopyDir))
+        var outputDir = !string.IsNullOrWhiteSpace(integCfg?.PrismaPrepareOutputPath)
+            ? integCfg!.PrismaPrepareOutputPath
+            : IntegrationsSettings.DefaultPrismaPrepareOutputPath;
+
+        if (Path.IsPathRooted(outputDir))
         {
             // Create the directory if it does not yet exist so the watcher can always be started.
-            Directory.CreateDirectory(tempCopyDir);
+            Directory.CreateDirectory(outputDir);
 
-            tempCopyWatcher = new FileSystemWatcher(tempCopyDir)
+            tempCopyWatcher = new FileSystemWatcher(outputDir)
             {
                 Filter = "Epreuve.pdf",
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite,
@@ -264,23 +268,20 @@ FileSystemWatcher? tempCopyWatcher = null;
                         catch (IOException) { await Task.Delay(500); }
                     }
                     if (!fileUnlocked)
-                        Console.WriteLine("[TEMP_COPY][WARN] Epreuve.pdf still locked after retries, proceeding anyway.");
+                        Console.WriteLine("[BAT_FSW][WARN] Epreuve.pdf still locked after retries, proceeding anyway.");
                     if (!File.Exists(epreuvePath)) return;
 
-                    // Find the OLDEST unprocessed batPending entry for TEMP_COPY (FIFO queue)
+                    // Find the OLDEST unprocessed batPending entry (FIFO queue)
                     var batPendingCol = MongoDbHelper.GetCollection<BsonDocument>("batPending");
                     var pending = batPendingCol.Find(
-                        Builders<BsonDocument>.Filter.And(
-                            Builders<BsonDocument>.Filter.Eq("processed", false),
-                            Builders<BsonDocument>.Filter.Eq("batFolder", tempCopyDir)
-                        )
+                        Builders<BsonDocument>.Filter.Eq("processed", false)
                     ).SortBy(d => d["createdAt"]).FirstOrDefault();
 
                     string sourceFileName = pending != null && pending.Contains("sourceFileName")
                         ? pending["sourceFileName"].AsString : "";
 
-                    // Also try scanning TEMP_COPY for the original (non-Epreuve) file
-                    if (string.IsNullOrEmpty(sourceFileName))
+                    // Fallback: scan TEMP_COPY for the original (non-Epreuve) file
+                    if (string.IsNullOrEmpty(sourceFileName) && !string.IsNullOrWhiteSpace(tempCopyDir) && Directory.Exists(tempCopyDir))
                     {
                         var others = Directory.GetFiles(tempCopyDir)
                             .Where(f => !Path.GetFileName(f).Equals("Epreuve.pdf", StringComparison.OrdinalIgnoreCase))
@@ -292,34 +293,58 @@ FileSystemWatcher? tempCopyWatcher = null;
 
                     if (string.IsNullOrEmpty(sourceFileName))
                     {
-                        Console.WriteLine("[TEMP_COPY] Cannot determine job name for Epreuve.pdf — skipping rename.");
+                        Console.WriteLine("[BAT_FSW] Cannot determine job name for Epreuve.pdf — skipping rename.");
                         return;
                     }
 
-                    // Rename Epreuve.pdf → BAT_{sourceFileName}.pdf
+                    // Read PrismaPrepare log file for operator tracking info
+                    string prismaLogContent = "";
+                    try
+                    {
+                        var logFile = Directory.GetFiles(outputDir, "*.log")
+                            .Where(f =>
+                            {
+                                var fn = Path.GetFileName(f);
+                                return fn.EndsWith("_WARNING.log", StringComparison.OrdinalIgnoreCase)
+                                    || fn.EndsWith("_SUCCESS.log", StringComparison.OrdinalIgnoreCase);
+                            })
+                            .OrderByDescending(f => new FileInfo(f).LastWriteTime)
+                            .FirstOrDefault();
+                        if (logFile != null)
+                        {
+                            prismaLogContent = File.ReadAllText(logFile);
+                            Console.WriteLine($"[BAT_FSW] PrismaPrepare log found: {Path.GetFileName(logFile)}");
+                        }
+                    }
+                    catch (Exception exLog) { Console.WriteLine($"[BAT_FSW][WARN] Reading PrismaPrepare log: {exLog.Message}"); }
+
+                    // Rename Epreuve.pdf → BAT_{sourceFileName}.pdf (in outputDir)
                     var batFileName = $"BAT_{sourceFileName}.pdf";
-                    var renamedPath = Path.Combine(tempCopyDir, batFileName);
+                    var renamedPath = Path.Combine(outputDir, batFileName);
                     File.Move(epreuvePath, renamedPath, overwrite: true);
-                    Console.WriteLine($"[TEMP_COPY] Renamed Epreuve.pdf → {batFileName}");
+                    Console.WriteLine($"[BAT_FSW] Renamed Epreuve.pdf → {batFileName}");
 
                     // Move BAT_{sourceFileName}.pdf to the BAT production folder
                     var (ok, err) = BackendUtils.MoveFileToDestFolder(renamedPath, "BAT");
                     if (ok)
-                        Console.WriteLine($"[TEMP_COPY] Moved {batFileName} to BAT folder");
+                        Console.WriteLine($"[BAT_FSW] Moved {batFileName} to BAT folder");
                     else
-                        Console.WriteLine($"[TEMP_COPY][WARN] Move to BAT failed: {err}");
+                        Console.WriteLine($"[BAT_FSW][WARN] Move to BAT failed: {err}");
 
                     // Delete the original copy of the source file in TEMP_COPY
-                    var originalInTemp = Directory.GetFiles(tempCopyDir)
-                        .Where(f =>
-                            Path.GetFileNameWithoutExtension(f).Equals(sourceFileName, StringComparison.OrdinalIgnoreCase) &&
-                            !Path.GetFileName(f).StartsWith("BAT_", StringComparison.OrdinalIgnoreCase) &&
-                            !Path.GetFileName(f).Equals("Epreuve.pdf", StringComparison.OrdinalIgnoreCase))
-                        .ToList();
-                    foreach (var orig in originalInTemp)
+                    if (!string.IsNullOrWhiteSpace(tempCopyDir) && Directory.Exists(tempCopyDir))
                     {
-                        try { File.Delete(orig); Console.WriteLine($"[TEMP_COPY] Deleted temp file {Path.GetFileName(orig)}"); }
-                        catch (Exception exDel) { Console.WriteLine($"[TEMP_COPY][WARN] Delete temp file: {exDel.Message}"); }
+                        var originalInTemp = Directory.GetFiles(tempCopyDir)
+                            .Where(f =>
+                                Path.GetFileNameWithoutExtension(f).Equals(sourceFileName, StringComparison.OrdinalIgnoreCase) &&
+                                !Path.GetFileName(f).StartsWith("BAT_", StringComparison.OrdinalIgnoreCase) &&
+                                !Path.GetFileName(f).Equals("Epreuve.pdf", StringComparison.OrdinalIgnoreCase))
+                            .ToList();
+                        foreach (var orig in originalInTemp)
+                        {
+                            try { File.Delete(orig); Console.WriteLine($"[BAT_FSW] Deleted temp file {Path.GetFileName(orig)}"); }
+                            catch (Exception exDel) { Console.WriteLine($"[BAT_FSW][WARN] Delete temp file: {exDel.Message}"); }
+                        }
                     }
 
                     // Create BAT ready notification for the operator who requested the BAT
@@ -338,8 +363,7 @@ FileSystemWatcher? tempCopyWatcher = null;
                             var numeroDossier = fabDoc2 != null && fabDoc2.Contains("numeroDossier") && fabDoc2["numeroDossier"].BsonType == BsonType.String
                                 ? fabDoc2["numeroDossier"].AsString : sourceFileName;
 
-                            var notifCol = MongoDbHelper.GetCollection<BsonDocument>("notifications");
-                            notifCol.InsertOne(new BsonDocument
+                            var notifDoc = new BsonDocument
                             {
                                 ["type"] = "bat_ready",
                                 ["message"] = $"✅ Le BAT pour le dossier {numeroDossier} est prêt !",
@@ -348,11 +372,16 @@ FileSystemWatcher? tempCopyWatcher = null;
                                 ["recipientLogin"] = requestedBy,
                                 ["read"] = false,
                                 ["timestamp"] = DateTime.UtcNow
-                            });
-                            Console.WriteLine($"[TEMP_COPY] Notification BAT prêt créée pour {requestedBy} (dossier {numeroDossier})");
+                            };
+                            if (!string.IsNullOrEmpty(prismaLogContent))
+                                notifDoc["prismaLog"] = prismaLogContent;
+
+                            var notifCol = MongoDbHelper.GetCollection<BsonDocument>("notifications");
+                            notifCol.InsertOne(notifDoc);
+                            Console.WriteLine($"[BAT_FSW] Notification BAT prêt créée pour {requestedBy} (dossier {numeroDossier})");
                         }
                     }
-                    catch (Exception exNotif) { Console.WriteLine($"[TEMP_COPY][WARN] Create notification: {exNotif.Message}"); }
+                    catch (Exception exNotif) { Console.WriteLine($"[BAT_FSW][WARN] Create notification: {exNotif.Message}"); }
 
                     // Mark batPending as processed
                     if (pending != null)
@@ -364,14 +393,14 @@ FileSystemWatcher? tempCopyWatcher = null;
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[TEMP_COPY][ERROR] HandleEpreuve: {ex.Message}");
+                    Console.WriteLine($"[BAT_FSW][ERROR] HandleEpreuve: {ex.Message}");
                 }
                 finally
                 {
                     batRenameSem.Release();
                     // Release BAT serialization lock so the next file can be sent
                     BatSerializationState.Release();
-                    Console.WriteLine("[TEMP_COPY] BAT serialization lock released.");
+                    Console.WriteLine("[BAT_FSW] BAT serialization lock released.");
                 }
             }
 
@@ -384,16 +413,16 @@ FileSystemWatcher? tempCopyWatcher = null;
                     await HandleEpreuve(e.FullPath);
             };
 
-            Console.WriteLine($"[INFO] TEMP_COPY FileSystemWatcher started on {tempCopyDir}");
+            Console.WriteLine($"[INFO] PrismaPrepare output FileSystemWatcher started on {outputDir}");
         }
         else
         {
-            Console.WriteLine("[INFO] TEMP_COPY path not configured — FileSystemWatcher not started.");
+            Console.WriteLine("[INFO] PrismaPrepare output path not configured — FileSystemWatcher not started.");
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[WARN] TEMP_COPY watcher init failed: {ex.Message}");
+        Console.WriteLine($"[WARN] PrismaPrepare output watcher init failed: {ex.Message}");
     }
 }
 
@@ -2625,7 +2654,7 @@ app.MapGet("/api/config/integrations", (HttpContext ctx) =>
 
         var cfg = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations")
             ?? new IntegrationsSettings();
-        return Results.Json(new { ok = true, config = new { preparePath = cfg.PreparePath, fieryPath = cfg.FieryPath, tempCopyPath = cfg.TempCopyPath, prismaPrepareExePath = cfg.PrismaPrepareExePath } });
+        return Results.Json(new { ok = true, config = new { preparePath = cfg.PreparePath, fieryPath = cfg.FieryPath, tempCopyPath = cfg.TempCopyPath, prismaPrepareExePath = cfg.PrismaPrepareExePath, prismaPrepareOutputPath = cfg.PrismaPrepareOutputPath } });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
@@ -2648,6 +2677,7 @@ app.MapPut("/api/config/integrations", async (HttpContext ctx) =>
         if (json.TryGetProperty("fieryPath", out var fp)) existing.FieryPath = fp.GetString() ?? "";
         if (json.TryGetProperty("tempCopyPath", out var tcp)) existing.TempCopyPath = tcp.GetString() ?? "";
         if (json.TryGetProperty("prismaPrepareExePath", out var ppe)) existing.PrismaPrepareExePath = ppe.GetString() ?? "";
+        if (json.TryGetProperty("prismaPrepareOutputPath", out var ppop)) existing.PrismaPrepareOutputPath = ppop.GetString() ?? IntegrationsSettings.DefaultPrismaPrepareOutputPath;
 
         MongoDbHelper.UpsertSettings("integrations", existing);
         return Results.Json(new { ok = true });
@@ -4379,7 +4409,8 @@ app.MapGet("/api/notifications", (string? login) =>
         fileName = d.Contains("fileName") ? d["fileName"].AsString : "",
         numeroDossier = d.Contains("numeroDossier") ? d["numeroDossier"].AsString : "",
         timestamp = d.Contains("timestamp") ? d["timestamp"].ToUniversalTime().ToString("o") : "",
-        read = d.Contains("read") && d["read"].AsBoolean
+        read = d.Contains("read") && d["read"].AsBoolean,
+        prismaLog = d.Contains("prismaLog") ? d["prismaLog"].AsString : ""
     }));
 });
 
@@ -4884,6 +4915,8 @@ file class ActivityLogEntry
 
 file class IntegrationsSettings
 {
+    public const string DefaultPrismaPrepareOutputPath = @"C:\FluxAtelier\Base\Sortie";
+
     [JsonPropertyName("preparePath")]
     public string PreparePath { get; set; } = "";
 
@@ -4895,19 +4928,22 @@ file class IntegrationsSettings
 
     [JsonPropertyName("prismaPrepareExePath")]
     public string PrismaPrepareExePath { get; set; } = "";
+
+    [JsonPropertyName("prismaPrepareOutputPath")]
+    public string PrismaPrepareOutputPath { get; set; } = DefaultPrismaPrepareOutputPath;
 }
 
 // ======================================================
 // BAT SERIALIZATION STATE — Prevent concurrent BAT processing
 // ======================================================
-// In-memory state + 5-minute timeout safety
+// In-memory state + 2-minute timeout safety
 static class BatSerializationState
 {
     private static readonly object _lock = new();
     private static bool _inProgress = false;
     private static string? _currentFileName = null;
     private static DateTime _startedAt = DateTime.MinValue;
-    private const int TimeoutMinutes = 5;
+    private const int TimeoutMinutes = 2;
 
     public static (bool inProgress, string? currentFileName, DateTime startedAt) Get()
     {
