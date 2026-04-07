@@ -254,6 +254,8 @@ FileSystemWatcher? tempCopyWatcher = null;
                     await Task.Delay(BackendUtils.FileSystemSettleDelayMs * 4);
                     if (!File.Exists(epreuvePath)) return;
 
+                    BatSerializationState.SetStep("processing_epreuve");
+
                     // Wait for file to be fully written and not locked (retry loop)
                     bool fileUnlocked = false;
                     for (int retry = 0; retry < 10; retry++)
@@ -319,12 +321,14 @@ FileSystemWatcher? tempCopyWatcher = null;
                     catch (Exception exLog) { Console.WriteLine($"[BAT_FSW][WARN] Reading PrismaPrepare log: {exLog.Message}"); }
 
                     // Rename Epreuve.pdf → BAT_{sourceFileName}.pdf (in outputDir)
+                    BatSerializationState.SetStep("renaming");
                     var batFileName = $"BAT_{sourceFileName}.pdf";
                     var renamedPath = Path.Combine(outputDir, batFileName);
                     File.Move(epreuvePath, renamedPath, overwrite: true);
                     Console.WriteLine($"[BAT_FSW] Renamed Epreuve.pdf → {batFileName}");
 
                     // Move BAT_{sourceFileName}.pdf to the BAT production folder
+                    BatSerializationState.SetStep("moving_to_bat");
                     var (ok, err) = BackendUtils.MoveFileToDestFolder(renamedPath, "BAT");
                     if (ok)
                         Console.WriteLine($"[BAT_FSW] Moved {batFileName} to BAT folder");
@@ -348,6 +352,7 @@ FileSystemWatcher? tempCopyWatcher = null;
                     }
 
                     // Create BAT ready notification for the operator who requested the BAT
+                    BatSerializationState.SetStep("creating_notification");
                     try
                     {
                         var requestedBy = pending != null && pending.Contains("requestedBy") ? pending["requestedBy"].AsString : "";
@@ -414,6 +419,7 @@ FileSystemWatcher? tempCopyWatcher = null;
                     catch (Exception exLogs) { Console.WriteLine($"[BAT_FSW][WARN] Log cleanup: {exLogs.Message}"); }
 
                     // Store last completed info for progress endpoint
+                    BatSerializationState.SetStep("completed");
                     BatSerializationState.SetLastCompleted(batFileName, prismaLogContent);
                 }
                 catch (Exception ex)
@@ -3558,7 +3564,7 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
         var displayName = !string.IsNullOrEmpty(fileName) ? fileName : (Path.GetFileName(fullPath) ?? "unknown");
         if (!BatSerializationState.TryAcquire(displayName))
         {
-            var (_, currentFile, startedAt) = BatSerializationState.Get();
+            var (_, currentFile, startedAt, _) = BatSerializationState.Get();
             var elapsed = (DateTime.UtcNow - startedAt).TotalSeconds;
             Console.WriteLine($"[BAT] copy-for-bat: BAT déjà en cours pour {currentFile} (depuis {elapsed:0}s) — rejet de {fileName}");
             return Results.Json(new { ok = false, error = "bat_in_progress", message = $"Un BAT est en cours de génération pour \"{currentFile}\". Veuillez patienter avant d'en envoyer un nouveau." });
@@ -3630,6 +3636,7 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
         Directory.CreateDirectory(tempCopyPath);
 
         // 5. Copy to TEMP_COPY (original stays in place)
+        BatSerializationState.SetStep("copying_to_temp");
         var tempCopyDest = Path.Combine(tempCopyPath, Path.GetFileName(fullPath));
         File.Copy(fullPath, tempCopyDest, overwrite: true);
         Console.WriteLine($"[BAT] Copié vers TEMP_COPY: {tempCopyDest}");
@@ -3641,6 +3648,7 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
         var hotfolderDest = Path.Combine(hotfolderPath, Path.GetFileName(fullPath));
         File.Copy(fullPath, hotfolderDest, overwrite: true);
         Console.WriteLine($"[BAT] Copié vers hotfolder PrismaPrepare: {hotfolderDest}");
+        BatSerializationState.SetStep("sent_to_hotfolder");
 
         // 7. Store pending rename in MongoDB so TEMP_COPY watcher can find the job name + requestedBy for notification
         try
@@ -3658,6 +3666,7 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
         catch { /* non-blocking */ }
 
         // Lock is intentionally NOT released here — HandleEpreuve (FSW) releases it when Epreuve.pdf is processed
+        BatSerializationState.SetStep("waiting_for_epreuve");
         lockAcquired = false;
         return Results.Json(new { ok = true, hotfolder = hotfolderPath, tempCopy = tempCopyPath, typeTravail });
     }
@@ -4170,7 +4179,7 @@ app.MapGet("/api/bat/status", (HttpContext ctx) =>
 // GET /api/bat/serialization-status — returns whether a BAT is currently being generated
 app.MapGet("/api/bat/serialization-status", () =>
 {
-    var (inProgress, currentFileName, startedAt) = BatSerializationState.Get();
+    var (inProgress, currentFileName, startedAt, _) = BatSerializationState.Get();
     return Results.Json(new
     {
         inProgress,
@@ -4182,21 +4191,129 @@ app.MapGet("/api/bat/serialization-status", () =>
 // GET /api/bat/progress — returns real-time progress info for the operator
 app.MapGet("/api/bat/progress", () =>
 {
-    var (inProgress, currentFileName, startedAt) = BatSerializationState.Get();
+    var (inProgress, currentFileName, startedAt, currentStep) = BatSerializationState.Get();
     var (lastCompletedFileName, lastCompletedAt, lastPrismaLog) = BatSerializationState.GetLastCompleted();
     double elapsedSeconds = inProgress ? (DateTime.UtcNow - startedAt).TotalSeconds : 0;
     string status = inProgress ? "processing" : (lastCompletedFileName != null ? "completed" : "idle");
+
+    // Parse PrismaPrepare log content into structured fields
+    object? parsedLog = null;
+    if (!string.IsNullOrEmpty(lastPrismaLog))
+    {
+        var logLines = lastPrismaLog.Split('\n');
+
+        // warnings count: "Il y a N avertissements"
+        int warnings = 0;
+        var warnMatch = System.Text.RegularExpressions.Regex.Match(lastPrismaLog, @"Il y a (\d+) avertissements?");
+        if (warnMatch.Success) int.TryParse(warnMatch.Groups[1].Value, out warnings);
+
+        // success: log contains "Succès"
+        bool success = lastPrismaLog.Contains("Succès", StringComparison.OrdinalIgnoreCase);
+
+        // operations: lines containing "Exécutez l'opération :"
+        var operations = logLines
+            .Where(l => l.Contains("Exécutez l'opération :", StringComparison.OrdinalIgnoreCase))
+            .Select(l =>
+            {
+                var idx = l.IndexOf("Exécutez l'opération :", StringComparison.OrdinalIgnoreCase);
+                var start = idx + "Exécutez l'opération :".Length;
+                return start < l.Length ? l.Substring(start).Trim() : "";
+            })
+            .Where(op => op.Length > 0)
+            .ToList();
+
+        // startTime: "Le travail a démarré à DD/MM/YYYY HH:MM:SS"
+        string? startTime = null;
+        var startMatch = System.Text.RegularExpressions.Regex.Match(lastPrismaLog, @"Le travail a démarré à ([\d/]+ [\d:]+)");
+        if (startMatch.Success) startTime = startMatch.Groups[1].Value;
+
+        // endTime: "Le fichier est traité à 'DD/MM/YYYY HH:MM:SS'"
+        string? endTime = null;
+        var endMatch = System.Text.RegularExpressions.Regex.Match(lastPrismaLog, @"Le fichier est traité à '([\d/]+ [\d:]+)'");
+        if (endMatch.Success) endTime = endMatch.Groups[1].Value;
+
+        // inputFile: "fichier d'entrée : filename.pdf"
+        string? inputFile = null;
+        var inputMatch = System.Text.RegularExpressions.Regex.Match(lastPrismaLog, @"fichier d'entrée\s*:\s*(.+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (inputMatch.Success) inputFile = inputMatch.Groups[1].Value.Trim();
+
+        // outputFile: "Fichier de sortie : filename.pdf"
+        string? outputFile = null;
+        var outputMatch = System.Text.RegularExpressions.Regex.Match(lastPrismaLog, @"Fichier de sortie\s*:\s*(.+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (outputMatch.Success) outputFile = outputMatch.Groups[1].Value.Trim();
+
+        parsedLog = new { warnings, success, operations, startTime, endTime, inputFile, outputFile };
+    }
+
     return Results.Json(new
     {
         inProgress,
         currentFileName = currentFileName ?? "",
+        currentStep = currentStep ?? "",
         startedAt = inProgress ? startedAt : (DateTime?)null,
         elapsedSeconds = (int)Math.Round(elapsedSeconds),
         status,
         lastCompletedFileName = lastCompletedFileName ?? "",
         lastCompletedAt = lastCompletedAt.HasValue ? lastCompletedAt : (DateTime?)null,
-        lastPrismaLog = lastPrismaLog ?? ""
+        lastPrismaLog = lastPrismaLog ?? "",
+        parsedLog
     });
+});
+
+// GET /api/bat/log/{fileName} — returns raw PrismaPrepare log for a given file
+app.MapGet("/api/bat/log/{fileName}", (string fileName) =>
+{
+    try
+    {
+        // Strip BAT_ prefix and .pdf extension for matching
+        var baseName = fileName;
+        if (baseName.StartsWith("BAT_", StringComparison.OrdinalIgnoreCase))
+            baseName = baseName.Substring(4);
+        if (baseName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            baseName = baseName.Substring(0, baseName.Length - 4);
+
+        // Look in PrismaPrepare output directory
+        var integCfg = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations");
+        var outputDir2 = !string.IsNullOrWhiteSpace(integCfg?.PrismaPrepareOutputPath)
+            ? integCfg!.PrismaPrepareOutputPath
+            : IntegrationsSettings.DefaultPrismaPrepareOutputPath;
+
+        if (Directory.Exists(outputDir2))
+        {
+            var logFile = Directory.GetFiles(outputDir2, "*.log")
+                .Where(f => Path.GetFileName(f).Contains(baseName, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(f => new FileInfo(f).LastWriteTime)
+                .FirstOrDefault();
+
+            if (logFile != null)
+            {
+                var content = File.ReadAllText(logFile);
+                var info = new FileInfo(logFile);
+                return Results.Json(new { ok = true, logFileName = info.Name, lastModified = info.LastWriteTime, content });
+            }
+        }
+
+        // Fallback: search MongoDB notifications for prismaLog field
+        var notifCol = MongoDbHelper.GetCollection<BsonDocument>("notifications");
+        var notifDoc = notifCol.Find(
+            Builders<BsonDocument>.Filter.And(
+                Builders<BsonDocument>.Filter.Eq("type", "bat_ready"),
+                Builders<BsonDocument>.Filter.Regex("fileName", new BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(baseName), "i"))
+            )
+        ).SortByDescending(d => d["timestamp"]).FirstOrDefault();
+
+        if (notifDoc != null && notifDoc.Contains("prismaLog") && notifDoc["prismaLog"].BsonType == BsonType.String)
+        {
+            var content = notifDoc["prismaLog"].AsString;
+            return Results.Json(new { ok = true, logFileName = (string?)null, lastModified = (DateTime?)null, content, source = "mongodb" });
+        }
+
+        return Results.Json(new { ok = false, error = $"Aucun log PrismaPrepare trouvé pour \"{fileName}\"" });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
 });
 
 app.MapPost("/api/bat/send", async (HttpContext ctx) =>
@@ -4981,21 +5098,24 @@ file class IntegrationsSettings
 // ======================================================
 // BAT SERIALIZATION STATE — Prevent concurrent BAT processing
 // ======================================================
-// In-memory state + 60-second timeout safety
+// In-memory state + 30-second timeout safety
 static class BatSerializationState
 {
     private static readonly object _lock = new();
     private static bool _inProgress = false;
     private static string? _currentFileName = null;
     private static DateTime _startedAt = DateTime.MinValue;
-    private const int TimeoutSeconds = 60;
+    private const int TimeoutSeconds = 30;
+
+    // Current workflow step (updated at key moments in HandleEpreuve / copy-for-bat)
+    private static string _currentStep = "";
 
     // Last completed BAT info (updated by HandleEpreuve on success)
     private static string? _lastCompletedFileName = null;
     private static DateTime? _lastCompletedAt = null;
     private static string? _lastPrismaLog = null;
 
-    public static (bool inProgress, string? currentFileName, DateTime startedAt) Get()
+    public static (bool inProgress, string? currentFileName, DateTime startedAt, string currentStep) Get()
     {
         lock (_lock)
         {
@@ -5006,9 +5126,15 @@ static class BatSerializationState
                 _inProgress = false;
                 _currentFileName = null;
                 _startedAt = DateTime.MinValue;
+                _currentStep = "";
             }
-            return (_inProgress, _currentFileName, _startedAt);
+            return (_inProgress, _currentFileName, _startedAt, _currentStep);
         }
+    }
+
+    public static void SetStep(string step)
+    {
+        lock (_lock) { _currentStep = step; }
     }
 
     public static (string? lastCompletedFileName, DateTime? lastCompletedAt, string? lastPrismaLog) GetLastCompleted()
@@ -5040,11 +5166,13 @@ static class BatSerializationState
                 _inProgress = false;
                 _currentFileName = null;
                 _startedAt = DateTime.MinValue;
+                _currentStep = "";
             }
             if (_inProgress) return false;
             _inProgress = true;
             _currentFileName = fileName;
             _startedAt = DateTime.UtcNow;
+            _currentStep = "";
             return true;
         }
     }
@@ -5056,6 +5184,7 @@ static class BatSerializationState
             _inProgress = false;
             _currentFileName = null;
             _startedAt = DateTime.MinValue;
+            _currentStep = "";
         }
     }
 }

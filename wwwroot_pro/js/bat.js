@@ -2,6 +2,159 @@
 import { authToken, currentUser, normalizePath, fnKey, showNotification } from './core.js';
 
 // ======================================================
+// BAT PROGRESS TRACKER — Suivi temps réel opérateur
+// ======================================================
+
+const STEP_LABELS = {
+  copying_to_temp:      "📂 Copie vers TEMP_COPY…",
+  sent_to_hotfolder:    "📤 Envoyé au hotfolder PrismaPrepare",
+  waiting_for_epreuve:  "⏳ En attente de l'épreuve PrismaPrepare…",
+  processing_epreuve:   "🔄 Épreuve détectée, traitement…",
+  renaming:             "✏️ Renommage en BAT_…",
+  moving_to_bat:        "📁 Déplacement vers le dossier BAT…",
+  creating_notification:"🔔 Création de la notification…",
+  completed:            "✅ Terminé"
+};
+
+const POLL_INTERVAL_MS = 2000;
+const AUTO_HIDE_DELAY_MS = 30000;
+
+let _bptInterval = null;
+let _bptDismissed = false;
+let _bptSeenInProgress = false;
+let _bptPollCount = 0;
+
+function getBatProgressTracker() {
+  return document.getElementById("bat-progress-tracker");
+}
+
+function removeBatProgressTracker() {
+  const el = getBatProgressTracker();
+  if (el) el.remove();
+  if (_bptInterval) { clearInterval(_bptInterval); _bptInterval = null; }
+}
+
+export function startBatProgressTracker() {
+  _bptDismissed = false;
+  _bptSeenInProgress = false;
+  _bptPollCount = 0;
+  // Create tracker element if not already present
+  if (!getBatProgressTracker()) {
+    const div = document.createElement("div");
+    div.id = "bat-progress-tracker";
+    div.innerHTML = `
+      <div class="bpt-header">
+        <span class="bpt-title">
+          <span class="bpt-spinner"></span>
+          <span id="bpt-title-text">Traitement BAT en cours</span>
+        </span>
+        <button class="bpt-close" id="bpt-close-btn" title="Fermer">✕</button>
+      </div>
+      <div class="bpt-body">
+        <div class="bpt-filename" id="bpt-filename">—</div>
+        <div class="bpt-step"><span class="bpt-step-label" id="bpt-step-label">Initialisation…</span></div>
+        <div class="bpt-elapsed" id="bpt-elapsed"></div>
+        <div id="bpt-result"></div>
+      </div>
+    `;
+    document.body.appendChild(div);
+    div.querySelector("#bpt-close-btn").onclick = () => {
+      _bptDismissed = true;
+      removeBatProgressTracker();
+    };
+  }
+
+  if (_bptInterval) clearInterval(_bptInterval);
+  _bptInterval = setInterval(_pollBatProgress, POLL_INTERVAL_MS);
+  _pollBatProgress(); // immediate first call
+}
+
+async function _pollBatProgress() {
+  if (_bptDismissed) { removeBatProgressTracker(); return; }
+
+  let data;
+  try {
+    data = await fetch("/api/bat/progress", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json());
+  } catch { return; }
+
+  const tracker = getBatProgressTracker();
+  if (!tracker) return;
+
+  const fileEl = tracker.querySelector("#bpt-filename");
+  const stepEl = tracker.querySelector("#bpt-step-label");
+  const elapsedEl = tracker.querySelector("#bpt-elapsed");
+  const resultEl = tracker.querySelector("#bpt-result");
+  const spinner = tracker.querySelector(".bpt-spinner");
+  const titleTextEl = tracker.querySelector("#bpt-title-text");
+
+  if (data.inProgress) {
+    _bptSeenInProgress = true;
+    // In progress — show current state
+    fileEl.textContent = data.currentFileName || "—";
+    const stepText = STEP_LABELS[data.currentStep] || data.currentStep || "Traitement…";
+    stepEl.textContent = stepText;
+    stepEl.className = "bpt-step-label";
+    elapsedEl.textContent = data.elapsedSeconds > 0 ? `⏱ ${data.elapsedSeconds}s écoulées` : "";
+    resultEl.innerHTML = "";
+    if (spinner) spinner.style.display = "";
+    if (titleTextEl) titleTextEl.textContent = "Traitement BAT en cours";
+  } else {
+    _bptPollCount++;
+    // Not in progress — show last result or hide
+    // If we haven't seen inProgress yet, wait a few cycles before giving up
+    if (!_bptSeenInProgress && _bptPollCount < 5) return;
+
+    if (data.lastCompletedFileName) {
+      // Show completed result
+      if (spinner) spinner.style.display = "none";
+      if (titleTextEl) titleTextEl.textContent = "BAT terminé";
+      fileEl.textContent = data.lastCompletedFileName;
+      stepEl.textContent = "✅ Terminé";
+      stepEl.className = "bpt-step-label done";
+      elapsedEl.textContent = "";
+
+      const pl = data.parsedLog;
+      if (pl) {
+        const isOk = pl.success;
+        const warnTxt = pl.warnings > 0 ? ` — ${pl.warnings} avertissement(s)` : "";
+        resultEl.innerHTML = `
+          <div class="bpt-result ${isOk ? 'success' : 'warning'}">
+            ${isOk ? '✅ Succès' : '⚠️ Terminé avec avertissements'}${warnTxt}
+            ${pl.startTime && pl.endTime ? `<br><small>Démarré : ${pl.startTime} — Traité : ${pl.endTime}</small>` : ''}
+          </div>
+          ${data.lastPrismaLog ? `<button class="bpt-log-toggle" id="bpt-log-toggle">Afficher le log PrismaPrepare</button>
+          <div class="bpt-log-content" id="bpt-log-content">${escapeHtml(data.lastPrismaLog)}</div>` : ''}
+        `;
+        const toggleBtn = resultEl.querySelector("#bpt-log-toggle");
+        const logDiv = resultEl.querySelector("#bpt-log-content");
+        if (toggleBtn && logDiv) {
+          toggleBtn.onclick = () => {
+            const visible = logDiv.style.display === "block";
+            logDiv.style.display = visible ? "none" : "block";
+            toggleBtn.textContent = visible ? "Afficher le log PrismaPrepare" : "Masquer le log";
+          };
+        }
+      } else {
+        resultEl.innerHTML = '<div class="bpt-result success">✅ Épreuve BAT traitée</div>';
+      }
+
+      // Auto-hide after AUTO_HIDE_DELAY_MS
+      setTimeout(() => { if (!_bptDismissed) removeBatProgressTracker(); }, AUTO_HIDE_DELAY_MS);
+      if (_bptInterval) { clearInterval(_bptInterval); _bptInterval = null; }
+    } else {
+      // Nothing to show — hide tracker
+      removeBatProgressTracker();
+    }
+  }
+}
+
+function escapeHtml(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// ======================================================
 // POPUP CHOIX BAT
 // ======================================================
 
@@ -97,6 +250,7 @@ async function sendBatComplet(fullPath) {
         `✅ BAT Complet : copié vers TEMP_COPY et hotfolder${r.hotfolder ? " (" + r.hotfolder + ")" : ""}. En attente de l'épreuve PrismaPrepare...`,
         "success"
       );
+      startBatProgressTracker();
     } else if (r.error === "bat_in_progress") {
       const msg = r.message || "Un BAT est déjà en cours de génération. Veuillez patienter.";
       showNotification(`⏳ ${msg}`, "warning");
