@@ -3564,7 +3564,7 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
         var displayName = !string.IsNullOrEmpty(fileName) ? fileName : (Path.GetFileName(fullPath) ?? "unknown");
         if (!BatSerializationState.TryAcquire(displayName))
         {
-            var (_, currentFile, startedAt) = BatSerializationState.Get();
+            var (_, currentFile, startedAt, _) = BatSerializationState.Get();
             var elapsed = (DateTime.UtcNow - startedAt).TotalSeconds;
             Console.WriteLine($"[BAT] copy-for-bat: BAT déjà en cours pour {currentFile} (depuis {elapsed:0}s) — rejet de {fileName}");
             return Results.Json(new { ok = false, error = "bat_in_progress", message = $"Un BAT est en cours de génération pour \"{currentFile}\". Veuillez patienter avant d'en envoyer un nouveau." });
@@ -4179,7 +4179,7 @@ app.MapGet("/api/bat/status", (HttpContext ctx) =>
 // GET /api/bat/serialization-status — returns whether a BAT is currently being generated
 app.MapGet("/api/bat/serialization-status", () =>
 {
-    var (inProgress, currentFileName, startedAt) = BatSerializationState.Get();
+    var (inProgress, currentFileName, startedAt, _) = BatSerializationState.Get();
     return Results.Json(new
     {
         inProgress,
@@ -4191,8 +4191,7 @@ app.MapGet("/api/bat/serialization-status", () =>
 // GET /api/bat/progress — returns real-time progress info for the operator
 app.MapGet("/api/bat/progress", () =>
 {
-    var (inProgress, currentFileName, startedAt) = BatSerializationState.Get();
-    var currentStep = BatSerializationState.GetStep();
+    var (inProgress, currentFileName, startedAt, currentStep) = BatSerializationState.Get();
     var (lastCompletedFileName, lastCompletedAt, lastPrismaLog) = BatSerializationState.GetLastCompleted();
     double elapsedSeconds = inProgress ? (DateTime.UtcNow - startedAt).TotalSeconds : 0;
     string status = inProgress ? "processing" : (lastCompletedFileName != null ? "completed" : "idle");
@@ -4217,8 +4216,10 @@ app.MapGet("/api/bat/progress", () =>
             .Select(l =>
             {
                 var idx = l.IndexOf("Exécutez l'opération :", StringComparison.OrdinalIgnoreCase);
-                return l.Substring(idx + "Exécutez l'opération :".Length).Trim();
+                var start = idx + "Exécutez l'opération :".Length;
+                return start < l.Length ? l.Substring(start).Trim() : "";
             })
+            .Where(op => op.Length > 0)
             .ToList();
 
         // startTime: "Le travail a démarré à DD/MM/YYYY HH:MM:SS"
@@ -5114,7 +5115,7 @@ static class BatSerializationState
     private static DateTime? _lastCompletedAt = null;
     private static string? _lastPrismaLog = null;
 
-    public static (bool inProgress, string? currentFileName, DateTime startedAt) Get()
+    public static (bool inProgress, string? currentFileName, DateTime startedAt, string currentStep) Get()
     {
         lock (_lock)
         {
@@ -5127,13 +5128,8 @@ static class BatSerializationState
                 _startedAt = DateTime.MinValue;
                 _currentStep = "";
             }
-            return (_inProgress, _currentFileName, _startedAt);
+            return (_inProgress, _currentFileName, _startedAt, _currentStep);
         }
-    }
-
-    public static string GetStep()
-    {
-        lock (_lock) { return _currentStep; }
     }
 
     public static void SetStep(string step)

@@ -16,6 +16,9 @@ const STEP_LABELS = {
   completed:            "✅ Terminé"
 };
 
+const POLL_INTERVAL_MS = 2000;
+const AUTO_HIDE_DELAY_MS = 30000;
+
 let _bptInterval = null;
 let _bptDismissed = false;
 let _bptSeenInProgress = false;
@@ -43,7 +46,7 @@ export function startBatProgressTracker() {
       <div class="bpt-header">
         <span class="bpt-title">
           <span class="bpt-spinner"></span>
-          Traitement BAT en cours
+          <span id="bpt-title-text">Traitement BAT en cours</span>
         </span>
         <button class="bpt-close" id="bpt-close-btn" title="Fermer">✕</button>
       </div>
@@ -62,7 +65,7 @@ export function startBatProgressTracker() {
   }
 
   if (_bptInterval) clearInterval(_bptInterval);
-  _bptInterval = setInterval(_pollBatProgress, 2000);
+  _bptInterval = setInterval(_pollBatProgress, POLL_INTERVAL_MS);
   _pollBatProgress(); // immediate first call
 }
 
@@ -84,7 +87,7 @@ async function _pollBatProgress() {
   const elapsedEl = tracker.querySelector("#bpt-elapsed");
   const resultEl = tracker.querySelector("#bpt-result");
   const spinner = tracker.querySelector(".bpt-spinner");
-  const titleSpan = tracker.querySelector(".bpt-title");
+  const titleTextEl = tracker.querySelector("#bpt-title-text");
 
   if (data.inProgress) {
     _bptSeenInProgress = true;
@@ -96,7 +99,7 @@ async function _pollBatProgress() {
     elapsedEl.textContent = data.elapsedSeconds > 0 ? `⏱ ${data.elapsedSeconds}s écoulées` : "";
     resultEl.innerHTML = "";
     if (spinner) spinner.style.display = "";
-    if (titleSpan) titleSpan.childNodes[1].textContent = " Traitement BAT en cours";
+    if (titleTextEl) titleTextEl.textContent = "Traitement BAT en cours";
   } else {
     _bptPollCount++;
     // Not in progress — show last result or hide
@@ -106,7 +109,7 @@ async function _pollBatProgress() {
     if (data.lastCompletedFileName) {
       // Show completed result
       if (spinner) spinner.style.display = "none";
-      if (titleSpan) titleSpan.childNodes[1].textContent = " BAT terminé";
+      if (titleTextEl) titleTextEl.textContent = "BAT terminé";
       fileEl.textContent = data.lastCompletedFileName;
       stepEl.textContent = "✅ Terminé";
       stepEl.className = "bpt-step-label done";
@@ -137,8 +140,8 @@ async function _pollBatProgress() {
         resultEl.innerHTML = '<div class="bpt-result success">✅ Épreuve BAT traitée</div>';
       }
 
-      // Auto-hide after 30 seconds
-      setTimeout(() => { if (!_bptDismissed) removeBatProgressTracker(); }, 30000);
+      // Auto-hide after AUTO_HIDE_DELAY_MS
+      setTimeout(() => { if (!_bptDismissed) removeBatProgressTracker(); }, AUTO_HIDE_DELAY_MS);
       if (_bptInterval) { clearInterval(_bptInterval); _bptInterval = null; }
     } else {
       // Nothing to show — hide tracker
