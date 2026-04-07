@@ -289,11 +289,11 @@ FileSystemWatcher? tempCopyWatcher = null;
                             .FirstOrDefault();
                         if (logFile != null)
                         {
-                            prismaLogContent = File.ReadAllText(logFile);
+                            prismaLogContent = File.ReadAllText(logFile, System.Text.Encoding.UTF8);
                             Console.WriteLine($"[BAT_FSW] PrismaPrepare log found: {Path.GetFileName(logFile)}");
                             var inputMatch = System.Text.RegularExpressions.Regex.Match(
                                 prismaLogContent,
-                                @"fichier d'entrée\s*:\s*([^\s\\/:*?""<>|]+\.pdf)",
+                                @"fichier d[\u2019'']entr[eéÃ©]+e\s*:\s*(.+?\.pdf)",
                                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                             if (inputMatch.Success)
                             {
@@ -4315,7 +4315,7 @@ app.MapGet("/api/bat/log/{fileName}", (string fileName) =>
 
             if (logFile != null)
             {
-                var content = File.ReadAllText(logFile);
+                var content = File.ReadAllText(logFile, System.Text.Encoding.UTF8);
                 var info = new FileInfo(logFile);
                 return Results.Json(new { ok = true, logFileName = info.Name, lastModified = info.LastWriteTime, content });
             }
