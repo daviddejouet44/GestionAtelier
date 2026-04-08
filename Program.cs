@@ -1093,11 +1093,15 @@ app.MapPost("/api/jobs/move", async (HttpContext ctx) =>
                 {
                     var oldPathNorm2 = src.Replace("\\", "/");
                     var newPathNorm2 = moved.Replace("\\", "/");
+                    // Always set both fullPath and fileName so lookup-by-fileName works reliably
+                    var movedFileName = Path.GetFileName(moved).ToLowerInvariant();
                     var fabCol = MongoDbHelper.GetCollection<BsonDocument>("fabrications");
                     var fabFilter = Builders<BsonDocument>.Filter.Or(
                         Builders<BsonDocument>.Filter.Eq("fullPath", src),
                         Builders<BsonDocument>.Filter.Eq("fullPath", oldPathNorm2));
-                    var fabUpdate = Builders<BsonDocument>.Update.Set("fullPath", moved);
+                    var fabUpdate = Builders<BsonDocument>.Update
+                        .Set("fullPath", moved)
+                        .Set("fileName", movedFileName);
                     fabCol.UpdateMany(fabFilter, fabUpdate);
                     // Also update fabricationSheets collection
                     var fabSheetsCol = MongoDbHelper.GetCollection<BsonDocument>("fabricationSheets");
@@ -1105,7 +1109,9 @@ app.MapPost("/api/jobs/move", async (HttpContext ctx) =>
                         Builders<BsonDocument>.Filter.Or(
                             Builders<BsonDocument>.Filter.Eq("fullPath", src),
                             Builders<BsonDocument>.Filter.Eq("fullPath", oldPathNorm2)),
-                        Builders<BsonDocument>.Update.Set("fullPath", moved));
+                        Builders<BsonDocument>.Update
+                            .Set("fullPath", moved)
+                            .Set("fileName", movedFileName));
                 }
                 catch (Exception exFab)
                 {
