@@ -1482,6 +1482,8 @@ app.MapDelete("/api/delivery", (HttpContext ctx) =>
 
 app.MapGet("/api/fabrication", (string? fullPath, string? fileName) =>
 {
+    try
+    {
     FabricationSheet? sheet = null;
     bool locked = false;
 
@@ -1523,6 +1525,12 @@ app.MapGet("/api/fabrication", (string? fullPath, string? fileName) =>
     }
 
     return Results.Json(new { ok = false, error = "Aucune fiche de fabrication." });
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ERR] GET /api/fabrication: {ex.Message}");
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
 });
 
 app.MapPut("/api/fabrication", async (HttpContext ctx) =>
@@ -3645,14 +3653,14 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
         if (fabDoc == null && !string.IsNullOrEmpty(fullPath))
             fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fullPath", fullPath)).FirstOrDefault();
 
-        var typeTravail = fabDoc != null && fabDoc.Contains("typeTravail") ? fabDoc["typeTravail"].AsString : "";
-        var moteurImpression = fabDoc != null && fabDoc.Contains("moteurImpression") ? fabDoc["moteurImpression"].AsString : "";
-        if (string.IsNullOrEmpty(moteurImpression) && fabDoc != null && fabDoc.Contains("printEngine"))
+        var typeTravail = fabDoc != null && fabDoc.Contains("typeTravail") && fabDoc["typeTravail"] != BsonNull.Value ? fabDoc["typeTravail"].AsString : "";
+        var moteurImpression = fabDoc != null && fabDoc.Contains("moteurImpression") && fabDoc["moteurImpression"] != BsonNull.Value ? fabDoc["moteurImpression"].AsString : "";
+        if (string.IsNullOrEmpty(moteurImpression) && fabDoc != null && fabDoc.Contains("printEngine") && fabDoc["printEngine"] != BsonNull.Value)
             moteurImpression = fabDoc["printEngine"].AsString;
-        var media1 = fabDoc != null && fabDoc.Contains("media1") ? fabDoc["media1"].AsString : "";
-        var media2 = fabDoc != null && fabDoc.Contains("media2") ? fabDoc["media2"].AsString : "";
-        var media3 = fabDoc != null && fabDoc.Contains("media3") ? fabDoc["media3"].AsString : "";
-        var media4 = fabDoc != null && fabDoc.Contains("media4") ? fabDoc["media4"].AsString : "";
+        var media1 = fabDoc != null && fabDoc.Contains("media1") && fabDoc["media1"] != BsonNull.Value ? fabDoc["media1"].AsString : "";
+        var media2 = fabDoc != null && fabDoc.Contains("media2") && fabDoc["media2"] != BsonNull.Value ? fabDoc["media2"].AsString : "";
+        var media3 = fabDoc != null && fabDoc.Contains("media3") && fabDoc["media3"] != BsonNull.Value ? fabDoc["media3"].AsString : "";
+        var media4 = fabDoc != null && fabDoc.Contains("media4") && fabDoc["media4"] != BsonNull.Value ? fabDoc["media4"].AsString : "";
 
         string copyDestPath; // hotfolder/workflow to copy PDF to
         string tileFolder;   // kanban tile folder to move the original to
@@ -6327,8 +6335,8 @@ file static class BackendUtils
 
     public static FabricationSheet? BsonDocToFabricationSheet(BsonDocument d)
     {
-        var fullPath = d.Contains("fullPath") ? d["fullPath"].AsString : "";
-        var fileName = d.Contains("fileName") ? d["fileName"].AsString : "";
+        var fullPath = d.Contains("fullPath") && d["fullPath"] != BsonNull.Value ? d["fullPath"].AsString : "";
+        var fileName = d.Contains("fileName") && d["fileName"] != BsonNull.Value ? d["fileName"].AsString : "";
         // Allow records that only have fileName (no fullPath yet)
         if (string.IsNullOrEmpty(fullPath) && string.IsNullOrEmpty(fileName)) return null;
 
@@ -6341,8 +6349,8 @@ file static class BackendUtils
                 history.Add(new FabricationHistory
                 {
                     Date   = h.Contains("date")   ? h["date"].ToUniversalTime() : DateTime.MinValue,
-                    User   = h.Contains("user")   ? h["user"].AsString : "David",
-                    Action = h.Contains("action") ? h["action"].AsString : ""
+                    User   = h.Contains("user")   && h["user"]   != BsonNull.Value ? h["user"].AsString : "David",
+                    Action = h.Contains("action") && h["action"] != BsonNull.Value ? h["action"].AsString : ""
                 });
             }
         }

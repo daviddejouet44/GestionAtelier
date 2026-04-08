@@ -714,6 +714,20 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         actions.appendChild(btnPrisma);
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          const btnImpressionLancee = document.createElement("button");
+          btnImpressionLancee.className = "btn btn-sm btn-primary";
+          btnImpressionLancee.textContent = "▶ Impression lancée";
+          btnImpressionLancee.onclick = async (e) => {
+            e.stopPropagation();
+            const r = await fetch("/api/jobs/move", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ source: full, destination: "Impression en cours", overwrite: true })
+            }).then(res => res.json()).catch(() => ({ ok: false }));
+            if (r.ok) { showNotification("✅ Déplacé vers Impression en cours", "success"); await refreshKanban(); }
+            else showNotification("❌ " + (r.error || "Erreur"), "error");
+          };
+          actions.appendChild(btnImpressionLancee);
           actions.appendChild(btnDelete);
         }
       } else if (folderName === "Fiery") {
