@@ -2099,8 +2099,11 @@ app.MapPost("/api/acrobat/preflight", async (HttpContext ctx) =>
         if (!File.Exists(exe))
             return Results.Json(new { ok = false, error = $"Acrobat.exe introuvable : {exe}. Configurez le chemin dans Paramétrage > Chemins d'accès." });
 
-        var acrobatDir = Path.GetDirectoryName(exe)!;
-        var jsFolder = Path.Combine(acrobatDir, "Javascripts");
+        // Use the per-user JavaScripts folder — no admin rights required,
+        // and Acrobat reliably loads scripts from this location at startup.
+        var jsFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Adobe", "Acrobat", "DC", "JavaScripts");
         Directory.CreateDirectory(jsFolder);
 
         // Generate unique temp JS script name
@@ -2108,50 +2111,31 @@ app.MapPost("/api/acrobat/preflight", async (HttpContext ctx) =>
         var jsFileName = $"ga_preflight_{guid}.js";
         jsPath = Path.Combine(jsFolder, jsFileName);
 
-        // Write the temporary Acrobat JavaScript
-        // The PDF is passed as a CLI argument so Acrobat opens it directly.
-        // The script waits for the document to be loaded via app.setTimeOut, then runs the Preflight.
+        // Write the temporary Acrobat JavaScript.
+        // Wrapped in app.trustedFunction so that app.openDoc() is allowed
+        // (Acrobat blocks it in unprivileged contexts).
+        // app.setTimeOut delays execution by 2 s to let Acrobat finish initialising.
+        var jsFullPath = fullPath.Replace("\\", "/");
         var jsContent = $@"// Script temporaire Preflight - généré par GestionAtelier
-// Le document est déjà ouvert via la ligne de commande Acrobat.
-// On attend qu'il soit chargé via setTimeOut puis on exécute le Preflight.
-var _ga_attempts = 0;
-var _ga_maxAttempts = 20;
-var _ga_profileName = ""{profileName}"";
-var _ga_timer = app.setTimeOut(""_ga_runPreflight()"", 3000);
-
-function _ga_runPreflight() {{
-    _ga_attempts++;
+var _ga_preflight = app.trustedFunction(function() {{
+    app.beginPriv();
     try {{
-        if (app.activeDocs && app.activeDocs.length > 0) {{
-            var doc = app.activeDocs[0];
-            var profile = Preflight.getProfileByName(_ga_profileName);
-            if (profile) {{
-                doc.preflight(profile, true);
-                doc.save();
-                doc.closeDoc(true);
-                app.quit();
-            }} else {{
-                console.println(""GestionAtelier Preflight: profil introuvable — "" + _ga_profileName);
-                doc.closeDoc(true);
-                app.quit();
-            }}
-        }} else if (_ga_attempts < _ga_maxAttempts) {{
-            // Document pas encore chargé, réessayer dans 2 secondes
-            app.setTimeOut(""_ga_runPreflight()"", 2000);
+        var _ga_doc = app.openDoc(""{jsFullPath}"");
+        var _ga_profile = Preflight.getProfileByName(""{profileName}"");
+        if (_ga_profile) {{
+            _ga_doc.preflight(_ga_profile);
+            app.execMenuItem(""Save"");
         }} else {{
-            // Timeout — quitter après 40 secondes
-            console.println(""GestionAtelier Preflight: timeout, document not loaded"");
-            app.quit();
+            console.println(""GestionAtelier Preflight: profil introuvable — {profileName}"");
         }}
+        _ga_doc.closeDoc(true);
     }} catch(e) {{
         console.println(""GestionAtelier Preflight error: "" + e);
-        if (_ga_attempts < _ga_maxAttempts) {{
-            app.setTimeOut(""_ga_runPreflight()"", 2000);
-        }} else {{
-            app.quit();
-        }}
     }}
-}}
+    app.endPriv();
+    app.quit();
+}});
+app.setTimeOut('_ga_preflight()', 2000);
 ";
         await File.WriteAllTextAsync(jsPath, jsContent, System.Text.Encoding.UTF8);
 
@@ -2170,28 +2154,34 @@ function _ga_runPreflight() {{
                 catch (Exception exKill) { Console.WriteLine($"[WARN] Could not kill {pName}: {exKill.Message}"); }
             }
         }
+        // Wait for Acrobat to fully release its handles before restarting.
+        await Task.Delay(3000);
 
-        // Launch Acrobat with the PDF file as a command-line argument so it opens directly.
-        // UseShellExecute = true is required for reliable file loading (CreateNoWindow not available in this mode).
-        var psi = new System.Diagnostics.ProcessStartInfo(exe, $"\"{fullPath}\"")
+        // Launch Acrobat minimized — UseShellExecute = true ensures folder-level scripts are loaded.
+        // The PDF is opened by the JS script via app.openDoc(), so no CLI argument is needed.
+        var acrobatDir = Path.GetDirectoryName(exe)!;
+        var psi = new System.Diagnostics.ProcessStartInfo(exe)
         {
             UseShellExecute = true,
+            WindowStyle = System.Diagnostics.ProcessWindowStyle.Minimized,
             WorkingDirectory = acrobatDir
         };
         var process = System.Diagnostics.Process.Start(psi);
         if (process == null)
             return Results.Json(new { ok = false, error = "Impossible de démarrer Acrobat" });
 
-        // Wait for Acrobat to finish (max 5 minutes)
-        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(5));
-        try
+        // Poll for file modification or Acrobat exit (max 5 minutes = 60 × 5 s).
+        // WaitForExitAsync alone is unreliable when Acrobat reattaches to an existing instance.
+        var lastMod = File.GetLastWriteTime(fullPath);
+        for (int i = 0; i < 60; i++)
         {
-            await process.WaitForExitAsync(cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            try { process.Kill(); } catch { }
-            return Results.Json(new { ok = false, error = "Timeout : Acrobat n'a pas terminé dans les 5 minutes" });
+            await Task.Delay(5000);
+            if (!File.Exists(fullPath) || File.GetLastWriteTime(fullPath) > lastMod)
+                break;
+            // Also stop waiting if Acrobat has already exited
+            if (System.Diagnostics.Process.GetProcessesByName("Acrobat").Length == 0 &&
+                System.Diagnostics.Process.GetProcessesByName("AcroRd32").Length == 0)
+                break;
         }
 
         // Clean up temp JS script
