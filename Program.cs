@@ -2126,11 +2126,15 @@ function _ga_runPreflight() {{
             var doc = app.activeDocs[0];
             var profile = Preflight.getProfileByName(_ga_profileName);
             if (profile) {{
-                doc.preflight(profile);
-                app.execMenuItem(""Save"");
+                doc.preflight(profile, true);
+                doc.save();
+                doc.closeDoc(true);
+                app.quit();
+            }} else {{
+                console.println(""GestionAtelier Preflight: profil introuvable — "" + _ga_profileName);
+                doc.closeDoc(true);
+                app.quit();
             }}
-            doc.closeDoc(true);
-            app.quit();
         }} else if (_ga_attempts < _ga_maxAttempts) {{
             // Document pas encore chargé, réessayer dans 2 secondes
             app.setTimeOut(""_ga_runPreflight()"", 2000);
@@ -2150,6 +2154,22 @@ function _ga_runPreflight() {{
 }}
 ";
         await File.WriteAllTextAsync(jsPath, jsContent, System.Text.Encoding.UTF8);
+
+        // Record modification time before launch to detect whether the preflight actually ran.
+        var modifiedBefore = File.GetLastWriteTimeUtc(fullPath);
+
+        // Kill any running Acrobat instances so Acrobat starts fresh and loads the new Javascripts/ script.
+        // (If a previous Acrobat instance is already open, it will not reload scripts from the Javascripts/ folder
+        //  and the new script will never execute.)
+        foreach (var pName in new[] { "Acrobat", "AcroRd32" })
+        {
+            foreach (var existing in System.Diagnostics.Process.GetProcessesByName(pName))
+            {
+                try { existing.Kill(); existing.WaitForExit(3000); }
+                catch (InvalidOperationException) { /* process already exited */ }
+                catch (Exception exKill) { Console.WriteLine($"[WARN] Could not kill {pName}: {exKill.Message}"); }
+            }
+        }
 
         // Launch Acrobat with the PDF file as a command-line argument so it opens directly.
         // UseShellExecute = true is required for reliable file loading (CreateNoWindow not available in this mode).
@@ -2205,6 +2225,16 @@ function _ga_runPreflight() {{
             {
                 return Results.Json(new { ok = false, error = $"Fichier introuvable après Preflight (il a peut-être été renommé) : {fullPath}" });
             }
+        }
+
+        // Verify that the preflight actually ran by checking whether the file was modified.
+        // If the modification time is unchanged the profile was likely not found in Acrobat;
+        // in that case abort rather than silently moving an un-processed file.
+        var modifiedAfter = File.GetLastWriteTimeUtc(effectivePath);
+        if (modifiedAfter <= modifiedBefore)
+        {
+            Console.WriteLine($"[PREFLIGHT] File not modified after Acrobat exit — profile '{profileName}' may not exist in Acrobat.");
+            return Results.Json(new { ok = false, error = $"Le Preflight ne semble pas avoir modifié le fichier. Vérifiez que le profil « {profileName} » existe dans Acrobat." });
         }
 
         // Move file to "Prêt pour impression"
