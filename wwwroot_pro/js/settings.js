@@ -20,26 +20,22 @@ export async function initSettingsView() {
         <button class="settings-tab active" data-tab="accounts">Comptes &amp; Rôles</button>
         <button class="settings-tab" data-tab="schedule">Plages horaires</button>
         <button class="settings-tab" data-tab="paths">Chemins d'accès</button>
-        <button class="settings-tab" data-tab="integrations">Workflow BAT</button>
+        <button class="settings-tab" data-tab="bat-config">Configuration BAT</button>
         <button class="settings-tab" data-tab="print-engines">Moteurs d'impression</button>
         <button class="settings-tab" data-tab="work-types">Types de travail</button>
-        <button class="settings-tab" data-tab="hotfolder-routing">Routage Hotfolder BAT PrismaPrepare</button>
         <button class="settings-tab" data-tab="print-routing">Routage Impression</button>
         <button class="settings-tab" data-tab="fabrication-imports">Imports fiche</button>
-        <button class="settings-tab" data-tab="bat-command">Commande BAT</button>
         <button class="settings-tab" data-tab="faconnage">Façonnage</button>
         <button class="settings-tab" data-tab="logs">Logs</button>
       </div>
       <div class="settings-panel" id="settings-panel-accounts"></div>
       <div class="settings-panel hidden" id="settings-panel-schedule"></div>
       <div class="settings-panel hidden" id="settings-panel-paths"></div>
-      <div class="settings-panel hidden" id="settings-panel-integrations"></div>
+      <div class="settings-panel hidden" id="settings-panel-bat-config"></div>
       <div class="settings-panel hidden" id="settings-panel-print-engines"></div>
       <div class="settings-panel hidden" id="settings-panel-work-types"></div>
-      <div class="settings-panel hidden" id="settings-panel-hotfolder-routing"></div>
       <div class="settings-panel hidden" id="settings-panel-print-routing"></div>
       <div class="settings-panel hidden" id="settings-panel-fabrication-imports"></div>
-      <div class="settings-panel hidden" id="settings-panel-bat-command"></div>
       <div class="settings-panel hidden" id="settings-panel-faconnage"></div>
       <div class="settings-panel hidden" id="settings-panel-logs"></div>
     </div>
@@ -68,13 +64,14 @@ export async function loadSettingsPanel(tabName, panelEl) {
     case "accounts": await renderSettingsAccounts(panelEl); break;
     case "schedule": await renderSettingsSchedule(panelEl); break;
     case "paths": await renderSettingsPaths(panelEl); break;
-    case "integrations": await renderSettingsIntegrations(panelEl); break;
+    case "integrations":
+    case "bat-config": await renderSettingsBatConfig(panelEl); break;
     case "print-engines": await renderSettingsPrintEngines(panelEl); break;
     case "work-types": await renderSettingsWorkTypes(panelEl); break;
-    case "hotfolder-routing": await renderSettingsHotfolderRouting(panelEl); break;
+    case "hotfolder-routing": await renderSettingsBatConfig(panelEl); break;
     case "print-routing": await renderSettingsPrintRouting(panelEl); break;
     case "fabrication-imports": await renderSettingsFabricationImports(panelEl); break;
-    case "bat-command": await renderSettingsBatCommand(panelEl); break;
+    case "bat-command": await renderSettingsBatConfig(panelEl); break;
     case "faconnage": await renderSettingsFaconnage(panelEl); break;
     case "logs": await renderSettingsLogs(panelEl); break;
   }
@@ -377,53 +374,187 @@ async function renderSettingsPaths(panel) {
 }
 
 // ======================================================
-// WORKFLOW BAT
+// CONFIGURATION BAT (Workflow BAT + Hotfolder + Commande BAT)
 // ======================================================
-async function renderSettingsIntegrations(panel) {
-  panel.innerHTML = `<h3>Workflow BAT</h3><p style="color:#6b7280;">Chargement...</p>`;
-  let cfg = { tempCopyPath: "", prismaPrepareOutputPath: "" };
-  try {
-    const resp = await fetch("/api/config/integrations", {
-      headers: { "Authorization": `Bearer ${authToken}` }
-    }).then(r => r.json());
-    if (resp.ok && resp.config) cfg = resp.config;
-  } catch(e) { /* use defaults */ }
-
+async function renderSettingsBatConfig(panel) {
   panel.innerHTML = `
-    <h3>Workflow BAT</h3>
-
-    <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 20px; background: #f9fafb;">
-      <h4 style="margin-top: 0; margin-bottom: 12px;">Dossier temporaire TEMP_COPY</h4>
-      <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">Dossier dans lequel le bouton BAT copie le PDF source pour conserver son nom d'origine. Ce nom est utilisé pour renommer l'épreuve générée par PrismaPrepare.</p>
-      <div class="settings-form-group">
-        <label>Chemin TEMP_COPY</label>
-        <input type="text" id="int-temp-copy" value="${(cfg.tempCopyPath || '').replace(/"/g,'&quot;')}" class="settings-input" style="width:100%;max-width:500px;" placeholder="Ex: C:\\FluxAtelier\\Base\\TEMP_COPY" />
-      </div>
+    <h3>Configuration BAT</h3>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:24px;">Paramétrez l'ensemble du workflow BAT : chemins de travail, routage hotfolder et commandes.</p>
+    <div class="settings-section-card">
+      <h4>Workflow BAT</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:14px;">Chargement…</p>
     </div>
-
-    <div style="border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 20px; background: #f9fafb;">
-      <h4 style="margin-top: 0; margin-bottom: 12px;">Dossier de sortie PrismaPrepare</h4>
-      <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">Dossier dans lequel PrismaPrepare dépose le fichier <code>Epreuve.pdf</code> et le fichier log de suivi. Le backend surveille ce dossier pour renommer automatiquement le fichier en <code>BAT_nom.pdf</code> et le déplacer dans la tuile BAT.</p>
-      <div class="settings-form-group">
-        <label>Chemin sortie PrismaPrepare</label>
-        <input type="text" id="int-prisma-output" value="${(cfg.prismaPrepareOutputPath || '').replace(/"/g,'&quot;')}" class="settings-input" style="width:100%;max-width:500px;" placeholder="Ex: C:\\FluxAtelier\\Base\\Sortie" />
-      </div>
+    <div class="settings-section-card">
+      <h4>Routage Hotfolder BAT PrismaPrepare</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:14px;">Chargement…</p>
     </div>
-
-    <button id="int-save" class="btn btn-primary">Enregistrer</button>
+    <div class="settings-section-card">
+      <h4>Commande BAT</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:14px;">Chargement…</p>
+    </div>
   `;
 
-  document.getElementById("int-save").onclick = async () => {
-    const tempCopyPath = document.getElementById("int-temp-copy").value.trim();
-    const prismaPrepareOutputPath = document.getElementById("int-prisma-output").value.trim();
+  // Load all data in parallel
+  let intCfg = { tempCopyPath: "", prismaPrepareOutputPath: "" };
+  let batCmd = "";
+  let batAlertDelayHours = 48;
+  let routings = [];
+  let types = [];
+  try {
+    const [r1, r2, r3, r4] = await Promise.all([
+      fetch("/api/config/integrations", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
+      fetch("/api/config/bat-command").then(r => r.json()).catch(() => ({})),
+      fetch("/api/config/hotfolder-routing").then(r => r.json()).catch(() => []),
+      fetch("/api/config/work-types").then(r => r.json()).catch(() => [])
+    ]);
+    if (r1.ok && r1.config) intCfg = r1.config;
+    if (r2.ok) { batCmd = r2.command || ""; batAlertDelayHours = r2.batAlertDelayHours ?? 48; }
+    if (Array.isArray(r3)) routings = r3;
+    if (Array.isArray(r4)) types = r4;
+  } catch(e) { /* use defaults */ }
+
+  const typeOptions = types.map(t => `<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join("");
+  const routingsHtml = routings.length === 0
+    ? '<p style="color:#9ca3af;margin:0;">Aucun routage configuré</p>'
+    : routings.map(r => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:white;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;">
+          <div style="flex:0 0 200px;"><strong style="font-size:13px;color:#111827;">${r.typeTravail}</strong></div>
+          <div style="flex:1;font-size:12px;color:#6b7280;font-family:monospace;word-break:break-all;">${r.hotfolderPath || '—'}</div>
+          <button class="btn btn-sm hfr-edit" data-type="${(r.typeTravail||'').replace(/"/g,'&quot;')}" data-path="${(r.hotfolderPath||'').replace(/"/g,'&quot;')}">Modifier</button>
+          <button class="btn btn-sm hfr-delete" data-type="${(r.typeTravail||'').replace(/"/g,'&quot;')}" style="color:#ef4444;border-color:#ef4444;">Supprimer</button>
+        </div>
+      `).join("");
+
+  panel.innerHTML = `
+    <h3>Configuration BAT</h3>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:24px;">Paramétrez l'ensemble du workflow BAT : chemins de travail, routage hotfolder et commandes.</p>
+
+    <div class="settings-section-card">
+      <h4>Workflow BAT</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">Configurez les dossiers de travail utilisés par le workflow BAT.</p>
+      <div class="settings-form-group">
+        <label>Chemin TEMP_COPY</label>
+        <input type="text" id="int-temp-copy" value="${(intCfg.tempCopyPath || '').replace(/"/g,'&quot;')}" class="settings-input settings-input-wide" placeholder="Ex: C:\\FluxAtelier\\Base\\TEMP_COPY" />
+        <p style="color:#6b7280;font-size:12px;margin-top:4px;">Dossier dans lequel le bouton BAT copie le PDF source pour conserver son nom d'origine.</p>
+      </div>
+      <div class="settings-form-group">
+        <label>Chemin sortie PrismaPrepare</label>
+        <input type="text" id="int-prisma-output" value="${(intCfg.prismaPrepareOutputPath || '').replace(/"/g,'&quot;')}" class="settings-input settings-input-wide" placeholder="Ex: C:\\FluxAtelier\\Base\\Sortie" />
+        <p style="color:#6b7280;font-size:12px;margin-top:4px;">Dossier dans lequel PrismaPrepare dépose le fichier <code>Epreuve.pdf</code>.</p>
+      </div>
+      <button id="int-save" class="btn btn-primary">Enregistrer le workflow</button>
+    </div>
+
+    <div class="settings-section-card">
+      <h4>Routage Hotfolder BAT PrismaPrepare</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">Configurez le chemin du hotfolder PrismaPrepare pour chaque type de travail.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px;">
+        <div>
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;display:block;margin-bottom:4px;">Type de travail</label>
+          <select id="hfr-type" class="settings-input" style="min-width:200px;">
+            <option value="">— Sélectionner —</option>
+            ${typeOptions}
+          </select>
+        </div>
+        <div style="flex:1;min-width:250px;">
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;display:block;margin-bottom:4px;">Chemin hotfolder PrismaPrepare</label>
+          <input type="text" id="hfr-path" placeholder="Ex: C:\\Flux\\PrismaPrepare\\Brochures" class="settings-input settings-input-wide" />
+        </div>
+        <button id="hfr-save" class="btn btn-primary">Enregistrer</button>
+      </div>
+      <div id="hfr-list">${routingsHtml}</div>
+    </div>
+
+    <div class="settings-section-card">
+      <h4>Commande BAT</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Utilisez <code>{filePath}</code>, <code>{type}</code> et <code>{qty}</code> comme variables.</p>
+      <div class="settings-form-group">
+        <label>Commande</label>
+        <input type="text" id="bat-cmd-input" value="${(batCmd || '').replace(/"/g,'&quot;')}" class="settings-input settings-input-wide" />
+      </div>
+      <div class="settings-form-group" style="margin-top:16px;">
+        <label>Délai alerte BAT sans réponse (heures)</label>
+        <input type="number" id="bat-alert-delay-input" value="${batAlertDelayHours}" min="1" class="settings-input" style="width:120px;" />
+        <p style="color:#6b7280;font-size:12px;margin-top:4px;">Affiche une alerte si un BAT reste sans validation/refus après ce délai. Défaut : 48h.</p>
+      </div>
+      <button id="bat-cmd-save" class="btn btn-primary">Enregistrer la commande</button>
+    </div>
+  `;
+
+  // Workflow BAT save
+  panel.querySelector("#int-save").onclick = async () => {
+    const tempCopyPath = panel.querySelector("#int-temp-copy").value.trim();
+    const prismaPrepareOutputPath = panel.querySelector("#int-prisma-output").value.trim();
     const r = await fetch("/api/config/integrations", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
       body: JSON.stringify({ tempCopyPath, prismaPrepareOutputPath })
     }).then(r => r.json());
-    if (r.ok) showNotification("✅ Configuration Workflow BAT enregistrée", "success");
+    if (r.ok) showNotification("✅ Workflow BAT enregistré", "success");
     else alert("Erreur : " + (r.error || ""));
   };
+
+  // Hotfolder routing save
+  panel.querySelector("#hfr-save").onclick = async () => {
+    const typeTravail = panel.querySelector("#hfr-type").value;
+    const hotfolderPath = panel.querySelector("#hfr-path").value.trim();
+    if (!typeTravail) { alert("Sélectionnez un type de travail"); return; }
+    if (!hotfolderPath) { alert("Entrez un chemin hotfolder"); return; }
+    const r = await fetch("/api/config/hotfolder-routing", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ typeTravail, hotfolderPath })
+    }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (r.ok) {
+      showNotification("✅ Routage enregistré", "success");
+      panel._loaded = false;
+      await renderSettingsBatConfig(panel);
+    } else { alert("Erreur : " + (r.error || "")); }
+  };
+
+  panel.querySelectorAll(".hfr-edit").forEach(btn => {
+    btn.onclick = () => {
+      panel.querySelector("#hfr-type").value = btn.dataset.type;
+      panel.querySelector("#hfr-path").value = btn.dataset.path;
+    };
+  });
+
+  panel.querySelectorAll(".hfr-delete").forEach(btn => {
+    btn.onclick = async () => {
+      const typeTravail = btn.dataset.type;
+      if (!confirm(`Supprimer le routage pour "${typeTravail}" ?`)) return;
+      const r = await fetch(`/api/config/hotfolder-routing/${encodeURIComponent(typeTravail)}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(r => r.json()).catch(() => ({ ok: false }));
+      if (r.ok) {
+        showNotification("Routage supprimé", "success");
+        panel._loaded = false;
+        await renderSettingsBatConfig(panel);
+      } else { alert("Erreur : " + (r.error || "")); }
+    };
+  });
+
+  // BAT command save
+  panel.querySelector("#bat-cmd-save").onclick = async () => {
+    const command = panel.querySelector("#bat-cmd-input").value;
+    const rawDelay = parseInt(panel.querySelector("#bat-alert-delay-input").value);
+    const batAlertDelayHoursNew = (rawDelay > 0) ? rawDelay : 48;
+    const r = await fetch("/api/config/bat-command", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ command, batAlertDelayHours: batAlertDelayHoursNew })
+    }).then(r => r.json());
+    if (r.ok) showNotification("Commande BAT enregistrée", "success");
+    else alert("Erreur");
+  };
+}
+
+// ======================================================
+// WORKFLOW BAT (kept for backward compat)
+// ======================================================
+async function renderSettingsIntegrations(panel) {
+  return renderSettingsBatConfig(panel);
 }
 
 // ======================================================

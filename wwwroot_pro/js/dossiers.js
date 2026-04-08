@@ -1,5 +1,5 @@
 // dossiers.js — Dossiers de production
-import { authToken, showNotification, fnKey } from './core.js';
+import { authToken, showNotification, fnKey, fmtBytes } from './core.js';
 import { openFabrication } from './fabrication.js';
 
 const STAGE_DISPLAY_LABELS = {
@@ -18,24 +18,65 @@ export function showDossiers() {
   initDossiersView();
 }
 
+// Dossiers view state
+let _dossiersViewMode = "grid"; // "grid" or "list"
+let _dossiersSortMode = "date_desc";
+
 export async function initDossiersView() {
   const el = document.getElementById("dossiers");
+  el.style.cssText = "width:100%;box-sizing:border-box;padding:20px;overflow-y:auto;";
   el.innerHTML = `
-    <div class="settings-container">
-      <h2>Dossiers de production</h2>
-      <div style="display: flex; gap: 10px; margin-bottom: 16px;">
-        <button id="dossiers-refresh" class="btn btn-primary">Rafraîchir</button>
+    <div style="width:100%;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <h2 style="margin:0;font-size:22px;font-weight:700;color:#111827;">Dossiers de production</h2>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <select id="dossiers-sort" style="padding:7px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;background:white;color:#111827;cursor:pointer;outline:none;">
+            <option value="date_desc">Date modif. (récent)</option>
+            <option value="date_asc">Date modif. (ancien)</option>
+            <option value="name_asc">Nom (A→Z)</option>
+            <option value="name_desc">Nom (Z→A)</option>
+            <option value="size_desc">Taille (grosse→petite)</option>
+            <option value="size_asc">Taille (petite→grosse)</option>
+          </select>
+          <div style="display:flex;gap:2px;background:#f3f4f6;border-radius:8px;padding:3px;">
+            <button id="dossiers-view-grid" title="Vue grille" style="padding:5px 10px;border:none;border-radius:6px;background:${_dossiersViewMode==='grid'?'white':'transparent'};cursor:pointer;font-size:16px;line-height:1;box-shadow:${_dossiersViewMode==='grid'?'0 1px 3px rgba(0,0,0,0.15)':'none'};">▦</button>
+            <button id="dossiers-view-list" title="Vue liste" style="padding:5px 10px;border:none;border-radius:6px;background:${_dossiersViewMode==='list'?'white':'transparent'};cursor:pointer;font-size:16px;line-height:1;box-shadow:${_dossiersViewMode==='list'?'0 1px 3px rgba(0,0,0,0.15)':'none'};">☰</button>
+          </div>
+          <button id="dossiers-refresh" class="btn btn-primary">Rafraîchir</button>
+        </div>
       </div>
       <div id="dossiers-list"><p style="color:#6b7280;">Chargement...</p></div>
     </div>
   `;
   document.getElementById("dossiers-refresh").onclick = loadDossiersList;
+  document.getElementById("dossiers-sort").value = _dossiersSortMode;
+  document.getElementById("dossiers-sort").onchange = (e) => {
+    _dossiersSortMode = e.target.value;
+    loadDossiersList();
+  };
+  document.getElementById("dossiers-view-grid").onclick = () => {
+    _dossiersViewMode = "grid";
+    document.getElementById("dossiers-view-grid").style.background = "white";
+    document.getElementById("dossiers-view-grid").style.boxShadow = "0 1px 3px rgba(0,0,0,0.15)";
+    document.getElementById("dossiers-view-list").style.background = "transparent";
+    document.getElementById("dossiers-view-list").style.boxShadow = "none";
+    loadDossiersList();
+  };
+  document.getElementById("dossiers-view-list").onclick = () => {
+    _dossiersViewMode = "list";
+    document.getElementById("dossiers-view-list").style.background = "white";
+    document.getElementById("dossiers-view-list").style.boxShadow = "0 1px 3px rgba(0,0,0,0.15)";
+    document.getElementById("dossiers-view-grid").style.background = "transparent";
+    document.getElementById("dossiers-view-grid").style.boxShadow = "none";
+    loadDossiersList();
+  };
   await loadDossiersList();
 }
 
 export async function loadDossiersList() {
   const listEl = document.getElementById("dossiers-list");
   if (!listEl) return;
+  listEl.innerHTML = '<p style="color:#6b7280;">Chargement...</p>';
   try {
     const folders = await fetch("/api/production-folders", {
       headers: { "Authorization": `Bearer ${authToken}` }
@@ -58,9 +99,23 @@ export async function loadDossiersList() {
       } catch { return null; }
     }));
 
+    // STAGE ordering for "least advanced" logic
+    const STAGE_ORDER = [
+      "Début de production", "Corrections", "Corrections et fond perdu",
+      "Prêt pour impression", "BAT", "PrismaPrepare", "Fiery",
+      "Impression en cours", "Façonnage", "Fin de production"
+    ];
+    function stageIndex(s) {
+      if (!s) return 0;
+      const lower = s.toLowerCase();
+      let idx = STAGE_ORDER.findIndex(k => k.toLowerCase() === lower);
+      if (idx < 0) idx = STAGE_ORDER.findIndex(k => lower.includes(k.toLowerCase()));
+      return idx >= 0 ? idx : 0;
+    }
+
     // Group folders by numeroDossier
-    const grouped = {}; // numeroDossier → [{ folder, realStage }]
-    const ungrouped = []; // folders with no numeroDossier
+    const grouped = {};
+    const ungrouped = [];
 
     folders.forEach((folder, idx) => {
       const realStage = stageResults[idx] || folder.currentStage || 'Début de production';
@@ -73,109 +128,181 @@ export async function loadDossiersList() {
       }
     });
 
-    listEl.innerHTML = "";
-    const grid = document.createElement("div");
-    grid.style.cssText = "display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;";
-
-    // STAGE ordering for "least advanced" logic
-    const STAGE_ORDER = [
-      "Début de production", "Corrections", "Corrections et fond perdu",
-      "Prêt pour impression", "BAT", "PrismaPrepare", "Fiery",
-      "Impression en cours", "Façonnage", "Fin de production"
+    // Build flat list of items for sorting
+    const allItems = [
+      ...Object.entries(grouped).map(([num, items]) => ({
+        type: "grouped",
+        numeroDossier: num,
+        items,
+        name: num,
+        date: Math.max(...items.map(i => new Date(i.folder.updatedAt || i.folder.createdAt || 0).getTime())),
+        size: items.reduce((acc, i) => acc + (i.folder.fileSize || 0), 0)
+      })),
+      ...ungrouped.map(({ folder, realStage }) => ({
+        type: "single",
+        folder,
+        realStage,
+        name: folder.fileName || folder.numeroDossier || '',
+        date: new Date(folder.updatedAt || folder.createdAt || 0).getTime(),
+        size: folder.fileSize || 0
+      }))
     ];
-    function stageIndex(s) {
-      if (!s) return 0;
-      const lower = s.toLowerCase();
-      // Prefer exact match first to avoid substring confusion
-      let idx = STAGE_ORDER.findIndex(k => k.toLowerCase() === lower);
-      if (idx < 0) idx = STAGE_ORDER.findIndex(k => lower.includes(k.toLowerCase()));
-      return idx >= 0 ? idx : 0;
-    }
 
-    // Render grouped dossiers
-    for (const [numeroDossier, items] of Object.entries(grouped)) {
-      // Global stage = least advanced among all files
-      const globalStage = items.reduce((worst, { realStage }) => {
-        return stageIndex(realStage) < stageIndex(worst) ? realStage : worst;
-      }, items[0].realStage);
-
-      const card = document.createElement("div");
-      card.className = "dossier-card";
-      card.style.cssText = "background: white; border: 1px solid #e5e7eb; border-radius: 16px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); cursor: pointer; transition: all 0.2s;";
-      card.onmouseenter = () => { card.style.boxShadow = "0 4px 20px rgba(0,0,0,0.15)"; card.style.transform = "translateY(-2px)"; };
-      card.onmouseleave = () => { card.style.boxShadow = "0 2px 12px rgba(0,0,0,0.08)"; card.style.transform = ""; };
-
-      const filesHtml = items.map(({ folder, realStage }) => `
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid #f3f4f6;margin-top:4px;">
-          <span style="font-size:11px;color:#374151;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;" title="${folder.fileName || ''}">${folder.fileName || '—'}</span>
-          <span style="background:#f3f4f6;color:#6b7280;padding:2px 6px;border-radius:8px;font-size:10px;white-space:nowrap;margin-left:4px;">${getStageLabelDisplay(realStage)}</span>
-        </div>
-      `).join('');
-
-      card.innerHTML = `
-        <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:12px;min-width:0;">
-          <div style="min-width:0;flex:1;">
-            <div style="font-size:22px;font-weight:800;color:#111827;font-family:monospace;line-height:1.2;word-break:break-word;">${numeroDossier}</div>
-            <div style="font-size:12px;color:#6b7280;margin-top:2px;">${items.length} fichier(s)</div>
-          </div>
-        </div>
-        <div style="margin-bottom:10px;">${filesHtml}</div>
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;" title="Étape la moins avancée">${getStageLabelDisplay(globalStage)}</span>
-          <span style="color:#6b7280;font-size:11px;">étape globale</span>
-        </div>
-      `;
-
-      // Click opens grouped dossier detail (all PDFs)
-      card.onclick = (e) => {
-        if (e.target.closest(".btn-danger")) return;
-        openGroupedDossierDetail(numeroDossier, items);
-      };
-
-      grid.appendChild(card);
-    }
-
-    // Render ungrouped dossiers (no numeroDossier)
-    ungrouped.forEach(({ folder, realStage }) => {
-      const folderName = folder.fileName || '';
-      const displayTitle = folderName || 'Dossier';
-      const stageDisplayLabel = getStageLabelDisplay(realStage);
-      const card = document.createElement("div");
-      card.className = "dossier-card";
-      card.style.cssText = "background: white; border: 1px solid #e5e7eb; border-radius: 16px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); cursor: pointer; transition: all 0.2s;";
-      card.onmouseenter = () => { card.style.boxShadow = "0 4px 20px rgba(0,0,0,0.15)"; card.style.transform = "translateY(-2px)"; };
-      card.onmouseleave = () => { card.style.boxShadow = "0 2px 12px rgba(0,0,0,0.08)"; card.style.transform = ""; };
-      card.innerHTML = `
-        <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:12px;min-width:0;">
-          <div style="min-width:0;flex:1;">
-            <div style="font-size:16px;font-weight:600;color:#374151;line-height:1.2;word-break:break-word;">${displayTitle}</div>
-            <div style="font-size:12px;color:#6b7280;margin-top:2px;">${folder.createdAt ? new Date(folder.createdAt).toLocaleDateString("fr-FR") : ''}</div>
-          </div>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;">${stageDisplayLabel}</span>
-          <span style="color:#6b7280;font-size:12px;">${typeof folder.files === 'number' ? folder.files : 0} fichier(s)</span>
-        </div>
-      `;
-      card.onclick = (e) => { if (e.target.closest(".btn-danger")) return; openDossierDetail(folder._id || folder.id); };
-
-      const btnDelete = document.createElement("button");
-      btnDelete.className = "btn btn-danger btn-sm";
-      btnDelete.textContent = "Supprimer";
-      btnDelete.style.cssText = "margin-top:12px;width:100%;";
-      btnDelete.onclick = async (e) => {
-        e.stopPropagation();
-        if (!confirm(`Supprimer le dossier "${folderName}" et tous ses fichiers ?`)) return;
-        const r = await fetch(`/api/production-folder?path=${encodeURIComponent(folder.path || folder.folderPath || "")}`, { method: "DELETE" }).then(r=>r.json()).catch(()=>({ok:false,error:"Erreur réseau"}));
-        if (r.ok) { showNotification("Dossier supprimé", "success"); loadDossiersList(); }
-        else showNotification("Erreur: " + (r.error || ""), "error");
-      };
-      card.appendChild(btnDelete);
-
-      grid.appendChild(card);
+    // Sort
+    allItems.sort((a, b) => {
+      switch(_dossiersSortMode) {
+        case "name_asc": return a.name.localeCompare(b.name);
+        case "name_desc": return b.name.localeCompare(a.name);
+        case "date_asc": return a.date - b.date;
+        case "date_desc": return b.date - a.date;
+        case "size_asc": return a.size - b.size;
+        case "size_desc": return b.size - a.size;
+        default: return b.date - a.date;
+      }
     });
 
-    listEl.appendChild(grid);
+    listEl.innerHTML = "";
+
+    if (_dossiersViewMode === "list") {
+      // List/table view
+      const table = document.createElement("div");
+      table.style.cssText = "width:100%;";
+      const header = document.createElement("div");
+      header.style.cssText = "display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;padding:10px 16px;background:#f3f4f6;border-radius:8px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;";
+
+      const colNom = document.createElement("span");
+      colNom.textContent = "📁 Nom";
+      colNom.style.cursor = "pointer";
+      colNom.onclick = () => { document.getElementById("dossiers-sort").value = "name_asc"; document.getElementById("dossiers-sort").dispatchEvent(new Event("change")); };
+
+      const colDate = document.createElement("span");
+      colDate.textContent = "Date modif.";
+      colDate.style.cursor = "pointer";
+      colDate.onclick = () => { document.getElementById("dossiers-sort").value = "date_desc"; document.getElementById("dossiers-sort").dispatchEvent(new Event("change")); };
+
+      const colSize = document.createElement("span");
+      colSize.textContent = "Taille";
+      colSize.style.cursor = "pointer";
+      colSize.onclick = () => { document.getElementById("dossiers-sort").value = "size_desc"; document.getElementById("dossiers-sort").dispatchEvent(new Event("change")); };
+
+      const colEtape = document.createElement("span");
+      colEtape.textContent = "Étape";
+
+      header.appendChild(colNom);
+      header.appendChild(colDate);
+      header.appendChild(colSize);
+      header.appendChild(colEtape);
+      table.appendChild(header);
+
+      for (const item of allItems) {
+        const row = document.createElement("div");
+        row.style.cssText = "display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;padding:10px 16px;background:white;border:1px solid #f3f4f6;border-radius:8px;margin-bottom:4px;align-items:center;cursor:pointer;transition:background 0.15s;";
+        row.onmouseenter = () => { row.style.background = "#f9fafb"; };
+        row.onmouseleave = () => { row.style.background = "white"; };
+
+        if (item.type === "grouped") {
+          const globalStage = item.items.reduce((worst, { realStage }) => {
+            return stageIndex(realStage) < stageIndex(worst) ? realStage : worst;
+          }, item.items[0].realStage);
+          row.innerHTML = `
+            <span style="font-size:13px;font-weight:600;color:#111827;font-family:monospace;">${item.numeroDossier} <span style="color:#9ca3af;font-weight:400;font-size:11px;">(${item.items.length} fichier(s))</span></span>
+            <span style="font-size:12px;color:#6b7280;">${item.date ? new Date(item.date).toLocaleDateString("fr-FR") : '—'}</span>
+            <span style="font-size:12px;color:#6b7280;">${item.size ? fmtBytes(item.size) : '—'}</span>
+            <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;">${getStageLabelDisplay(globalStage)}</span>
+          `;
+          row.onclick = () => openGroupedDossierDetail(item.numeroDossier, item.items);
+        } else {
+          row.innerHTML = `
+            <span style="font-size:13px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.folder.fileName || '—'}</span>
+            <span style="font-size:12px;color:#6b7280;">${item.date ? new Date(item.date).toLocaleDateString("fr-FR") : '—'}</span>
+            <span style="font-size:12px;color:#6b7280;">${item.size ? fmtBytes(item.size) : '—'}</span>
+            <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;">${getStageLabelDisplay(item.realStage)}</span>
+          `;
+          row.onclick = (e) => { if (e.target.closest(".btn-danger")) return; openDossierDetail(item.folder._id || item.folder.id); };
+        }
+        table.appendChild(row);
+      }
+      listEl.appendChild(table);
+    } else {
+      // Grid view
+      const grid = document.createElement("div");
+      grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;";
+
+      for (const item of allItems) {
+        if (item.type === "grouped") {
+          const globalStage = item.items.reduce((worst, { realStage }) => {
+            return stageIndex(realStage) < stageIndex(worst) ? realStage : worst;
+          }, item.items[0].realStage);
+
+          const card = document.createElement("div");
+          card.className = "dossier-card";
+          card.style.cssText = "background:white;border:1px solid #e5e7eb;border-radius:16px;padding:20px;box-shadow:0 2px 12px rgba(0,0,0,0.07);cursor:pointer;transition:all 0.2s;";
+          card.onmouseenter = () => { card.style.boxShadow = "0 4px 20px rgba(0,0,0,0.13)"; card.style.transform = "translateY(-2px)"; };
+          card.onmouseleave = () => { card.style.boxShadow = "0 2px 12px rgba(0,0,0,0.07)"; card.style.transform = ""; };
+
+          const filesHtml = item.items.map(({ folder, realStage }) => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid #f3f4f6;margin-top:4px;">
+              <span style="font-size:11px;color:#374151;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;" title="${folder.fileName || ''}">${folder.fileName || '—'}</span>
+              <span style="background:#f3f4f6;color:#6b7280;padding:2px 6px;border-radius:8px;font-size:10px;white-space:nowrap;margin-left:4px;">${getStageLabelDisplay(realStage)}</span>
+            </div>
+          `).join('');
+
+          card.innerHTML = `
+            <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;min-width:0;">
+              <div style="font-size:28px;line-height:1;">📁</div>
+              <div style="min-width:0;flex:1;">
+                <div style="font-size:20px;font-weight:800;color:#111827;font-family:monospace;line-height:1.2;word-break:break-word;" class="dossier-card-name">${item.numeroDossier}</div>
+                <div style="font-size:12px;color:#6b7280;margin-top:2px;">${item.items.length} fichier(s)</div>
+              </div>
+            </div>
+            <div style="margin-bottom:10px;">${filesHtml}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;">${getStageLabelDisplay(globalStage)}</span>
+              <span style="color:#6b7280;font-size:11px;">étape globale</span>
+            </div>
+          `;
+          card.onclick = (e) => { if (e.target.closest(".btn-danger")) return; openGroupedDossierDetail(item.numeroDossier, item.items); };
+          grid.appendChild(card);
+        } else {
+          const { folder, realStage } = item;
+          const folderName = folder.fileName || '';
+          const card = document.createElement("div");
+          card.className = "dossier-card";
+          card.style.cssText = "background:white;border:1px solid #e5e7eb;border-radius:16px;padding:20px;box-shadow:0 2px 12px rgba(0,0,0,0.07);cursor:pointer;transition:all 0.2s;";
+          card.onmouseenter = () => { card.style.boxShadow = "0 4px 20px rgba(0,0,0,0.13)"; card.style.transform = "translateY(-2px)"; };
+          card.onmouseleave = () => { card.style.boxShadow = "0 2px 12px rgba(0,0,0,0.07)"; card.style.transform = ""; };
+          card.innerHTML = `
+            <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;min-width:0;">
+              <div style="font-size:28px;line-height:1;">📄</div>
+              <div style="min-width:0;flex:1;">
+                <div style="font-size:15px;font-weight:600;color:#374151;line-height:1.2;word-break:break-word;" class="dossier-card-name">${folderName || 'Dossier'}</div>
+                <div style="font-size:12px;color:#6b7280;margin-top:2px;">${folder.createdAt ? new Date(folder.createdAt).toLocaleDateString("fr-FR") : ''}</div>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;">${getStageLabelDisplay(realStage)}</span>
+              <span style="color:#6b7280;font-size:12px;">${typeof folder.files === 'number' ? folder.files : 0} fichier(s)</span>
+            </div>
+          `;
+          card.onclick = (e) => { if (e.target.closest(".btn-danger")) return; openDossierDetail(folder._id || folder.id); };
+
+          const btnDelete = document.createElement("button");
+          btnDelete.className = "btn btn-danger btn-sm";
+          btnDelete.textContent = "Supprimer";
+          btnDelete.style.cssText = "margin-top:12px;width:100%;";
+          btnDelete.onclick = async (e) => {
+            e.stopPropagation();
+            if (!confirm(`Supprimer le dossier "${folderName}" et tous ses fichiers ?`)) return;
+            const r = await fetch(`/api/production-folder?path=${encodeURIComponent(folder.path || folder.folderPath || "")}`, { method: "DELETE" }).then(r=>r.json()).catch(()=>({ok:false,error:"Erreur réseau"}));
+            if (r.ok) { showNotification("Dossier supprimé", "success"); loadDossiersList(); }
+            else showNotification("Erreur: " + (r.error || ""), "error");
+          };
+          card.appendChild(btnDelete);
+          grid.appendChild(card);
+        }
+      }
+      listEl.appendChild(grid);
+    }
   } catch (err) {
     listEl.innerHTML = `<p style="color:#ef4444;">Erreur : ${err.message}</p>`;
   }

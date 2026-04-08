@@ -34,6 +34,22 @@ const fabStageBanner = document.getElementById("fab-stage-banner");
 export let fabCurrentPath = null;
 
 // ======================================================
+// CLIENT-SIDE CACHE (TTL: 5 minutes)
+// ======================================================
+const _fabCache = {};
+const FAB_CACHE_TTL = 5 * 60 * 1000;
+
+async function fetchCached(url) {
+  const now = Date.now();
+  if (_fabCache[url] && now - _fabCache[url].ts < FAB_CACHE_TTL) {
+    return _fabCache[url].data;
+  }
+  const data = await fetch(url).then(r => r.json()).catch(() => []);
+  _fabCache[url] = { data, ts: now };
+  return data;
+}
+
+// ======================================================
 // INIT ÉVÉNEMENTS
 // ======================================================
 export function initFabrication() {
@@ -129,49 +145,61 @@ export async function openFabrication(fullPath) {
   fabCurrentPath = normalizePath(fullPath);
   const fabCurrentFileName = fnKey(fabCurrentPath);
 
-  const r = await fetch("/api/fabrication?fileName=" + encodeURIComponent(fabCurrentFileName));
-  const j = await r.json();
-  const d = j.ok === false ? {} : j;
+  // Show modal immediately with spinner to reduce perceived latency
+  const formGrid = fabModal.querySelector(".fab-form-grid");
+  if (formGrid) {
+    formGrid.style.opacity = "0.5";
+    formGrid.style.pointerEvents = "none";
+  }
+  if (fabStageBanner) fabStageBanner.style.display = "none";
+  fabModal.classList.remove("hidden");
 
-  // Print engines
-  try {
-    const engines = await fetch("/api/config/print-engines").then(r => r.json()).catch(() => []);
-    fabMoteur.innerHTML = '<option value="">— Sélectionner —</option>';
-    engines.forEach(e => {
-      const name = (typeof e === "object" && e !== null) ? (e.name || "") : String(e || "");
-      const opt = document.createElement("option");
-      opt.value = name;
-      opt.textContent = name;
-      fabMoteur.appendChild(opt);
-    });
-  } catch(err) { console.warn("Erreur print-engines:", err); }
+  // Parallelize all API calls at once
+  const [j, engines, types, papers, faconnageOptions, trailData, stageData] = await Promise.all([
+    fetch("/api/fabrication?fileName=" + encodeURIComponent(fabCurrentFileName), {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => ({})),
+    fetchCached("/api/config/print-engines"),
+    fetchCached("/api/config/work-types"),
+    fetchCached("/api/config/paper-catalog"),
+    fetch("/api/settings/faconnage-options", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => []),
+    fetch("/api/fabrication/files-trail?fileName=" + encodeURIComponent(fabCurrentFileName), {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => null),
+    fetch("/api/file-stage?fileName=" + encodeURIComponent(fabCurrentFileName), {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => null)
+  ]);
 
-  // Work types
-  try {
-    const types = await fetch("/api/config/work-types").then(r => r.json()).catch(() => []);
-    fabType.innerHTML = '<option value="">— Sélectionner —</option>';
-    types.forEach(t => {
-      const opt = document.createElement("option");
-      opt.value = t;
-      opt.textContent = t;
-      fabType.appendChild(opt);
-    });
-  } catch(e) { console.warn("Erreur work-types:", e); }
+  const d = (j && j.ok === false) ? {} : (j || {});
 
-  // Paper catalog
-  try {
-    const papers = await fetch("/api/config/paper-catalog").then(r => r.json()).catch(() => []);
-    [fabMedia1, fabMedia2, fabMedia3, fabMedia4].forEach(sel => {
-      if (!sel) return;
-      sel.innerHTML = '<option value="">— Sélectionner —</option>';
-      papers.forEach(p => {
-        const opt = document.createElement("option");
-        opt.value = p;
-        opt.textContent = p;
-        sel.appendChild(opt);
-      });
-    });
-  } catch(e) { console.warn("Paper catalog error:", e); }
+  // Populate print engines
+  fabMoteur.innerHTML = '<option value="">— Sélectionner —</option>';
+  (Array.isArray(engines) ? engines : []).forEach(e => {
+    const name = (typeof e === "object" && e !== null) ? (e.name || "") : String(e || "");
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    fabMoteur.appendChild(opt);
+  });
+
+  // Populate work types
+  fabType.innerHTML = '<option value="">— Sélectionner —</option>';
+  (Array.isArray(types) ? types : []).forEach(t => {
+    const opt = document.createElement("option");
+    opt.value = t;
+    opt.textContent = t;
+    fabType.appendChild(opt);
+  });
+
+  // Populate paper catalog
+  const paperHtml = '<option value="">— Sélectionner —</option>' +
+    (Array.isArray(papers) ? papers : []).map(p => `<option value="${p}">${p}</option>`).join("");
+  [fabMedia1, fabMedia2, fabMedia3, fabMedia4].forEach(sel => {
+    if (sel) sel.innerHTML = paperHtml;
+  });
 
   fabMoteur.value = d.moteurImpression || d.machine || "";
   fabOperateur.value = d.operateur || "";
@@ -184,45 +212,38 @@ export async function openFabrication(fullPath) {
   if (fabNumeroDossier) { fabNumeroDossier.value = d.numeroDossier || ""; fabNumeroDossier.style.borderColor = ""; fabNumeroDossier.style.boxShadow = ""; }
   fabNotes.value = d.notes || "";
 
-  // Load façonnage options and render checkboxes
-  if (fabFaconnageContainer) {
-    fabFaconnageContainer.innerHTML = '<span style="color:#9ca3af;font-size:12px;">Chargement...</span>';
-    try {
-      const options = await fetch("/api/settings/faconnage-options", {
-        headers: { "Authorization": `Bearer ${authToken}` }
-      }).then(r => r.json()).catch(() => []);
-      let checked = [];
-      if (Array.isArray(d.faconnage)) {
-        checked = d.faconnage;
-      } else if (typeof d.faconnage === 'string' && d.faconnage.startsWith('[')) {
-        try { checked = JSON.parse(d.faconnage); } catch(e) { console.warn("faconnage JSON.parse error:", e); }
-      }
-      if (!Array.isArray(options) || options.length === 0) {
-        fabFaconnageContainer.innerHTML = '<span style="color:#9ca3af;font-size:12px;">Aucune option — importer un CSV dans Paramétrage &gt; Façonnage</span>';
-      } else {
-        fabFaconnageContainer.innerHTML = "";
-        options.forEach(opt => {
-          const label = document.createElement("label");
-          label.style.cssText = "display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;";
-          const cb = document.createElement("input");
-          cb.type = "checkbox";
-          cb.className = "fab-faconnage-cb";
-          cb.value = opt;
-          cb.checked = checked.includes(opt);
-          label.appendChild(cb);
-          label.appendChild(document.createTextNode(opt));
-          fabFaconnageContainer.appendChild(label);
-        });
-      }
-    } catch(e) {
-      fabFaconnageContainer.innerHTML = '<span style="color:#9ca3af;font-size:12px;">Erreur chargement options</span>';
-    }
-  }
-
   if (fabMedia1) fabMedia1.value = d.media1 || "";
   if (fabMedia2) fabMedia2.value = d.media2 || "";
   if (fabMedia3) fabMedia3.value = d.media3 || "";
   if (fabMedia4) fabMedia4.value = d.media4 || "";
+
+  // Façonnage checkboxes
+  if (fabFaconnageContainer) {
+    let checked = [];
+    if (Array.isArray(d.faconnage)) {
+      checked = d.faconnage;
+    } else if (typeof d.faconnage === 'string' && d.faconnage.startsWith('[')) {
+      try { checked = JSON.parse(d.faconnage); } catch(e) { /* ignore */ }
+    }
+    const opts = Array.isArray(faconnageOptions) ? faconnageOptions : [];
+    if (opts.length === 0) {
+      fabFaconnageContainer.innerHTML = '<span style="color:#9ca3af;font-size:12px;">Aucune option — importer un CSV dans Paramétrage &gt; Façonnage</span>';
+    } else {
+      fabFaconnageContainer.innerHTML = "";
+      opts.forEach(opt => {
+        const label = document.createElement("label");
+        label.style.cssText = "display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "fab-faconnage-cb";
+        cb.value = opt;
+        cb.checked = checked.includes(opt);
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(opt));
+        fabFaconnageContainer.appendChild(label);
+      });
+    }
+  }
 
   const deliveryDate = deliveriesByPath[fabCurrentFileName];
   if (d.delai) {
@@ -240,29 +261,32 @@ export async function openFabrication(fullPath) {
     fabHistory.appendChild(div);
   });
 
-  // Load file trail
+  // File trail
   const trailEl = document.getElementById("fab-files-trail");
   if (trailEl) {
-    trailEl.innerHTML = '<span style="color:#9ca3af;">Chargement...</span>';
-    fetch("/api/fabrication/files-trail?fileName=" + encodeURIComponent(fabCurrentFileName))
-      .then(r => r.json())
-      .then(t => {
-        if (!t.ok || !Array.isArray(t.files)) { trailEl.innerHTML = '<span style="color:#9ca3af;">Indisponible</span>'; return; }
-        trailEl.innerHTML = "";
-        t.files.forEach(f => {
-          const chip = document.createElement("div");
-          const isImpression = f.key === "impression" || f.key === "faconnage";
-          chip.style.cssText = `display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid ${f.found ? "#bbf7d0" : "#e5e7eb"};background:${f.found ? "#f0fdf4" : "#f9fafb"};color:${f.found ? "#166534" : "#9ca3af"};`;
-          chip.textContent = (f.found ? "✅" : "○") + " " + f.label;
-          if (f.found && f.fullPath) {
-            chip.style.cursor = "pointer";
-            chip.title = "Ouvrir " + f.fullPath;
-            chip.onclick = () => window.open("/api/file?path=" + encodeURIComponent(f.fullPath), "_blank", "noopener");
-          }
-          trailEl.appendChild(chip);
-        });
-      })
-      .catch(() => { trailEl.innerHTML = '<span style="color:#9ca3af;">Indisponible</span>'; });
+    if (trailData && trailData.ok && Array.isArray(trailData.files)) {
+      trailEl.innerHTML = "";
+      trailData.files.forEach(f => {
+        const chip = document.createElement("div");
+        chip.style.cssText = `display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid ${f.found ? "#bbf7d0" : "#e5e7eb"};background:${f.found ? "#f0fdf4" : "#f9fafb"};color:${f.found ? "#166534" : "#9ca3af"};`;
+        chip.textContent = (f.found ? "✅" : "○") + " " + f.label;
+        if (f.found && f.fullPath) {
+          chip.style.cursor = "pointer";
+          chip.title = "Ouvrir " + f.fullPath;
+          chip.onclick = () => window.open("/api/file?path=" + encodeURIComponent(f.fullPath), "_blank", "noopener");
+        }
+        trailEl.appendChild(chip);
+      });
+    } else {
+      trailEl.innerHTML = '<span style="color:#9ca3af;">Indisponible</span>';
+    }
+  }
+
+  // Stage banner
+  if (fabStageBanner && stageData && stageData.ok && stageData.folder) {
+    fabStageBanner.textContent = "📍 Étape actuelle : " + stageData.folder;
+    fabStageBanner.style.display = "block";
+    if (stageData.fullPath) fabCurrentPath = normalizePath(stageData.fullPath);
   }
 
   fabRemove.onclick = async () => {
@@ -281,21 +305,11 @@ export async function openFabrication(fullPath) {
     alert("Retiré du planning");
   };
 
-  if (fabStageBanner) {
-    fabStageBanner.style.display = "none";
-    fetch("/api/file-stage?fileName=" + encodeURIComponent(fabCurrentFileName))
-      .then(r => r.json())
-      .then(s => {
-        if (s.ok && s.folder) {
-          fabStageBanner.textContent = "📍 Étape actuelle : " + s.folder;
-          fabStageBanner.style.display = "block";
-          if (s.fullPath) fabCurrentPath = normalizePath(s.fullPath);
-        }
-      })
-      .catch(() => {});
+  // Restore form opacity
+  if (formGrid) {
+    formGrid.style.opacity = "";
+    formGrid.style.pointerEvents = "";
   }
-
-  fabModal.classList.remove("hidden");
 }
 
 // ======================================================

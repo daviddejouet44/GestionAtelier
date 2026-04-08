@@ -54,11 +54,14 @@ export async function initGlobalProductionView() {
 }
 
 async function buildGlobalProgressView(container) {
-  const [jobs, assignments] = await Promise.all([
+  const [jobs, assignments, deliveries] = await Promise.all([
     fetch("/api/production/summary", {
       headers: { "Authorization": `Bearer ${authToken}` }
     }).then(r => r.json()).catch(() => []),
     fetch("/api/assignments", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => []),
+    fetch("/api/deliveries", {
       headers: { "Authorization": `Bearer ${authToken}` }
     }).then(r => r.json()).catch(() => [])
   ]);
@@ -77,42 +80,97 @@ async function buildGlobalProgressView(container) {
     });
   }
 
+  // Build delivery date lookup
+  const deliveryMap = {};
+  if (Array.isArray(deliveries)) {
+    deliveries.forEach(d => {
+      const key = (d.fileName || "").toLowerCase();
+      if (key) deliveryMap[key] = d.deliveryDate || d.date || "";
+    });
+  }
+
   container.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
       <h2 style="margin:0;font-size:20px;font-weight:700;color:#111827;">Vue production globale</h2>
-      <button id="global-prod-refresh" class="btn btn-primary btn-sm">Rafraîchir</button>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <label style="font-size:13px;color:#6b7280;font-weight:500;">Trier par :</label>
+        <select id="global-prod-sort" style="padding:7px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;background:white;color:#111827;cursor:pointer;outline:none;">
+          <option value="stage">Étape actuelle</option>
+          <option value="dossier">Numéro de dossier</option>
+          <option value="progress">Avancement</option>
+          <option value="delivery">Date de livraison</option>
+          <option value="operator">Opérateur</option>
+        </select>
+        <button id="global-prod-refresh" class="btn btn-primary btn-sm">Rafraîchir</button>
+      </div>
     </div>
     <div id="global-prod-table-wrap"></div>
   `;
 
   container.querySelector("#global-prod-refresh").onclick = () => buildGlobalProgressView(container);
+  const sortSel = container.querySelector("#global-prod-sort");
+  sortSel.onchange = () => renderGlobalProdTable(jobs, assignMap, deliveryMap, sortSel.value, container.querySelector("#global-prod-table-wrap"));
 
-  const wrap = container.querySelector("#global-prod-table-wrap");
+  renderGlobalProdTable(jobs, assignMap, deliveryMap, "stage", container.querySelector("#global-prod-table-wrap"));
+}
+
+function renderGlobalProdTable(jobs, assignMap, deliveryMap, sortMode, wrap) {
+  // Sort jobs based on mode
+  const sorted = [...jobs].sort((a, b) => {
+    switch(sortMode) {
+      case "dossier": {
+        const na = (a.numeroDossier || a.fileName || "").toLowerCase();
+        const nb = (b.numeroDossier || b.fileName || "").toLowerCase();
+        return na.localeCompare(nb);
+      }
+      case "progress": {
+        return getStageProgress(a.currentStage) - getStageProgress(b.currentStage);
+      }
+      case "delivery": {
+        const da = deliveryMap[(a.fileName || "").toLowerCase()] || "9999";
+        const db = deliveryMap[(b.fileName || "").toLowerCase()] || "9999";
+        return da.localeCompare(db);
+      }
+      case "operator": {
+        const oa = (assignMap[(a.fileName || "").toLowerCase()] || "zzz").toLowerCase();
+        const ob = (assignMap[(b.fileName || "").toLowerCase()] || "zzz").toLowerCase();
+        return oa.localeCompare(ob);
+      }
+      default: { // stage
+        return getStageProgress(a.currentStage) - getStageProgress(b.currentStage);
+      }
+    }
+  });
 
   const table = document.createElement("div");
-  table.style.cssText = "width:100%;border-collapse:collapse;";
+  table.style.cssText = "width:100%;";
 
-  // Header row
   const header = document.createElement("div");
-  header.style.cssText = "display:grid;grid-template-columns:1fr 1.5fr 1fr 1fr 2fr;gap:8px;padding:10px 16px;background:#f3f4f6;border-radius:8px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;";
+  header.style.cssText = "display:grid;grid-template-columns:1fr 1.5fr 1fr 1fr 1fr 2fr;gap:8px;padding:10px 16px;background:#f3f4f6;border-radius:8px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;";
   header.innerHTML = `
     <span>Numéro dossier</span>
     <span>Fichier</span>
     <span>Étape actuelle</span>
     <span>Affecté à</span>
+    <span>Date livraison</span>
     <span>Avancement</span>
   `;
   table.appendChild(header);
 
-  for (const job of jobs) {
+  for (const job of sorted) {
     const progress = getStageProgress(job.currentStage);
     const color = getStageColor(progress);
     const displayNum = job.numeroDossier || job.fileName || "—";
     const fileKey = (job.fileName || "").toLowerCase();
     const operatorName = assignMap[fileKey] || "";
+    const deliveryDate = deliveryMap[fileKey] || "";
 
     const row = document.createElement("div");
-    row.style.cssText = "display:grid;grid-template-columns:1fr 1.5fr 1fr 1fr 2fr;gap:8px;padding:12px 16px;background:white;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;align-items:center;";
+    row.style.cssText = "display:grid;grid-template-columns:1fr 1.5fr 1fr 1fr 1fr 2fr;gap:8px;padding:12px 16px;background:white;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;align-items:center;";
+
+    const deliveryDisplay = deliveryDate
+      ? `<span style="font-size:12px;color:#374151;">${deliveryDate}</span>`
+      : `<span style="font-size:12px;color:#9ca3af;font-style:italic;">—</span>`;
 
     row.innerHTML = `
       <div style="font-size:14px;font-weight:700;color:#111827;font-family:monospace;">${escapeHtml(displayNum)}</div>
@@ -121,6 +179,7 @@ async function buildGlobalProgressView(container) {
         <span style="background:#dbeafe;color:#1e40af;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:600;white-space:nowrap;">${escapeHtml(getStageLabelDisplay(job.currentStage) || '—')}</span>
       </div>
       <div style="font-size:12px;${operatorName ? 'color:#111827;font-weight:500;' : 'color:#9ca3af;font-style:italic;'}">${escapeHtml(operatorName || 'Non assigné')}</div>
+      <div>${deliveryDisplay}</div>
       <div style="display:flex;align-items:center;gap:10px;">
         <div style="flex:1;background:#e5e7eb;border-radius:99px;height:10px;overflow:hidden;">
           <div style="width:${progress}%;background:${color};height:100%;border-radius:99px;transition:width 0.3s;"></div>
@@ -131,6 +190,7 @@ async function buildGlobalProgressView(container) {
     table.appendChild(row);
   }
 
+  wrap.innerHTML = "";
   wrap.appendChild(table);
 }
 
