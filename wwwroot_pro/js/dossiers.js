@@ -169,12 +169,29 @@ export async function loadDossiersList() {
       table.style.cssText = "width:100%;";
       const header = document.createElement("div");
       header.style.cssText = "display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;padding:10px 16px;background:#f3f4f6;border-radius:8px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;";
-      header.innerHTML = `
-        <span style="cursor:pointer;" onclick="(()=>{document.getElementById('dossiers-sort').value='name_asc';document.getElementById('dossiers-sort').dispatchEvent(new Event('change'));})()">📁 Nom</span>
-        <span style="cursor:pointer;" onclick="(()=>{document.getElementById('dossiers-sort').value='date_desc';document.getElementById('dossiers-sort').dispatchEvent(new Event('change'));})()">Date modif.</span>
-        <span style="cursor:pointer;" onclick="(()=>{document.getElementById('dossiers-sort').value='size_desc';document.getElementById('dossiers-sort').dispatchEvent(new Event('change'));})()">Taille</span>
-        <span>Étape</span>
-      `;
+
+      const colNom = document.createElement("span");
+      colNom.textContent = "📁 Nom";
+      colNom.style.cursor = "pointer";
+      colNom.onclick = () => { document.getElementById("dossiers-sort").value = "name_asc"; document.getElementById("dossiers-sort").dispatchEvent(new Event("change")); };
+
+      const colDate = document.createElement("span");
+      colDate.textContent = "Date modif.";
+      colDate.style.cursor = "pointer";
+      colDate.onclick = () => { document.getElementById("dossiers-sort").value = "date_desc"; document.getElementById("dossiers-sort").dispatchEvent(new Event("change")); };
+
+      const colSize = document.createElement("span");
+      colSize.textContent = "Taille";
+      colSize.style.cursor = "pointer";
+      colSize.onclick = () => { document.getElementById("dossiers-sort").value = "size_desc"; document.getElementById("dossiers-sort").dispatchEvent(new Event("change")); };
+
+      const colEtape = document.createElement("span");
+      colEtape.textContent = "Étape";
+
+      header.appendChild(colNom);
+      header.appendChild(colDate);
+      header.appendChild(colSize);
+      header.appendChild(colEtape);
       table.appendChild(header);
 
       for (const item of allItems) {
