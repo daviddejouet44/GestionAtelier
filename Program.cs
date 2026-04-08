@@ -273,9 +273,30 @@ FileSystemWatcher? tempCopyWatcher = null;
                         Console.WriteLine("[BAT_FSW][WARN] Epreuve.pdf still locked after retries, proceeding anyway.");
                     if (!File.Exists(epreuvePath)) return;
 
-                    // Step 1 (PRIORITY): Read the most recent PrismaPrepare log and extract the source file name
+                    // Step 0 (HIGHEST PRIORITY): Use correlationId from BatSerializationState for guaranteed 1-to-1 matching
                     string prismaLogContent = "";
                     string sourceFileName = "";
+                    var batPendingCol = MongoDbHelper.GetCollection<BsonDocument>("batPending");
+                    BsonDocument? pending = null;
+
+                    var (_, _, _, _, currentCorrelationId) = BatSerializationState.Get();
+                    if (!string.IsNullOrEmpty(currentCorrelationId))
+                    {
+                        pending = batPendingCol.Find(
+                            Builders<BsonDocument>.Filter.And(
+                                Builders<BsonDocument>.Filter.Eq("correlationId", currentCorrelationId),
+                                Builders<BsonDocument>.Filter.Eq("processed", false)
+                            )
+                        ).FirstOrDefault();
+
+                        if (pending != null && pending.Contains("sourceFileName"))
+                        {
+                            sourceFileName = pending["sourceFileName"].AsString;
+                            Console.WriteLine($"[BAT_FSW] Step 0: sourceFileName from correlationId [{currentCorrelationId}]: {sourceFileName}");
+                        }
+                    }
+
+                    // Step 1: Read the most recent PrismaPrepare log and extract the source file name
                     try
                     {
                         var logFile = Directory.GetFiles(outputDir, "*.log")
@@ -299,16 +320,46 @@ FileSystemWatcher? tempCopyWatcher = null;
                             if (inputMatch.Success)
                             {
                                 var rawName = inputMatch.Groups[1].Value.Trim();
-                                sourceFileName = Path.GetFileNameWithoutExtension(Path.GetFileName(rawName));
-                                Console.WriteLine($"[BAT_FSW] sourceFileName from PrismaPrepare log: {sourceFileName}");
+                                var rawBaseName = Path.GetFileNameWithoutExtension(Path.GetFileName(rawName));
+                                // Check if __BAT_ correlation ID is embedded in the filename
+                                var batMarkerIdx = rawBaseName.IndexOf("__BAT_", StringComparison.Ordinal);
+                                if (batMarkerIdx >= 0)
+                                {
+                                     var logCorrelationId = rawBaseName.Length >= batMarkerIdx + 6 + 16
+                                        ? rawBaseName.Substring(batMarkerIdx + 6, 16)
+                                        : rawBaseName.Substring(batMarkerIdx + 6);
+                                    Console.WriteLine($"[BAT_FSW] Step 1: __BAT_ correlationId extracted from log: {logCorrelationId}");
+                                    if (pending == null && !string.IsNullOrEmpty(logCorrelationId))
+                                    {
+                                        pending = batPendingCol.Find(
+                                            Builders<BsonDocument>.Filter.And(
+                                                Builders<BsonDocument>.Filter.Eq("correlationId", logCorrelationId),
+                                                Builders<BsonDocument>.Filter.Eq("processed", false)
+                                            )
+                                        ).FirstOrDefault();
+                                        if (pending != null && pending.Contains("sourceFileName"))
+                                        {
+                                            sourceFileName = pending["sourceFileName"].AsString;
+                                            Console.WriteLine($"[BAT_FSW] Step 1: sourceFileName from log correlationId [{logCorrelationId}]: {sourceFileName}");
+                                        }
+                                    }
+                                    if (string.IsNullOrEmpty(sourceFileName))
+                                    {
+                                        sourceFileName = rawBaseName.Substring(0, batMarkerIdx);
+                                        Console.WriteLine($"[BAT_FSW] Step 1: sourceFileName stripped from log filename: {sourceFileName}");
+                                    }
+                                }
+                                else if (string.IsNullOrEmpty(sourceFileName))
+                                {
+                                    sourceFileName = rawBaseName;
+                                    Console.WriteLine($"[BAT_FSW] Step 1: sourceFileName from PrismaPrepare log: {sourceFileName}");
+                                }
                             }
                         }
                     }
                     catch (Exception exLog) { Console.WriteLine($"[BAT_FSW][WARN] Reading PrismaPrepare log: {exLog.Message}"); }
 
-                    // Step 2 (FALLBACK): Look in batPending MongoDB if log did not provide the name
-                    var batPendingCol = MongoDbHelper.GetCollection<BsonDocument>("batPending");
-                    BsonDocument? pending = null;
+                    // Step 2 (FALLBACK): Look in batPending MongoDB if steps 0-1 did not provide the name
                     if (string.IsNullOrEmpty(sourceFileName))
                     {
                         pending = batPendingCol.Find(
@@ -318,34 +369,23 @@ FileSystemWatcher? tempCopyWatcher = null;
                         if (pending != null && pending.Contains("sourceFileName"))
                         {
                             sourceFileName = pending["sourceFileName"].AsString;
-                            Console.WriteLine($"[BAT_FSW] sourceFileName from batPending MongoDB: {sourceFileName}");
+                            Console.WriteLine($"[BAT_FSW] Step 2: sourceFileName from batPending MongoDB (FIFO): {sourceFileName}");
                         }
                     }
-                    else
+                    else if (pending == null)
                     {
-                        // Fetch pending entry for requestedBy even when log already gave us the name
+                        // Fetch pending entry for requestedBy even when earlier steps already gave us the name
                         pending = batPendingCol.Find(
                             Builders<BsonDocument>.Filter.Eq("processed", false)
                         ).SortBy(d => d["createdAt"]).FirstOrDefault();
                     }
 
-                    // Step 3 (LAST RESORT): Scan TEMP_COPY for the most recently modified file
-                    if (string.IsNullOrEmpty(sourceFileName) && !string.IsNullOrWhiteSpace(tempCopyDir) && Directory.Exists(tempCopyDir))
-                    {
-                        var others = Directory.GetFiles(tempCopyDir)
-                            .Where(f => !Path.GetFileName(f).Equals("Epreuve.pdf", StringComparison.OrdinalIgnoreCase))
-                            .OrderByDescending(f => new FileInfo(f).LastWriteTime)
-                            .FirstOrDefault();
-                        if (others != null)
-                        {
-                            sourceFileName = Path.GetFileNameWithoutExtension(others);
-                            Console.WriteLine($"[BAT_FSW] sourceFileName from TEMP_COPY scan (last resort): {sourceFileName}");
-                        }
-                    }
+                    // Step 3 (REMOVED): TEMP_COPY scan-by-date was the primary source of filename mixing
+                    // and has been intentionally removed. If steps 0-2 all fail, log a warning and skip.
 
                     if (string.IsNullOrEmpty(sourceFileName))
                     {
-                        Console.WriteLine("[BAT_FSW] Cannot determine job name for Epreuve.pdf — skipping rename.");
+                        Console.WriteLine("[BAT_FSW][WARN] Cannot determine job name for Epreuve.pdf — skipping rename.");
                         return;
                     }
 
@@ -3592,9 +3632,10 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
 
         // 0. Check BAT serialization — only one BAT at a time
         var displayName = !string.IsNullOrEmpty(fileName) ? fileName : (Path.GetFileName(fullPath) ?? "unknown");
-        if (!BatSerializationState.TryAcquire(displayName))
+        var correlationId = Guid.NewGuid().ToString("N").Substring(0, 16);
+        if (!BatSerializationState.TryAcquire(displayName, correlationId))
         {
-            var (_, currentFile, startedAt, _) = BatSerializationState.Get();
+            var (_, currentFile, startedAt, _, _) = BatSerializationState.Get();
             var elapsed = (DateTime.UtcNow - startedAt).TotalSeconds;
             Console.WriteLine($"[BAT] copy-for-bat: BAT déjà en cours pour {currentFile} (depuis {elapsed:0}s) — rejet de {fileName}");
             return Results.Json(new { ok = false, error = "bat_in_progress", message = $"Un BAT est en cours de génération pour \"{currentFile}\". Veuillez patienter avant d'en envoyer un nouveau." });
@@ -3671,13 +3712,14 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
         File.Copy(fullPath, tempCopyDest, overwrite: true);
         Console.WriteLine($"[BAT] Copié vers TEMP_COPY: {tempCopyDest}");
 
-        // 6. Copy to hotfolder PrismaPrepare
+        // 6. Copy to hotfolder PrismaPrepare — rename file to include correlationId for reliable tracking
         if (!Directory.Exists(hotfolderPath))
             Directory.CreateDirectory(hotfolderPath);
 
-        var hotfolderDest = Path.Combine(hotfolderPath, Path.GetFileName(fullPath));
+        var hotfolderFileName = $"{sourceBaseName}__BAT_{correlationId}.pdf";
+        var hotfolderDest = Path.Combine(hotfolderPath, hotfolderFileName);
         File.Copy(fullPath, hotfolderDest, overwrite: true);
-        Console.WriteLine($"[BAT] Copié vers hotfolder PrismaPrepare: {hotfolderDest}");
+        Console.WriteLine($"[BAT] Copié vers hotfolder PrismaPrepare: {hotfolderDest} (correlationId={correlationId})");
         BatSerializationState.SetStep("sent_to_hotfolder");
 
         // 7. Store pending rename in MongoDB so TEMP_COPY watcher can find the job name + requestedBy for notification
@@ -3690,7 +3732,8 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
                 ["batFolder"] = tempCopyPath,
                 ["createdAt"] = DateTime.UtcNow,
                 ["processed"] = false,
-                ["requestedBy"] = requestedBy
+                ["requestedBy"] = requestedBy,
+                ["correlationId"] = correlationId
             });
         }
         catch { /* non-blocking */ }
@@ -4209,7 +4252,7 @@ app.MapGet("/api/bat/status", (HttpContext ctx) =>
 // GET /api/bat/serialization-status — returns whether a BAT is currently being generated
 app.MapGet("/api/bat/serialization-status", () =>
 {
-    var (inProgress, currentFileName, startedAt, _) = BatSerializationState.Get();
+    var (inProgress, currentFileName, startedAt, _, _) = BatSerializationState.Get();
     return Results.Json(new
     {
         inProgress,
@@ -4221,7 +4264,7 @@ app.MapGet("/api/bat/serialization-status", () =>
 // GET /api/bat/progress — returns real-time progress info for the operator
 app.MapGet("/api/bat/progress", () =>
 {
-    var (inProgress, currentFileName, startedAt, currentStep) = BatSerializationState.Get();
+    var (inProgress, currentFileName, startedAt, currentStep, _) = BatSerializationState.Get();
     var (lastCompletedFileName, lastCompletedAt, lastPrismaLog) = BatSerializationState.GetLastCompleted();
     double elapsedSeconds = inProgress ? (DateTime.UtcNow - startedAt).TotalSeconds : 0;
     string status = inProgress ? "processing" : (lastCompletedFileName != null ? "completed" : "idle");
@@ -5135,17 +5178,20 @@ static class BatSerializationState
     private static bool _inProgress = false;
     private static string? _currentFileName = null;
     private static DateTime _startedAt = DateTime.MinValue;
-    private const int TimeoutSeconds = 120; // PrismaPrepare prend typiquement 30-40s; 120s offre une marge suffisante
+    private const int TimeoutSeconds = 180; // PrismaPrepare can take 60-120s; 180s provides a safe margin
 
     // Current workflow step (updated at key moments in HandleEpreuve / copy-for-bat)
     private static string _currentStep = "";
+
+    // Correlation ID for the current BAT (set in TryAcquire, cleared in Release)
+    private static string? _correlationId = null;
 
     // Last completed BAT info (updated by HandleEpreuve on success)
     private static string? _lastCompletedFileName = null;
     private static DateTime? _lastCompletedAt = null;
     private static string? _lastPrismaLog = null;
 
-    public static (bool inProgress, string? currentFileName, DateTime startedAt, string currentStep) Get()
+    public static (bool inProgress, string? currentFileName, DateTime startedAt, string currentStep, string? correlationId) Get()
     {
         lock (_lock)
         {
@@ -5157,8 +5203,9 @@ static class BatSerializationState
                 _currentFileName = null;
                 _startedAt = DateTime.MinValue;
                 _currentStep = "";
+                _correlationId = null;
             }
-            return (_inProgress, _currentFileName, _startedAt, _currentStep);
+            return (_inProgress, _currentFileName, _startedAt, _currentStep, _correlationId);
         }
     }
 
@@ -5185,7 +5232,7 @@ static class BatSerializationState
         }
     }
 
-    public static bool TryAcquire(string fileName)
+    public static bool TryAcquire(string fileName, string correlationId = "")
     {
         lock (_lock)
         {
@@ -5197,12 +5244,14 @@ static class BatSerializationState
                 _currentFileName = null;
                 _startedAt = DateTime.MinValue;
                 _currentStep = "";
+                _correlationId = null;
             }
             if (_inProgress) return false;
             _inProgress = true;
             _currentFileName = fileName;
             _startedAt = DateTime.UtcNow;
             _currentStep = "";
+            _correlationId = string.IsNullOrEmpty(correlationId) ? null : correlationId;
             return true;
         }
     }
@@ -5215,6 +5264,7 @@ static class BatSerializationState
             _currentFileName = null;
             _startedAt = DateTime.MinValue;
             _currentStep = "";
+            _correlationId = null;
         }
     }
 }
