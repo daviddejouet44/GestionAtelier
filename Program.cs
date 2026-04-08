@@ -2060,6 +2060,198 @@ app.MapPost("/api/acrobat", () =>
     }
 });
 
+// ======================================================
+// ACROBAT — Preflight automatisé en arrière-plan
+// ======================================================
+
+app.MapPost("/api/acrobat/preflight", async (HttpContext ctx) =>
+{
+    string? jsPath = null;
+    try
+    {
+        var doc = await JsonDocument.ParseAsync(ctx.Request.Body);
+        if (!doc.RootElement.TryGetProperty("fullPath", out var fpEl))
+            return Results.Json(new { ok = false, error = "fullPath manquant" });
+        if (!doc.RootElement.TryGetProperty("folder", out var folderEl))
+            return Results.Json(new { ok = false, error = "folder manquant" });
+
+        var fullPath = Path.GetFullPath(fpEl.GetString() ?? "");
+        var folder = folderEl.GetString() ?? "";
+
+        if (!File.Exists(fullPath))
+            return Results.Json(new { ok = false, error = "Fichier introuvable" });
+
+        // Determine Preflight profile based on source folder
+        string profileName;
+        if (folder == "Corrections")
+            profileName = "Preflight_Imprimerie";
+        else if (folder == "Corrections et fond perdu")
+            profileName = "Preflight_Imprimerie_fondperdu";
+        else
+            return Results.Json(new { ok = false, error = $"Dossier non pris en charge pour le Preflight : {folder}" });
+
+        // Get Acrobat exe path from settings
+        var pathsCfg = MongoDbHelper.GetSettings<PathsSettings>("paths");
+        var exe = (!string.IsNullOrWhiteSpace(pathsCfg?.AcrobatExePath))
+            ? pathsCfg!.AcrobatExePath
+            : @"C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe";
+
+        if (!File.Exists(exe))
+            return Results.Json(new { ok = false, error = $"Acrobat.exe introuvable : {exe}. Configurez le chemin dans Paramétrage > Chemins d'accès." });
+
+        var acrobatDir = Path.GetDirectoryName(exe)!;
+        var jsFolder = Path.Combine(acrobatDir, "Javascripts");
+        Directory.CreateDirectory(jsFolder);
+
+        // Generate unique temp JS script name
+        var guid = Guid.NewGuid().ToString("N");
+        var jsFileName = $"ga_preflight_{guid}.js";
+        jsPath = Path.Combine(jsFolder, jsFileName);
+
+        // Escape path for JavaScript string (backslashes → \\)
+        var jsFullPath = fullPath.Replace("\\", "\\\\");
+
+        // Write the temporary Acrobat JavaScript
+        var jsContent = $@"// Script temporaire Preflight - généré par GestionAtelier
+// Ce script s'exécute au démarrage d'Acrobat et lance le Preflight sur le fichier cible.
+(function() {{
+    try {{
+        var _ga_doc = app.openDoc(""{jsFullPath}"");
+        var _ga_profile = Preflight.getProfileByName(""{profileName}"");
+        if (_ga_profile) {{
+            _ga_doc.preflight(_ga_profile);
+            app.execMenuItem(""Save"");
+        }}
+        _ga_doc.closeDoc(true);
+    }} catch(e) {{
+        console.println(""GestionAtelier Preflight error: "" + e);
+    }}
+    app.quit();
+}})();
+";
+        await File.WriteAllTextAsync(jsPath, jsContent, System.Text.Encoding.UTF8);
+
+        // Launch Acrobat hidden (WindowStyle.Hidden requires UseShellExecute = false)
+        var psi = new System.Diagnostics.ProcessStartInfo(exe)
+        {
+            UseShellExecute = false,
+            WorkingDirectory = acrobatDir,
+            WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
+            CreateNoWindow = true
+        };
+        var process = System.Diagnostics.Process.Start(psi);
+        if (process == null)
+            return Results.Json(new { ok = false, error = "Impossible de démarrer Acrobat" });
+
+        // Wait for Acrobat to finish (max 5 minutes)
+        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(5));
+        try
+        {
+            await process.WaitForExitAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            try { process.Kill(); } catch { }
+            return Results.Json(new { ok = false, error = "Timeout : Acrobat n'a pas terminé dans les 5 minutes" });
+        }
+
+        // Clean up temp JS script
+        try { if (File.Exists(jsPath)) { File.Delete(jsPath); jsPath = null; } }
+        catch (Exception exJs) { Console.WriteLine($"[WARN] Could not delete temp JS script {jsPath}: {exJs.Message}"); }
+
+        // Detect potential file rename by Preflight profile (e.g. suffix _X4 added by "Convert to PDF/X-4" profiles).
+        // The profile may save the file under a new name in the same directory; we detect this by looking
+        // for recently-modified files whose name starts with the original base name but differs from it.
+        var dir = Path.GetDirectoryName(fullPath)!;
+        var originalName = Path.GetFileNameWithoutExtension(fullPath);
+        var ext = Path.GetExtension(fullPath);
+        var effectivePath = fullPath;
+
+        if (!File.Exists(fullPath))
+        {
+            // File was renamed — search for files with similar base name modified recently
+            var candidates = Directory.GetFiles(dir, $"{originalName}*{ext}")
+                .Where(f => !string.Equals(f, fullPath, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(f => File.GetLastWriteTime(f))
+                .ToList();
+
+            if (candidates.Count > 0)
+            {
+                var renamed = candidates[0];
+                File.Move(renamed, fullPath, overwrite: true);
+                effectivePath = fullPath;
+                Console.WriteLine($"[PREFLIGHT] Renamed {Path.GetFileName(renamed)} → {Path.GetFileName(fullPath)}");
+            }
+            else
+            {
+                return Results.Json(new { ok = false, error = $"Fichier introuvable après Preflight (il a peut-être été renommé) : {fullPath}" });
+            }
+        }
+
+        // Move file to "Prêt pour impression"
+        var root = BackendUtils.HotfoldersRoot();
+        var destDir = Path.Combine(root, "Prêt pour impression");
+        Directory.CreateDirectory(destDir);
+        var destPath = Path.Combine(destDir, Path.GetFileName(effectivePath));
+        File.Move(effectivePath, destPath, overwrite: true);
+
+        // Update delivery path in MongoDB
+        try { BackendUtils.UpdateDeliveryPath(effectivePath, destPath); } catch (Exception ex2) { Console.WriteLine($"[WARN] UpdateDeliveryPath: {ex2.Message}"); }
+
+        // Update assignment path
+        try
+        {
+            var assignCol = MongoDbHelper.GetCollection<BsonDocument>("assignments");
+            var oldNorm = effectivePath.Replace("\\", "/");
+            var newNorm = destPath.Replace("\\", "/");
+            assignCol.UpdateMany(
+                Builders<BsonDocument>.Filter.Or(
+                    Builders<BsonDocument>.Filter.Eq("fullPath", effectivePath),
+                    Builders<BsonDocument>.Filter.Eq("fullPath", oldNorm)),
+                Builders<BsonDocument>.Update.Set("fullPath", destPath));
+        }
+        catch (Exception exA) { Console.WriteLine($"[WARN] UpdateAssignmentPath: {exA.Message}"); }
+
+        // Update fabrication path
+        try
+        {
+            var oldNorm2 = effectivePath.Replace("\\", "/");
+            var newNorm2 = destPath.Replace("\\", "/");
+            var fabCol = MongoDbHelper.GetCollection<BsonDocument>("fabrications");
+            fabCol.UpdateMany(
+                Builders<BsonDocument>.Filter.Or(
+                    Builders<BsonDocument>.Filter.Eq("fullPath", effectivePath),
+                    Builders<BsonDocument>.Filter.Eq("fullPath", oldNorm2)),
+                Builders<BsonDocument>.Update.Set("fullPath", destPath));
+            var fabSheetsCol = MongoDbHelper.GetCollection<BsonDocument>("fabricationSheets");
+            fabSheetsCol.UpdateMany(
+                Builders<BsonDocument>.Filter.Or(
+                    Builders<BsonDocument>.Filter.Eq("fullPath", effectivePath),
+                    Builders<BsonDocument>.Filter.Eq("fullPath", oldNorm2)),
+                Builders<BsonDocument>.Update.Set("fullPath", destPath));
+        }
+        catch (Exception exF) { Console.WriteLine($"[WARN] UpdateFabricationPath: {exF.Message}"); }
+
+        // Log activity
+        MongoDbHelper.InsertActivityLog(new ActivityLogEntry
+        {
+            Timestamp = DateTime.Now,
+            UserLogin = "system",
+            UserName = "GestionAtelier",
+            Action = "PREFLIGHT",
+            Details = $"Preflight automatique ({profileName}) : {Path.GetFileName(effectivePath)} → Prêt pour impression"
+        });
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        // Clean up temp JS on error
+        if (jsPath != null) { try { if (File.Exists(jsPath)) File.Delete(jsPath); } catch { } }
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
 app.MapGet("/api/tools/prismasync", () =>
 {
     try

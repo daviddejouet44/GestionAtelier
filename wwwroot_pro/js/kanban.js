@@ -639,6 +639,47 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
           actions.appendChild(btnDelete);
         }
+      } else if (folderName === "Corrections" || folderName === "Corrections et fond perdu") {
+        actions.appendChild(btnOpen);
+        actions.appendChild(btnFiche);
+        actions.appendChild(btnAssign);
+
+        // Bouton Preflight automatique
+        const btnPreflight = document.createElement("button");
+        btnPreflight.className = "btn btn-sm btn-primary";
+        btnPreflight.textContent = "▶ Preflight";
+        btnPreflight.title = "Lancer le Preflight en arrière-plan et déplacer vers Prêt pour impression";
+        btnPreflight.onclick = async (e) => {
+          e.stopPropagation();
+          const fileName = full.split(/[\\/]/).pop();
+          btnPreflight.disabled = true;
+          btnPreflight.textContent = "⏳ Preflight...";
+          showNotification(`⏳ Preflight en cours pour ${fileName}...`, "info");
+          try {
+            const r = await fetch("/api/acrobat/preflight", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ fullPath: full, folder: folderName })
+            }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+            if (r.ok) {
+              showNotification(`✅ Preflight terminé — ${fileName} déplacé vers Prêt pour impression`, "success");
+              await refreshKanban();
+            } else {
+              showNotification("❌ Preflight : " + (r.error || "Erreur inconnue"), "error");
+              btnPreflight.disabled = false;
+              btnPreflight.textContent = "▶ Preflight";
+            }
+          } catch (err) {
+            showNotification("❌ Preflight : " + err.message, "error");
+            btnPreflight.disabled = false;
+            btnPreflight.textContent = "▶ Preflight";
+          }
+        };
+        actions.appendChild(btnPreflight);
+
+        if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          actions.appendChild(btnDelete);
+        }
       } else {
         actions.appendChild(btnOpen);
         actions.appendChild(btnFiche);
