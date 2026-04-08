@@ -2108,36 +2108,55 @@ app.MapPost("/api/acrobat/preflight", async (HttpContext ctx) =>
         var jsFileName = $"ga_preflight_{guid}.js";
         jsPath = Path.Combine(jsFolder, jsFileName);
 
-        // Escape path for JavaScript string (backslashes → \\)
-        var jsFullPath = fullPath.Replace("\\", "\\\\");
-
         // Write the temporary Acrobat JavaScript
+        // The PDF is passed as a CLI argument so Acrobat opens it directly.
+        // The script waits for the document to be loaded via app.setTimeOut, then runs the Preflight.
         var jsContent = $@"// Script temporaire Preflight - généré par GestionAtelier
-// Ce script s'exécute au démarrage d'Acrobat et lance le Preflight sur le fichier cible.
-(function() {{
+// Le document est déjà ouvert via la ligne de commande Acrobat.
+// On attend qu'il soit chargé via setTimeOut puis on exécute le Preflight.
+var _ga_attempts = 0;
+var _ga_maxAttempts = 20;
+var _ga_profileName = ""{profileName}"";
+var _ga_timer = app.setTimeOut(""_ga_runPreflight()"", 3000);
+
+function _ga_runPreflight() {{
+    _ga_attempts++;
     try {{
-        var _ga_doc = app.openDoc(""{jsFullPath}"");
-        var _ga_profile = Preflight.getProfileByName(""{profileName}"");
-        if (_ga_profile) {{
-            _ga_doc.preflight(_ga_profile);
-            app.execMenuItem(""Save"");
+        if (app.activeDocs && app.activeDocs.length > 0) {{
+            var doc = app.activeDocs[0];
+            var profile = Preflight.getProfileByName(_ga_profileName);
+            if (profile) {{
+                doc.preflight(profile);
+                app.execMenuItem(""Save"");
+            }}
+            doc.closeDoc(true);
+            app.quit();
+        }} else if (_ga_attempts < _ga_maxAttempts) {{
+            // Document pas encore chargé, réessayer dans 2 secondes
+            app.setTimeOut(""_ga_runPreflight()"", 2000);
+        }} else {{
+            // Timeout — quitter après 40 secondes
+            console.println(""GestionAtelier Preflight: timeout, document not loaded"");
+            app.quit();
         }}
-        _ga_doc.closeDoc(true);
     }} catch(e) {{
         console.println(""GestionAtelier Preflight error: "" + e);
+        if (_ga_attempts < _ga_maxAttempts) {{
+            app.setTimeOut(""_ga_runPreflight()"", 2000);
+        }} else {{
+            app.quit();
+        }}
     }}
-    app.quit();
-}})();
+}}
 ";
         await File.WriteAllTextAsync(jsPath, jsContent, System.Text.Encoding.UTF8);
 
-        // Launch Acrobat hidden (WindowStyle.Hidden requires UseShellExecute = false)
-        var psi = new System.Diagnostics.ProcessStartInfo(exe)
+        // Launch Acrobat with the PDF file as a command-line argument so it opens directly.
+        // UseShellExecute = true is required for reliable file loading (CreateNoWindow not available in this mode).
+        var psi = new System.Diagnostics.ProcessStartInfo(exe, $"\"{fullPath}\"")
         {
-            UseShellExecute = false,
-            WorkingDirectory = acrobatDir,
-            WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
-            CreateNoWindow = true
+            UseShellExecute = true,
+            WorkingDirectory = acrobatDir
         };
         var process = System.Diagnostics.Process.Start(psi);
         if (process == null)
