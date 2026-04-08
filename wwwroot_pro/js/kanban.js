@@ -66,6 +66,19 @@ export async function buildKanban() {
       title.appendChild(btnAcrobat);
     }
 
+    // Bouton "Productions à venir" dans l'en-tête Façonnage
+    if (cfg.folder === "Façonnage") {
+      const btnProdsVenir = document.createElement("button");
+      btnProdsVenir.className = "btn";
+      btnProdsVenir.textContent = "📋 Productions à venir";
+      btnProdsVenir.style.cssText = "font-size:10px;padding:2px 7px;flex-shrink:0;margin-right:6px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:inherit;";
+      btnProdsVenir.onclick = async (e) => {
+        e.stopPropagation();
+        await showFaconnageAlerts();
+      };
+      title.appendChild(btnProdsVenir);
+    }
+
     const counter = document.createElement("span");
     counter.className = "kanban-col-counter";
     counter.textContent = "0";
@@ -303,7 +316,9 @@ export async function refreshKanban() {
 
   const cols = kanbanDiv.querySelectorAll(".kanban-col-operator");
   for (const col of cols) {
-    await refreshKanbanColumnOperator(col.dataset.folder, q, sort, col);
+    // Profile 4 (Façonnage): only Façonnage column is editable
+    const readOnly = currentUser?.profile === 4 && col.dataset.folder !== "Façonnage";
+    await refreshKanbanColumnOperator(col.dataset.folder, q, sort, col, readOnly);
   }
   await updateKanbanSummary();
 
@@ -680,6 +695,168 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
           actions.appendChild(btnDelete);
         }
+      } else if (folderName === "PrismaPrepare") {
+        actions.appendChild(btnFiche);
+        actions.appendChild(btnAssign);
+
+        const btnPrisma = document.createElement("button");
+        btnPrisma.className = "btn btn-sm btn-primary";
+        btnPrisma.textContent = "Ouvrir dans PrismaPrepare";
+        btnPrisma.onclick = async (e) => {
+          e.stopPropagation();
+          const r = await fetch("/api/jobs/open-in-prismaprepare", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fullPath: full })
+          }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+          if (!r.ok) showNotification("❌ " + (r.error || "Erreur"), "error");
+        };
+        actions.appendChild(btnPrisma);
+
+        if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          actions.appendChild(btnDelete);
+        }
+      } else if (folderName === "Fiery") {
+        actions.appendChild(btnFiche);
+        actions.appendChild(btnAssign);
+
+        const btnFiery = document.createElement("button");
+        btnFiery.className = "btn btn-sm btn-primary";
+        btnFiery.textContent = "Ouvrir dans Fiery";
+        btnFiery.onclick = async (e) => {
+          e.stopPropagation();
+          const r = await fetch("/api/jobs/open-in-fiery", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fullPath: full })
+          }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+          if (!r.ok) showNotification("❌ " + (r.error || "Erreur"), "error");
+        };
+        actions.appendChild(btnFiery);
+
+        if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          const btnLancerImpression = document.createElement("button");
+          btnLancerImpression.className = "btn btn-sm btn-primary";
+          btnLancerImpression.textContent = "▶ Lancer l'impression";
+          btnLancerImpression.onclick = async (e) => {
+            e.stopPropagation();
+            const r = await fetch("/api/jobs/move", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ source: full, destination: "Impression en cours", overwrite: true })
+            }).then(res => res.json()).catch(() => ({ ok: false }));
+            if (r.ok) { showNotification("✅ Impression lancée", "success"); await refreshKanban(); }
+            else showNotification("❌ " + (r.error || "Erreur"), "error");
+          };
+          actions.appendChild(btnLancerImpression);
+          actions.appendChild(btnDelete);
+        }
+      } else if (folderName === "Impression en cours") {
+        actions.appendChild(btnFiche);
+        actions.appendChild(btnAssign);
+
+        if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          const btnImpTerminee = document.createElement("button");
+          btnImpTerminee.className = "btn btn-sm btn-primary";
+          btnImpTerminee.textContent = "✅ Impression terminée";
+          btnImpTerminee.onclick = async (e) => {
+            e.stopPropagation();
+            const r = await fetch("/api/jobs/move", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ source: full, destination: "Façonnage", overwrite: true })
+            }).then(res => res.json()).catch(() => ({ ok: false }));
+            if (r.ok) { showNotification("✅ Déplacé vers Façonnage", "success"); await refreshKanban(); }
+            else showNotification("❌ " + (r.error || "Erreur"), "error");
+          };
+          actions.appendChild(btnImpTerminee);
+          actions.appendChild(btnDelete);
+        }
+      } else if (folderName === "Façonnage") {
+        actions.appendChild(btnFiche);
+        actions.appendChild(btnAssign);
+
+        // Façonnage badges — loaded asynchronously
+        const badgesDiv = document.createElement("div");
+        badgesDiv.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;";
+        card.appendChild(badgesDiv);
+        const jfn = jobFileName;
+        fetch("/api/fabrication?fileName=" + encodeURIComponent(jfn))
+          .then(r => r.json()).then(d => {
+            if (Array.isArray(d.faconnage)) {
+              d.faconnage.forEach(opt => {
+                const badge = document.createElement("span");
+                badge.style.cssText = "background:#fef9c3;color:#92400e;border:1px solid #fde68a;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;";
+                badge.textContent = opt;
+                badgesDiv.appendChild(badge);
+              });
+            }
+          }).catch(() => {});
+
+        if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3 || currentUser.profile === 4)) {
+          const btnTerminee = document.createElement("button");
+          btnTerminee.className = "btn btn-sm btn-primary";
+          btnTerminee.textContent = "✅ Terminée";
+          btnTerminee.onclick = async (e) => {
+            e.stopPropagation();
+            const r = await fetch("/api/jobs/move", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ source: full, destination: "Fin de production", overwrite: true })
+            }).then(res => res.json()).catch(() => ({ ok: false }));
+            if (r.ok) { showNotification("✅ Déplacé vers Fin de production", "success"); await refreshKanban(); }
+            else showNotification("❌ " + (r.error || "Erreur"), "error");
+          };
+          actions.appendChild(btnTerminee);
+        }
+        if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          actions.appendChild(btnDelete);
+        }
+      } else if (folderName === "Fin de production") {
+        actions.appendChild(btnFiche);
+
+        if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          const btnTermine = document.createElement("button");
+          btnTermine.className = "btn btn-sm btn-primary";
+          btnTermine.textContent = "🔒 Terminé";
+          btnTermine.title = "Verrouille le fichier et marque la tâche comme terminée (vert dans le calendrier)";
+          btnTermine.onclick = async (e) => {
+            e.stopPropagation();
+            if (!confirm("Marquer comme terminé et verrouiller ce fichier ?")) return;
+            const r = await fetch("/api/jobs/lock", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ fullPath: full })
+            }).then(res => res.json()).catch(() => ({ ok: false }));
+            if (r.ok) {
+              showNotification("✅ Fichier verrouillé — tâche terminée", "success");
+              card.draggable = false;
+              btnTermine.disabled = true;
+              btnTermine.textContent = "🔒 Verrouillé";
+              if (window._calendar) window._calendar.refetchEvents();
+            } else {
+              showNotification("❌ " + (r.error || "Erreur"), "error");
+            }
+          };
+          actions.appendChild(btnTermine);
+
+          const btnArchiver = document.createElement("button");
+          btnArchiver.className = "btn btn-sm";
+          btnArchiver.textContent = "📦 Archiver";
+          btnArchiver.onclick = async (e) => {
+            e.stopPropagation();
+            if (!confirm("Archiver ce fichier dans le dossier de production ?")) return;
+            const r = await fetch("/api/jobs/archive", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ fullPath: full })
+            }).then(res => res.json()).catch(() => ({ ok: false }));
+            if (r.ok) { showNotification("✅ Archivé", "success"); await refreshKanban(); }
+            else showNotification("❌ " + (r.error || "Erreur"), "error");
+          };
+          actions.appendChild(btnArchiver);
+          actions.appendChild(btnDelete);
+        }
       } else {
         actions.appendChild(btnOpen);
         actions.appendChild(btnFiche);
@@ -774,4 +951,50 @@ export async function openAssignDropdown(btn, fullPath) {
       document.removeEventListener("click", closeDropdown);
     }, { once: true });
   }, 10);
+}
+
+// ======================================================
+// ALERTES FAÇONNAGE — popup
+// ======================================================
+export async function showFaconnageAlerts() {
+  const data = await fetch("/api/alerts/faconnage").then(r => r.json()).catch(() => ({ ok: false }));
+
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:10000;";
+
+  const panel = document.createElement("div");
+  panel.style.cssText = "background:white;border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,.3);";
+
+  let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <h3 style="margin:0;font-size:18px;font-weight:700;">📋 Productions à venir — Impression en cours</h3>
+    <button id="fa-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:#6b7280;">✕</button>
+  </div>`;
+
+  if (!data.ok || !Array.isArray(data.alerts) || data.alerts.length === 0) {
+    html += '<p style="color:#9ca3af;text-align:center;padding:20px;">Aucun job en impression en cours</p>';
+  } else {
+    if (data.lastGeneratedAt) {
+      const dt = new Date(data.lastGeneratedAt);
+      html += `<p style="font-size:12px;color:#9ca3af;margin-bottom:12px;">Dernière génération : ${dt.toLocaleDateString("fr-FR")} à ${dt.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</p>`;
+    }
+    html += '<div style="display:flex;flex-direction:column;gap:10px;">';
+    for (const item of data.alerts) {
+      const facBadges = Array.isArray(item.faconnage) && item.faconnage.length > 0
+        ? item.faconnage.map(f => `<span style="background:#fef9c3;color:#92400e;border:1px solid #fde68a;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:600;">${f}</span>`).join(" ")
+        : '<span style="color:#9ca3af;font-size:11px;">Aucun façonnage</span>';
+      html += `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;">
+        <div style="font-weight:600;font-size:14px;color:#111827;">${item.numeroDossier || item.fileName}</div>
+        <div style="font-size:12px;color:#6b7280;margin-bottom:6px;">${item.fileName}</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">${facBadges}</div>
+      </div>`;
+    }
+    html += '</div>';
+  }
+
+  panel.innerHTML = html;
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+
+  panel.querySelector("#fa-close").onclick = () => overlay.remove();
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
 }

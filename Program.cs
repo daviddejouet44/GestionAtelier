@@ -1483,12 +1483,44 @@ app.MapDelete("/api/delivery", (HttpContext ctx) =>
 app.MapGet("/api/fabrication", (string? fullPath, string? fileName) =>
 {
     FabricationSheet? sheet = null;
+    bool locked = false;
+
+    var fabCol = MongoDbHelper.GetFabricationsCollection();
+    BsonDocument? rawDoc = null;
+
     if (!string.IsNullOrWhiteSpace(fullPath))
-        sheet = BackendUtils.FindFabrication(fullPath);
+    {
+        rawDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fullPath", fullPath)).FirstOrDefault();
+        if (rawDoc == null)
+        {
+            var fn = Path.GetFileName(fullPath)?.ToLowerInvariant() ?? "";
+            if (!string.IsNullOrEmpty(fn))
+                rawDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", fn)).SortByDescending(x => x["_id"]).FirstOrDefault();
+        }
+        if (rawDoc != null) sheet = BackendUtils.BsonDocToFabricationSheet(rawDoc);
+    }
     if (sheet == null && !string.IsNullOrWhiteSpace(fileName))
-        sheet = BackendUtils.FindFabricationByName(fileName);
+    {
+        var lf = (fileName ?? "").ToLowerInvariant();
+        rawDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", lf)).SortByDescending(x => x["_id"]).FirstOrDefault();
+        if (rawDoc != null) sheet = BackendUtils.BsonDocToFabricationSheet(rawDoc);
+    }
+
     if (sheet != null)
-        return Results.Json(sheet);
+    {
+        locked = rawDoc != null && rawDoc.Contains("locked") && rawDoc["locked"] != BsonNull.Value
+            && rawDoc["locked"].BsonType == BsonType.Boolean && rawDoc["locked"].AsBoolean;
+        // Serialize sheet then add locked field
+        var opts = new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
+        var json = System.Text.Json.JsonSerializer.Serialize(sheet, opts);
+        using var doc2 = System.Text.Json.JsonDocument.Parse(json);
+        var root2 = doc2.RootElement;
+        var merged = new Dictionary<string, object?>();
+        foreach (var prop in root2.EnumerateObject())
+            merged[prop.Name] = (object?)prop.Value;
+        merged["locked"] = locked;
+        return Results.Json(merged);
+    }
 
     return Results.Json(new { ok = false, error = "Aucune fiche de fabrication." });
 });
@@ -4891,6 +4923,350 @@ app.MapPut("/api/notifications/read", async (HttpContext ctx) =>
 });
 
 // ======================================================
+// JOBS — Archiver (déplacer vers le dossier de production archive/)
+// ======================================================
+app.MapPost("/api/jobs/archive", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var fullPath = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
+
+        if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
+            return Results.Json(new { ok = false, error = "Fichier introuvable" });
+
+        var fileName = Path.GetFileName(fullPath);
+
+        // Try to find production folder
+        var col = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+        var doc = col.Find(Builders<BsonDocument>.Filter.Eq("fileName", fileName))
+                     .SortByDescending(x => x["createdAt"]).FirstOrDefault();
+
+        string archiveDir;
+        if (doc != null && doc.Contains("folderPath") && doc["folderPath"] != BsonNull.Value
+            && !string.IsNullOrEmpty(doc["folderPath"].AsString))
+        {
+            archiveDir = Path.Combine(doc["folderPath"].AsString, "archive");
+        }
+        else
+        {
+            var root = BackendUtils.HotfoldersRoot();
+            archiveDir = Path.Combine(root, "Corbeille");
+        }
+
+        Directory.CreateDirectory(archiveDir);
+        var destPath = Path.Combine(archiveDir, fileName);
+        if (File.Exists(destPath)) File.Delete(destPath);
+        File.Move(fullPath, destPath);
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// JOBS — Verrouiller (Fin de production terminée → vert calendrier)
+// ======================================================
+app.MapPost("/api/jobs/lock", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var fullPath = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
+
+        if (string.IsNullOrEmpty(fullPath))
+            return Results.Json(new { ok = false, error = "fullPath manquant" });
+
+        var fileName = Path.GetFileName(fullPath);
+
+        // Mark as locked in fabrication sheet
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+        var fabFilter = Builders<BsonDocument>.Filter.Or(
+            Builders<BsonDocument>.Filter.Eq("fileName", fileName),
+            Builders<BsonDocument>.Filter.Eq("fullPath", fullPath)
+        );
+        var fabUpdate = Builders<BsonDocument>.Update
+            .Set("locked", true)
+            .Set("lockedAt", DateTime.UtcNow);
+        await fabCol.UpdateManyAsync(fabFilter, fabUpdate);
+
+        // Mark calendar delivery as completed (green)
+        var deliveryCol = MongoDbHelper.GetCollection<BsonDocument>("deliveries");
+        var fnNoExt = System.IO.Path.GetFileNameWithoutExtension(fileName);
+        var deliveryFilter = Builders<BsonDocument>.Filter.Or(
+            Builders<BsonDocument>.Filter.Eq("fileName", fileName),
+            Builders<BsonDocument>.Filter.Eq("fileName", fnNoExt)
+        );
+        var deliveryUpdate = Builders<BsonDocument>.Update.Set("completed", true).Set("color", "#22c55e");
+        await deliveryCol.UpdateManyAsync(deliveryFilter, deliveryUpdate);
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// JOBS — Ouvrir dans Fiery
+// ======================================================
+app.MapPost("/api/jobs/open-in-fiery", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var fullPath = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
+
+        if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
+            return Results.Json(new { ok = false, error = "Fichier introuvable" });
+
+        var integCfg = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations") ?? new IntegrationsSettings();
+        var fieryExePath = integCfg.FieryPath ?? "";
+
+        if (string.IsNullOrWhiteSpace(fieryExePath))
+            return Results.Json(new { ok = false, error = "Chemin Fiery non configuré dans Paramétrage > Chemins d'accès." });
+
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = fieryExePath,
+            Arguments = $"\"{fullPath}\"",
+            UseShellExecute = true
+        });
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// ALERTES FAÇONNAGE
+// ======================================================
+app.MapGet("/api/alerts/faconnage", () =>
+{
+    try
+    {
+        var root = BackendUtils.HotfoldersRoot();
+        var folder = Path.Combine(root, "Impression en cours");
+        if (!Directory.Exists(folder))
+            return Results.Json(new { ok = true, alerts = new object[0], lastGeneratedAt = (object?)null });
+
+        var files = Directory.GetFiles(folder, "*.pdf", SearchOption.TopDirectoryOnly)
+            .Concat(Directory.GetFiles(folder, "*.PDF", SearchOption.TopDirectoryOnly))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(f => new { path = f, name = Path.GetFileName(f) })
+            .ToList();
+
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+        var alerts = new List<object>();
+        foreach (var f in files)
+        {
+            var fabFilter = Builders<BsonDocument>.Filter.Eq("fileName", f.name);
+            var fabDoc = fabCol.Find(fabFilter).FirstOrDefault();
+            var faconnage = new List<string>();
+            if (fabDoc != null && fabDoc.Contains("faconnage") && fabDoc["faconnage"] != BsonNull.Value
+                && fabDoc["faconnage"].IsBsonArray)
+                faconnage = fabDoc["faconnage"].AsBsonArray.Select(v => v.AsString).ToList();
+
+            var numeroDossier = fabDoc != null && fabDoc.Contains("numeroDossier") && fabDoc["numeroDossier"] != BsonNull.Value
+                ? fabDoc["numeroDossier"].AsString : "";
+            alerts.Add(new { fileName = f.name, fullPath = f.path, faconnage, numeroDossier });
+        }
+
+        // Get last generated time from MongoDB
+        var alertCol = MongoDbHelper.GetCollection<BsonDocument>("faconnageAlerts");
+        var lastAlert = alertCol.Find(new BsonDocument()).SortByDescending(x => x["generatedAt"]).FirstOrDefault();
+        DateTime? lastGeneratedAt = lastAlert != null && lastAlert.Contains("generatedAt")
+            ? lastAlert["generatedAt"].ToUniversalTime() : (DateTime?)null;
+
+        return Results.Json(new { ok = true, alerts, lastGeneratedAt });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// FABRICATION — Parcours fichiers (trail par étapes)
+// ======================================================
+app.MapGet("/api/fabrication/files-trail", (string fileName) =>
+{
+    try
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+            return Results.Json(new { ok = false, error = "fileName manquant" });
+
+        var root = BackendUtils.HotfoldersRoot();
+        var fnBase = System.IO.Path.GetFileNameWithoutExtension(fileName);
+        var fnFull = System.IO.Path.GetFileName(fileName);
+
+        // Check each stage folder for the file
+        var stages = new[]
+        {
+            new { key = "original",    folder = "Début de production", label = "Original" },
+            new { key = "en_attente",  folder = "Prêt pour impression", label = "En attente" },
+            new { key = "bat",         folder = "BAT",                  label = "BAT" },
+            new { key = "rapport",     folder = "Rapport",              label = "Rapport" },
+            new { key = "prisma",      folder = "PrismaPrepare",        label = "PrismaPrepare" },
+            new { key = "fiery",       folder = "Fiery",                label = "Fiery" },
+            new { key = "fin_prod",    folder = "Fin de production",    label = "Fin de production" }
+        };
+
+        var result = new List<object>();
+        foreach (var s in stages)
+        {
+            var folderPath = Path.Combine(root, s.folder);
+            string? found = null;
+            if (Directory.Exists(folderPath))
+            {
+                found = Directory.GetFiles(folderPath, fnFull, SearchOption.TopDirectoryOnly).FirstOrDefault();
+                if (found == null)
+                    found = Directory.GetFiles(folderPath, fnBase + "*", SearchOption.TopDirectoryOnly).FirstOrDefault();
+            }
+
+            // Also check production folder subfolders
+            if (found == null)
+            {
+                var pfCol = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+                var pfDoc = pfCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", fnFull))
+                               .SortByDescending(x => x["createdAt"]).FirstOrDefault();
+                if (pfDoc != null && pfDoc.Contains("folderPath"))
+                {
+                    var stageSubFolderMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["Début de production"] = "Original",
+                        ["Prêt pour impression"] = "PDF_Impression",
+                        ["BAT"] = "BAT",
+                        ["Rapport"] = "Rapport",
+                        ["Fin de production"] = "PDF_Imprime"
+                    };
+                    if (stageSubFolderMap.TryGetValue(s.folder, out var sub))
+                    {
+                        var subDir = Path.Combine(pfDoc["folderPath"].AsString, sub);
+                        if (Directory.Exists(subDir))
+                        {
+                            found = Directory.GetFiles(subDir, fnFull, SearchOption.TopDirectoryOnly).FirstOrDefault();
+                            if (found == null)
+                                found = Directory.GetFiles(subDir, fnBase + "*", SearchOption.TopDirectoryOnly).FirstOrDefault();
+                        }
+                    }
+                }
+            }
+
+            result.Add(new
+            {
+                key = s.key,
+                label = s.label,
+                folder = s.folder,
+                found = found != null,
+                fullPath = found
+            });
+        }
+
+        return Results.Json(new { ok = true, files = result });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// BACKGROUND TASK — Alertes façonnage 12h et 17h
+// ======================================================
+_ = Task.Run(async () =>
+{
+    var lastAlertHour = -1;
+    while (true)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromMinutes(1));
+            var now = DateTime.Now;
+            var hour = now.Hour;
+            if ((hour == 12 || hour == 17) && lastAlertHour != hour)
+            {
+                lastAlertHour = hour;
+                var root = BackendUtils.HotfoldersRoot();
+                var folder = Path.Combine(root, "Impression en cours");
+                if (!Directory.Exists(folder)) continue;
+
+                var files = Directory.GetFiles(folder, "*.pdf", SearchOption.TopDirectoryOnly)
+                    .Concat(Directory.GetFiles(folder, "*.PDF", SearchOption.TopDirectoryOnly))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Select(f => Path.GetFileName(f))
+                    .ToList();
+
+                if (files.Count == 0) continue;
+
+                var fabCol = MongoDbHelper.GetFabricationsCollection();
+                var alertItems = new BsonArray();
+                foreach (var fn in files)
+                {
+                    var fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", fn)).FirstOrDefault();
+                    var faconnage = new BsonArray();
+                    if (fabDoc != null && fabDoc.Contains("faconnage") && fabDoc["faconnage"] != BsonNull.Value
+                        && fabDoc["faconnage"].IsBsonArray)
+                        faconnage = fabDoc["faconnage"].AsBsonArray;
+
+                    var nd = fabDoc != null && fabDoc.Contains("numeroDossier") && fabDoc["numeroDossier"] != BsonNull.Value
+                        ? fabDoc["numeroDossier"].AsString : "";
+                    alertItems.Add(new BsonDocument
+                    {
+                        ["fileName"] = fn,
+                        ["numeroDossier"] = nd,
+                        ["faconnage"] = faconnage
+                    });
+                }
+
+                var alertCol = MongoDbHelper.GetCollection<BsonDocument>("faconnageAlerts");
+                await alertCol.InsertOneAsync(new BsonDocument
+                {
+                    ["generatedAt"] = DateTime.UtcNow,
+                    ["hour"] = hour,
+                    ["items"] = alertItems
+                });
+
+                // Create notification for all operators
+                var notifCol = MongoDbHelper.GetCollection<BsonDocument>("notifications");
+                var users = BackendUtils.LoadUsers();
+                foreach (var u in users.Where(u => u.Profile >= 2))
+                {
+                    await notifCol.InsertOneAsync(new BsonDocument
+                    {
+                        ["type"] = "faconnage_alert",
+                        ["recipientLogin"] = u.Login,
+                        ["message"] = $"📋 Façonnage {hour}h : {files.Count} job(s) en impression en cours",
+                        ["count"] = files.Count,
+                        ["timestamp"] = DateTime.UtcNow,
+                        ["read"] = false,
+                        ["items"] = alertItems
+                    });
+                }
+
+                Console.WriteLine($"[INFO] Faconnage alert generated at {hour}h for {files.Count} job(s)");
+            }
+            else if (hour != 12 && hour != 17)
+            {
+                // Reset for next occurrence
+                if (lastAlertHour == hour) lastAlertHour = -1;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[WARN] Faconnage alert task error: {ex.Message}");
+        }
+    }
+});
+
+// ======================================================
 // RUN
 // ======================================================
 app.Run();
@@ -5949,7 +6325,7 @@ file static class BackendUtils
             col.InsertOne(doc);
     }
 
-    private static FabricationSheet? BsonDocToFabricationSheet(BsonDocument d)
+    public static FabricationSheet? BsonDocToFabricationSheet(BsonDocument d)
     {
         var fullPath = d.Contains("fullPath") ? d["fullPath"].AsString : "";
         var fileName = d.Contains("fileName") ? d["fileName"].AsString : "";

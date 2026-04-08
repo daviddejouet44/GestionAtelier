@@ -97,6 +97,7 @@ async function renderSettingsAccounts(panel) {
           <option value="1">Profil 1 — Soumission</option>
           <option value="2">Profil 2 — Opérateur</option>
           <option value="3">Profil 3 — Admin</option>
+          <option value="4">Profil 4 — Façonnage (lecture seule)</option>
         </select>
         <button id="sa-create" class="btn btn-primary">Créer</button>
       </div>
@@ -149,7 +150,7 @@ async function refreshSettingsUsersList() {
   }).then(r => r.json());
   listEl.innerHTML = "";
   if (resp.ok && resp.users) {
-    const profileLabel = { 1: "Soumission", 2: "Opérateur", 3: "Admin" };
+    const profileLabel = { 1: "Soumission", 2: "Opérateur", 3: "Admin", 4: "Façonnage" };
     resp.users.forEach(u => {
       const div = document.createElement("div");
       div.style.cssText = "display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: white; border-radius: 6px; margin-bottom: 6px; border: 1px solid #e5e7eb;";

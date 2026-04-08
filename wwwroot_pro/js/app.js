@@ -301,7 +301,7 @@ async function buildBatView() {
           <button id="bat-view-refresh" class="btn btn-primary">Rafraîchir</button>
         </div>
       </div>
-      <div id="bat-view-list"><p style="color:#6b7280;">Chargement...</p></div>
+      <div id="bat-view-list" style="max-height:calc(100vh - 160px);overflow-y:auto;scrollbar-width:thin;"><p style="color:#6b7280;">Chargement...</p></div>
     </div>
   `;
   container.querySelector("#bat-view-adobe").onclick = () => window.open("https://www.adobe.com/files#", "_blank", "noopener");
@@ -375,6 +375,20 @@ async function buildBatView() {
         }
       };
 
+      const btnArchiver = document.createElement("button");
+      btnArchiver.className = "btn btn-sm";
+      btnArchiver.textContent = "📦 Archiver";
+      btnArchiver.onclick = async () => {
+        if (!confirm(`Archiver le BAT "${job.name}" dans le dossier de production ?`)) return;
+        const r = await fetch("/api/jobs/archive", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fullPath: full })
+        }).then(res => res.json()).catch(() => ({ ok: false }));
+        if (r.ok) { showNotification("✅ BAT archivé", "success"); buildBatView(); }
+        else showNotification("❌ Erreur : " + (r.error || ""), "error");
+      };
+
       const btnDelete = document.createElement("button");
       btnDelete.className = "btn btn-sm btn-danger";
       btnDelete.textContent = "🗑 Supprimer";
@@ -391,6 +405,7 @@ async function buildBatView() {
 
       btnRow.appendChild(btnOpen);
       btnRow.appendChild(btnAcrobat);
+      btnRow.appendChild(btnArchiver);
       btnRow.appendChild(btnDelete);
 
       infoAndActions.appendChild(info);
@@ -495,7 +510,7 @@ async function buildRapportView() {
     for (const job of jobs) {
       const full = normalizePath(job.fullPath || "");
       const card = document.createElement("div");
-      card.style.cssText = "background:white;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:12px;";
+      card.style.cssText = "background:white;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;";
 
       const thumbDiv = document.createElement("div");
       thumbDiv.style.cssText = "width:60px;height:70px;flex-shrink:0;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;";
@@ -510,16 +525,15 @@ async function buildRapportView() {
         thumbDiv.style.cssText += "font-weight:700;font-size:12px;color:#BC0024;font-family:monospace;";
       }
 
-      const badge = document.createElement("div");
-      badge.style.cssText = "font-weight:700;font-size:13px;color:#BC0024;font-family:monospace;padding:4px 8px;background:#fee2e2;border-radius:4px;flex-shrink:0;";
-      badge.textContent = "PDF";
-
       const info = document.createElement("div");
       info.style.cssText = "flex:1;min-width:0;";
       info.innerHTML = `
         <div style="font-weight:600;font-size:14px;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${job.name || '—'}</div>
         <div style="font-size:12px;color:#6b7280;">${new Date(job.modified).toLocaleDateString("fr-FR")} · ${fmtBytes(job.size)}</div>
       `;
+
+      const btnRow = document.createElement("div");
+      btnRow.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;";
 
       const btnOpen = document.createElement("button");
       btnOpen.className = "btn btn-sm";
@@ -531,11 +545,40 @@ async function buildRapportView() {
       btnFiche.textContent = "Fiche";
       btnFiche.onclick = () => { if (window._openFabrication) window._openFabrication(full); };
 
+      const btnAcrobatPro = document.createElement("button");
+      btnAcrobatPro.className = "btn btn-sm btn-acrobat";
+      btnAcrobatPro.textContent = "📄 Ouvrir dans Acrobat Pro";
+      btnAcrobatPro.onclick = async () => {
+        const r = await fetch("/api/acrobat/open", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fullPath: full })
+        }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+        if (!r.ok) showNotification("❌ " + (r.error || "Erreur ouverture Acrobat"), "error");
+      };
+
+      const btnArchiver = document.createElement("button");
+      btnArchiver.className = "btn btn-sm";
+      btnArchiver.textContent = "📦 Archiver";
+      btnArchiver.onclick = async () => {
+        if (!confirm(`Archiver "${job.name}" dans le dossier de production ?`)) return;
+        const r = await fetch("/api/jobs/archive", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fullPath: full })
+        }).then(res => res.json()).catch(() => ({ ok: false }));
+        if (r.ok) { showNotification("✅ Rapport archivé", "success"); buildRapportView(); }
+        else showNotification("❌ Erreur : " + (r.error || ""), "error");
+      };
+
+      btnRow.appendChild(btnOpen);
+      btnRow.appendChild(btnFiche);
+      btnRow.appendChild(btnAcrobatPro);
+      btnRow.appendChild(btnArchiver);
+
       card.appendChild(thumbDiv);
-      card.appendChild(badge);
       card.appendChild(info);
-      card.appendChild(btnOpen);
-      card.appendChild(btnFiche);
+      card.appendChild(btnRow);
       listEl.appendChild(card);
     }
   } catch(err) {
@@ -657,7 +700,23 @@ function setupProfileUI() {
   const btnRapport = document.getElementById("btnViewRapport");
   const userInfo = document.getElementById("user-info");
 
-  userInfo.textContent = `${currentUser.name} (Profil ${currentUser.profile})`;
+  const profileLabel = currentUser.profile === 4 ? "Façonnage" : `Profil ${currentUser.profile}`;
+  userInfo.textContent = `${currentUser.name} (${profileLabel})`;
+
+  // Profile 4 (Façonnage): read-only access, only sees kanban (not submission/settings)
+  if (currentUser.profile === 4) {
+    if (btnRecycle) btnRecycle.style.display = "none";
+    if (btnDossiers) btnDossiers.style.display = "inline-block";
+    if (btnDashboard) btnDashboard.style.display = "none";
+    if (btnBat) btnBat.style.display = "inline-block";
+    if (btnRapport) btnRapport.style.display = "inline-block";
+    if (btnSubmission) btnSubmission.style.display = "none";
+    if (btnSettings) btnSettings.style.display = "none";
+    const btnGlobalProd = document.getElementById("btnViewGlobalProd");
+    if (btnGlobalProd) btnGlobalProd.style.display = "inline-block";
+    setupKanbanActions();
+    return;
+  }
 
   if (btnRecycle) btnRecycle.style.display = "inline-block";
   if (btnDossiers) btnDossiers.style.display = "inline-block";
@@ -698,6 +757,11 @@ function setupKanbanActions() {
     btnKanban.style.display = "inline-block";
     btnCalendar.style.display = "inline-block";
     btnSubmission.style.display = "inline-block";
+  } else if (currentUser.profile === 4) {
+    // Profile 4 (Façonnage): kanban read-only, no submission, no calendar
+    btnKanban.style.display = "inline-block";
+    btnCalendar.style.display = "none";
+    if (btnSubmission) btnSubmission.style.display = "none";
   }
 }
 

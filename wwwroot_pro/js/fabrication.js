@@ -240,6 +240,31 @@ export async function openFabrication(fullPath) {
     fabHistory.appendChild(div);
   });
 
+  // Load file trail
+  const trailEl = document.getElementById("fab-files-trail");
+  if (trailEl) {
+    trailEl.innerHTML = '<span style="color:#9ca3af;">Chargement...</span>';
+    fetch("/api/fabrication/files-trail?fileName=" + encodeURIComponent(fabCurrentFileName))
+      .then(r => r.json())
+      .then(t => {
+        if (!t.ok || !Array.isArray(t.files)) { trailEl.innerHTML = '<span style="color:#9ca3af;">Indisponible</span>'; return; }
+        trailEl.innerHTML = "";
+        t.files.forEach(f => {
+          const chip = document.createElement("div");
+          const isImpression = f.key === "impression" || f.key === "faconnage";
+          chip.style.cssText = `display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid ${f.found ? "#bbf7d0" : "#e5e7eb"};background:${f.found ? "#f0fdf4" : "#f9fafb"};color:${f.found ? "#166534" : "#9ca3af"};`;
+          chip.textContent = (f.found ? "✅" : "○") + " " + f.label;
+          if (f.found && f.fullPath) {
+            chip.style.cursor = "pointer";
+            chip.title = "Ouvrir " + f.fullPath;
+            chip.onclick = () => window.open("/api/file?path=" + encodeURIComponent(f.fullPath), "_blank", "noopener");
+          }
+          trailEl.appendChild(chip);
+        });
+      })
+      .catch(() => { trailEl.innerHTML = '<span style="color:#9ca3af;">Indisponible</span>'; });
+  }
+
   fabRemove.onclick = async () => {
     if (!fabCurrentFileName) return;
     if (!confirm("Retirer du planning ?")) return;
