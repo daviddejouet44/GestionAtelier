@@ -132,6 +132,8 @@ export async function initCalendar() {
             borderColor: bc,
             textColor: tc,
             editable: !locked,
+            startEditable: !locked,
+            durationEditable: false,
             extendedProps: { fullPath: full, bg, bc, tc, date: x.date, time: time, locked }
           };
         });
@@ -256,6 +258,8 @@ export async function initSubmissionCalendar() {
             borderColor: bc,
             textColor: tc,
             editable: !locked,
+            startEditable: !locked,
+            durationEditable: false,
             extendedProps: { fullPath: full, bg, bc, tc, date: x.date, time: time, locked }
           };
         });
