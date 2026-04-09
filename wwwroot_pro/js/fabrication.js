@@ -125,11 +125,22 @@ export function initFabrication() {
 
     if (!moveResp.ok) { alert("Erreur : " + (moveResp.error || "")); return; }
 
+    // Lock the fabrication sheet so calendar shows it as completed (green, non-draggable)
+    const movedPath = moveResp.moved || fabCurrentPath;
+    await fetch("/api/jobs/lock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fullPath: movedPath })
+    }).catch(err => console.warn("[fabrication] Lock failed:", err));
+
     fabModal.classList.add("hidden");
     alert("Fin de production marquée");
     // Trigger kanban refresh via global callback
     if (window._refreshKanban) await window._refreshKanban();
     if (window._refreshSubmissionView) await window._refreshSubmissionView();
+    // Refresh calendar to reflect the locked (completed) status
+    if (typeof calendar !== "undefined" && calendar) calendar.refetchEvents();
+    if (typeof submissionCalendar !== "undefined" && submissionCalendar) submissionCalendar.refetchEvents();
   };
 
   // Masquer le bouton PrismaPrepare (remplacé par le bouton BAT dans la tuile kanban)
