@@ -1380,7 +1380,9 @@ app.MapGet("/api/delivery", () =>
             bool locked = false;
             if (!string.IsNullOrEmpty(v.FileName))
             {
-                var fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", v.FileName)).FirstOrDefault();
+                // Normalize to lowercase (fabrication records store fileName as lowercase via fnKey)
+                var lowerFn = v.FileName.ToLowerInvariant();
+                var fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", lowerFn)).FirstOrDefault();
                 if (fabDoc == null && !string.IsNullOrEmpty(v.FullPath))
                     fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fullPath", v.FullPath)).FirstOrDefault();
                 if (fabDoc != null && fabDoc.Contains("locked") && fabDoc["locked"] != BsonNull.Value
@@ -2751,14 +2753,16 @@ app.MapGet("/api/production/summary", () =>
                 if (batFilesInBatFolder.Contains(batVariant))
                     effectiveStage = "BAT";
 
-                // Find matching fabrication by fileName or fullPath
+                // Find matching fabrication by fileName or fullPath (guard against BsonNull values)
                 var fab = allFabs.FirstOrDefault(f =>
-                    (f.Contains("fileName") && string.Equals(f["fileName"].AsString, fName, StringComparison.OrdinalIgnoreCase)) ||
-                    (f.Contains("fullPath") && string.Equals(Path.GetFileName(f["fullPath"].AsString), fName, StringComparison.OrdinalIgnoreCase)));
+                    (f.Contains("fileName") && f["fileName"] != BsonNull.Value &&
+                     string.Equals(f["fileName"].AsString, fName, StringComparison.OrdinalIgnoreCase)) ||
+                    (f.Contains("fullPath") && f["fullPath"] != BsonNull.Value &&
+                     string.Equals(Path.GetFileName(f["fullPath"].AsString), fName, StringComparison.OrdinalIgnoreCase)));
 
-                var numeroDossier = fab != null && fab.Contains("numeroDossier") ? fab["numeroDossier"].AsString : "";
-                var client = fab != null && fab.Contains("client") ? fab["client"].AsString : "";
-                var typeTravail = fab != null && fab.Contains("typeTravail") ? fab["typeTravail"].AsString : "";
+                var numeroDossier = fab != null && fab.Contains("numeroDossier") && fab["numeroDossier"] != BsonNull.Value ? fab["numeroDossier"].AsString : "";
+                var client = fab != null && fab.Contains("client") && fab["client"] != BsonNull.Value ? fab["client"].AsString : "";
+                var typeTravail = fab != null && fab.Contains("typeTravail") && fab["typeTravail"] != BsonNull.Value ? fab["typeTravail"].AsString : "";
 
                 entries.Add(new
                 {
@@ -5347,13 +5351,20 @@ _ = Task.Run(async () =>
 // ======================================================
 app.MapGet("/api/logo", (HttpContext ctx) =>
 {
-    var logoPath = Path.Combine(AppContext.BaseDirectory, "wwwroot_pro", "logo.png");
-    if (!File.Exists(logoPath))
+    var logoDir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
+    // Try all supported extensions
+    string? found = null;
+    foreach (var ext in new[] { ".png", ".jpg", ".jpeg", ".gif", ".webp" })
+    {
+        var candidate = Path.Combine(logoDir, "logo" + ext);
+        if (File.Exists(candidate)) { found = candidate; break; }
+    }
+    if (found == null)
         return Results.NotFound();
     var provider = new FileExtensionContentTypeProvider();
-    if (!provider.TryGetContentType(logoPath, out var ct)) ct = "image/png";
+    if (!provider.TryGetContentType(found, out var ct)) ct = "image/png";
     ctx.Response.Headers["Cache-Control"] = "no-cache, no-store";
-    return Results.File(File.OpenRead(logoPath), ct);
+    return Results.File(File.OpenRead(found), ct);
 });
 
 app.MapPost("/api/logo", async (HttpContext ctx) =>
@@ -5369,19 +5380,25 @@ app.MapPost("/api/logo", async (HttpContext ctx) =>
         if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".gif" && ext != ".webp")
             return Results.Json(new { ok = false, error = "Format non supporté (PNG, JPG, GIF, WEBP)" });
 
-        var logoPath = Path.Combine(AppContext.BaseDirectory, "wwwroot_pro", "logo" + ext);
+        var logoDir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
+        // Ensure target directory exists before writing
+        Directory.CreateDirectory(logoDir);
+
         // Remove any existing logo files
-        foreach (var old in Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "wwwroot_pro"), "logo.*"))
+        foreach (var old in Directory.GetFiles(logoDir, "logo.*"))
         {
-            if (Path.GetFileNameWithoutExtension(old) == "logo") File.Delete(old);
+            if (Path.GetFileNameWithoutExtension(old).Equals("logo", StringComparison.OrdinalIgnoreCase))
+                File.Delete(old);
         }
+
+        var logoPath = Path.Combine(logoDir, "logo" + ext);
         using var stream = File.Create(logoPath);
         await file.CopyToAsync(stream);
 
         // If not png, also copy as logo.png for consistent URL
         if (ext != ".png")
         {
-            var pngPath = Path.Combine(AppContext.BaseDirectory, "wwwroot_pro", "logo.png");
+            var pngPath = Path.Combine(logoDir, "logo.png");
             File.Copy(logoPath, pngPath, overwrite: true);
         }
 
@@ -5389,6 +5406,7 @@ app.MapPost("/api/logo", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
+        Console.WriteLine($"[ERROR] POST /api/logo: {ex.Message}");
         return Results.Json(new { ok = false, error = ex.Message });
     }
 });
@@ -5397,10 +5415,14 @@ app.MapDelete("/api/logo", (HttpContext ctx) =>
 {
     try
     {
-        var dir = Path.Combine(AppContext.BaseDirectory, "wwwroot_pro");
-        foreach (var logoFile in Directory.GetFiles(dir, "logo.*"))
+        var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
+        if (Directory.Exists(dir))
         {
-            if (Path.GetFileNameWithoutExtension(logoFile) == "logo") File.Delete(logoFile);
+            foreach (var logoFile in Directory.GetFiles(dir, "logo.*"))
+            {
+                if (Path.GetFileNameWithoutExtension(logoFile).Equals("logo", StringComparison.OrdinalIgnoreCase))
+                    File.Delete(logoFile);
+            }
         }
         return Results.Json(new { ok = true });
     }
@@ -6419,13 +6441,21 @@ file static class BackendUtils
     {
         var col = MongoDbHelper.GetFabricationsCollection();
 
+        // Always store fileName in lowercase for consistent lookups
+        if (!string.IsNullOrEmpty(sheet.FileName))
+            sheet.FileName = sheet.FileName.ToLowerInvariant();
+
         // Primary lookup: try fullPath first, then fileName (keeps one record per file)
         BsonDocument? existing = null;
         if (!string.IsNullOrEmpty(sheet.FullPath))
             existing = col.Find(Builders<BsonDocument>.Filter.Eq("fullPath", sheet.FullPath)).FirstOrDefault();
         if (existing == null && !string.IsNullOrEmpty(sheet.FileName))
-            existing = col.Find(Builders<BsonDocument>.Filter.Eq("fileName", sheet.FileName))
+        {
+            // Case-insensitive search to handle legacy records stored with different casing
+            existing = col.Find(Builders<BsonDocument>.Filter.Regex("fileName",
+                new BsonRegularExpression("^" + System.Text.RegularExpressions.Regex.Escape(sheet.FileName) + "$", "i")))
                           .SortByDescending(x => x["_id"]).FirstOrDefault();
+        }
 
         var historyArray = new BsonArray(sheet.History.Select(h => new BsonDocument
         {

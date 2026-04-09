@@ -316,8 +316,9 @@ export async function refreshKanban() {
 
   const cols = kanbanDiv.querySelectorAll(".kanban-col-operator");
   for (const col of cols) {
-    // Profile 4 (Façonnage): only Façonnage column is editable
-    const readOnly = currentUser?.profile === 4 && col.dataset.folder !== "Façonnage";
+    // Profile 1 (Production lecture seule) and Profile 4 (Façonnage): read-only for all but Façonnage
+    const readOnly = currentUser?.profile === 1 ||
+                     (currentUser?.profile === 4 && col.dataset.folder !== "Façonnage");
     await refreshKanbanColumnOperator(col.dataset.folder, q, sort, col, readOnly);
   }
   await updateKanbanSummary();

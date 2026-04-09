@@ -113,6 +113,7 @@ export async function initCalendar() {
     },
     editable: true,
     eventDurationEditable: false,
+    eventAllow: (_dropInfo, draggedEvent) => !draggedEvent.extendedProps?.locked,
     events: async (_info, success) => {
       try {
         const list = await fetch("/api/delivery").then(r => r.json());
@@ -236,6 +237,7 @@ export async function initSubmissionCalendar() {
     headerToolbar: { left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek" },
     editable: true,
     eventDurationEditable: false,
+    eventAllow: (_dropInfo, draggedEvent) => !draggedEvent.extendedProps?.locked,
     events: async (info, success) => {
       try {
         const list = await fetch("/api/delivery").then(r => r.json());
