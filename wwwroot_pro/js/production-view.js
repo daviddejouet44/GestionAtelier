@@ -61,7 +61,7 @@ async function buildGlobalProgressView(container) {
     fetch("/api/assignments", {
       headers: { "Authorization": `Bearer ${authToken}` }
     }).then(r => r.json()).catch(() => []),
-    fetch("/api/deliveries", {
+    fetch("/api/delivery", {
       headers: { "Authorization": `Bearer ${authToken}` }
     }).then(r => r.json()).catch(() => [])
   ]);
