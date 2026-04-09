@@ -1373,14 +1373,28 @@ app.MapGet("/api/file", (string path) =>
 app.MapGet("/api/delivery", () =>
 {
     var map = BackendUtils.LoadDeliveries();
+    var fabCol = MongoDbHelper.GetFabricationsCollection();
 
     var data = map.Values
-        .Select(v => new
-        {
-            fullPath = v.FullPath,
-            fileName = v.FileName,
-            date     = v.Date.ToString("yyyy-MM-dd"),
-            time     = v.Time
+        .Select(v => {
+            bool locked = false;
+            if (!string.IsNullOrEmpty(v.FileName))
+            {
+                var fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", v.FileName)).FirstOrDefault();
+                if (fabDoc == null && !string.IsNullOrEmpty(v.FullPath))
+                    fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fullPath", v.FullPath)).FirstOrDefault();
+                if (fabDoc != null && fabDoc.Contains("locked") && fabDoc["locked"] != BsonNull.Value
+                    && fabDoc["locked"].BsonType == BsonType.Boolean)
+                    locked = fabDoc["locked"].AsBoolean;
+            }
+            return new
+            {
+                fullPath = v.FullPath,
+                fileName = v.FileName,
+                date     = v.Date.ToString("yyyy-MM-dd"),
+                time     = v.Time,
+                locked
+            };
         });
     return Results.Json(data);
 });
@@ -1710,27 +1724,40 @@ app.MapGet("/api/fabrication/pdf", (string? fullPath, string? fileName, bool? sa
         ms.Position = 0;
         var pdfBytes = ms.ToArray();
 
-        // Optionally save PDF to source file's directory
+        // Optionally save PDF to production folder (dossier de production)
         if (save == true)
         {
             try
             {
-                // Use the trusted sheet.FullPath (from database) instead of user-provided fullPath
-                var trustedFullPath = sheet.FullPath;
-                var srcDir = Path.GetDirectoryName(trustedFullPath);
-                if (!string.IsNullOrEmpty(srcDir))
+                // Look up production folder for this file
+                var safeFileName = Path.GetFileName(sheet.FileName ?? "");
+                var baseName = Path.GetFileNameWithoutExtension(safeFileName);
+                bool savedToProductionFolder = false;
+
+                var pfCol = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+                BsonDocument? pfDoc = null;
+                if (!string.IsNullOrEmpty(safeFileName))
+                    pfDoc = pfCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", safeFileName))
+                                .SortByDescending(x => x["createdAt"]).FirstOrDefault();
+                if (pfDoc == null && !string.IsNullOrEmpty(sheet.NumeroDossier))
+                    pfDoc = pfCol.Find(Builders<BsonDocument>.Filter.Eq("numeroDossier", sheet.NumeroDossier))
+                                .SortByDescending(x => x["createdAt"]).FirstOrDefault();
+
+                if (pfDoc != null && pfDoc.Contains("folderPath") && !string.IsNullOrEmpty(pfDoc["folderPath"].AsString))
                 {
-                    // Validate that srcDir is within the allowed hotfolders root (prevent path traversal)
-                    var hotRoot = Path.GetFullPath(BackendUtils.HotfoldersRoot());
-                    var canonicalSrcDir = Path.GetFullPath(srcDir);
-                    if (canonicalSrcDir.StartsWith(hotRoot, StringComparison.OrdinalIgnoreCase) && Directory.Exists(canonicalSrcDir))
+                    var prodFolderPath = pfDoc["folderPath"].AsString;
+                    if (Directory.Exists(prodFolderPath))
                     {
-                        // Sanitize filename to prevent path traversal
-                        var safeFileName = Path.GetFileName(sheet.FileName);
-                        var baseName = Path.GetFileNameWithoutExtension(safeFileName);
-                        var pdfPath = Path.Combine(canonicalSrcDir, $"{baseName}_FicheFabrication.pdf");
+                        var pdfPath = Path.Combine(prodFolderPath, $"{baseName}_FicheFabrication.pdf");
                         File.WriteAllBytes(pdfPath, pdfBytes);
+                        savedToProductionFolder = true;
+                        Console.WriteLine($"[PDF] Fiche enregistrée dans le dossier de production : {pdfPath}");
                     }
+                }
+
+                if (!savedToProductionFolder)
+                {
+                    Console.WriteLine($"[WARN] Dossier de production introuvable pour {safeFileName} — PDF non sauvegardé sur disque");
                 }
             }
             catch (Exception saveEx)
@@ -3693,12 +3720,39 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
         else if (action == "prisma-prepare")
         {
             // Routage PrismaPrepare: typeTravail → hotfolder PrismaPrepare (dedicated collection)
+            // NOTE: The file is NOT moved to the PrismaPrepare tile — PrismaPrepare handles its own workflow.
+            //       We only copy the file to the hotfolder and open it in PrismaPrepare.
             var ppCol = MongoDbHelper.GetCollection<BsonDocument>("prismaPrepareRouting");
             var ppDoc = ppCol.Find(Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail)).FirstOrDefault();
             if (ppDoc == null || !ppDoc.Contains("hotfolderPath") || string.IsNullOrEmpty(ppDoc["hotfolderPath"].AsString))
                 return Results.Json(new { ok = false, error = $"Aucun hotfolder PrismaPrepare configuré pour le type de travail \"{typeTravail}\". Configurez-le dans Paramétrage > Routage Impression (section 2)." });
-            copyDestPath = ppDoc["hotfolderPath"].AsString;
-            tileFolder = "PrismaPrepare";
+            var ppHotfolder = ppDoc["hotfolderPath"].AsString;
+
+            // Copy to hotfolder only — do NOT move original
+            if (!Directory.Exists(ppHotfolder))
+                Directory.CreateDirectory(ppHotfolder);
+            var ppCopyDest = Path.Combine(ppHotfolder, Path.GetFileName(fullPath));
+            File.Copy(fullPath, ppCopyDest, overwrite: true);
+            Console.WriteLine($"[ACTION] prisma-prepare: copié vers hotfolder {ppCopyDest} (fichier original conservé en place)");
+
+            // Also try to open in PrismaPrepare directly
+            var integCfg2 = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations") ?? new IntegrationsSettings();
+            var prismaPrepPath2 = integCfg2.PrismaPrepareExePath ?? "";
+            if (!string.IsNullOrWhiteSpace(prismaPrepPath2))
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = prismaPrepPath2,
+                        Arguments = $"\"{ppCopyDest}\"",
+                        UseShellExecute = true
+                    });
+                }
+                catch (Exception exPp) { Console.WriteLine($"[WARN] Impossible d'ouvrir PrismaPrepare: {exPp.Message}"); }
+            }
+
+            return Results.Json(new { ok = true, message = "Fichier envoyé vers PrismaPrepare (fichier original conservé dans sa tuile)" });
         }
         else if (action == "direct-print")
         {
@@ -5090,7 +5144,11 @@ app.MapGet("/api/alerts/faconnage", () =>
 
             var numeroDossier = fabDoc != null && fabDoc.Contains("numeroDossier") && fabDoc["numeroDossier"] != BsonNull.Value
                 ? fabDoc["numeroDossier"].AsString : "";
-            alerts.Add(new { fileName = f.name, fullPath = f.path, faconnage, numeroDossier });
+            int? quantite = fabDoc != null && fabDoc.Contains("quantite") && fabDoc["quantite"] != BsonNull.Value
+                && fabDoc["quantite"].BsonType == BsonType.Int32 ? fabDoc["quantite"].AsInt32
+                : fabDoc != null && fabDoc.Contains("quantite") && fabDoc["quantite"] != BsonNull.Value
+                && fabDoc["quantite"].IsNumeric ? (int?)fabDoc["quantite"].ToDouble() : null;
+            alerts.Add(new { fileName = f.name, fullPath = f.path, faconnage, numeroDossier, quantite });
         }
 
         // Get last generated time from MongoDB
@@ -5124,13 +5182,17 @@ app.MapGet("/api/fabrication/files-trail", (string fileName) =>
         // Check each stage folder for the file
         var stages = new[]
         {
-            new { key = "original",    folder = "Début de production", label = "Original" },
-            new { key = "en_attente",  folder = "Prêt pour impression", label = "En attente" },
-            new { key = "bat",         folder = "BAT",                  label = "BAT" },
-            new { key = "rapport",     folder = "Rapport",              label = "Rapport" },
-            new { key = "prisma",      folder = "PrismaPrepare",        label = "PrismaPrepare" },
-            new { key = "fiery",       folder = "Fiery",                label = "Fiery" },
-            new { key = "fin_prod",    folder = "Fin de production",    label = "Fin de production" }
+            new { key = "original",         folder = "Début de production",         label = "Original" },
+            new { key = "preflight",        folder = "Corrections",                  label = "Preflight" },
+            new { key = "preflight_fp",     folder = "Corrections et fond perdu",    label = "Preflight avec fond perdu" },
+            new { key = "en_attente",       folder = "Prêt pour impression",         label = "En attente" },
+            new { key = "bat",              folder = "BAT",                          label = "BAT" },
+            new { key = "rapport",          folder = "Rapport",                      label = "Rapport" },
+            new { key = "prisma",           folder = "PrismaPrepare",                label = "PrismaPrepare" },
+            new { key = "fiery",            folder = "Fiery",                        label = "Fiery" },
+            new { key = "impression",       folder = "Impression en cours",          label = "Impression en cours" },
+            new { key = "faconnage",        folder = "Façonnage",                    label = "Façonnage" },
+            new { key = "fin_prod",         folder = "Fin de production",            label = "Fin de production" }
         };
 
         var result = new List<object>();
@@ -5277,6 +5339,74 @@ _ = Task.Run(async () =>
         {
             Console.WriteLine($"[WARN] Faconnage alert task error: {ex.Message}");
         }
+    }
+});
+
+// ======================================================
+// LOGO — Upload et affichage
+// ======================================================
+app.MapGet("/api/logo", (HttpContext ctx) =>
+{
+    var logoPath = Path.Combine(AppContext.BaseDirectory, "wwwroot_pro", "logo.png");
+    if (!File.Exists(logoPath))
+        return Results.NotFound();
+    var provider = new FileExtensionContentTypeProvider();
+    if (!provider.TryGetContentType(logoPath, out var ct)) ct = "image/png";
+    ctx.Response.Headers["Cache-Control"] = "no-cache, no-store";
+    return Results.File(File.OpenRead(logoPath), ct);
+});
+
+app.MapPost("/api/logo", async (HttpContext ctx) =>
+{
+    try
+    {
+        var form = await ctx.Request.ReadFormAsync();
+        var file = form.Files.GetFile("file");
+        if (file == null || file.Length == 0)
+            return Results.Json(new { ok = false, error = "Fichier manquant" });
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".gif" && ext != ".webp" && ext != ".svg")
+            return Results.Json(new { ok = false, error = "Format non supporté (PNG, JPG, GIF, WEBP, SVG)" });
+
+        var logoPath = Path.Combine(AppContext.BaseDirectory, "wwwroot_pro", "logo" + ext);
+        // Remove any existing logo files
+        foreach (var old in Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "wwwroot_pro"), "logo.*"))
+        {
+            if (Path.GetFileNameWithoutExtension(old) == "logo") File.Delete(old);
+        }
+        using var stream = File.Create(logoPath);
+        await file.CopyToAsync(stream);
+
+        // If not png, also copy as logo.png for consistent URL
+        if (ext != ".png")
+        {
+            var pngPath = Path.Combine(AppContext.BaseDirectory, "wwwroot_pro", "logo.png");
+            File.Copy(logoPath, pngPath, overwrite: true);
+        }
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapDelete("/api/logo", (HttpContext ctx) =>
+{
+    try
+    {
+        var dir = Path.Combine(AppContext.BaseDirectory, "wwwroot_pro");
+        foreach (var logoFile in Directory.GetFiles(dir, "logo.*"))
+        {
+            if (Path.GetFileNameWithoutExtension(logoFile) == "logo") File.Delete(logoFile);
+        }
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
     }
 });
 
@@ -6509,64 +6639,128 @@ file static class PdfUtils
 {
     public static Document CreateFabricationPdf(FabricationSheet s)
     {
+        // Determine creation date from history (first entry) or now
+        var creationDate = s.History.OrderBy(h => h.Date).FirstOrDefault()?.Date ?? DateTime.Now;
+
         return Document.Create(container =>
         {
             container.Page(page =>
             {
-                page.Margin(20);
+                page.Margin(30);
                 page.Size(PageSizes.A4);
-                page.DefaultTextStyle(x => x.FontSize(12));
+                page.DefaultTextStyle(x => x.FontSize(11));
 
-                page.Header()
-                    .AlignCenter()
-                    .Text($"FICHE DE FABRICATION — {s.FileName}")
-                    .FontSize(20)
-                    .SemiBold();
+                page.Header().Column(hdr =>
+                {
+                    hdr.Item().AlignCenter().Text("Fiche de Fabrication").FontSize(24).SemiBold();
+                    if (!string.IsNullOrWhiteSpace(s.NumeroDossier))
+                        hdr.Item().AlignCenter().Text(s.NumeroDossier).FontSize(16).SemiBold();
+                    hdr.Item().PaddingVertical(6).LineHorizontal(2).LineColor("#1a1a2e");
+                });
 
                 page.Content().Column(col =>
                 {
-                    col.Item().Text("Informations générales").FontSize(14).SemiBold();
-                    col.Item().Text($"Nom fichier : {s.FileName}");
-                    col.Item().Text($"Chemin : {s.FullPath}");
-                    col.Item().Text($"Généré : {DateTime.Now:dd/MM/yyyy HH:mm}");
-                    if (s.Delai.HasValue)
-                        col.Item().Text($"Délai : {s.Delai.Value:dd/MM/yyyy}");
+                    // ── Informations générales ──────────────────────────
+                    col.Item().PaddingBottom(8).Text("Informations générales").FontSize(13).SemiBold();
+                    col.Item().Table(table =>
+                    {
+                        table.ColumnsDefinition(c => { c.RelativeColumn(1); c.RelativeColumn(2); c.RelativeColumn(1); c.RelativeColumn(2); });
+                        void Row(string lbl, string? val, bool bold = false)
+                        {
+                            table.Cell().PaddingBottom(4).Text(lbl + " :").FontColor("#6b7280").FontSize(10);
+                            var v = table.Cell().PaddingBottom(4).Text(val ?? "—");
+                            if (bold) v.SemiBold();
+                        }
+                        Row("Client", s.Client);
+                        Row("Date de création", creationDate.ToString("dd/MM/yyyy"));
+                        Row("N° de dossier", s.NumeroDossier, bold: true);
+                        Row("Date de livraison", s.Delai.HasValue ? s.Delai.Value.ToString("dd/MM/yyyy") : "—");
+                        Row("Nom du fichier", s.FileName);
+                        Row("Opérateur", s.Operateur);
+                    });
 
-                    col.Item().PaddingVertical(10).LineHorizontal(1).LineColor("#cccccc");
+                    col.Item().PaddingVertical(10).LineHorizontal(1).LineColor("#d1d5db");
 
-                    col.Item().Text("Données Atelier").FontSize(14).SemiBold();
-                    col.Item().Text($"Moteur d'impression : {s.MoteurImpression ?? s.Machine}");
-                    col.Item().Text($"Opérateur : {s.Operateur}");
-                    col.Item().Text($"Quantité : {s.Quantite}");
-                    col.Item().Text($"Nombre de feuilles : {s.NombreFeuilles}");
-                    col.Item().Text($"Type travail : {s.TypeTravail}");
-                    col.Item().Text($"Type document : {s.TypeDocument}");
-                    col.Item().Text($"Format : {s.Format}");
-                    col.Item().Text($"Papier : {s.Papier}");
-                    col.Item().Text($"Recto/Verso : {s.RectoVerso}");
-                    col.Item().Text($"Encres : {s.Encres}");
-                    col.Item().Text($"Façonnage : {(s.Faconnage != null && s.Faconnage.Count > 0 ? string.Join(", ", s.Faconnage) : "—")}");
-                    col.Item().Text($"Livraison : {s.Livraison}");
-                    col.Item().Text($"Client : {s.Client}");
-                    col.Item().Text($"N° affaire : {s.NumeroAffaire}");
-                    col.Item().Text($"Notes : {s.Notes}");
+                    // ── Données de production ──────────────────────────
+                    col.Item().PaddingBottom(8).Text("Données de production").FontSize(13).SemiBold();
+                    col.Item().Table(table =>
+                    {
+                        table.ColumnsDefinition(c => { c.RelativeColumn(1); c.RelativeColumn(2); c.RelativeColumn(1); c.RelativeColumn(2); });
+                        void Row(string lbl, string? val)
+                        {
+                            table.Cell().PaddingBottom(4).Text(lbl + " :").FontColor("#6b7280").FontSize(10);
+                            table.Cell().PaddingBottom(4).Text(val ?? "—");
+                        }
+                        Row("Moteur d'impression", s.MoteurImpression ?? s.Machine);
+                        Row("Quantité", s.Quantite.HasValue ? s.Quantite.Value.ToString("N0") : "—");
+                        Row("Type de travail", s.TypeTravail);
+                        Row("Format fini", s.Format);
+                        Row("Recto/Verso", s.RectoVerso);
+                        Row("Type document", s.TypeDocument);
+                        Row("Nombre de feuilles", s.NombreFeuilles.HasValue ? s.NombreFeuilles.Value.ToString() : "—");
+                        Row("N° affaire", s.NumeroAffaire);
+                    });
 
+                    col.Item().PaddingVertical(10).LineHorizontal(1).LineColor("#d1d5db");
+
+                    // ── Médias ──────────────────────────────────────────
                     if (!string.IsNullOrWhiteSpace(s.Media1) || !string.IsNullOrWhiteSpace(s.Media2) ||
                         !string.IsNullOrWhiteSpace(s.Media3) || !string.IsNullOrWhiteSpace(s.Media4))
                     {
-                        col.Item().PaddingVertical(10).LineHorizontal(1).LineColor("#cccccc");
-                        col.Item().Text("Médias").FontSize(14).SemiBold();
-                        if (!string.IsNullOrWhiteSpace(s.Media1)) col.Item().Text($"Média 1 : {s.Media1}");
-                        if (!string.IsNullOrWhiteSpace(s.Media2)) col.Item().Text($"Média 2 : {s.Media2}");
-                        if (!string.IsNullOrWhiteSpace(s.Media3)) col.Item().Text($"Média 3 : {s.Media3}");
-                        if (!string.IsNullOrWhiteSpace(s.Media4)) col.Item().Text($"Média 4 : {s.Media4}");
+                        col.Item().PaddingBottom(8).Text("Médias / Support").FontSize(13).SemiBold();
+                        col.Item().Table(table =>
+                        {
+                            table.ColumnsDefinition(c => { c.RelativeColumn(1); c.RelativeColumn(2); c.RelativeColumn(1); c.RelativeColumn(2); });
+                            void Row(string lbl, string? val) { table.Cell().PaddingBottom(4).Text(lbl + " :").FontColor("#6b7280").FontSize(10); table.Cell().PaddingBottom(4).Text(val ?? "—"); }
+                            if (!string.IsNullOrWhiteSpace(s.Media1)) Row("Média 1", s.Media1);
+                            if (!string.IsNullOrWhiteSpace(s.Media2)) Row("Média 2", s.Media2);
+                            if (!string.IsNullOrWhiteSpace(s.Media3)) Row("Média 3", s.Media3);
+                            if (!string.IsNullOrWhiteSpace(s.Media4)) Row("Média 4", s.Media4);
+                        });
+                        col.Item().PaddingVertical(10).LineHorizontal(1).LineColor("#d1d5db");
                     }
 
-                    col.Item().PaddingVertical(10).LineHorizontal(1).LineColor("#cccccc");
+                    // ── Façonnage ────────────────────────────────────────
+                    col.Item().PaddingBottom(4).Text("Façonnage").FontSize(13).SemiBold();
+                    if (s.Faconnage != null && s.Faconnage.Count > 0)
+                    {
+                        col.Item().PaddingBottom(8).Row(row =>
+                        {
+                            foreach (var f in s.Faconnage)
+                            {
+                                row.AutoItem().Border(1).BorderColor("#d1d5db").Padding(4).Text("✓ " + f).FontSize(10);
+                                row.AutoItem().Width(6);
+                            }
+                        });
+                    }
+                    else
+                    {
+                        col.Item().PaddingBottom(8).Text("Aucun façonnage sélectionné").FontColor("#9ca3af").FontSize(10);
+                    }
 
-                    col.Item().Text("Historique").FontSize(14).SemiBold();
-                    foreach (var h in s.History.OrderBy(h => h.Date))
-                        col.Item().Text($"{h.Date:dd/MM/yyyy HH:mm} — {h.User} — {h.Action}");
+                    col.Item().PaddingVertical(10).LineHorizontal(1).LineColor("#d1d5db");
+
+                    // ── Observations ────────────────────────────────────
+                    if (!string.IsNullOrWhiteSpace(s.Notes))
+                    {
+                        col.Item().PaddingBottom(4).Text("Observations / Notes").FontSize(13).SemiBold();
+                        col.Item().PaddingBottom(8).Border(1).BorderColor("#e5e7eb").Padding(8).Text(s.Notes).FontSize(10);
+                        col.Item().PaddingVertical(10).LineHorizontal(1).LineColor("#d1d5db");
+                    }
+
+                    // ── Historique ───────────────────────────────────────
+                    if (s.History.Count > 0)
+                    {
+                        col.Item().PaddingBottom(4).Text("Historique").FontSize(13).SemiBold();
+                        foreach (var h in s.History.OrderBy(h => h.Date))
+                            col.Item().Text($"{h.Date:dd/MM/yyyy HH:mm} — {h.User} — {h.Action}").FontSize(9).FontColor("#6b7280");
+                    }
+                });
+
+                page.Footer().AlignRight().Text(t =>
+                {
+                    t.Span($"Généré le {DateTime.Now:dd/MM/yyyy à HH:mm} — ").FontSize(8).FontColor("#9ca3af");
+                    t.Span("Gestion d'Atelier").FontSize(8).FontColor("#9ca3af").SemiBold();
                 });
             });
         });

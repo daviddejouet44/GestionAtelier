@@ -977,31 +977,63 @@ export async function showFaconnageAlerts() {
   overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:10000;";
 
   const panel = document.createElement("div");
-  panel.style.cssText = "background:white;border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,.3);";
+  panel.style.cssText = "background:white;border-radius:12px;padding:24px;max-width:680px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,.3);";
 
   let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-    <h3 style="margin:0;font-size:18px;font-weight:700;">📋 Productions à venir — Impression en cours</h3>
+    <h3 style="margin:0;font-size:18px;font-weight:700;">📋 Productions à venir — Prévision façonnage</h3>
     <button id="fa-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:#6b7280;">✕</button>
   </div>`;
 
   if (!data.ok || !Array.isArray(data.alerts) || data.alerts.length === 0) {
     html += '<p style="color:#9ca3af;text-align:center;padding:20px;">Aucun job en impression en cours</p>';
   } else {
-    if (data.lastGeneratedAt) {
-      const dt = new Date(data.lastGeneratedAt);
-      html += `<p style="font-size:12px;color:#9ca3af;margin-bottom:12px;">Dernière génération : ${dt.toLocaleDateString("fr-FR")} à ${dt.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</p>`;
-    }
-    html += '<div style="display:flex;flex-direction:column;gap:10px;">';
+    // Group by façonnage option
+    const grouped = {}; // { optionName: [{fileName, numeroDossier, quantite}] }
+    let jobsWithNoFaconnage = [];
+
     for (const item of data.alerts) {
-      const facBadges = Array.isArray(item.faconnage) && item.faconnage.length > 0
-        ? item.faconnage.map(f => `<span style="background:#fef9c3;color:#92400e;border:1px solid #fde68a;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:600;">${f}</span>`).join(" ")
-        : '<span style="color:#9ca3af;font-size:11px;">Aucun façonnage</span>';
-      html += `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;">
-        <div style="font-weight:600;font-size:14px;color:#111827;">${item.numeroDossier || item.fileName}</div>
-        <div style="font-size:12px;color:#6b7280;margin-bottom:6px;">${item.fileName}</div>
-        <div style="display:flex;gap:4px;flex-wrap:wrap;">${facBadges}</div>
+      const quantite = item.quantite ? parseInt(item.quantite) : null;
+      if (Array.isArray(item.faconnage) && item.faconnage.length > 0) {
+        for (const opt of item.faconnage) {
+          if (!grouped[opt]) grouped[opt] = [];
+          grouped[opt].push({ fileName: item.fileName, numeroDossier: item.numeroDossier, quantite });
+        }
+      } else {
+        jobsWithNoFaconnage.push({ fileName: item.fileName, numeroDossier: item.numeroDossier, quantite });
+      }
+    }
+
+    html += `<p style="font-size:13px;color:#6b7280;margin-bottom:16px;">${data.alerts.length} job(s) en impression en cours</p>`;
+    html += '<div style="display:flex;flex-direction:column;gap:14px;">';
+
+    const optionNames = Object.keys(grouped).sort();
+    for (const opt of optionNames) {
+      const jobs = grouped[opt];
+      const totalQty = jobs.reduce((s, j) => s + (j.quantite || 0), 0);
+      const jobRows = jobs.map(j => {
+        const label = j.numeroDossier || j.fileName;
+        const qty = j.quantite != null ? ` : ${j.quantite.toLocaleString("fr-FR")} ex.` : "";
+        return `<div style="font-size:12px;color:#374151;padding:3px 0 3px 12px;border-left:3px solid #fde68a;">— ${label}${qty}</div>`;
+      }).join("");
+      const totalLine = totalQty > 0 ? `<div style="font-size:12px;font-weight:700;color:#374151;margin-top:6px;">Total : ${totalQty.toLocaleString("fr-FR")} exemplaires</div>` : "";
+      html += `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px;">
+        <div style="font-weight:700;font-size:14px;color:#92400e;margin-bottom:8px;">✂️ ${opt} — ${jobs.length} job(s) à venir</div>
+        ${jobRows}
+        ${totalLine}
       </div>`;
     }
+
+    if (jobsWithNoFaconnage.length > 0) {
+      const jobRows = jobsWithNoFaconnage.map(j => {
+        const label = j.numeroDossier || j.fileName;
+        return `<div style="font-size:12px;color:#6b7280;padding:3px 0 3px 12px;border-left:3px solid #e5e7eb;">— ${label}</div>`;
+      }).join("");
+      html += `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px;">
+        <div style="font-weight:700;font-size:14px;color:#9ca3af;margin-bottom:8px;">Sans façonnage — ${jobsWithNoFaconnage.length} job(s)</div>
+        ${jobRows}
+      </div>`;
+    }
+
     html += '</div>';
   }
 

@@ -2,9 +2,9 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <title>Gestion Atelier PRO</title>
+  <title>Gestion d'Atelier</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="css/styles.css?v=8" />
+  <link rel="stylesheet" href="css/styles.css?v=9" />
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script>
@@ -17,7 +17,7 @@
   <!-- LOGIN -->
   <div id="login-container" class="login-container">
     <div class="login-panel">
-      <h1>Gestion Atelier PRO</h1>
+      <h1>Gestion d'Atelier</h1>
       <form id="login-form">
         <div class="form-group">
           <label>Login</label>
@@ -38,7 +38,10 @@
 
     <!-- HEADER -->
     <header>
-      <h1>Gestion Atelier PRO</h1>
+      <div class="header-brand">
+        <h1>Gestion d'Atelier</h1>
+        <img id="app-logo" src="/api/logo" alt="Logo" style="max-height:40px;margin-left:12px;display:none;" onerror="this.style.display='none'" onload="this.style.display='inline-block'" />
+      </div>
       <div class="header-right">
         <div id="notif-bell" class="notif-bell" style="display:none;">
           <button id="notif-btn" class="notif-btn">
@@ -147,7 +150,7 @@
 
   </div>
 
-  <script type="module" src="js/app.js?v=26"></script>
+  <script type="module" src="js/app.js?v=27"></script>
 
 </body>
 </html>
