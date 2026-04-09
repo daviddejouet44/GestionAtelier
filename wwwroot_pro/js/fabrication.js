@@ -18,6 +18,12 @@ const fabQuantite = document.getElementById("fab-quantite");
 const fabType = document.getElementById("fab-type");
 const fabFormat = document.getElementById("fab-format");
 const fabRectoVerso = document.getElementById("fab-recto-verso");
+const fabPapier = document.getElementById("fab-papier");
+const fabEncres = document.getElementById("fab-encres");
+const fabNumeroAffaire = document.getElementById("fab-numero-affaire");
+const fabLivraison = document.getElementById("fab-livraison");
+const fabTypeDoc = document.getElementById("fab-typedoc");
+const fabNbFeuilles = document.getElementById("fab-nbfeuilles");
 const fabClient = document.getElementById("fab-client");
 const fabNumeroDossier = document.getElementById("fab-numero-dossier");
 const fabNotes = document.getElementById("fab-notes");
@@ -219,6 +225,12 @@ export async function openFabrication(fullPath) {
   if (fabType) { fabType.style.borderColor = ""; fabType.style.boxShadow = ""; }
   fabFormat.value = d.format || "";
   fabRectoVerso.value = d.rectoVerso || "";
+  if (fabPapier) fabPapier.value = d.papier || "";
+  if (fabEncres) fabEncres.value = d.encres || "";
+  if (fabNumeroAffaire) fabNumeroAffaire.value = d.numeroAffaire || "";
+  if (fabLivraison) fabLivraison.value = d.livraison || "";
+  if (fabTypeDoc) fabTypeDoc.value = d.typeDocument || "";
+  if (fabNbFeuilles) fabNbFeuilles.value = d.nombreFeuilles || "";
   fabClient.value = d.client || "";
   if (fabNumeroDossier) { fabNumeroDossier.value = d.numeroDossier || ""; fabNumeroDossier.style.borderColor = ""; fabNumeroDossier.style.boxShadow = ""; }
   fabNotes.value = d.notes || "";
@@ -340,6 +352,12 @@ export async function saveFabrication() {
     typeTravail: fabType.value,
     format: fabFormat.value,
     rectoVerso: fabRectoVerso.value,
+    papier: fabPapier ? fabPapier.value || null : null,
+    encres: fabEncres ? fabEncres.value || null : null,
+    numeroAffaire: fabNumeroAffaire ? fabNumeroAffaire.value || null : null,
+    livraison: fabLivraison ? fabLivraison.value || null : null,
+    typeDocument: fabTypeDoc ? fabTypeDoc.value || null : null,
+    nombreFeuilles: fabNbFeuilles ? parseInt(fabNbFeuilles.value) || null : null,
     client: fabClient.value,
     numeroDossier: fabNumeroDossier ? fabNumeroDossier.value || null : null,
     notes: fabNotes.value,

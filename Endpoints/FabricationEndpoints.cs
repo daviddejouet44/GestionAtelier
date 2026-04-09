@@ -142,7 +142,7 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
 
             // Fields always sent by the JS frontend — use input directly so clearing a field persists
             MoteurImpression = input.MoteurImpression,
-            Machine          = input.MoteurImpression ?? input.Machine,
+            Machine          = input.Machine,
             Operateur        = input.Operateur,
             Quantite         = input.Quantite,
             TypeTravail      = input.TypeTravail,
