@@ -5366,8 +5366,8 @@ app.MapPost("/api/logo", async (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = "Fichier manquant" });
 
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".gif" && ext != ".webp" && ext != ".svg")
-            return Results.Json(new { ok = false, error = "Format non supporté (PNG, JPG, GIF, WEBP, SVG)" });
+        if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".gif" && ext != ".webp")
+            return Results.Json(new { ok = false, error = "Format non supporté (PNG, JPG, GIF, WEBP)" });
 
         var logoPath = Path.Combine(AppContext.BaseDirectory, "wwwroot_pro", "logo" + ext);
         // Remove any existing logo files
@@ -6640,7 +6640,8 @@ file static class PdfUtils
     public static Document CreateFabricationPdf(FabricationSheet s)
     {
         // Determine creation date from history (first entry) or now
-        var creationDate = s.History.OrderBy(h => h.Date).FirstOrDefault()?.Date ?? DateTime.Now;
+        var historyOrdered = s.History.OrderBy(h => h.Date).ToList();
+        var creationDate = historyOrdered.FirstOrDefault()?.Date ?? DateTime.Now;
 
         return Document.Create(container =>
         {
@@ -6749,10 +6750,10 @@ file static class PdfUtils
                     }
 
                     // ── Historique ───────────────────────────────────────
-                    if (s.History.Count > 0)
+                    if (historyOrdered.Count > 0)
                     {
                         col.Item().PaddingBottom(4).Text("Historique").FontSize(13).SemiBold();
-                        foreach (var h in s.History.OrderBy(h => h.Date))
+                        foreach (var h in historyOrdered)
                             col.Item().Text($"{h.Date:dd/MM/yyyy HH:mm} — {h.User} — {h.Action}").FontSize(9).FontColor("#6b7280");
                     }
                 });

@@ -1463,9 +1463,9 @@ async function renderSettingsLogo(panel) {
       <div id="logo-preview" style="margin-bottom:12px;">
         <img src="/api/logo?v=${Date.now()}" alt="Logo actuel" id="logo-current-img"
           style="max-height:60px;max-width:200px;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;"
-          onerror="this.parentElement.innerHTML='<span style=color:#9ca3af;font-size:13px;>Aucun logo configuré</span>'" />
+          onerror="this.parentElement.innerHTML='<span style=&quot;color:#9ca3af;font-size:13px;&quot;>Aucun logo configuré</span>'" />
       </div>
-      <input type="file" id="logo-file-input" accept="image/*" class="settings-input" style="margin-bottom:8px;" />
+      <input type="file" id="logo-file-input" accept=".png,.jpg,.jpeg,.gif,.webp" class="settings-input" style="margin-bottom:8px;" />
       <button id="logo-upload-btn" class="btn btn-primary">Enregistrer le logo</button>
       <button id="logo-delete-btn" class="btn" style="margin-left:8px;color:#ef4444;border-color:#ef4444;">Supprimer le logo</button>
       <div id="logo-msg" style="margin-top:8px;font-size:13px;"></div>
