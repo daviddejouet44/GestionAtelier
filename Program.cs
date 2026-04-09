@@ -5804,7 +5804,7 @@ file record FabricationHistory
 file record FabricationSheet
 {
     public string FullPath { get; init; } = default!;
-    public string FileName { get; init; } = default!;
+    public string FileName { get; set; } = default!;
     public string? Machine { get; init; }
     public string? MoteurImpression { get; init; }
     public string? Operateur { get; init; }
@@ -6445,17 +6445,18 @@ file static class BackendUtils
         if (!string.IsNullOrEmpty(sheet.FileName))
             sheet.FileName = sheet.FileName.ToLowerInvariant();
 
-        // Primary lookup: try fullPath first, then fileName (keeps one record per file)
+        // Primary lookup by fileName (stable key even when file moves between folders).
+        // Fall back to fullPath for legacy records that only have fullPath stored.
         BsonDocument? existing = null;
-        if (!string.IsNullOrEmpty(sheet.FullPath))
-            existing = col.Find(Builders<BsonDocument>.Filter.Eq("fullPath", sheet.FullPath)).FirstOrDefault();
-        if (existing == null && !string.IsNullOrEmpty(sheet.FileName))
+        if (!string.IsNullOrEmpty(sheet.FileName))
         {
             // Case-insensitive search to handle legacy records stored with different casing
             existing = col.Find(Builders<BsonDocument>.Filter.Regex("fileName",
                 new BsonRegularExpression("^" + System.Text.RegularExpressions.Regex.Escape(sheet.FileName) + "$", "i")))
                           .SortByDescending(x => x["_id"]).FirstOrDefault();
         }
+        if (existing == null && !string.IsNullOrEmpty(sheet.FullPath))
+            existing = col.Find(Builders<BsonDocument>.Filter.Eq("fullPath", sheet.FullPath)).FirstOrDefault();
 
         var historyArray = new BsonArray(sheet.History.Select(h => new BsonDocument
         {
@@ -6494,7 +6495,13 @@ file static class BackendUtils
             ["history"]           = historyArray
         };
         if (existing != null)
+        {
+            // Preserve the locked field if it was set on the existing document
+            if (existing.Contains("locked") && existing["locked"] != BsonNull.Value
+                && existing["locked"].BsonType == BsonType.Boolean)
+                doc["locked"] = existing["locked"];
             col.ReplaceOne(Builders<BsonDocument>.Filter.Eq("_id", existing["_id"]), doc);
+        }
         else
             col.InsertOne(doc);
     }
