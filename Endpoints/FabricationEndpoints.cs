@@ -130,7 +130,7 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
         if (old == null && !string.IsNullOrWhiteSpace(input.FileName))
             old = BackendUtils.FindFabricationByName(input.FileName);
 
-        // Admin-only fields: only profile 3 can update Media1-4, TypeDocument, NombreFeuilles
+        // Admin-only fields: only profile 3 can update TypeDocument, NombreFeuilles
         var isAdmin = (userProfile == 3);
 
         var sheet = new FabricationSheet
@@ -140,22 +140,25 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
                 ? Path.GetFileName(input.FullPath)
                 : input.FileName,
 
+            // Fields always sent by the JS frontend — use input directly so clearing a field persists
             MoteurImpression = input.MoteurImpression,
-            Machine          = input.MoteurImpression ?? input.Machine ?? old?.Machine,
-            Operateur        = input.Operateur        ?? old?.Operateur,
+            Machine          = input.MoteurImpression ?? input.Machine,
+            Operateur        = input.Operateur,
             Quantite         = input.Quantite,
             TypeTravail      = input.TypeTravail,
             Format           = input.Format,
-            Papier           = input.Papier           ?? old?.Papier,
             RectoVerso       = input.RectoVerso,
-            Encres           = input.Encres           ?? old?.Encres,
             Client           = input.Client,
-            NumeroAffaire    = input.NumeroAffaire    ?? old?.NumeroAffaire,
             NumeroDossier    = input.NumeroDossier,
             Notes            = input.Notes,
-            Faconnage        = input.Faconnage        ?? old?.Faconnage,
-            Livraison        = input.Livraison        ?? old?.Livraison,
+            Faconnage        = input.Faconnage,
             Delai            = input.Delai,
+
+            // Fields NOT always sent by the JS frontend — keep old value as fallback
+            Papier           = input.Papier           ?? old?.Papier,
+            Encres           = input.Encres           ?? old?.Encres,
+            NumeroAffaire    = input.NumeroAffaire    ?? old?.NumeroAffaire,
+            Livraison        = input.Livraison        ?? old?.Livraison,
 
             Media1        = input.Media1,
             Media2        = input.Media2,
