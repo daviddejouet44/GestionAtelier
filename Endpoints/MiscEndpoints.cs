@@ -77,46 +77,6 @@ app.MapGet("/api/folders", () =>
     return Results.Json(clean);
 });
 
-app.MapGet("/api/jobs", (string folder) =>
-{
-    try
-    {
-        var root = BackendUtils.HotfoldersRoot();
-        var dir  = Path.Combine(root, folder);
-        if (!Directory.Exists(dir))
-            return Results.Json(Array.Empty<object>());
-
-        var files = Directory.EnumerateFiles(dir)
-            .Select(f =>
-            {
-                try
-                {
-                    var fi = new FileInfo(f);
-                    return new
-                    {
-                        name     = fi.Name,
-                        fullPath = fi.FullName,
-                        modified = fi.LastWriteTime,
-                        size     = fi.Length
-                    };
-                }
-                catch { return null; }
-            })
-            .Where(x => x != null)
-            .OrderByDescending(x => ((dynamic)x!).modified)
-            .ToList();
-
-        return Results.Json(files);
-    }
-    catch (Exception ex)
-    {
-        return Results.Json(new { ok = false, error = ex.Message });
-    }
-});
-
-// ======================================================
-// MOVE FILES
-// ======================================================
 // ======================================================
 // API — FILE
 // ======================================================
