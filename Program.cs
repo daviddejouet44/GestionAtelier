@@ -6443,7 +6443,7 @@ file static class BackendUtils
 
         // Always store fileName in lowercase for consistent lookups
         if (!string.IsNullOrEmpty(sheet.FileName))
-            sheet.FileName = sheet.FileName.ToLowerInvariant();
+            sheet = sheet with { FileName = sheet.FileName.ToLowerInvariant() };
 
         // Primary lookup by fileName (stable key even when file moves between folders).
         // Fall back to fullPath for legacy records that only have fullPath stored.
