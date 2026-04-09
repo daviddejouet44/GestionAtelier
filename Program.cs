@@ -6443,7 +6443,7 @@ file static class BackendUtils
 
         // Always store fileName in lowercase for consistent lookups
         if (!string.IsNullOrEmpty(sheet.FileName))
-            sheet.FileName = sheet.FileName.ToLowerInvariant();
+            sheet = sheet with { FileName = sheet.FileName.ToLowerInvariant() };
 
         // Primary lookup: try fullPath first, then fileName (keeps one record per file)
         BsonDocument? existing = null;

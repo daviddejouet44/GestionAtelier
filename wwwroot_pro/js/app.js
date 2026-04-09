@@ -1248,7 +1248,11 @@ document.getElementById("btn-logout").onclick = logout;
 document.getElementById("btn-settings").onclick = showSettings;
 
 document.getElementById("btnViewKanban").onclick = () => {
-  showKanban();
+  if (currentUser && currentUser.profile === 1) {
+    showProduction();
+  } else {
+    showKanban();
+  }
 };
 
 document.getElementById("btnViewCalendar").onclick = () => {
