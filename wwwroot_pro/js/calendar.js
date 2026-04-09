@@ -118,16 +118,20 @@ export async function initCalendar() {
         const list = await fetch("/api/delivery").then(r => r.json());
         const ev = list.map(x => {
           const full = normalizePath(x.fullPath);
-          const { bg, bc, tc } = colorForEvent(full, x.date);
+          const locked = !!x.locked;
+          const bg = locked ? "#22c55e" : colorForEvent(full, x.date).bg;
+          const bc = locked ? "#16a34a" : colorForEvent(full, x.date).bc;
+          const tc = locked ? "#ffffff" : colorForEvent(full, x.date).tc;
           const time = x.time || "09:00";
           return {
-            title: x.fileName,
+            title: (locked ? "🔒 " : "") + x.fileName,
             start: `${x.date}T${time}:00`,
             allDay: false,
             backgroundColor: bg,
             borderColor: bc,
             textColor: tc,
-            extendedProps: { fullPath: full, bg, bc, tc, date: x.date, time: time }
+            editable: !locked,
+            extendedProps: { fullPath: full, bg, bc, tc, date: x.date, time: time, locked }
           };
         });
         try {
@@ -237,16 +241,20 @@ export async function initSubmissionCalendar() {
         const list = await fetch("/api/delivery").then(r => r.json());
         const ev = list.map(x => {
           const full = normalizePath(x.fullPath);
-          const { bg, bc, tc } = colorForEvent(full, x.date);
+          const locked = !!x.locked;
+          const bg = locked ? "#22c55e" : colorForEvent(full, x.date).bg;
+          const bc = locked ? "#16a34a" : colorForEvent(full, x.date).bc;
+          const tc = locked ? "#ffffff" : colorForEvent(full, x.date).tc;
           const time = x.time || "09:00";
           return {
-            title: x.fileName,
+            title: (locked ? "🔒 " : "") + x.fileName,
             start: `${x.date}T${time}:00`,
             allDay: false,
             backgroundColor: bg,
             borderColor: bc,
             textColor: tc,
-            extendedProps: { fullPath: full, bg, bc, tc, date: x.date, time: time }
+            editable: !locked,
+            extendedProps: { fullPath: full, bg, bc, tc, date: x.date, time: time, locked }
           };
         });
         try {

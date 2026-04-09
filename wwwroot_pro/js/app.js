@@ -721,10 +721,11 @@ function setupProfileUI() {
   if (btnRecycle) btnRecycle.style.display = "inline-block";
   if (btnDossiers) btnDossiers.style.display = "inline-block";
   if (btnDashboard) btnDashboard.style.display = currentUser.profile === 3 ? "inline-block" : "none";
+  // Profile 1: no Rapport in menu
+  if (btnRapport) btnRapport.style.display = currentUser.profile === 1 ? "none" : "inline-block";
   if (btnBat) btnBat.style.display = "inline-block";
-  if (btnRapport) btnRapport.style.display = "inline-block";
 
-  // Vue production globale visible pour TOUS les profils (1, 2, 3)
+  // Vue production globale visible pour les profils 1, 2, 3
   const btnGlobalProd = document.getElementById("btnViewGlobalProd");
   if (btnGlobalProd) btnGlobalProd.style.display = "inline-block";
 
@@ -746,6 +747,7 @@ function setupKanbanActions() {
   const btnSubmission = document.getElementById("btnViewSubmission");
 
   if (currentUser.profile === 1) {
+    // Profile 1: Soumission / Production / BAT / Dossiers / Vue production / Corbeille (no Calendrier, no Rapport)
     btnKanban.style.display = "inline-block";
     btnCalendar.style.display = "none";
     btnSubmission.style.display = "inline-block";
@@ -1246,18 +1248,10 @@ document.getElementById("btn-logout").onclick = logout;
 document.getElementById("btn-settings").onclick = showSettings;
 
 document.getElementById("btnViewKanban").onclick = () => {
-  if (currentUser.profile === 1) {
-    showProduction();
-    return;
-  }
   showKanban();
 };
 
 document.getElementById("btnViewCalendar").onclick = () => {
-  if (currentUser.profile === 1) {
-    alert("Vous n'avez accès qu'à la Soumission");
-    return;
-  }
   showCalendar();
 };
 
