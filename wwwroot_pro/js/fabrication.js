@@ -335,6 +335,7 @@ export async function saveFabrication() {
     fileName: fileName,
     moteurImpression: fabMoteur.value,
     machine: fabMoteur.value,
+    operateur: fabOperateur ? fabOperateur.value || null : null,
     quantite: parseInt(fabQuantite.value) || null,
     typeTravail: fabType.value,
     format: fabFormat.value,
