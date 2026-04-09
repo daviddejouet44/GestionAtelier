@@ -114,7 +114,7 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
 
         // If fullPath provided but file doesn't exist, warn but proceed (file may have been moved by Acrobat)
         if (!string.IsNullOrWhiteSpace(input.FullPath) && !File.Exists(input.FullPath))
-            Console.WriteLine($"[WARN] PUT /api/fabrication: File not found at {input.FullPath}, saving anyway (may have been moved).");
+            Console.WriteLine($"[WARN] PUT /api/fabrication: File not found at {input.FullPath}, saving anyway (may have been moved).\n");
 
         // If no fullPath provided, try to reconstruct from existing fabrication record
         if (string.IsNullOrWhiteSpace(input.FullPath) && !string.IsNullOrWhiteSpace(input.FileName))
@@ -133,6 +133,9 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
         // Admin-only fields: only profile 3 can update Media1-4, TypeDocument, NombreFeuilles
         var isAdmin = (userProfile == 3);
 
+        // For fields always sent by the frontend, use input value directly (even if null)
+        // so that clearing a field actually persists. Only use ?? old?.Value for fields
+        // that are NOT always sent (admin-only or conditionally sent).
         var sheet = new FabricationSheet
         {
             FullPath = input.FullPath,
@@ -141,19 +144,19 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
                 : input.FileName,
 
             MoteurImpression = input.MoteurImpression,
-            Machine          = input.MoteurImpression ?? input.Machine ?? old?.Machine,
-            Operateur        = input.Operateur        ?? old?.Operateur,
+            Machine          = input.MoteurImpression ?? input.Machine,
+            Operateur        = input.Operateur ?? old?.Operateur,
             Quantite         = input.Quantite,
             TypeTravail      = input.TypeTravail,
             Format           = input.Format,
-            Papier           = input.Papier           ?? old?.Papier,
+            Papier           = input.Papier,
             RectoVerso       = input.RectoVerso,
             Encres           = input.Encres           ?? old?.Encres,
             Client           = input.Client,
             NumeroAffaire    = input.NumeroAffaire    ?? old?.NumeroAffaire,
             NumeroDossier    = input.NumeroDossier,
             Notes            = input.Notes,
-            Faconnage        = input.Faconnage        ?? old?.Faconnage,
+            Faconnage        = input.Faconnage,
             Livraison        = input.Livraison        ?? old?.Livraison,
             Delai            = input.Delai,
 
@@ -301,9 +304,7 @@ app.MapGet("/api/fabrication/pdf", (string? fullPath, string? fileName, bool? sa
     }
 });
 
-// ======================================================
-// FABRICATION — Export XML (for PrismaPrepare)
-// ======================================================
+// ======================================================  // FABRICATION — Export XML (for PrismaPrepare) // ======================================================
 
 app.MapGet("/api/fabrication/export-xml", async (string fullPath, HttpContext ctx) =>
 {
@@ -368,9 +369,7 @@ app.MapGet("/api/fabrication/export-xml", async (string fullPath, HttpContext ct
     }
 });
 
-// ======================================================
-// BAT — Execute PrismaPrepare command
-// ======================================================
+// ====================================================== // BAT — Execute PrismaPrepare command // ====================================================== 
 
 app.MapPost("/api/bat/send-to-hotfolder", async (HttpContext ctx) =>
 {
@@ -400,7 +399,7 @@ app.MapPost("/api/bat/send-to-hotfolder", async (HttpContext ctx) =>
         var routingDoc = routingCol.Find(Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail)).FirstOrDefault();
 
         if (routingDoc == null || !routingDoc.Contains("hotfolderPath") || string.IsNullOrEmpty(routingDoc["hotfolderPath"].AsString))
-            return Results.Json(new { ok = false, error = $"Aucun hotfolder PrismaPrepare configuré pour le type de travail \"{typeTravail}\". Configurez-le dans Paramétrage > Routage Hotfolder." });
+            return Results.Json(new { ok = false, error = $"Aucun hotfolder PrismaPrepare configuré pour le type de travail \"{typeTravail}\". Configurez-le dans Paramétrage > Routage Hotfolders." });
 
         var hotfolderPath = routingDoc["hotfolderPath"].AsString;
 
@@ -423,9 +422,9 @@ app.MapPost("/api/bat/send-to-hotfolder", async (HttpContext ctx) =>
         File.Copy(fullPath, hotfolderDest, overwrite: true);
         Console.WriteLine($"[BAT] Copié vers hotfolder: {hotfolderDest}");
 
-        // 5. Store pending rename: when "Epreuve PDF.pdf" arrives in the hotfolder,
-        //    it will be renamed to "{originalName} Epreuve.pdf".
-        //    Field "batFolder" holds the watched folder path (hotfolder here, reused by process-pending).
+        // 5. Store pending rename: when \"Epreuve PDF.pdf\" arrives in the hotfolder,
+        //    it will be renamed to \"{originalName} Epreuve.pdf\".
+        //    Field \"batFolder\" holds the watched folder path (hotfolder here, reused by process-pending).
         try
         {
             var batPendingCol = MongoDbHelper.GetCollection<BsonDocument>("batPending");
@@ -448,9 +447,7 @@ app.MapPost("/api/bat/send-to-hotfolder", async (HttpContext ctx) =>
     }
 });
 
-// ======================================================
-// BAT — Copie vers TEMP_COPY + hotfolder PrismaPrepare (nouveau workflow BAT Complet)
-// ======================================================
+// ====================================================== // BAT — Copie vers TEMP_COPY + hotfolder PrismaPrepare (nouveau workflow BAT Complet) // ====================================================== 
 
 app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
 {
@@ -486,7 +483,7 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
         // Case-insensitive fallback: search by fileName ignoring case
         if (fabDoc == null && !string.IsNullOrEmpty(fileName))
             fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Regex("fileName",
-                new BsonRegularExpression($"^{System.Text.RegularExpressions.Regex.Escape(fileName)}$", "i"))).FirstOrDefault();
+                new BsonRegularExpression($"^{System.Text.RegularExpressions.Regex.Escape(fileName)}$", "i")).FirstOrDefault();
 
         if (fabDoc == null)
         {
@@ -513,7 +510,7 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
             string.IsNullOrEmpty(routingDoc["hotfolderPath"].AsString))
         {
             Console.WriteLine($"[BAT] copy-for-bat: aucun routage hotfolder pour typeTravail={typeTravail}");
-            return Results.Json(new { ok = false, error = $"Aucun hotfolder PrismaPrepare configuré pour le type de travail \"{typeTravail}\". Configurez-le dans Paramétrage > Routage Hotfolder." });
+            return Results.Json(new { ok = false, error = $"Aucun hotfolder PrismaPrepare configuré pour le type de travail \"{typeTravail}\". Configurez-le dans Paramétrage > Routage Hotfolders." });
         }
 
         var hotfolderPath = routingDoc["hotfolderPath"].AsString;
@@ -579,7 +576,8 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[ERR] bat/copy-for-bat: {ex.Message}\n{ex.StackTrace}");
+        Console.WriteLine($"[ERR] bat/copy-for-bat: {ex.Message}
+{ex.StackTrace}");
         return Results.Json(new { ok = false, error = ex.Message });
     }
     finally
@@ -590,10 +588,7 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
     }
 });
 
-// ======================================================
-// CONFIG — Paper Catalog
-// ======================================================
-
+// ====================================================== // CONFIG — Paper Catalog // ====================================================== 
 
 app.MapPost("/api/commands/bat", async (HttpContext ctx) =>
 {
@@ -607,7 +602,7 @@ app.MapPost("/api/commands/bat", async (HttpContext ctx) =>
         var batCfgCol = MongoDbHelper.GetCollection<BsonDocument>("batCommandConfig");
         var batCfg = batCfgCol.Find(Builders<BsonDocument>.Filter.Empty).FirstOrDefault();
         var template = batCfg != null && batCfg.Contains("command") ? batCfg["command"].AsString :
-            "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\" /T \"{type}\" /SP /C {qty}";
+            "C:\Program Files\Canon\PRISMACore\PRISMAprepare.exe" "{filePath}" /T "{type}" /SP /C {qty};
 
         var cmd = BackendUtils.BuildCommandTemplate(template, Path.GetFileName(filePath), typeWork, quantity);
         Console.WriteLine($"[INFO] BAT command: {cmd}");
@@ -646,7 +641,7 @@ app.MapPost("/api/commands/send-controller", async (HttpContext ctx) =>
         var filePath = json.TryGetProperty("filePath", out var fp) ? fp.GetString() ?? "" : "";
         var col = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
         var cfg = col.Find(new BsonDocument()).FirstOrDefault();
-        var controllerPath = cfg?.Contains("controllerPath") == true ? cfg["controllerPath"].AsString : @"C:\PrismaSync\Controller";
+        var controllerPath = cfg?.Contains("controllerPath") == true ? cfg["controllerPath"].AsString : "C:\PrismaSync\Controller";
         Directory.CreateDirectory(controllerPath);
         File.Copy(filePath, Path.Combine(controllerPath, Path.GetFileName(filePath)), overwrite: true);
         var (ok, err) = BackendUtils.MoveFileToDestFolder(filePath, "Impression en cours");
@@ -664,7 +659,7 @@ app.MapPost("/api/commands/send-prisma", async (HttpContext ctx) =>
         var col = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
         var cfg = col.Find(new BsonDocument()).FirstOrDefault();
         var template = cfg?.Contains("prismaPrepareCommand") == true ? cfg["prismaPrepareCommand"].AsString :
-            "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\"";
+            "C:\Program Files\Canon\PRISMACore\PRISMAprepare.exe" "{filePath}";
         var cmd = BackendUtils.BuildCommandTemplate(template, filePath);
         var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c {cmd}") { UseShellExecute = true };
         System.Diagnostics.Process.Start(psi);
@@ -684,7 +679,7 @@ app.MapPost("/api/commands/send-print", async (HttpContext ctx) =>
         var col = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
         var cfg = col.Find(new BsonDocument()).FirstOrDefault();
         var template = cfg?.Contains("printCommand") == true ? cfg["printCommand"].AsString :
-            "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\" /SP /C {quantity}";
+            "C:\Program Files\Canon\PRISMACore\PRISMAprepare.exe" "{filePath}" /SP /C {quantity};
         var cmd = BackendUtils.BuildCommandTemplate(template, filePath, "", quantity);
         var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c {cmd}") { UseShellExecute = true };
         System.Diagnostics.Process.Start(psi);
@@ -703,7 +698,7 @@ app.MapPost("/api/commands/modify", async (HttpContext ctx) =>
         var col = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
         var cfg = col.Find(new BsonDocument()).FirstOrDefault();
         var template = cfg?.Contains("modifyCommand") == true ? cfg["modifyCommand"].AsString :
-            "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\"";
+            "C:\Program Files\Canon\PRISMACore\PRISMAprepare.exe" "{filePath}";
         var cmd = BackendUtils.BuildCommandTemplate(template, filePath);
         var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c {cmd}") { UseShellExecute = true };
         System.Diagnostics.Process.Start(psi);
@@ -721,7 +716,7 @@ app.MapPost("/api/commands/send-fiery", async (HttpContext ctx) =>
         var filePath = json.TryGetProperty("filePath", out var fp) ? fp.GetString() ?? "" : "";
         var col = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
         var cfg = col.Find(new BsonDocument()).FirstOrDefault();
-        var fieryBase = cfg?.Contains("fieryHotfolderBase") == true ? cfg["fieryHotfolderBase"].AsString : @"C:\Fiery\Hotfolders";
+        var fieryBase = cfg?.Contains("fieryHotfolderBase") == true ? cfg["fieryHotfolderBase"].AsString : "C:\Fiery\Hotfolders";
         Directory.CreateDirectory(fieryBase);
         File.Copy(filePath, Path.Combine(fieryBase, Path.GetFileName(filePath)), overwrite: true);
         var (ok, err) = BackendUtils.MoveFileToDestFolder(filePath, "Fiery");
@@ -730,9 +725,7 @@ app.MapPost("/api/commands/send-fiery", async (HttpContext ctx) =>
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
-// ======================================================
-// BAT TRACKING
-// ======================================================
+// ====================================================== // BAT TRACKING // ====================================================== 
 
 app.MapGet("/api/bat/status", (HttpContext ctx) =>
 {
@@ -778,7 +771,7 @@ app.MapGet("/api/bat/progress", () =>
 
         // warnings count: "Il y a N avertissements"
         int warnings = 0;
-        var warnMatch = System.Text.RegularExpressions.Regex.Match(lastPrismaLog, @"Il y a (\d+) avertissements?");
+        var warnMatch = System.Text.RegularExpressions.Regex.Match(lastPrismaLog, "Il y a (\d+) avertissements?");
         if (warnMatch.Success) int.TryParse(warnMatch.Groups[1].Value, out warnings);
 
         // success: log contains "Succès"
@@ -798,22 +791,22 @@ app.MapGet("/api/bat/progress", () =>
 
         // startTime: "Le travail a démarré à DD/MM/YYYY HH:MM:SS"
         string? startTime = null;
-        var startMatch = System.Text.RegularExpressions.Regex.Match(lastPrismaLog, @"Le travail a démarré à ([\d/]+ [\d:]+)");
+        var startMatch = System.Text.RegularExpressions.Regex.Match(lastPrismaLog, "Le travail a démarré à ([\d/]+ [\d:]+)");
         if (startMatch.Success) startTime = startMatch.Groups[1].Value;
 
         // endTime: "Le fichier est traité à 'DD/MM/YYYY HH:MM:SS'"
         string? endTime = null;
-        var endMatch = System.Text.RegularExpressions.Regex.Match(lastPrismaLog, @"Le fichier est traité à '([\d/]+ [\d:]+)'");
+        var endMatch = System.Text.RegularExpressions.Regex.Match(lastPrismaLog, "Le fichier est traité à '([\d/]+ [\d:]+)'()");
         if (endMatch.Success) endTime = endMatch.Groups[1].Value;
 
         // inputFile: "fichier d'entrée : filename.pdf"
         string? inputFile = null;
-        var inputMatch = System.Text.RegularExpressions.Regex.Match(lastPrismaLog, @"fichier d'entrée\s*:\s*(.+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var inputMatch = System.Text.RegularExpressions.Regex.Match(lastPrismaLog, "fichier d'entrée\s*:\s*(.+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (inputMatch.Success) inputFile = inputMatch.Groups[1].Value.Trim();
 
         // outputFile: "Fichier de sortie : filename.pdf"
         string? outputFile = null;
-        var outputMatch = System.Text.RegularExpressions.Regex.Match(lastPrismaLog, @"Fichier de sortie\s*:\s*(.+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var outputMatch = System.Text.RegularExpressions.Regex.Match(lastPrismaLog, "Fichier de sortie\s*:\s*(.+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (outputMatch.Success) outputFile = outputMatch.Groups[1].Value.Trim();
 
         parsedLog = new { warnings, success, operations, startTime, endTime, inputFile, outputFile };
@@ -956,16 +949,14 @@ app.MapPost("/api/bat/process-pending", () =>
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
-// ======================================================
-// BAT COMMAND CONFIG
-// ======================================================
+// ====================================================== // BAT COMMAND CONFIG // ====================================================== 
 
 app.MapGet("/api/config/bat-command", () =>
 {
     var col = MongoDbHelper.GetCollection<BsonDocument>("batCommandConfig");
     var doc = col.Find(Builders<BsonDocument>.Filter.Empty).FirstOrDefault();
     var cmd = doc != null && doc.Contains("command") ? doc["command"].AsString :
-        @"C:\Program Files\Canon\PRISMACore\PRISMAprepare.exe ""{filePath}"" /T ""{type}"" /SP /C {qty}";
+        "C:\Program Files\Canon\PRISMACore\PRISMAprepare.exe ""{filePath}"" /T ""{type}"" /SP /C {qty}";
     var alertDelayHours = doc != null && doc.Contains("batAlertDelayHours") ? doc["batAlertDelayHours"].AsInt32 : 48;
     return Results.Json(new { ok = true, command = cmd, batAlertDelayHours = alertDelayHours });
 });
@@ -983,10 +974,3 @@ app.MapPut("/api/config/bat-command", async (HttpContext ctx) =>
     col.ReplaceOne(Builders<BsonDocument>.Filter.Empty, doc, new ReplaceOptions { IsUpsert = true });
     return Results.Json(new { ok = true });
 });
-
-// ======================================================
-// ALERTS — BAT EN ATTENTE
-// ======================================================
-
-    }
-}
