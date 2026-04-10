@@ -768,8 +768,12 @@ app.MapPost("/api/acrobat/preflight", async (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = "Impossible de démarrer le droplet Preflight" });
 
         // Wait for the droplet process to complete (max 5 minutes)
-        var completed = await Task.Run(() => process.WaitForExit(300_000));
-        if (!completed)
+        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(5));
+        try
+        {
+            await process.WaitForExitAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
         {
             try { process.Kill(); } catch { }
             return Results.Json(new { ok = false, error = "Le droplet Preflight a dépassé le délai d'attente (5 min)" });

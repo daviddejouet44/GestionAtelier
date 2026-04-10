@@ -395,12 +395,12 @@ async function buildBatView() {
 
       const btnOpen = document.createElement("button");
       btnOpen.className = "btn btn-sm";
-      btnOpen.innerHTML = "🔍 Ouvrir";
+      btnOpen.textContent = "🔍 Ouvrir";
       btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full), "_blank", "noopener");
 
       const btnAcrobat = document.createElement("button");
       btnAcrobat.className = "btn btn-sm btn-acrobat";
-      btnAcrobat.innerHTML = "📄 Ouvrir dans Acrobat";
+      btnAcrobat.textContent = "📄 Ouvrir dans Acrobat";
       btnAcrobat.onclick = async () => {
         try {
           const r = await fetch("/api/acrobat/open", {
@@ -416,7 +416,7 @@ async function buildBatView() {
 
       const btnArchiver = document.createElement("button");
       btnArchiver.className = "btn btn-sm";
-      btnArchiver.innerHTML = "📦 Archiver";
+      btnArchiver.textContent = "📦 Archiver";
       btnArchiver.onclick = async () => {
         if (!confirm(`Archiver le BAT "${job.name}" dans le dossier de production ?`)) return;
         const r = await fetch("/api/jobs/archive", {
@@ -430,7 +430,7 @@ async function buildBatView() {
 
       const btnDelete = document.createElement("button");
       btnDelete.className = "btn btn-sm btn-danger";
-      btnDelete.innerHTML = "🗑 Supprimer";
+      btnDelete.textContent = "🗑 Supprimer";
       btnDelete.onclick = async () => {
         if (!confirm(`Supprimer le BAT "${job.name}" ?`)) return;
         const r = await fetch("/api/jobs/delete", {
