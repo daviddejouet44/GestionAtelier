@@ -170,7 +170,7 @@ export async function openFabrication(fullPath) {
   fabModal.classList.remove("hidden");
 
   // Parallelize all API calls at once
-  const [j, engines, types, papers, faconnageOptions, trailData, stageData] = await Promise.all([
+  const [j, engines, types, papers, faconnageOptions, stageData] = await Promise.all([
     fetch("/api/fabrication?fileName=" + encodeURIComponent(fabCurrentFileName), {
       headers: { "Authorization": `Bearer ${authToken}` }
     }).then(r => r.json()).catch(() => ({})),
@@ -180,9 +180,6 @@ export async function openFabrication(fullPath) {
     fetch("/api/settings/faconnage-options", {
       headers: { "Authorization": `Bearer ${authToken}` }
     }).then(r => r.json()).catch(() => []),
-    fetch("/api/fabrication/files-trail?fileName=" + encodeURIComponent(fabCurrentFileName), {
-      headers: { "Authorization": `Bearer ${authToken}` }
-    }).then(r => r.json()).catch(() => null),
     fetch("/api/file-stage?fileName=" + encodeURIComponent(fabCurrentFileName), {
       headers: { "Authorization": `Bearer ${authToken}` }
     }).then(r => r.json()).catch(() => null)
@@ -279,27 +276,6 @@ export async function openFabrication(fullPath) {
     div.textContent = `${new Date(h.date).toLocaleDateString("fr-FR", {day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})} — ${h.user} — ${h.action}`;
     fabHistory.appendChild(div);
   });
-
-  // File trail
-  const trailEl = document.getElementById("fab-files-trail");
-  if (trailEl) {
-    if (trailData && trailData.ok && Array.isArray(trailData.files)) {
-      trailEl.innerHTML = "";
-      trailData.files.forEach(f => {
-        const chip = document.createElement("div");
-        chip.style.cssText = `display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid ${f.found ? "#bbf7d0" : "#e5e7eb"};background:${f.found ? "#f0fdf4" : "#f9fafb"};color:${f.found ? "#166534" : "#9ca3af"};`;
-        chip.textContent = (f.found ? "✅" : "○") + " " + f.label;
-        if (f.found && f.fullPath) {
-          chip.style.cursor = "pointer";
-          chip.title = "Ouvrir " + f.fullPath;
-          chip.onclick = () => window.open("/api/file?path=" + encodeURIComponent(f.fullPath), "_blank", "noopener");
-        }
-        trailEl.appendChild(chip);
-      });
-    } else {
-      trailEl.innerHTML = '<span style="color:#9ca3af;">Indisponible</span>';
-    }
-  }
 
   // Stage banner
   if (fabStageBanner && stageData && stageData.ok && stageData.folder) {

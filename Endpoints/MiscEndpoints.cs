@@ -35,6 +35,26 @@ app.MapGet("/api/file-stage", (string fileName) =>
         if (string.IsNullOrWhiteSpace(safeFileName))
             return Results.Json(new { ok = false, folder = (string?)null, fullPath = (string?)null });
 
+        // Priority 1: look up currentStage from productionFolders MongoDB (set on every file move)
+        try
+        {
+            var pfCol = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+            var pfDoc = pfCol.Find(
+                Builders<BsonDocument>.Filter.Regex("fileName",
+                    new BsonRegularExpression("^" + System.Text.RegularExpressions.Regex.Escape(safeFileName) + "$", "i"))
+            ).SortByDescending(x => x["createdAt"]).FirstOrDefault();
+
+            if (pfDoc != null && pfDoc.Contains("currentStage") && pfDoc["currentStage"] != BsonNull.Value
+                && pfDoc["currentStage"].BsonType == BsonType.String)
+            {
+                var stage = pfDoc["currentStage"].AsString;
+                var currentPath = pfDoc.Contains("currentFilePath") && pfDoc["currentFilePath"] != BsonNull.Value
+                    ? pfDoc["currentFilePath"].AsString : (string?)null;
+                return Results.Json(new { ok = true, folder = stage, fullPath = currentPath });
+            }
+        }
+        catch (Exception exPf) { Console.WriteLine($"[WARN] file-stage productionFolders lookup: {exPf.Message}"); }
+
         var root = BackendUtils.HotfoldersRoot();
         // Scan in order from most advanced to least advanced so the first match is the real current stage
         var folders = new[]
@@ -47,13 +67,8 @@ app.MapGet("/api/file-stage", (string fileName) =>
             // Early/admin stages
             "Rapport", "Début de production", "Soumission"
         };
-        // 1. Check for BAT_{fileName} in the BAT folder first — BAT version takes precedence
-        var batName = "BAT_" + safeFileName;
-        var batPath = Path.Combine(root, "BAT", batName);
-        if (File.Exists(batPath))
-            return Results.Json(new { ok = true, folder = "BAT", fullPath = batPath, isBatVersion = true });
 
-        // 2. Physical scan for the file itself, most advanced folder first
+        // Physical scan for the file itself, most advanced folder first
         foreach (var folder in folders)
         {
             var path = Path.Combine(root, folder, safeFileName);

@@ -1112,7 +1112,7 @@ app.MapGet("/api/alerts/faconnage", () =>
         var alerts = new List<object>();
         foreach (var f in files)
         {
-            var fabFilter = Builders<BsonDocument>.Filter.Eq("fileName", f.name);
+            var fabFilter = Builders<BsonDocument>.Filter.Eq("fileName", f.name.ToLowerInvariant());
             var fabDoc = fabCol.Find(fabFilter).FirstOrDefault();
             var faconnage = new List<string>();
             if (fabDoc != null && fabDoc.Contains("faconnage") && fabDoc["faconnage"] != BsonNull.Value
