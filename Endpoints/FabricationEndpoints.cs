@@ -66,7 +66,7 @@ app.MapGet("/api/fabrication", (string? fullPath, string? fileName) =>
         var root2 = doc2.RootElement;
         var merged = new Dictionary<string, object?>();
         foreach (var prop in root2.EnumerateObject())
-            merged[prop.Name] = (object?)prop.Value;
+            merged[prop.Name] = (object?)prop.Value.Clone();
         merged["locked"] = locked;
         return Results.Json(merged);
     }
