@@ -51,7 +51,14 @@ async function updateGlobalAlert() {
   const dates = Object.values(deliveriesByPath).filter(v => typeof v === 'string' && v.match(/\d{4}-\d{2}-\d{2}/));
 
   let minDays = +Infinity;
-  for (const iso of dates) minDays = Math.min(minDays, daysDiffFromToday(iso));
+  const today = new Date(); today.setHours(0,0,0,0);
+  const urgentJobs = [];
+  for (const iso of dates) {
+    const d = new Date(iso + "T00:00:00");
+    const diff = Math.ceil((d - today) / 86400000);
+    if (diff >= 0 && diff <= 3) urgentJobs.push({ iso, diff });
+    minDays = Math.min(minDays, diff);
+  }
 
   // Check BAT prêt — unread bat_ready notifications
   let batReadyAlerts = [];
@@ -76,33 +83,50 @@ async function updateGlobalAlert() {
     if (!Array.isArray(batAlerts)) batAlerts = [];
   } catch { batAlerts = []; }
 
+  const hasUrgences = minDays <= 3;
   const hasBatReady = batReadyAlerts.length > 0;
   const hasBatAlerts = batAlerts.length > 0;
 
-  if (minDays <= 1 || hasBatReady || hasBatAlerts) {
-    const parts = [];
-    if (minDays <= 1) parts.push("Urgences J-1");
-    else if (minDays <= 3) parts.push("Attention : < 3 jours");
-    if (hasBatReady) {
-      if (batReadyAlerts.length === 1) {
-        const n = batReadyAlerts[0];
-        const label = n.numeroDossier || n.fileName || "—";
-        parts.push(`🔔 BAT prêt pour ${label}`);
-      } else {
-        parts.push(`🔔 ${batReadyAlerts.length} BAT(s) prêt(s)`);
-      }
-    }
-    if (hasBatAlerts) {
-      if (batAlerts.length === 1) parts.push(batAlerts[0].message || `⚠️ BAT en attente : ${batAlerts[0].fileName}`);
-      else parts.push(`⚠️ ${batAlerts.length} BAT(s) en attente sans réponse`);
-    }
-    globalAlert.textContent = parts.join(" | ");
+  if (hasUrgences || hasBatReady || hasBatAlerts) {
+    globalAlert.style.display = "flex";
     globalAlert.className = "global-alert" + (minDays <= 1 ? "" : " orange");
-    globalAlert.style.display = "block";
-  } else if (minDays <= 3) {
-    globalAlert.textContent = "Attention : < 3 jours";
-    globalAlert.className = "global-alert orange";
-    globalAlert.style.display = "block";
+
+    // Left: urgences
+    let urgencesHtml = '';
+    if (hasUrgences) {
+      const badgesHtml = urgentJobs.map(u => {
+        const cls = u.diff === 0 ? "j0" : u.diff === 1 ? "j1" : u.diff === 2 ? "j2" : "j3";
+        const lbl = u.diff === 0 ? "Aujourd'hui" : `J+${u.diff}`;
+        return `<span class="global-alert-badge ${cls}">📅 ${lbl}</span>`;
+      }).join("");
+      urgencesHtml = `<div class="global-alert-urgences">
+        <span class="global-alert-urgences-label">🚨 Urgences</span>
+        ${badgesHtml}
+      </div>`;
+    } else if (hasBatReady || hasBatAlerts) {
+      urgencesHtml = `<div class="global-alert-urgences"><span class="global-alert-urgences-label">🔔 Alertes</span></div>`;
+    }
+
+    // Right: BAT alerts
+    let batHtml = '';
+    if (hasBatReady || hasBatAlerts) {
+      const batParts = [];
+      if (hasBatReady) {
+        if (batReadyAlerts.length === 1) {
+          const n = batReadyAlerts[0];
+          batParts.push(`🖨 BAT prêt : ${n.numeroDossier || n.fileName || '—'}`);
+        } else {
+          batParts.push(`🖨 ${batReadyAlerts.length} BAT(s) prêt(s)`);
+        }
+      }
+      if (hasBatAlerts) {
+        if (batAlerts.length === 1) batParts.push(`⚠️ ${batAlerts[0].message || 'BAT en attente'}`);
+        else batParts.push(`⚠️ ${batAlerts.length} BAT(s) en attente`);
+      }
+      batHtml = `<div class="global-alert-bat">${batParts.map(p => `<span>${p}</span>`).join('<span style="opacity:.5">·</span>')}</div>`;
+    }
+
+    globalAlert.innerHTML = urgencesHtml + batHtml;
   } else {
     globalAlert.style.display = "none";
   }
@@ -327,15 +351,17 @@ async function buildBatView() {
     listEl.innerHTML = "";
     for (const job of jobs) {
       const full = normalizePath(job.fullPath || "");
+      const jobFn = fnKey(full);
+
       const card = document.createElement("div");
-      card.style.cssText = "background:white;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:10px;display:flex;flex-direction:column;gap:10px;";
+      card.className = "bat-card-modern";
 
       const topRow = document.createElement("div");
-      topRow.style.cssText = "display:flex;align-items:flex-start;gap:12px;";
+      topRow.style.cssText = "display:flex;align-items:flex-start;gap:14px;";
 
       // Thumbnail
       const thumbDiv = document.createElement("div");
-      thumbDiv.style.cssText = "width:56px;height:72px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#BC0024;overflow:hidden;flex-shrink:0;";
+      thumbDiv.style.cssText = "width:60px;height:76px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#BC0024;overflow:hidden;flex-shrink:0;";
       thumbDiv.textContent = "PDF";
       if ((job.name || "").toLowerCase().endsWith(".pdf") && window._renderPdfThumbnail) {
         window._renderPdfThumbnail(full, thumbDiv).catch(() => {});
@@ -344,11 +370,16 @@ async function buildBatView() {
       const infoAndActions = document.createElement("div");
       infoAndActions.style.cssText = "flex:1;min-width:0;";
 
+      // Dossier number placeholder (loaded async)
+      const dossierEl = document.createElement("div");
+      dossierEl.style.cssText = "font-size:16px;font-weight:700;color:#111827;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      dossierEl.textContent = "—";
+
       const info = document.createElement("div");
-      info.style.cssText = "margin-bottom:8px;";
+      info.style.cssText = "margin-bottom:10px;";
       info.innerHTML = `
-        <div style="font-weight:600;font-size:14px;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${job.name || '—'}</div>
-        <div style="font-size:12px;color:#6b7280;">${new Date(job.modified).toLocaleDateString("fr-FR")} · ${fmtBytes(job.size)}</div>
+        <div style="font-weight:600;font-size:13px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${job.name || '—'}</div>
+        <div style="font-size:11px;color:#6b7280;margin-top:2px;">${new Date(job.modified).toLocaleDateString("fr-FR")} · ${fmtBytes(job.size)}</div>
       `;
 
       const btnRow = document.createElement("div");
@@ -408,6 +439,7 @@ async function buildBatView() {
       btnRow.appendChild(btnArchiver);
       btnRow.appendChild(btnDelete);
 
+      infoAndActions.appendChild(dossierEl);
       infoAndActions.appendChild(info);
       infoAndActions.appendChild(btnRow);
 
@@ -420,6 +452,13 @@ async function buildBatView() {
       card.appendChild(topRow);
       card.appendChild(trackingEl);
       listEl.appendChild(card);
+
+      // Load dossier number async
+      fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFn))
+        .then(r => r.json()).then(d => {
+          if (d && d.numeroDossier) dossierEl.textContent = d.numeroDossier;
+        }).catch(() => {});
+
       try {
         const status = await fetch(`/api/bat/status?path=${encodeURIComponent(full)}`).then(r => r.json()).catch(() => ({}));
 
@@ -685,11 +724,66 @@ async function buildKanbanSidebar() {
         <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">📊 Production</div>
         ${prodRows}
       </div>
+      <div class="kanban-sidebar-section">
+        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">🖨 BAT en cours</div>
+        <div id="kanban-sidebar-bat-list" style="font-size:11px;color:#9ca3af;">Chargement...</div>
+      </div>
     `;
+
+    // Load BAT sidebar asynchronously
+    loadBatSidebar();
   } catch(e) {
     sidebar.innerHTML = '<div style="padding:12px;color:#9ca3af;font-size:12px;">—</div>';
   }
 }
+
+async function loadBatSidebar() {
+  const listEl = document.getElementById("kanban-sidebar-bat-list");
+  if (!listEl) return;
+  try {
+    const batJobs = await fetch("/api/jobs?folder=" + encodeURIComponent("BAT"))
+      .then(r => r.json()).catch(() => []);
+
+    if (!Array.isArray(batJobs) || batJobs.length === 0) {
+      listEl.innerHTML = '<div style="color:#9ca3af;">Aucun fichier en BAT</div>';
+      return;
+    }
+
+    listEl.innerHTML = batJobs.slice(0, 6).map(job => {
+      const name = job.name || "—";
+      const truncName = name.length > 22 ? name.substring(0, 20) + "…" : name;
+      return `<div style="padding:5px 0;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;gap:4px;">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#374151;font-weight:500;" title="${name}">${truncName}</span>
+        <span style="background:#fef9c3;color:#92400e;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;white-space:nowrap;">BAT</span>
+      </div>`;
+    }).join("");
+
+    if (batJobs.length > 6) {
+      listEl.innerHTML += `<div style="font-size:10px;color:#9ca3af;padding-top:4px;text-align:center;">+${batJobs.length - 6} autres</div>`;
+    }
+
+    // Load BAT status async for each job
+    for (const job of batJobs.slice(0, 6)) {
+      const full = normalizePath(job.fullPath || "");
+      fetch(`/api/bat/status?path=${encodeURIComponent(full)}`)
+        .then(r => r.json()).then(st => {
+          const items = listEl.querySelectorAll("div[style*='border-bottom']");
+          const idx = batJobs.indexOf(job);
+          const el = items[idx];
+          if (!el) return;
+          const badge = el.querySelector("span:last-child");
+          if (!badge) return;
+          if (st.rejectedAt) { badge.textContent = "REFUSÉ"; badge.style.cssText = "background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;white-space:nowrap;"; }
+          else if (st.validatedAt) { badge.textContent = "VALIDÉ"; badge.style.cssText = "background:#dcfce7;color:#166534;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;white-space:nowrap;"; }
+          else if (st.sentAt) { badge.textContent = "ENVOYÉ"; badge.style.cssText = "background:#dbeafe;color:#1e40af;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;white-space:nowrap;"; }
+        }).catch(() => {});
+    }
+  } catch(e) {
+    const listEl = document.getElementById("kanban-sidebar-bat-list");
+    if (listEl) listEl.innerHTML = '<div style="color:#9ca3af;">—</div>';
+  }
+}
+
 function setupProfileUI() {
   const btnSubmission = document.getElementById("btnViewSubmission");
   const btnSettings = document.getElementById("btn-settings");

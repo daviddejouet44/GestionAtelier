@@ -21,6 +21,7 @@ public record FabricationSheet
     public string? Format { get; init; }
     public string? Papier { get; init; }
     public string? RectoVerso { get; init; }
+    public string? FormeDecoupe { get; init; }
     public string? Encres { get; init; }
     public string? Client { get; init; }
     public string? NumeroAffaire { get; init; }
@@ -35,6 +36,9 @@ public record FabricationSheet
     public int? NombreFeuilles { get; init; }
     public List<string>? Faconnage { get; init; }
     public string? Livraison { get; init; }
+    public string? Bat { get; init; }
+    public string? RetraitLivraison { get; init; }
+    public string? AdresseLivraison { get; init; }
     public List<FabricationHistory> History { get; init; } = new();
 }
 
@@ -50,6 +54,7 @@ public class FabricationInput
     public string? Format { get; set; }
     public string? Papier { get; set; }
     public string? RectoVerso { get; set; }
+    public string? FormeDecoupe { get; set; }
     public string? Encres { get; set; }
     public string? Client { get; set; }
     public string? NumeroAffaire { get; set; }
@@ -64,6 +69,9 @@ public class FabricationInput
     public int? NombreFeuilles { get; set; }
     public List<string>? Faconnage { get; set; }
     public string? Livraison { get; set; }
+    public string? Bat { get; set; }
+    public string? RetraitLivraison { get; set; }
+    public string? AdresseLivraison { get; set; }
 }
 
 // ======================================================
