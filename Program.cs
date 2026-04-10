@@ -64,10 +64,7 @@ Console.WriteLine("[INFO] ContentRoot = " + app.Environment.ContentRootPath);
 app.UseHotfolderWatcher();
 var tempCopyWatcher = app.UsePrismaOutputWatcher();
 
-// 1. Routing EN PREMIER
-app.UseRouting();
-
-// 2. Static files for /pro frontend
+// 1. Fichiers statiques AVANT le routing (ils n'ont pas besoin du routing)
 var proPath = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
 Console.WriteLine("[INFO] Expected /pro at " + proPath);
 
@@ -91,6 +88,9 @@ else
 {
     Console.WriteLine("[WARN] wwwroot_pro NOT FOUND at " + proPath);
 }
+
+// 2. Routing APRÈS les fichiers statiques
+app.UseRouting();
 
 // 3. Logging middleware
 app.Use(async (ctx, next) =>
