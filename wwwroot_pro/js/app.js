@@ -56,7 +56,7 @@ async function updateGlobalAlert() {
   for (const iso of dates) {
     const d = new Date(iso + "T00:00:00");
     const diff = Math.ceil((d - today) / 86400000);
-    if (diff >= 0 && diff <= 3) urgentJobs.push({ iso, diff });
+    if (diff >= 0 && diff <= 1) urgentJobs.push({ iso, diff });
     minDays = Math.min(minDays, diff);
   }
 
@@ -83,13 +83,14 @@ async function updateGlobalAlert() {
     if (!Array.isArray(batAlerts)) batAlerts = [];
   } catch { batAlerts = []; }
 
-  const hasUrgences = minDays <= 3;
+  const hasUrgences = urgentJobs.length > 0;
   const hasBatReady = batReadyAlerts.length > 0;
   const hasBatAlerts = batAlerts.length > 0;
 
   if (hasUrgences || hasBatReady || hasBatAlerts) {
     globalAlert.style.display = "flex";
-    globalAlert.className = "global-alert" + (minDays <= 1 ? "" : " orange");
+    const hasJ0 = urgentJobs.some(u => u.diff === 0);
+    globalAlert.className = "global-alert" + (!hasUrgences || !hasJ0 ? " orange" : "");
 
     // Left: urgences
     let urgencesHtml = '';
@@ -1264,39 +1265,76 @@ async function initDashboardView() {
   dashEl.innerHTML = `
     <div class="settings-container">
       <h2>Dashboard — Vue d'ensemble de l'atelier</h2>
-      <div style="display: flex; gap: 10px; margin-bottom: 16px;">
-        <button id="dashboard-refresh" class="btn btn-primary">Rafraîchir</button>
-      </div>
       <div id="dashboard-content"><p style="color:#6b7280;">Chargement...</p></div>
     </div>
   `;
-  document.getElementById("dashboard-refresh").onclick = loadDashboardData;
   await loadDashboardData();
 }
 
 async function loadDashboardData() {
   const contentEl = document.getElementById("dashboard-content");
   if (!contentEl) return;
-  contentEl.innerHTML = `
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-      <div style="background: #fef9c3; border: 1px solid #fbbf24; border-radius: 12px; padding: 30px;">
-        <h3 style="margin: 0 0 12px 0; font-size: 20px;">Reporting</h3>
-        <p style="color: #92400e; margin: 0 0 8px 0;">À venir</p>
-        <p style="color: #6b7280; margin: 0; font-size: 13px;">
-          Cette section contiendra les rapports de production, les temps de traitement,
-          les statistiques par opérateur et les analyses de performance.
-        </p>
+
+  if (currentUser && currentUser.profile === 3) {
+    // Admin: show Prismalytics iframes with navigation tabs
+    contentEl.innerHTML = `
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button id="dash-tab-accounting" class="btn btn-primary" onclick="switchDashTab('accounting')">📊 Accounting</button>
+        <button id="dash-tab-dashboard" class="btn" onclick="switchDashTab('dashboard')">📈 Dashboard</button>
       </div>
-      <div style="background: #fef9c3; border: 1px solid #fbbf24; border-radius: 12px; padding: 30px;">
-        <h3 style="margin: 0 0 12px 0; font-size: 20px;">Presses numériques</h3>
-        <p style="color: #92400e; margin: 0 0 8px 0;">À venir</p>
-        <p style="color: #6b7280; margin: 0; font-size: 13px;">
-          Connexion aux presses numériques pour le suivi en temps réel :
-          état des machines, files d'attente, consommation d'encre et alertes.
-        </p>
+      <div id="dash-iframe-wrap" style="width:100%;min-height:80vh;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background:#f9fafb;">
+        <iframe id="dash-iframe"
+          src="https://prismalytics-eu.cpp.canon/accounting#"
+          style="width:100%;height:80vh;border:none;"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          referrerpolicy="no-referrer">
+        </iframe>
+        <div id="dash-iframe-fallback" style="display:none;text-align:center;padding:40px;color:#6b7280;">
+          <p style="font-size:15px;font-weight:600;">⚠️ L'iframe est bloquée par la politique CORS du site distant.</p>
+          <div style="display:flex;gap:10px;justify-content:center;margin-top:12px;">
+            <a id="dash-link-accounting" href="https://prismalytics-eu.cpp.canon/accounting#" target="_blank" rel="noopener" class="btn btn-primary">Ouvrir Accounting ↗</a>
+            <a id="dash-link-dashboard" href="https://prismalytics-eu.cpp.canon/dashboard#" target="_blank" rel="noopener" class="btn">Ouvrir Dashboard ↗</a>
+          </div>
+        </div>
       </div>
-    </div>
-  `;
+    `;
+    // Detect if iframe fails to load (CORS/X-Frame-Options)
+    const iframe = document.getElementById("dash-iframe");
+    iframe.onerror = () => {
+      iframe.style.display = "none";
+      document.getElementById("dash-iframe-fallback").style.display = "block";
+    };
+    // Make switchDashTab available globally
+    window.switchDashTab = (tab) => {
+      const urls = { accounting: "https://prismalytics-eu.cpp.canon/accounting#", dashboard: "https://prismalytics-eu.cpp.canon/dashboard#" };
+      if (!urls[tab]) return;
+      const fr = document.getElementById("dash-iframe");
+      if (fr) fr.src = urls[tab];
+      document.getElementById("dash-tab-accounting").className = "btn" + (tab === "accounting" ? " btn-primary" : "");
+      document.getElementById("dash-tab-dashboard").className = "btn" + (tab === "dashboard" ? " btn-primary" : "");
+    };
+  } else {
+    contentEl.innerHTML = `
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div style="background: #fef9c3; border: 1px solid #fbbf24; border-radius: 12px; padding: 30px;">
+          <h3 style="margin: 0 0 12px 0; font-size: 20px;">Reporting</h3>
+          <p style="color: #92400e; margin: 0 0 8px 0;">À venir</p>
+          <p style="color: #6b7280; margin: 0; font-size: 13px;">
+            Cette section contiendra les rapports de production, les temps de traitement,
+            les statistiques par opérateur et les analyses de performance.
+          </p>
+        </div>
+        <div style="background: #fef9c3; border: 1px solid #fbbf24; border-radius: 12px; padding: 30px;">
+          <h3 style="margin: 0 0 12px 0; font-size: 20px;">Presses numériques</h3>
+          <p style="color: #92400e; margin: 0 0 8px 0;">À venir</p>
+          <p style="color: #6b7280; margin: 0; font-size: 13px;">
+            Connexion aux presses numériques pour le suivi en temps réel :
+            état des machines, files d'attente, consommation d'encre et alertes.
+          </p>
+        </div>
+      </div>
+    `;
+  }
 }
 
 // ======================================================

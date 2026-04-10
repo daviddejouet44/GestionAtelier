@@ -200,6 +200,40 @@ FileSystemWatcher? tempCopyWatcher = null;
                     else
                         Console.WriteLine($"[BAT_FSW][WARN] Move to BAT failed: {err}");
 
+                    // Copy BAT PDF to production folder (sous-dossier "BAT")
+                    try
+                    {
+                        var pfCol = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+                        BsonDocument? pfDoc = pfCol.Find(
+                            Builders<BsonDocument>.Filter.Or(
+                                Builders<BsonDocument>.Filter.Regex("fileName",
+                                    new BsonRegularExpression($"^{System.Text.RegularExpressions.Regex.Escape(sourceFileName)}", "i")),
+                                Builders<BsonDocument>.Filter.Eq("fileName", sourceFileName + ".pdf")
+                            )
+                        ).SortByDescending(x => x["createdAt"]).FirstOrDefault();
+
+                        if (pfDoc != null && pfDoc.Contains("folderPath") && pfDoc["folderPath"].BsonType == BsonType.String)
+                        {
+                            var prodFolderPath = pfDoc["folderPath"].AsString;
+                            if (Directory.Exists(prodFolderPath))
+                            {
+                                var batSubDir = Path.Combine(prodFolderPath, "BAT");
+                                Directory.CreateDirectory(batSubDir);
+                                // The BAT file has been moved to the BAT hotfolder; find it there
+                                var hotfoldersRoot = BackendUtils.HotfoldersRoot();
+                                var batFolderPath = Path.Combine(hotfoldersRoot, "BAT");
+                                var movedBatFile = Path.Combine(batFolderPath, batFileName);
+                                if (File.Exists(movedBatFile))
+                                {
+                                    var destCopy = Path.Combine(batSubDir, batFileName);
+                                    File.Copy(movedBatFile, destCopy, overwrite: true);
+                                    Console.WriteLine($"[BAT_FSW] Copié BAT vers dossier de production : {destCopy}");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception exProd) { Console.WriteLine($"[BAT_FSW][WARN] Copy BAT to production folder: {exProd.Message}"); }
+
                     // Delete the original copy of the source file in TEMP_COPY
                     if (!string.IsNullOrWhiteSpace(tempCopyDir) && Directory.Exists(tempCopyDir))
                     {

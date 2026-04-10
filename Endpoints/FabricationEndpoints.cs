@@ -59,16 +59,13 @@ app.MapGet("/api/fabrication", (string? fullPath, string? fileName) =>
     {
         locked = rawDoc != null && rawDoc.Contains("locked") && rawDoc["locked"] != BsonNull.Value
             && rawDoc["locked"].BsonType == BsonType.Boolean && rawDoc["locked"].AsBoolean;
-        // Serialize sheet then add locked field
+        // Serialize sheet then append locked field to JSON string to avoid JsonDocument disposal issues
         var opts = new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
         var json = System.Text.Json.JsonSerializer.Serialize(sheet, opts);
-        using var doc2 = System.Text.Json.JsonDocument.Parse(json);
-        var root2 = doc2.RootElement;
-        var merged = new Dictionary<string, object?>();
-        foreach (var prop in root2.EnumerateObject())
-            merged[prop.Name] = (object?)prop.Value.Clone();
-        merged["locked"] = locked;
-        return Results.Json(merged);
+        var resultJson = json.EndsWith("}")
+            ? json[..^1] + ",\"locked\":" + (locked ? "true" : "false") + "}"
+            : json;
+        return Results.Content(resultJson, "application/json");
     }
 
     return Results.Json(new { ok = false, error = "Aucune fiche de fabrication." });

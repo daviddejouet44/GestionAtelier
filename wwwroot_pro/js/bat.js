@@ -45,13 +45,15 @@ export function startBatProgressTracker() {
     div.innerHTML = `
       <div class="bpt-header">
         <span class="bpt-title">
-          <span class="bpt-spinner"></span>
           <span id="bpt-title-text">Traitement BAT en cours</span>
         </span>
         <button class="bpt-close" id="bpt-close-btn" title="Fermer">✕</button>
       </div>
       <div class="bpt-body">
         <div class="bpt-filename" id="bpt-filename">—</div>
+        <div class="bpt-progress-wrap" id="bpt-progress-wrap">
+          <div class="bpt-progress-bar" id="bpt-progress-bar"></div>
+        </div>
         <div class="bpt-step"><span class="bpt-step-label" id="bpt-step-label">Initialisation…</span></div>
         <div class="bpt-elapsed" id="bpt-elapsed"></div>
         <div id="bpt-result"></div>
@@ -68,6 +70,18 @@ export function startBatProgressTracker() {
   _bptInterval = setInterval(_pollBatProgress, POLL_INTERVAL_MS);
   _pollBatProgress(); // immediate first call
 }
+
+// Step → approximate percentage for progress bar
+const STEP_PERCENT = {
+  copying_to_temp:       25,
+  sent_to_hotfolder:     40,
+  waiting_for_epreuve:   55,
+  processing_epreuve:    70,
+  renaming:              82,
+  moving_to_bat:         90,
+  creating_notification: 96,
+  completed:            100
+};
 
 async function _pollBatProgress() {
   if (_bptDismissed) { removeBatProgressTracker(); return; }
@@ -86,7 +100,7 @@ async function _pollBatProgress() {
   const stepEl = tracker.querySelector("#bpt-step-label");
   const elapsedEl = tracker.querySelector("#bpt-elapsed");
   const resultEl = tracker.querySelector("#bpt-result");
-  const spinner = tracker.querySelector(".bpt-spinner");
+  const progressBar = tracker.querySelector("#bpt-progress-bar");
   const titleTextEl = tracker.querySelector("#bpt-title-text");
 
   if (data.inProgress) {
@@ -98,7 +112,11 @@ async function _pollBatProgress() {
     stepEl.className = "bpt-step-label";
     elapsedEl.textContent = data.elapsedSeconds > 0 ? `⏱ ${data.elapsedSeconds}s écoulées` : "";
     resultEl.innerHTML = "";
-    if (spinner) spinner.style.display = "";
+    if (progressBar) {
+      const pct = STEP_PERCENT[data.currentStep] || 10;
+      progressBar.style.width = pct + "%";
+      progressBar.className = "bpt-progress-bar";
+    }
     if (titleTextEl) titleTextEl.textContent = "Traitement BAT en cours";
   } else {
     _bptPollCount++;
@@ -108,7 +126,7 @@ async function _pollBatProgress() {
 
     if (data.lastCompletedFileName) {
       // Show completed result
-      if (spinner) spinner.style.display = "none";
+      if (progressBar) { progressBar.style.width = "100%"; progressBar.className = "bpt-progress-bar done"; }
       if (titleTextEl) titleTextEl.textContent = "BAT terminé";
       fileEl.textContent = data.lastCompletedFileName;
       stepEl.textContent = "✅ Terminé";

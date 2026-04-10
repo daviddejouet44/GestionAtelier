@@ -1019,10 +1019,10 @@ export async function showFaconnageAlerts() {
       if (Array.isArray(item.faconnage) && item.faconnage.length > 0) {
         for (const opt of item.faconnage) {
           if (!grouped[opt]) grouped[opt] = [];
-          grouped[opt].push({ fileName: item.fileName, numeroDossier: item.numeroDossier, quantite });
+          grouped[opt].push({ fileName: item.fileName, numeroDossier: item.numeroDossier, quantite, allOptions: item.faconnage });
         }
       } else {
-        jobsWithNoFaconnage.push({ fileName: item.fileName, numeroDossier: item.numeroDossier, quantite });
+        jobsWithNoFaconnage.push({ fileName: item.fileName, numeroDossier: item.numeroDossier, quantite, allOptions: [] });
       }
     }
 
@@ -1034,9 +1034,11 @@ export async function showFaconnageAlerts() {
       const jobs = grouped[opt];
       const totalQty = jobs.reduce((s, j) => s + (j.quantite || 0), 0);
       const jobRows = jobs.map(j => {
-        const label = j.numeroDossier || j.fileName;
-        const qty = j.quantite != null ? ` : ${j.quantite.toLocaleString("fr-FR")} ex.` : "";
-        return `<div style="font-size:12px;color:#374151;padding:3px 0 3px 12px;border-left:3px solid #fde68a;">— ${label}${qty}</div>`;
+        const dossier = j.numeroDossier || '—';
+        const pdfName = j.fileName || '—';
+        const optStr = Array.isArray(j.allOptions) && j.allOptions.length > 0 ? ` — [${j.allOptions.join(', ')}]` : '';
+        const qty = j.quantite != null ? ` (${j.quantite.toLocaleString("fr-FR")} ex.)` : "";
+        return `<div style="font-size:12px;color:#374151;padding:3px 0 3px 12px;border-left:3px solid #fde68a;"><strong>${dossier}</strong> — ${pdfName}${optStr}${qty}</div>`;
       }).join("");
       const totalLine = totalQty > 0 ? `<div style="font-size:12px;font-weight:700;color:#374151;margin-top:6px;">Total : ${totalQty.toLocaleString("fr-FR")} exemplaires</div>` : "";
       html += `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px;">
@@ -1048,8 +1050,9 @@ export async function showFaconnageAlerts() {
 
     if (jobsWithNoFaconnage.length > 0) {
       const jobRows = jobsWithNoFaconnage.map(j => {
-        const label = j.numeroDossier || j.fileName;
-        return `<div style="font-size:12px;color:#6b7280;padding:3px 0 3px 12px;border-left:3px solid #e5e7eb;">— ${label}</div>`;
+        const dossier = j.numeroDossier || '—';
+        const pdfName = j.fileName || '—';
+        return `<div style="font-size:12px;color:#6b7280;padding:3px 0 3px 12px;border-left:3px solid #e5e7eb;"><strong>${dossier}</strong> — ${pdfName}</div>`;
       }).join("");
       html += `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px;">
         <div style="font-weight:700;font-size:14px;color:#9ca3af;margin-bottom:8px;">Sans façonnage — ${jobsWithNoFaconnage.length} job(s)</div>
