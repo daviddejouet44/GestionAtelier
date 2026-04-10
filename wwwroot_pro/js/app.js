@@ -370,8 +370,10 @@ async function buildBatView() {
       card.appendChild(actionsDiv);
       listEl.appendChild(card);
 
-      // Load dossier number async
-      fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFn))
+      // Load dossier number async — strip BAT_ prefix before lookup (MongoDB stores without it)
+      let lookupFn = jobFn;
+      if (lookupFn.toLowerCase().startsWith("bat_")) lookupFn = lookupFn.substring(4);
+      fetch("/api/fabrication?fileName=" + encodeURIComponent(lookupFn))
         .then(r => r.json()).then(d => {
           if (d && d.numeroDossier) dossierEl.textContent = d.numeroDossier;
         }).catch(() => {});
@@ -1218,15 +1220,6 @@ async function loadDashboardData() {
             <strong style="font-size:16px;font-weight:700;color:var(--text-primary);">Dashboard</strong>
             <span style="font-size:12px;color:var(--text-secondary);">Vue d'ensemble et statistiques de production Prismalytics</span>
             <span style="font-size:12px;color:var(--primary);font-weight:600;margin-top:4px;">Ouvrir ↗</span>
-          </a>
-          <a href="https://auth-eu.cpp.canon/Account/Login?ReturnUrl=%2Fconnect%2Fauthorize%3Fclient_id%3DOldLoginPage%26redirect_uri%3Dhttps%253A%252F%252Fprismalogin.cpp.canon%252Fsignin-callback%26response_type%3Dcode%26scope%3Dopenid%2520profile%2520email%25205daf1ef4-10e3-4c00-8287-4120cf95b31f%25202c1d0ad6-cf98-4790-a820-e4c5d6168b89%26state%3D863079db7d184a4d8a8c852a09b1a8a0%26code_challenge%3Dag6MuaVKO7iOQ8zDu2MiVrKWCnp9Ca4cgTQw4DkeQNw%26code_challenge_method%3DS256" target="_blank" rel="noopener"
-             style="display:flex;flex-direction:column;gap:10px;background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius-lg);padding:24px;text-decoration:none;color:inherit;box-shadow:var(--shadow-md);transition:box-shadow 0.2s,transform 0.18s;"
-             onmouseover="this.style.boxShadow='var(--shadow-hover)';this.style.transform='translateY(-2px)';"
-             onmouseout="this.style.boxShadow='var(--shadow-md)';this.style.transform='';">
-            <span style="font-size:36px;">🔑</span>
-            <strong style="font-size:16px;font-weight:700;color:var(--text-primary);">Connexion Canon</strong>
-            <span style="font-size:12px;color:var(--text-secondary);">Authentification Canon pour accéder à Prismalytics</span>
-            <span style="font-size:12px;color:var(--primary);font-weight:600;margin-top:4px;">Se connecter ↗</span>
           </a>
         </div>
       </div>

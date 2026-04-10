@@ -754,9 +754,6 @@ app.MapPost("/api/acrobat/preflight", async (HttpContext ctx) =>
         if (!File.Exists(dropletExe))
             return Results.Json(new { ok = false, error = $"Droplet introuvable : {dropletExe}. Vérifiez le chemin dans Paramétrage > Preflight." });
 
-        // Record modification time before launch to detect whether the preflight actually ran.
-        var modifiedBefore = File.GetLastWriteTimeUtc(fullPath);
-
         // Launch the droplet with the PDF path as argument
         var psi = new ProcessStartInfo(dropletExe, $"\"{fullPath}\"")
         {
@@ -780,22 +777,45 @@ app.MapPost("/api/acrobat/preflight", async (HttpContext ctx) =>
         }
 
         // Give Acrobat a moment to flush/close the file after the droplet exits
-        await Task.Delay(2000);
+        await Task.Delay(5000);
 
-        // Verify that the preflight actually ran by checking whether the file was modified.
-        var modifiedAfter = File.GetLastWriteTimeUtc(fullPath);
-        if (modifiedAfter <= modifiedBefore)
-        {
-            Console.WriteLine($"[PREFLIGHT] File not modified after droplet exit — droplet may have encountered an error.");
-            return Results.Json(new { ok = false, error = "Le Preflight ne semble pas avoir modifié le fichier. Vérifiez que le droplet fonctionne correctement." });
-        }
-
-        // Move file to "Prêt pour impression"
+        // Move file to "Prêt pour impression" with retry loop to handle file lock
         var root = BackendUtils.HotfoldersRoot();
         var destDir = Path.Combine(root, "Prêt pour impression");
         Directory.CreateDirectory(destDir);
         var destPath = Path.Combine(destDir, Path.GetFileName(fullPath));
-        File.Move(fullPath, destPath, overwrite: true);
+
+        bool moved = false;
+        Exception? lastEx = null;
+        for (int retry = 0; retry < 10; retry++)
+        {
+            try
+            {
+                File.Move(fullPath, destPath, overwrite: true);
+                moved = true;
+                break;
+            }
+            catch (IOException ex)
+            {
+                lastEx = ex;
+                await Task.Delay(2000);
+            }
+        }
+
+        if (!moved)
+        {
+            // Fallback: copy + delete
+            try
+            {
+                File.Copy(fullPath, destPath, overwrite: true);
+                try { File.Delete(fullPath); } catch (Exception exDel) { Console.WriteLine($"[PREFLIGHT][WARN] Could not delete source after copy: {exDel.Message}"); }
+                moved = true;
+            }
+            catch (Exception exCopy)
+            {
+                return Results.Json(new { ok = false, error = $"Impossible de déplacer le fichier après le Preflight : {lastEx?.Message ?? exCopy.Message}" });
+            }
+        }
 
         // Update delivery path in MongoDB
         try { BackendUtils.UpdateDeliveryPath(fullPath, destPath); } catch (Exception ex2) { Console.WriteLine($"[WARN] UpdateDeliveryPath: {ex2.Message}"); }

@@ -245,14 +245,65 @@ public static class BackendUtils
         var fabSheet = BackendUtils.FindFabricationByName(fileName) ?? BackendUtils.FindFabrication(movedFilePath);
         var numeroDossier = fabSheet?.NumeroDossier;
 
-        // Build folder name: use numeroDossier if available, else auto-increment NNN
+        // If numeroDossier is known, check if a production folder already exists with the same number
+        if (!string.IsNullOrWhiteSpace(numeroDossier))
+        {
+            var existingByDossier = col.Find(
+                Builders<BsonDocument>.Filter.Eq("numeroDossier", numeroDossier)
+            ).SortByDescending(x => x["createdAt"]).FirstOrDefault();
+
+            if (existingByDossier != null && existingByDossier.Contains("folderPath"))
+            {
+                var existingFolderPath = existingByDossier["folderPath"].AsString;
+                if (Directory.Exists(existingFolderPath))
+                {
+                    // Add file to the existing folder
+                    var originalDir2 = Path.Combine(existingFolderPath, "Original");
+                    Directory.CreateDirectory(originalDir2);
+                    if (File.Exists(movedFilePath))
+                        File.Copy(movedFilePath, Path.Combine(originalDir2, fileName), overwrite: true);
+
+                    var fileEntry2 = new BsonDocument
+                    {
+                        ["stage"] = "Original",
+                        ["fileName"] = fileName,
+                        ["addedAt"] = DateTime.UtcNow
+                    };
+
+                    // Update existing document with the new file entry
+                    await col.UpdateOneAsync(
+                        Builders<BsonDocument>.Filter.Eq("_id", existingByDossier["_id"]),
+                        Builders<BsonDocument>.Update.Push("files", fileEntry2));
+
+                    // Insert a new document for this file pointing to the same folder
+                    // (so CopyToProductionFolderStageAsync can find it by fileName)
+                    var newDoc2 = new BsonDocument
+                    {
+                        ["number"] = BsonNull.Value,
+                        ["numeroDossier"] = numeroDossier,
+                        ["fileName"] = fileName,
+                        ["originalFilePath"] = movedFilePath,
+                        ["currentFilePath"] = movedFilePath,
+                        ["folderPath"] = existingFolderPath,
+                        ["createdAt"] = DateTime.UtcNow,
+                        ["currentStage"] = "Début de production",
+                        ["fabricationSheet"] = new BsonDocument(),
+                        ["files"] = new BsonArray { fileEntry2 }
+                    };
+                    await col.InsertOneAsync(newDoc2);
+                    return;
+                }
+            }
+        }
+
+        // Build folder name: use numeroDossier alone if available, else auto-increment NNN_safeName
         var safeName = SafeNameRegex.Replace(Path.GetFileNameWithoutExtension(fileName), "_");
         string folderName;
         int? number = null;
         if (!string.IsNullOrWhiteSpace(numeroDossier))
         {
-            // Use the dossier number from the fabrication sheet
-            folderName = $"{numeroDossier}_{safeName}";
+            // Name the folder with just the dossier number (e.g. "2026-0010")
+            folderName = numeroDossier;
         }
         else
         {
