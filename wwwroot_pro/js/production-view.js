@@ -17,8 +17,8 @@ const STAGE_PROGRESS = {
   "Corrections et fond perdu": 25,
   "Prêt pour impression": 50,
   "BAT": 65,
-  "PrismaPrepare": 75,
-  "Fiery": 75,
+  "PrismaPrepare": 65,
+  "Fiery": 65,
   "Impression en cours": 75,
   "Façonnage": 90,
   "Fin de production": 100

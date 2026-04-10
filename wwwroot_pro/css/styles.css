@@ -109,9 +109,30 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
 ========================================================= */
 .global-alert {
   background: var(--danger); color: white; padding: 8px 32px;
-  text-align: center; font-weight: 600; font-size: 13px; flex-shrink: 0;
+  font-weight: 600; font-size: 13px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
 }
 .global-alert.orange { background: var(--warning); color: var(--text-primary); }
+.global-alert-urgences {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.global-alert-urgences-label {
+  font-size: 13px; font-weight: 700; white-space: nowrap;
+  display: flex; align-items: center; gap: 5px;
+}
+.global-alert-bat {
+  margin-left: auto; display: flex; align-items: center; gap: 8px;
+  background: rgba(0,0,0,0.15); border-radius: 6px; padding: 4px 12px;
+  white-space: nowrap;
+}
+.global-alert-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 10px; font-size: 12px; font-weight: 700;
+  background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3);
+}
+.global-alert-badge.j0 { background: rgba(255,59,48,0.3); border-color: rgba(255,59,48,0.6); }
+.global-alert-badge.j1 { background: rgba(255,159,10,0.3); border-color: rgba(255,159,10,0.6); }
+.global-alert-badge.j2, .global-alert-badge.j3 { background: rgba(52,199,89,0.2); border-color: rgba(52,199,89,0.5); }
 
 /* =========================================================
    TOOLBAR
@@ -318,13 +339,13 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
 .kanban-card-operator {
   background: var(--bg-card); border: 1px solid var(--border-light);
   border-radius: var(--radius-md); padding: 10px; margin-bottom: 7px;
-  transition: var(--transition); cursor: default;
+  transition: var(--transition); cursor: default; position: relative;
 }
 .kanban-card-operator:hover {
   border-color: var(--border); box-shadow: var(--shadow-hover); transform: translateY(-1px);
 }
 .kanban-card-operator-layout {
-  display: grid; grid-template-columns: 50px 1fr; gap: 9px; align-items: start;
+  display: grid; grid-template-columns: 50px 1fr auto; gap: 9px; align-items: start;
 }
 .kanban-card-operator-thumb, .thumb {
   width: 50px; height: 64px; background: var(--bg-subtle); border: 1px solid var(--border-light);
@@ -335,30 +356,54 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
 .thumb img, .thumb canvas {
   width: 100%; height: 100%; object-fit: cover; border-radius: 6px;
 }
+.kanban-card-dossier {
+  font-size: 15px; font-weight: 700; color: #111827; margin: 0 0 2px 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .kanban-card-operator-title {
   font-weight: 600; font-size: 11px; color: var(--text-primary); margin: 0 0 2px 0;
   line-height: 1.3; letter-spacing: -0.01em; word-break: break-word;
   overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
-.kanban-card-operator-info { font-size: 13px !important; font-weight: 500; color: var(--text-secondary); margin: 0; }
+.kanban-card-operator-info { font-size: 11px; font-weight: 500; color: var(--text-secondary); margin: 0; }
+.kanban-card-operator-right {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0;
+}
 .kanban-card-operator-status {
-  font-size: 13px !important; font-weight: 600; padding: 5px 10px; border-radius: 4px;
-  display: inline-block; margin-top: 3px; background: #DBEAFE; color: #1E40AF;
+  font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 4px;
+  display: inline-block; background: #DBEAFE; color: #1E40AF; white-space: nowrap;
 }
 .kanban-card-operator-status.urgent { background: #FEE2E2; color: #991B1B; }
 .kanban-card-operator-status.warning { background: #FFF7ED; color: #9A3412; }
 .kanban-card-operator-actions {
   display: flex; gap: 4px; flex-wrap: wrap; margin-top: 7px;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.kanban-card-operator:hover .kanban-card-operator-actions {
+  opacity: 1; pointer-events: auto;
 }
 .assignment-badge {
-  font-size: 14px !important; font-weight: 700; color: var(--text-secondary); background: var(--bg-subtle);
-  padding: 4px 10px; border-radius: 4px; display: inline-flex; align-items: center;
-  gap: 3px; margin-top: 3px;
+  font-size: 11px; font-weight: 600; color: var(--text-secondary); background: var(--bg-subtle);
+  padding: 2px 7px; border-radius: 4px; display: inline-flex; align-items: center;
+  gap: 3px; white-space: nowrap;
 }
 
 /* =========================================================
    BAT STATUS
 ========================================================= */
+.bat-card-modern {
+  background: white; border: 1px solid #e5e7eb; border-radius: 14px;
+  padding: 18px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04); transition: box-shadow 0.2s, transform 0.15s;
+}
+.bat-card-modern:hover {
+  box-shadow: 0 6px 20px rgba(0,0,0,0.10); transform: translateY(-1px);
+}
+.bat-alert-j2 {
+  background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; border-radius: 6px;
+  padding: 6px 12px; font-size: 12px; font-weight: 600; margin-top: 6px;
+}
 .bat-tracking { display: flex; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
 .bat-status-badge, .bat-btn {
   font-size: 10px; font-weight: 700; padding: 5px 11px; border-radius: var(--radius-sm);

@@ -441,6 +441,7 @@ public static class BackendUtils
             ["format"]            = sheet.Format            == null ? BsonNull.Value : (BsonValue)sheet.Format,
             ["papier"]            = sheet.Papier            == null ? BsonNull.Value : (BsonValue)sheet.Papier,
             ["rectoVerso"]        = sheet.RectoVerso        == null ? BsonNull.Value : (BsonValue)sheet.RectoVerso,
+            ["formeDecoupe"]      = sheet.FormeDecoupe      == null ? BsonNull.Value : (BsonValue)sheet.FormeDecoupe,
             ["encres"]            = sheet.Encres            == null ? BsonNull.Value : (BsonValue)sheet.Encres,
             ["client"]            = sheet.Client            == null ? BsonNull.Value : (BsonValue)sheet.Client,
             ["numeroAffaire"]     = sheet.NumeroAffaire     == null ? BsonNull.Value : (BsonValue)sheet.NumeroAffaire,
@@ -457,6 +458,9 @@ public static class BackendUtils
                                         ? BsonNull.Value
                                         : (BsonValue)new BsonArray(sheet.Faconnage),
             ["livraison"]         = sheet.Livraison         == null ? BsonNull.Value : (BsonValue)sheet.Livraison,
+            ["bat"]               = sheet.Bat               == null ? BsonNull.Value : (BsonValue)sheet.Bat,
+            ["retraitLivraison"]  = sheet.RetraitLivraison  == null ? BsonNull.Value : (BsonValue)sheet.RetraitLivraison,
+            ["adresseLivraison"]  = sheet.AdresseLivraison  == null ? BsonNull.Value : (BsonValue)sheet.AdresseLivraison,
             ["history"]           = historyArray
         };
         if (existing != null)
@@ -506,6 +510,7 @@ public static class BackendUtils
             Format           = GetNullableString(d, "format"),
             Papier           = GetNullableString(d, "papier"),
             RectoVerso       = GetNullableString(d, "rectoVerso"),
+            FormeDecoupe     = GetNullableString(d, "formeDecoupe"),
             Encres           = GetNullableString(d, "encres"),
             Client           = GetNullableString(d, "client"),
             NumeroAffaire    = GetNullableString(d, "numeroAffaire"),
@@ -524,6 +529,9 @@ public static class BackendUtils
                                   : new List<string> { d["faconnage"].AsString })
                                : null,
             Livraison        = GetNullableString(d, "livraison"),
+            Bat              = GetNullableString(d, "bat"),
+            RetraitLivraison = GetNullableString(d, "retraitLivraison"),
+            AdresseLivraison = GetNullableString(d, "adresseLivraison"),
             History          = history
         };
     }

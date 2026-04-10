@@ -538,7 +538,11 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       card.dataset.folder = folderName;
 
       const full = normalizePath(job.fullPath || "");
+      const jobFileName = fnKey(full);
+      const assignment = assignmentsByPath[jobFileName];
+      const iso = deliveriesByPath[jobFileName];
 
+      // Card layout: vignette left, center info, right delivery+operator
       const layout = document.createElement("div");
       layout.className = "kanban-card-operator-layout";
 
@@ -550,41 +554,59 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         if (window._renderPdfThumbnail) window._renderPdfThumbnail(full, thumbDiv).catch(() => {});
       }
 
-      const textDiv = document.createElement("div");
-      textDiv.style.cssText = "flex: 1; min-width: 0;";
+      // Center: dossier number (big) + PDF name + import date
+      const centerDiv = document.createElement("div");
+      centerDiv.style.cssText = "flex: 1; min-width: 0;";
+
+      const dossierEl = document.createElement("div");
+      dossierEl.className = "kanban-card-dossier";
+      dossierEl.textContent = "—";
+      centerDiv.appendChild(dossierEl);
 
       const title = document.createElement("p");
       title.className = "kanban-card-operator-title";
       title.textContent = job.name || "Sans nom";
-      textDiv.appendChild(title);
+      centerDiv.appendChild(title);
 
       const sub = document.createElement("p");
       sub.className = "kanban-card-operator-info";
-      sub.textContent = `${new Date(job.modified).toLocaleDateString("fr-FR")} · ${fmtBytes(job.size)}`;
-      textDiv.appendChild(sub);
+      sub.textContent = new Date(job.modified).toLocaleDateString("fr-FR");
+      centerDiv.appendChild(sub);
 
-      const jobFileName = fnKey(full);
-      const assignment = assignmentsByPath[jobFileName];
-      if (assignment) {
-        const badge = document.createElement("div");
-        badge.className = "assignment-badge";
-        badge.textContent = `${assignment.operatorName}`;
-        textDiv.appendChild(badge);
+      layout.appendChild(centerDiv);
+
+      // Right: delivery date + operator
+      if (iso || assignment) {
+        const rightDiv = document.createElement("div");
+        rightDiv.className = "kanban-card-operator-right";
+
+        if (iso) {
+          const deliveryEl = document.createElement("div");
+          deliveryEl.className = "kanban-card-operator-status";
+          const daysLeft = daysDiffFromToday(iso);
+          if (daysLeft <= 1) deliveryEl.classList.add("urgent");
+          else if (daysLeft <= 3) deliveryEl.classList.add("warning");
+          deliveryEl.textContent = new Date(iso).toLocaleDateString("fr-FR");
+          rightDiv.appendChild(deliveryEl);
+        }
+
+        if (assignment) {
+          const badge = document.createElement("div");
+          badge.className = "assignment-badge";
+          badge.textContent = assignment.operatorName;
+          rightDiv.appendChild(badge);
+        }
+
+        layout.appendChild(rightDiv);
       }
 
-      const iso = deliveriesByPath[jobFileName];
-      if (iso) {
-        const status = document.createElement("div");
-        status.className = "kanban-card-operator-status";
-        const daysLeft = daysDiffFromToday(iso);
-        if (daysLeft <= 1) status.classList.add("urgent");
-        else if (daysLeft <= 3) status.classList.add("warning");
-        status.textContent = new Date(iso).toLocaleDateString("fr-FR");
-        textDiv.appendChild(status);
-      }
-
-      layout.appendChild(textDiv);
       card.appendChild(layout);
+
+      // Load dossier number asynchronously
+      fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName))
+        .then(r => r.json()).then(d => {
+          if (d && d.numeroDossier) dossierEl.textContent = d.numeroDossier;
+        }).catch(() => {});
 
       const actions = document.createElement("div");
       actions.className = "kanban-card-operator-actions";
