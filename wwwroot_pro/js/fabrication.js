@@ -98,9 +98,11 @@ export function initFabrication() {
   fabPdf.onclick = async () => {
     if (!fabCurrentPath) return;
     await saveFabrication();
+    // Small delay to ensure MongoDB write is committed before reading it back for PDF
+    await new Promise(r => setTimeout(r, 300));
     const fabCurrentFileName = fnKey(fabCurrentPath);
     try {
-      const r = await fetch("/api/fabrication/pdf?fileName=" + encodeURIComponent(fabCurrentFileName) + "&save=true", {
+      const r = await fetch("/api/fabrication/pdf?fileName=" + encodeURIComponent(fabCurrentFileName) + "&fullPath=" + encodeURIComponent(fabCurrentPath) + "&save=true", {
         headers: { "Authorization": `Bearer ${authToken}` }
       });
       if (r.ok) {
