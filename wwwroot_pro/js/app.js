@@ -319,14 +319,14 @@ async function buildBatView() {
   if (!container) return;
   container.innerHTML = `
     <div class="settings-container">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-        <h2 style="margin:0;font-size:20px;font-weight:700;color:#111827;">Bon à tirer (BAT)</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+        <h2 style="margin:0;font-size:22px;font-weight:700;color:var(--text-primary);letter-spacing:-0.02em;">Bon à tirer (BAT)</h2>
         <div style="display:flex;gap:10px;">
-          <button id="bat-view-adobe" class="btn btn-acrobat">📄 Acrobat Online</button>
-          <button id="bat-view-refresh" class="btn btn-primary">Rafraîchir</button>
+          <button id="bat-view-adobe" class="btn btn-acrobat" style="border-radius:50px;">📄 Acrobat Online</button>
+          <button id="bat-view-refresh" class="btn btn-primary" style="border-radius:50px;">↺ Rafraîchir</button>
         </div>
       </div>
-      <div id="bat-view-list" style="max-height:calc(100vh - 160px);overflow-y:auto;scrollbar-width:thin;"><p style="color:#6b7280;">Chargement...</p></div>
+      <div id="bat-view-list" class="bat-list-grid" style="max-height:calc(100vh - 160px);overflow-y:auto;scrollbar-width:thin;padding-bottom:16px;"><p style="color:#6b7280;">Chargement...</p></div>
     </div>
   `;
   container.querySelector("#bat-view-adobe").onclick = () => window.open("https://www.adobe.com/files#", "_blank", "noopener");
@@ -346,7 +346,7 @@ async function buildBatView() {
   try {
     const jobs = await fetch("/api/jobs?folder=" + encodeURIComponent("BAT")).then(r => r.json()).catch(() => []);
     if (!Array.isArray(jobs) || jobs.length === 0) {
-      listEl.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:40px;">Aucun fichier en BAT</p>';
+      listEl.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:60px 40px;">Aucun fichier en BAT</p>';
       return;
     }
     listEl.innerHTML = "";
@@ -357,43 +357,50 @@ async function buildBatView() {
       const card = document.createElement("div");
       card.className = "bat-card-modern";
 
-      const topRow = document.createElement("div");
-      topRow.style.cssText = "display:flex;align-items:flex-start;gap:14px;";
-
-      // Thumbnail
+      // --- Thumbnail ---
       const thumbDiv = document.createElement("div");
-      thumbDiv.style.cssText = "width:60px;height:76px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#BC0024;overflow:hidden;flex-shrink:0;";
+      thumbDiv.className = "bat-card-thumb";
       thumbDiv.textContent = "PDF";
       if ((job.name || "").toLowerCase().endsWith(".pdf") && window._renderPdfThumbnail) {
         window._renderPdfThumbnail(full, thumbDiv).catch(() => {});
       }
 
-      const infoAndActions = document.createElement("div");
-      infoAndActions.style.cssText = "flex:1;min-width:0;";
+      // --- Body ---
+      const bodyDiv = document.createElement("div");
+      bodyDiv.className = "bat-card-body";
 
-      // Dossier number placeholder (loaded async)
       const dossierEl = document.createElement("div");
-      dossierEl.style.cssText = "font-size:16px;font-weight:700;color:#111827;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      dossierEl.className = "bat-card-dossier";
       dossierEl.textContent = "—";
 
-      const info = document.createElement("div");
-      info.style.cssText = "margin-bottom:10px;";
-      info.innerHTML = `
-        <div style="font-weight:600;font-size:13px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${job.name || '—'}</div>
-        <div style="font-size:11px;color:#6b7280;margin-top:2px;">${new Date(job.modified).toLocaleDateString("fr-FR")} · ${fmtBytes(job.size)}</div>
-      `;
+      const filenameEl = document.createElement("div");
+      filenameEl.className = "bat-card-filename";
+      filenameEl.textContent = job.name || "—";
 
-      const btnRow = document.createElement("div");
-      btnRow.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;";
+      const metaEl = document.createElement("div");
+      metaEl.className = "bat-card-meta";
+      metaEl.textContent = `${new Date(job.modified).toLocaleDateString("fr-FR")} · ${fmtBytes(job.size)}`;
+
+      const trackingEl = document.createElement("div");
+      trackingEl.className = "bat-tracking";
+
+      bodyDiv.appendChild(dossierEl);
+      bodyDiv.appendChild(filenameEl);
+      bodyDiv.appendChild(metaEl);
+      bodyDiv.appendChild(trackingEl);
+
+      // --- Actions ---
+      const actionsDiv = document.createElement("div");
+      actionsDiv.className = "bat-card-actions";
 
       const btnOpen = document.createElement("button");
       btnOpen.className = "btn btn-sm";
-      btnOpen.textContent = "Ouvrir";
+      btnOpen.innerHTML = "🔍 Ouvrir";
       btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full), "_blank", "noopener");
 
       const btnAcrobat = document.createElement("button");
       btnAcrobat.className = "btn btn-sm btn-acrobat";
-      btnAcrobat.textContent = "📄 Ouvrir dans Acrobat";
+      btnAcrobat.innerHTML = "📄 Ouvrir dans Acrobat";
       btnAcrobat.onclick = async () => {
         try {
           const r = await fetch("/api/acrobat/open", {
@@ -409,7 +416,7 @@ async function buildBatView() {
 
       const btnArchiver = document.createElement("button");
       btnArchiver.className = "btn btn-sm";
-      btnArchiver.textContent = "📦 Archiver";
+      btnArchiver.innerHTML = "📦 Archiver";
       btnArchiver.onclick = async () => {
         if (!confirm(`Archiver le BAT "${job.name}" dans le dossier de production ?`)) return;
         const r = await fetch("/api/jobs/archive", {
@@ -423,7 +430,7 @@ async function buildBatView() {
 
       const btnDelete = document.createElement("button");
       btnDelete.className = "btn btn-sm btn-danger";
-      btnDelete.textContent = "🗑 Supprimer";
+      btnDelete.innerHTML = "🗑 Supprimer";
       btnDelete.onclick = async () => {
         if (!confirm(`Supprimer le BAT "${job.name}" ?`)) return;
         const r = await fetch("/api/jobs/delete", {
@@ -435,23 +442,14 @@ async function buildBatView() {
         else showNotification("❌ Erreur : " + (r.error || ""), "error");
       };
 
-      btnRow.appendChild(btnOpen);
-      btnRow.appendChild(btnAcrobat);
-      btnRow.appendChild(btnArchiver);
-      btnRow.appendChild(btnDelete);
+      actionsDiv.appendChild(btnOpen);
+      actionsDiv.appendChild(btnAcrobat);
+      actionsDiv.appendChild(btnArchiver);
+      actionsDiv.appendChild(btnDelete);
 
-      infoAndActions.appendChild(dossierEl);
-      infoAndActions.appendChild(info);
-      infoAndActions.appendChild(btnRow);
-
-      topRow.appendChild(thumbDiv);
-      topRow.appendChild(infoAndActions);
-
-      const trackingEl = document.createElement("div");
-      trackingEl.className = "bat-tracking";
-
-      card.appendChild(topRow);
-      card.appendChild(trackingEl);
+      card.appendChild(thumbDiv);
+      card.appendChild(bodyDiv);
+      card.appendChild(actionsDiv);
       listEl.appendChild(card);
 
       // Load dossier number async
@@ -465,36 +463,38 @@ async function buildBatView() {
 
         const btnSent = document.createElement("button");
         btnSent.className = "bat-status-badge bat-sent" + (status.sentAt ? " active" : "");
-        const sentLabel = status.sentAt ? `✅ ENVOYÉ` : "MARQUER ENVOYÉ";
         const sentTs = status.sentAt ? fmtDT(status.sentAt) : null;
-        btnSent.innerHTML = sentTs
-          ? `${sentLabel}<br><small style="font-size:9px;font-weight:400;text-transform:none;">le ${sentTs}</small>`
-          : sentLabel;
-        btnSent.style.lineHeight = sentTs ? "1.3" : "";
+        btnSent.innerHTML = status.sentAt
+          ? `✉️ Envoyé<span style="font-size:9px;font-weight:400;margin-left:4px;">${sentTs}</span>`
+          : "✉️ Marquer envoyé";
         btnSent.onclick = () => fetch("/api/bat/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(buildBatView);
+
+        const sep1 = document.createElement("span");
+        sep1.className = "bat-tracking-sep";
 
         const btnValidate = document.createElement("button");
         btnValidate.className = "bat-status-badge bat-validated" + (status.validatedAt ? " active" : "");
-        const validateLabel = status.validatedAt ? "✅ VALIDÉ" : "VALIDER";
         const validateTs = status.validatedAt ? fmtDT(status.validatedAt) : null;
-        btnValidate.innerHTML = validateTs
-          ? `${validateLabel}<br><small style="font-size:9px;font-weight:400;text-transform:none;">le ${validateTs}</small>`
-          : validateLabel;
-        btnValidate.style.lineHeight = validateTs ? "1.3" : "";
+        btnValidate.innerHTML = status.validatedAt
+          ? `✅ Validé<span style="font-size:9px;font-weight:400;margin-left:4px;">${validateTs}</span>`
+          : "✅ Valider";
         btnValidate.onclick = () => fetch("/api/bat/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(buildBatView);
+
+        const sep2 = document.createElement("span");
+        sep2.className = "bat-tracking-sep";
 
         const btnReject = document.createElement("button");
         btnReject.className = "bat-status-badge bat-rejected" + (status.rejectedAt ? " active" : "");
-        const rejectLabel = status.rejectedAt ? "❌ REFUSÉ" : "REFUSER";
         const rejectTs = status.rejectedAt ? fmtDT(status.rejectedAt) : null;
-        btnReject.innerHTML = rejectTs
-          ? `${rejectLabel}<br><small style="font-size:9px;font-weight:400;text-transform:none;">le ${rejectTs}</small>`
-          : rejectLabel;
-        btnReject.style.lineHeight = rejectTs ? "1.3" : "";
+        btnReject.innerHTML = status.rejectedAt
+          ? `❌ Refusé<span style="font-size:9px;font-weight:400;margin-left:4px;">${rejectTs}</span>`
+          : "❌ Refuser";
         btnReject.onclick = () => fetch("/api/bat/reject", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(buildBatView);
 
         trackingEl.appendChild(btnSent);
+        trackingEl.appendChild(sep1);
         trackingEl.appendChild(btnValidate);
+        trackingEl.appendChild(sep2);
         trackingEl.appendChild(btnReject);
 
         if (status.sentAt && !status.validatedAt && !status.rejectedAt) {
@@ -504,7 +504,7 @@ async function buildBatView() {
             const alertEl = document.createElement("div");
             alertEl.className = "bat-alert-j2";
             alertEl.textContent = `⚠️ BAT envoyé depuis ${Math.floor(ageHours / 24)} jour(s) sans réponse !`;
-            trackingEl.appendChild(alertEl);
+            bodyDiv.appendChild(alertEl);
           }
         }
       } catch (e) { /* ignore */ }
@@ -1276,43 +1276,43 @@ async function loadDashboardData() {
   if (!contentEl) return;
 
   if (currentUser && currentUser.profile === 3) {
-    // Admin: show Prismalytics iframes with navigation tabs
+    // Admin: show Prismalytics direct access links (iframes blocked by CSP frame-ancestors)
     contentEl.innerHTML = `
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <button id="dash-tab-accounting" class="btn btn-primary" onclick="switchDashTab('accounting')">📊 Accounting</button>
-        <button id="dash-tab-dashboard" class="btn" onclick="switchDashTab('dashboard')">📈 Dashboard</button>
-      </div>
-      <div id="dash-iframe-wrap" style="width:100%;min-height:80vh;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background:#f9fafb;">
-        <iframe id="dash-iframe"
-          src="https://prismalytics-eu.cpp.canon/accounting#"
-          style="width:100%;height:80vh;border:none;"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-          referrerpolicy="no-referrer">
-        </iframe>
-        <div id="dash-iframe-fallback" style="display:none;text-align:center;padding:40px;color:#6b7280;">
-          <p style="font-size:15px;font-weight:600;">⚠️ L'iframe est bloquée par la politique CORS du site distant.</p>
-          <div style="display:flex;gap:10px;justify-content:center;margin-top:12px;">
-            <a id="dash-link-accounting" href="https://prismalytics-eu.cpp.canon/accounting#" target="_blank" rel="noopener" class="btn btn-primary">Ouvrir Accounting ↗</a>
-            <a id="dash-link-dashboard" href="https://prismalytics-eu.cpp.canon/dashboard#" target="_blank" rel="noopener" class="btn">Ouvrir Dashboard ↗</a>
-          </div>
+      <div style="margin-bottom:20px;">
+        <p style="color:var(--text-secondary);font-size:13px;margin:0 0 20px 0;">
+          Accédez directement aux outils Prismalytics Canon dans un nouvel onglet.
+        </p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;">
+          <a href="https://prismalytics-eu.cpp.canon/accounting#" target="_blank" rel="noopener"
+             style="display:flex;flex-direction:column;gap:10px;background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius-lg);padding:24px;text-decoration:none;color:inherit;box-shadow:var(--shadow-md);transition:box-shadow 0.2s,transform 0.18s;"
+             onmouseover="this.style.boxShadow='var(--shadow-hover)';this.style.transform='translateY(-2px)';"
+             onmouseout="this.style.boxShadow='var(--shadow-md)';this.style.transform='';">
+            <span style="font-size:36px;">📊</span>
+            <strong style="font-size:16px;font-weight:700;color:var(--text-primary);">Accounting</strong>
+            <span style="font-size:12px;color:var(--text-secondary);">Suivi des impressions et facturation Canon Prismalytics</span>
+            <span style="font-size:12px;color:var(--primary);font-weight:600;margin-top:4px;">Ouvrir ↗</span>
+          </a>
+          <a href="https://prismalytics-eu.cpp.canon/dashboard#" target="_blank" rel="noopener"
+             style="display:flex;flex-direction:column;gap:10px;background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius-lg);padding:24px;text-decoration:none;color:inherit;box-shadow:var(--shadow-md);transition:box-shadow 0.2s,transform 0.18s;"
+             onmouseover="this.style.boxShadow='var(--shadow-hover)';this.style.transform='translateY(-2px)';"
+             onmouseout="this.style.boxShadow='var(--shadow-md)';this.style.transform='';">
+            <span style="font-size:36px;">📈</span>
+            <strong style="font-size:16px;font-weight:700;color:var(--text-primary);">Dashboard</strong>
+            <span style="font-size:12px;color:var(--text-secondary);">Vue d'ensemble et statistiques de production Prismalytics</span>
+            <span style="font-size:12px;color:var(--primary);font-weight:600;margin-top:4px;">Ouvrir ↗</span>
+          </a>
+          <a href="https://auth-eu.cpp.canon/Account/Login?ReturnUrl=%2Fconnect%2Fauthorize%3Fclient_id%3DOldLoginPage%26redirect_uri%3Dhttps%253A%252F%252Fprismalogin.cpp.canon%252Fsignin-callback%26response_type%3Dcode%26scope%3Dopenid%2520profile%2520email%25205daf1ef4-10e3-4c00-8287-4120cf95b31f%25202c1d0ad6-cf98-4790-a820-e4c5d6168b89%26state%3D863079db7d184a4d8a8c852a09b1a8a0%26code_challenge%3Dag6MuaVKO7iOQ8zDu2MiVrKWCnp9Ca4cgTQw4DkeQNw%26code_challenge_method%3DS256" target="_blank" rel="noopener"
+             style="display:flex;flex-direction:column;gap:10px;background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius-lg);padding:24px;text-decoration:none;color:inherit;box-shadow:var(--shadow-md);transition:box-shadow 0.2s,transform 0.18s;"
+             onmouseover="this.style.boxShadow='var(--shadow-hover)';this.style.transform='translateY(-2px)';"
+             onmouseout="this.style.boxShadow='var(--shadow-md)';this.style.transform='';">
+            <span style="font-size:36px;">🔑</span>
+            <strong style="font-size:16px;font-weight:700;color:var(--text-primary);">Connexion Canon</strong>
+            <span style="font-size:12px;color:var(--text-secondary);">Authentification Canon pour accéder à Prismalytics</span>
+            <span style="font-size:12px;color:var(--primary);font-weight:600;margin-top:4px;">Se connecter ↗</span>
+          </a>
         </div>
       </div>
     `;
-    // Detect if iframe fails to load (CORS/X-Frame-Options)
-    const iframe = document.getElementById("dash-iframe");
-    iframe.onerror = () => {
-      iframe.style.display = "none";
-      document.getElementById("dash-iframe-fallback").style.display = "block";
-    };
-    // Make switchDashTab available globally
-    window.switchDashTab = (tab) => {
-      const urls = { accounting: "https://prismalytics-eu.cpp.canon/accounting#", dashboard: "https://prismalytics-eu.cpp.canon/dashboard#" };
-      if (!urls[tab]) return;
-      const fr = document.getElementById("dash-iframe");
-      if (fr) fr.src = urls[tab];
-      document.getElementById("dash-tab-accounting").className = "btn" + (tab === "accounting" ? " btn-primary" : "");
-      document.getElementById("dash-tab-dashboard").className = "btn" + (tab === "dashboard" ? " btn-primary" : "");
-    };
   } else {
     contentEl.innerHTML = `
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">

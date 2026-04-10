@@ -44,3 +44,12 @@ public class FabricationImportsSettings
     public string TypeDocumentPath { get; set; } = "";
 }
 
+public class PreflightSettings
+{
+    [JsonPropertyName("dropletStandard")]
+    public string DropletStandard { get; set; } = "";
+
+    [JsonPropertyName("dropletFondPerdu")]
+    public string DropletFondPerdu { get; set; } = "";
+}
+

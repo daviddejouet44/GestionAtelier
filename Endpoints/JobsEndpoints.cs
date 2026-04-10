@@ -719,12 +719,11 @@ app.MapPost("/api/acrobat", () =>
 });
 
 // ======================================================
-// ACROBAT — Preflight automatisé en arrière-plan
+// ACROBAT — Preflight via droplet Acrobat (.exe)
 // ======================================================
 
 app.MapPost("/api/acrobat/preflight", async (HttpContext ctx) =>
 {
-    string? jsPath = null;
     try
     {
         var doc = await JsonDocument.ParseAsync(ctx.Request.Body);
@@ -739,171 +738,72 @@ app.MapPost("/api/acrobat/preflight", async (HttpContext ctx) =>
         if (!File.Exists(fullPath))
             return Results.Json(new { ok = false, error = "Fichier introuvable" });
 
-        // Determine Preflight profile based on source folder
-        string profileName;
+        // Get droplet paths from settings
+        var preflightCfg = MongoDbHelper.GetSettings<PreflightSettings>("preflight") ?? new PreflightSettings();
+        string dropletExe;
         if (folder == "Corrections")
-            profileName = "Preflight_Imprimerie";
+            dropletExe = preflightCfg.DropletStandard;
         else if (folder == "Corrections et fond perdu")
-            profileName = "Preflight_Imprimerie_fondperdu";
+            dropletExe = preflightCfg.DropletFondPerdu;
         else
             return Results.Json(new { ok = false, error = $"Dossier non pris en charge pour le Preflight : {folder}" });
 
-        // Get Acrobat exe path from settings
-        var pathsCfg = MongoDbHelper.GetSettings<PathsSettings>("paths");
-        var exe = (!string.IsNullOrWhiteSpace(pathsCfg?.AcrobatExePath))
-            ? pathsCfg!.AcrobatExePath
-            : @"C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe";
+        if (string.IsNullOrWhiteSpace(dropletExe))
+            return Results.Json(new { ok = false, error = $"Chemin du droplet non configuré pour '{folder}'. Configurez-le dans Paramétrage > Preflight." });
 
-        if (!File.Exists(exe))
-            return Results.Json(new { ok = false, error = $"Acrobat.exe introuvable : {exe}. Configurez le chemin dans Paramétrage > Chemins d'accès." });
-
-        // Use the per-user JavaScripts folder — no admin rights required,
-        // and Acrobat reliably loads scripts from this location at startup.
-        var jsFolder = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Adobe", "Acrobat", "DC", "JavaScripts");
-        Directory.CreateDirectory(jsFolder);
-
-        // Generate unique temp JS script name
-        var guid = Guid.NewGuid().ToString("N");
-        var jsFileName = $"ga_preflight_{guid}.js";
-        jsPath = Path.Combine(jsFolder, jsFileName);
-
-        // Write the temporary Acrobat JavaScript.
-        // Wrapped in app.trustedFunction so that app.openDoc() is allowed
-        // (Acrobat blocks it in unprivileged contexts).
-        // app.setTimeOut delays execution by 2 s to let Acrobat finish initialising.
-        var jsFullPath = fullPath.Replace("\\", "/");
-        var jsContent = $@"// Script temporaire Preflight - généré par GestionAtelier
-var _ga_preflight = app.trustedFunction(function() {{
-    app.beginPriv();
-    try {{
-        var _ga_doc = app.openDoc(""{jsFullPath}"");
-        var _ga_profile = Preflight.getProfileByName(""{profileName}"");
-        if (_ga_profile) {{
-            _ga_doc.preflight(_ga_profile);
-            app.execMenuItem(""Save"");
-        }} else {{
-            console.println(""GestionAtelier Preflight: profil introuvable — {profileName}"");
-        }}
-        _ga_doc.closeDoc(true);
-    }} catch(e) {{
-        console.println(""GestionAtelier Preflight error: "" + e);
-    }}
-    app.endPriv();
-    app.quit();
-}});
-app.setTimeOut('_ga_preflight()', 2000);
-";
-        await File.WriteAllTextAsync(jsPath, jsContent, System.Text.Encoding.UTF8);
+        if (!File.Exists(dropletExe))
+            return Results.Json(new { ok = false, error = $"Droplet introuvable : {dropletExe}. Vérifiez le chemin dans Paramétrage > Preflight." });
 
         // Record modification time before launch to detect whether the preflight actually ran.
         var modifiedBefore = File.GetLastWriteTimeUtc(fullPath);
 
-        // Kill any running Acrobat instances so Acrobat starts fresh and loads the new Javascripts/ script.
-        // (If a previous Acrobat instance is already open, it will not reload scripts from the Javascripts/ folder
-        //  and the new script will never execute.)
-        foreach (var pName in new[] { "Acrobat", "AcroRd32" })
-        {
-            foreach (var existing in System.Diagnostics.Process.GetProcessesByName(pName))
-            {
-                try { existing.Kill(); existing.WaitForExit(3000); }
-                catch (InvalidOperationException) { /* process already exited */ }
-                catch (Exception exKill) { Console.WriteLine($"[WARN] Could not kill {pName}: {exKill.Message}"); }
-            }
-        }
-        // Wait for Acrobat to fully release its handles before restarting.
-        await Task.Delay(3000);
-
-        // Launch Acrobat minimized — UseShellExecute = true ensures folder-level scripts are loaded.
-        // The PDF is opened by the JS script via app.openDoc(), so no CLI argument is needed.
-        var acrobatDir = Path.GetDirectoryName(exe)!;
-        var psi = new System.Diagnostics.ProcessStartInfo(exe)
+        // Launch the droplet with the PDF path as argument
+        var psi = new ProcessStartInfo(dropletExe, $"\"{fullPath}\"")
         {
             UseShellExecute = true,
-            WindowStyle = System.Diagnostics.ProcessWindowStyle.Minimized,
-            WorkingDirectory = acrobatDir
+            WindowStyle = ProcessWindowStyle.Normal
         };
-        var process = System.Diagnostics.Process.Start(psi);
+        var process = Process.Start(psi);
         if (process == null)
-            return Results.Json(new { ok = false, error = "Impossible de démarrer Acrobat" });
+            return Results.Json(new { ok = false, error = "Impossible de démarrer le droplet Preflight" });
 
-        // Poll for file modification or Acrobat exit (max 5 minutes = 60 × 5 s).
-        // WaitForExitAsync alone is unreliable when Acrobat reattaches to an existing instance.
-        var lastMod = File.GetLastWriteTime(fullPath);
-        for (int i = 0; i < 60; i++)
+        // Wait for the droplet process to complete (max 5 minutes)
+        var completed = await Task.Run(() => process.WaitForExit(300_000));
+        if (!completed)
         {
-            await Task.Delay(5000);
-            if (!File.Exists(fullPath) || File.GetLastWriteTime(fullPath) > lastMod)
-                break;
-            // Also stop waiting if Acrobat has already exited
-            if (System.Diagnostics.Process.GetProcessesByName("Acrobat").Length == 0 &&
-                System.Diagnostics.Process.GetProcessesByName("AcroRd32").Length == 0)
-                break;
+            try { process.Kill(); } catch { }
+            return Results.Json(new { ok = false, error = "Le droplet Preflight a dépassé le délai d'attente (5 min)" });
         }
 
-        // Clean up temp JS script
-        try { if (File.Exists(jsPath)) { File.Delete(jsPath); jsPath = null; } }
-        catch (Exception exJs) { Console.WriteLine($"[WARN] Could not delete temp JS script {jsPath}: {exJs.Message}"); }
-
-        // Detect potential file rename by Preflight profile (e.g. suffix _X4 added by "Convert to PDF/X-4" profiles).
-        // The profile may save the file under a new name in the same directory; we detect this by looking
-        // for recently-modified files whose name starts with the original base name but differs from it.
-        var dir = Path.GetDirectoryName(fullPath)!;
-        var originalName = Path.GetFileNameWithoutExtension(fullPath);
-        var ext = Path.GetExtension(fullPath);
-        var effectivePath = fullPath;
-
-        if (!File.Exists(fullPath))
-        {
-            // File was renamed — search for files with similar base name modified recently
-            var candidates = Directory.GetFiles(dir, $"{originalName}*{ext}")
-                .Where(f => !string.Equals(f, fullPath, StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(f => File.GetLastWriteTime(f))
-                .ToList();
-
-            if (candidates.Count > 0)
-            {
-                var renamed = candidates[0];
-                File.Move(renamed, fullPath, overwrite: true);
-                effectivePath = fullPath;
-                Console.WriteLine($"[PREFLIGHT] Renamed {Path.GetFileName(renamed)} → {Path.GetFileName(fullPath)}");
-            }
-            else
-            {
-                return Results.Json(new { ok = false, error = $"Fichier introuvable après Preflight (il a peut-être été renommé) : {fullPath}" });
-            }
-        }
+        // Give Acrobat a moment to flush/close the file after the droplet exits
+        await Task.Delay(2000);
 
         // Verify that the preflight actually ran by checking whether the file was modified.
-        // If the modification time is unchanged the profile was likely not found in Acrobat;
-        // in that case abort rather than silently moving an un-processed file.
-        var modifiedAfter = File.GetLastWriteTimeUtc(effectivePath);
+        var modifiedAfter = File.GetLastWriteTimeUtc(fullPath);
         if (modifiedAfter <= modifiedBefore)
         {
-            Console.WriteLine($"[PREFLIGHT] File not modified after Acrobat exit — profile '{profileName}' may not exist in Acrobat.");
-            return Results.Json(new { ok = false, error = $"Le Preflight ne semble pas avoir modifié le fichier. Vérifiez que le profil « {profileName} » existe dans Acrobat." });
+            Console.WriteLine($"[PREFLIGHT] File not modified after droplet exit — droplet may have encountered an error.");
+            return Results.Json(new { ok = false, error = "Le Preflight ne semble pas avoir modifié le fichier. Vérifiez que le droplet fonctionne correctement." });
         }
 
         // Move file to "Prêt pour impression"
         var root = BackendUtils.HotfoldersRoot();
         var destDir = Path.Combine(root, "Prêt pour impression");
         Directory.CreateDirectory(destDir);
-        var destPath = Path.Combine(destDir, Path.GetFileName(effectivePath));
-        File.Move(effectivePath, destPath, overwrite: true);
+        var destPath = Path.Combine(destDir, Path.GetFileName(fullPath));
+        File.Move(fullPath, destPath, overwrite: true);
 
         // Update delivery path in MongoDB
-        try { BackendUtils.UpdateDeliveryPath(effectivePath, destPath); } catch (Exception ex2) { Console.WriteLine($"[WARN] UpdateDeliveryPath: {ex2.Message}"); }
+        try { BackendUtils.UpdateDeliveryPath(fullPath, destPath); } catch (Exception ex2) { Console.WriteLine($"[WARN] UpdateDeliveryPath: {ex2.Message}"); }
 
         // Update assignment path
         try
         {
             var assignCol = MongoDbHelper.GetCollection<BsonDocument>("assignments");
-            var oldNorm = effectivePath.Replace("\\", "/");
-            var newNorm = destPath.Replace("\\", "/");
+            var oldNorm = fullPath.Replace("\\", "/");
             assignCol.UpdateMany(
                 Builders<BsonDocument>.Filter.Or(
-                    Builders<BsonDocument>.Filter.Eq("fullPath", effectivePath),
+                    Builders<BsonDocument>.Filter.Eq("fullPath", fullPath),
                     Builders<BsonDocument>.Filter.Eq("fullPath", oldNorm)),
                 Builders<BsonDocument>.Update.Set("fullPath", destPath));
         }
@@ -912,18 +812,17 @@ app.setTimeOut('_ga_preflight()', 2000);
         // Update fabrication path
         try
         {
-            var oldNorm2 = effectivePath.Replace("\\", "/");
-            var newNorm2 = destPath.Replace("\\", "/");
+            var oldNorm2 = fullPath.Replace("\\", "/");
             var fabCol = MongoDbHelper.GetCollection<BsonDocument>("fabrications");
             fabCol.UpdateMany(
                 Builders<BsonDocument>.Filter.Or(
-                    Builders<BsonDocument>.Filter.Eq("fullPath", effectivePath),
+                    Builders<BsonDocument>.Filter.Eq("fullPath", fullPath),
                     Builders<BsonDocument>.Filter.Eq("fullPath", oldNorm2)),
                 Builders<BsonDocument>.Update.Set("fullPath", destPath));
             var fabSheetsCol = MongoDbHelper.GetCollection<BsonDocument>("fabricationSheets");
             fabSheetsCol.UpdateMany(
                 Builders<BsonDocument>.Filter.Or(
-                    Builders<BsonDocument>.Filter.Eq("fullPath", effectivePath),
+                    Builders<BsonDocument>.Filter.Eq("fullPath", fullPath),
                     Builders<BsonDocument>.Filter.Eq("fullPath", oldNorm2)),
                 Builders<BsonDocument>.Update.Set("fullPath", destPath));
         }
@@ -936,15 +835,13 @@ app.setTimeOut('_ga_preflight()', 2000);
             UserLogin = "system",
             UserName = "GestionAtelier",
             Action = "PREFLIGHT",
-            Details = $"Preflight automatique ({profileName}) : {Path.GetFileName(effectivePath)} → Prêt pour impression"
+            Details = $"Preflight droplet ({Path.GetFileName(dropletExe)}) : {Path.GetFileName(fullPath)} → Prêt pour impression"
         });
 
         return Results.Json(new { ok = true });
     }
     catch (Exception ex)
     {
-        // Clean up temp JS on error
-        if (jsPath != null) { try { if (File.Exists(jsPath)) File.Delete(jsPath); } catch { } }
         return Results.Json(new { ok = false, error = ex.Message });
     }
 });

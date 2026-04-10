@@ -20,6 +20,7 @@ export async function initSettingsView() {
         <button class="settings-tab active" data-tab="accounts">Comptes &amp; Rôles</button>
         <button class="settings-tab" data-tab="schedule">Plages horaires</button>
         <button class="settings-tab" data-tab="paths">Chemins d'accès</button>
+        <button class="settings-tab" data-tab="preflight">Preflight</button>
         <button class="settings-tab" data-tab="bat-config">Configuration BAT</button>
         <button class="settings-tab" data-tab="print-engines">Moteurs d'impression</button>
         <button class="settings-tab" data-tab="work-types">Types de travail</button>
@@ -32,6 +33,7 @@ export async function initSettingsView() {
       <div class="settings-panel" id="settings-panel-accounts"></div>
       <div class="settings-panel hidden" id="settings-panel-schedule"></div>
       <div class="settings-panel hidden" id="settings-panel-paths"></div>
+      <div class="settings-panel hidden" id="settings-panel-preflight"></div>
       <div class="settings-panel hidden" id="settings-panel-bat-config"></div>
       <div class="settings-panel hidden" id="settings-panel-print-engines"></div>
       <div class="settings-panel hidden" id="settings-panel-work-types"></div>
@@ -66,6 +68,7 @@ export async function loadSettingsPanel(tabName, panelEl) {
     case "accounts": await renderSettingsAccounts(panelEl); break;
     case "schedule": await renderSettingsSchedule(panelEl); break;
     case "paths": await renderSettingsPaths(panelEl); break;
+    case "preflight": await renderSettingsPreflight(panelEl); break;
     case "integrations":
     case "bat-config": await renderSettingsBatConfig(panelEl); break;
     case "print-engines": await renderSettingsPrintEngines(panelEl); break;
@@ -373,6 +376,51 @@ async function renderSettingsPaths(panel) {
     }).then(r => r.json());
     if (r.ok) showNotification("✅ Chemins enregistrés", "success");
     else alert("Erreur : " + r.error);
+  };
+}
+
+// ======================================================
+// PREFLIGHT — Droplets Acrobat
+// ======================================================
+async function renderSettingsPreflight(panel) {
+  panel.innerHTML = `<h3>Preflight — Droplets Acrobat</h3><p style="color:#6b7280;">Chargement...</p>`;
+  let cfg = { dropletStandard: "", dropletFondPerdu: "" };
+  try {
+    const resp = await fetch("/api/config/preflight", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json());
+    if (resp.ok && resp.config) cfg = resp.config;
+  } catch(e) { /* use defaults */ }
+
+  panel.innerHTML = `
+    <h3>Preflight — Droplets Acrobat</h3>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:20px;">
+      Configurez les chemins vers les droplets Acrobat (.exe) utilisés pour le Preflight automatique.
+      Les droplets sont lancés avec le fichier PDF en argument.
+    </p>
+    <div class="settings-form-group">
+      <label>Droplet Preflight standard (colonne "Preflight")</label>
+      <input type="text" id="preflight-standard" value="${(cfg.dropletStandard || '').replace(/"/g,'&quot;')}" class="settings-input" style="width: 100%; max-width: 600px;" placeholder="Ex: C:\\Droplets\\Preflight_Standard.exe" />
+      <p style="font-size:12px;color:#6b7280;margin-top:4px;">Utilisé pour les fichiers dans la colonne "Corrections" (Preflight).</p>
+    </div>
+    <div class="settings-form-group">
+      <label>Droplet Preflight avec fond perdu (colonne "Preflight avec fond perdu")</label>
+      <input type="text" id="preflight-fondperdu" value="${(cfg.dropletFondPerdu || '').replace(/"/g,'&quot;')}" class="settings-input" style="width: 100%; max-width: 600px;" placeholder="Ex: C:\\Droplets\\Preflight_FondPerdu.exe" />
+      <p style="font-size:12px;color:#6b7280;margin-top:4px;">Utilisé pour les fichiers dans la colonne "Corrections et fond perdu" (Preflight avec fond perdu).</p>
+    </div>
+    <button id="preflight-save" class="btn btn-primary" style="margin-top: 10px;">Enregistrer</button>
+  `;
+
+  panel.querySelector("#preflight-save").onclick = async () => {
+    const dropletStandard = panel.querySelector("#preflight-standard").value.trim();
+    const dropletFondPerdu = panel.querySelector("#preflight-fondperdu").value.trim();
+    const r = await fetch("/api/config/preflight", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ dropletStandard, dropletFondPerdu })
+    }).then(r => r.json());
+    if (r.ok) showNotification("✅ Chemins droplets enregistrés", "success");
+    else showNotification("❌ Erreur : " + (r.error || ""), "error");
   };
 }
 

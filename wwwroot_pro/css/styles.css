@@ -390,41 +390,130 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
 }
 
 /* =========================================================
-   BAT STATUS
+   BAT STATUS — Modern card layout
 ========================================================= */
+.bat-list-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
 .bat-card-modern {
-  background: white; border: 1px solid #e5e7eb; border-radius: 14px;
-  padding: 18px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04); transition: box-shadow 0.2s, transform 0.15s;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+  display: grid;
+  grid-template-columns: 110px 1fr auto;
+  gap: 20px;
+  align-items: center;
+  box-shadow: var(--shadow-md);
+  transition: box-shadow 0.2s, transform 0.18s;
 }
 .bat-card-modern:hover {
-  box-shadow: 0 6px 20px rgba(0,0,0,0.10); transform: translateY(-1px);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-2px);
 }
-.bat-alert-j2 {
-  background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; border-radius: 6px;
-  padding: 6px 12px; font-size: 12px; font-weight: 600; margin-top: 6px;
+.bat-card-thumb {
+  width: 100px;
+  height: 130px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--primary);
+  letter-spacing: 0.05em;
+  overflow: hidden;
+  flex-shrink: 0;
 }
-.bat-tracking { display: flex; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
+.bat-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.bat-card-dossier {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.bat-card-filename {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bat-card-meta {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.bat-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+.bat-card-actions .btn {
+  min-width: 160px;
+  text-align: center;
+  border-radius: 50px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 16px;
+  transition: var(--transition-fast);
+}
+.bat-card-actions .btn:hover {
+  transform: translateY(-1px);
+}
+.bat-tracking {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.bat-tracking-sep {
+  width: 32px;
+  height: 2px;
+  background: var(--border-light);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
 .bat-status-badge, .bat-btn {
-  font-size: 10px; font-weight: 700; padding: 5px 11px; border-radius: var(--radius-sm);
-  display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
-  transition: var(--transition-fast); letter-spacing: 0.01em; text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 7px 14px;
+  border-radius: 50px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  letter-spacing: 0.01em;
   border: 2px solid transparent;
+  white-space: nowrap;
 }
-.bat-sent, .bat-btn.bat-sent { background: #DBEAFE; color: #1E40AF; border-color: #93C5FD; }
+.bat-sent, .bat-btn.bat-sent { background: #EFF6FF; color: #1D4ED8; border-color: #BFDBFE; }
 .bat-sent.active, .bat-btn.bat-sent.active {
   background: #2563EB; color: white; border-color: #2563EB;
-  box-shadow: 0 2px 8px rgba(37,99,235,0.3);
+  box-shadow: 0 3px 10px rgba(37,99,235,0.35);
 }
-.bat-validated, .bat-btn.bat-validated { background: #DCFCE7; color: #166534; border-color: #86EFAC; }
+.bat-validated, .bat-btn.bat-validated { background: #F0FDF4; color: #15803D; border-color: #BBF7D0; }
 .bat-validated.active, .bat-btn.bat-validated.active {
   background: #16A34A; color: white; border-color: #16A34A;
-  box-shadow: 0 2px 8px rgba(22,163,74,0.3);
+  box-shadow: 0 3px 10px rgba(22,163,74,0.35);
 }
-.bat-rejected, .bat-btn.bat-rejected { background: #FEE2E2; color: #991B1B; border-color: #FCA5A5; }
+.bat-rejected, .bat-btn.bat-rejected { background: #FFF1F2; color: #BE123C; border-color: #FECDD3; }
 .bat-rejected.active, .bat-btn.bat-rejected.active {
-  background: #DC2626; color: white; border-color: #DC2626;
-  box-shadow: 0 2px 8px rgba(220,38,38,0.3);
+  background: #E11D48; color: white; border-color: #E11D48;
+  box-shadow: 0 3px 10px rgba(225,29,72,0.35);
 }
 .bat-status-badge.active, .bat-btn.active { animation: batPulse 2s infinite; }
 @keyframes batPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
