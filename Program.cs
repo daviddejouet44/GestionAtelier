@@ -64,25 +64,10 @@ Console.WriteLine("[INFO] ContentRoot = " + app.Environment.ContentRootPath);
 app.UseHotfolderWatcher();
 var tempCopyWatcher = app.UsePrismaOutputWatcher();
 
-// Logging middleware
-app.Use(async (ctx, next) =>
-{
-    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {ctx.Request.Method} {ctx.Request.Path}");
-    await next();
-    try
-    {
-        MongoDbHelper.InsertLog(new LogEntry
-        {
-            Timestamp  = DateTime.Now,
-            Method     = ctx.Request.Method,
-            Path       = ctx.Request.Path.Value ?? "",
-            StatusCode = ctx.Response.StatusCode
-        });
-    }
-    catch (Exception logEx) { Console.WriteLine($"[WARN] MongoDB log failed: {logEx.Message}"); }
-});
+// 1. Routing EN PREMIER
+app.UseRouting();
 
-// Static files for /pro frontend
+// 2. Static files for /pro frontend
 var proPath = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
 Console.WriteLine("[INFO] Expected /pro at " + proPath);
 
@@ -107,8 +92,36 @@ else
     Console.WriteLine("[WARN] wwwroot_pro NOT FOUND at " + proPath);
 }
 
-app.UseRouting();
+// 3. Logging middleware
+app.Use(async (ctx, next) =>
+{
+    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {ctx.Request.Method} {ctx.Request.Path}");
+    await next();
+    try
+    {
+        MongoDbHelper.InsertLog(new LogEntry
+        {
+            Timestamp  = DateTime.Now,
+            Method     = ctx.Request.Method,
+            Path       = ctx.Request.Path.Value ?? "",
+            StatusCode = ctx.Response.StatusCode
+        });
+    }
+    catch (Exception logEx) { Console.WriteLine($"[WARN] MongoDB log failed: {logEx.Message}"); }
+});
 
+// 4. Register all endpoint groups
+app.MapAuthEndpoints();
+app.MapRecycleEndpoints(recyclePath, recycleDays);
+app.MapMiscEndpoints();
+app.MapJobsEndpoints(recyclePath);
+app.MapDeliveryEndpoints();
+app.MapFabricationEndpoints();
+app.MapNotificationEndpoints();
+app.MapDossiersEndpoints();
+app.MapSettingsEndpoints(recyclePath);
+
+// 5. Routes /pro
 app.MapGet("/pro", (HttpContext ctx) =>
 {
     ctx.Response.Redirect("/pro/index.html");
@@ -126,18 +139,7 @@ app.MapFallback("/pro/{*path}", async (HttpContext ctx) =>
     await ctx.Response.SendFileAsync(Path.Combine(proPath, "index.html"));
 });
 
-// Register all endpoint groups
-app.MapAuthEndpoints();
-app.MapRecycleEndpoints(recyclePath, recycleDays);
-app.MapMiscEndpoints();
-app.MapJobsEndpoints(recyclePath);
-app.MapDeliveryEndpoints();
-app.MapFabricationEndpoints();
-app.MapNotificationEndpoints();
-app.MapDossiersEndpoints();
-app.MapSettingsEndpoints(recyclePath);
-
-// Debug endpoint listing
+// 6. Debug endpoint listing
 var summaries = app.Services.GetRequiredService<EndpointDataSource>().Endpoints
     .OfType<RouteEndpoint>()
     .Where(e => e.RoutePattern.RawText?.StartsWith("/api") ?? false)
@@ -150,5 +152,8 @@ foreach (var s in summaries)
     Console.WriteLine($"  {s}");
 Console.WriteLine("[DEBUG] === FIN LISTE ===\n");
 
-app.Run();
+// 7. GC.KeepAlive AVANT app.Run()
 GC.KeepAlive(tempCopyWatcher);
+
+// 8. Run en dernier
+app.Run();
