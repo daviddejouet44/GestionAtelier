@@ -11,21 +11,44 @@ const _columnCache = {};
 let _kanbanDateFilter = ""; // ISO date string "YYYY-MM-DD" or ""
 let _kanbanOperatorFilter = ""; // "all", "mine", or operatorId string
 
+// Module-level variable: true when both Corrections columns are hidden
+let _preflightColumnsHidden = false;
+
+// Default kanban columns (used as fallback if API fails)
+const DEFAULT_KANBAN_COLUMNS = [
+  { folder: "Début de production", label: "Jobs à traiter", color: "#5fa8c4", visible: true, order: 0 },
+  { folder: "Corrections", label: "Preflight", color: "#e0e0e0", visible: true, order: 1 },
+  { folder: "Corrections et fond perdu", label: "Preflight avec fond perdu", color: "#e0e0e0", visible: true, order: 2 },
+  { folder: "Prêt pour impression", label: "En attente", color: "#b8b8b8", visible: true, order: 3 },
+  { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#8f8f8f", visible: true, order: 4 },
+  { folder: "Fiery", label: "Fiery", color: "#8f8f8f", visible: true, order: 5 },
+  { folder: "Impression en cours", label: "Impression en cours", color: "#7a7a7a", visible: true, order: 6 },
+  { folder: "Façonnage", label: "Façonnage", color: "#666666", visible: true, order: 7 },
+  { folder: "Fin de production", label: "Fin de production", color: "#22c55e", visible: true, order: 8 }
+];
+
 // ======================================================
 // BUILD KANBAN
 // ======================================================
 export async function buildKanban() {
-  const folderConfig = [
-    { folder: "Début de production", label: "Jobs à traiter", color: "#5fa8c4" },
-    { folder: "Corrections", label: "Preflight", color: "#e0e0e0" },
-    { folder: "Corrections et fond perdu", label: "Preflight avec fond perdu", color: "#e0e0e0" },
-    { folder: "Prêt pour impression", label: "En attente", color: "#b8b8b8" },
-    { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#8f8f8f" },
-    { folder: "Fiery", label: "Fiery", color: "#8f8f8f" },
-    { folder: "Impression en cours", label: "Impression en cours", color: "#7a7a7a" },
-    { folder: "Façonnage", label: "Façonnage", color: "#666666" },
-    { folder: "Fin de production", label: "Fin de production", color: "#22c55e" }
-  ];
+  // Load kanban column config from API (accessible to all profiles)
+  let allColumns = DEFAULT_KANBAN_COLUMNS;
+  try {
+    const resp = await fetch("/api/config/kanban-columns").then(r => r.json()).catch(() => null);
+    if (resp && resp.ok && Array.isArray(resp.columns) && resp.columns.length > 0) {
+      allColumns = resp.columns;
+    }
+  } catch(e) { /* use defaults */ }
+
+  // Filter visible columns and sort by order
+  const folderConfig = allColumns
+    .filter(c => c.visible !== false)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  // Determine if preflight columns are hidden
+  const correctionsCol = allColumns.find(c => c.folder === "Corrections");
+  const correctionsFpCol = allColumns.find(c => c.folder === "Corrections et fond perdu");
+  _preflightColumnsHidden = (correctionsCol?.visible === false) && (correctionsFpCol?.visible === false);
 
   kanbanDiv.innerHTML = "";
   kanbanDiv.style.gridTemplateColumns = "repeat(3, 1fr)";
@@ -334,24 +357,24 @@ export async function updateKanbanSummary() {
   if (!summaryEl) return;
 
   try {
-    const folders = ["Début de production","Corrections","Corrections et fond perdu","Prêt pour impression","PrismaPrepare","Fiery","Impression en cours","Façonnage","Fin de production"];
+    // Load dynamic config (use defaults if API fails)
+    let allColumns = DEFAULT_KANBAN_COLUMNS;
+    try {
+      const resp = await fetch("/api/config/kanban-columns").then(r => r.json()).catch(() => null);
+      if (resp && resp.ok && Array.isArray(resp.columns) && resp.columns.length > 0) {
+        allColumns = resp.columns;
+      }
+    } catch(e) { /* use defaults */ }
+
+    const folders = allColumns.filter(c => c.visible !== false).map(c => c.folder);
     const counts = {};
     for (const f of folders) {
       const jobs = await fetch(`/api/jobs?folder=${encodeURIComponent(f)}`).then(r => r.json()).catch(() => []);
       counts[f] = Array.isArray(jobs) ? jobs.length : 0;
     }
 
-    const labelMap = {
-      "Début de production": "Jobs à traiter",
-      "Corrections": "Preflight",
-      "Corrections et fond perdu": "Preflight fp",
-      "Prêt pour impression": "En attente",
-      "PrismaPrepare": "Prisma",
-      "Fiery": "Fiery",
-      "Impression en cours": "Impression",
-      "Façonnage": "Façonnage",
-      "Fin de production": "Fin prod"
-    };
+    const labelMap = {};
+    allColumns.forEach(c => { labelMap[c.folder] = c.label; });
 
     const today = new Date(); today.setHours(0,0,0,0);
     const urgent = Object.entries(deliveriesByPath)
@@ -641,6 +664,87 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         btnPlan.textContent = "📅 Planifier";
         btnPlan.onclick = () => { if (window._openPlanificationCalendar) window._openPlanificationCalendar(full); };
         actions.appendChild(btnPlan);
+
+        // Bouton Preflight conditionnel — visible uniquement si les tuiles Preflight sont masquées
+        if (_preflightColumnsHidden) {
+          const btnPreflightDirect = document.createElement("button");
+          btnPreflightDirect.className = "btn btn-sm btn-primary";
+          btnPreflightDirect.textContent = "▶ Preflight ▾";
+          btnPreflightDirect.title = "Lancer le Preflight avec le droplet de votre choix";
+          btnPreflightDirect.onclick = async (e) => {
+            e.stopPropagation();
+            document.querySelectorAll(".preflight-direct-dropdown").forEach(d => d.remove());
+
+            // Fetch available droplets
+            let droplets = [];
+            try {
+              const dr = await fetch("/api/config/preflight/droplets").then(r => r.json()).catch(() => null);
+              if (dr && dr.ok && Array.isArray(dr.droplets)) droplets = dr.droplets;
+            } catch(ex) { /* ignore */ }
+
+            if (droplets.length === 0) {
+              showNotification("❌ Aucun droplet configuré. Configurez-les dans Paramétrage > Preflight.", "error");
+              return;
+            }
+
+            const dropdown = document.createElement("div");
+            dropdown.className = "preflight-direct-dropdown";
+            dropdown.style.cssText = "position:fixed;background:white;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.18);z-index:9999;min-width:200px;overflow:hidden;padding:4px 0;";
+
+            droplets.forEach(dp => {
+              const item = document.createElement("div");
+              item.style.cssText = "padding:10px 16px;cursor:pointer;font-size:13px;color:#111827;transition:background 0.15s;white-space:nowrap;";
+              item.textContent = dp.name || dp.path;
+              item.onmouseenter = () => item.style.background = "#f3f4f6";
+              item.onmouseleave = () => item.style.background = "";
+              item.onclick = async () => {
+                dropdown.remove();
+                const fileName = full.split(/[\\/]/).pop();
+                btnPreflightDirect.disabled = true;
+                btnPreflightDirect.textContent = "⏳ Preflight...";
+                showNotification(`⏳ Preflight en cours pour ${fileName}...`, "info");
+                try {
+                  const r = await fetch("/api/acrobat/preflight", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ fullPath: full, dropletPath: dp.path })
+                  }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+                  if (r.ok) {
+                    showNotification(`✅ Preflight terminé — ${fileName} déplacé vers Prêt pour impression`, "success");
+                    await refreshKanban();
+                  } else {
+                    showNotification("❌ Preflight : " + (r.error || "Erreur inconnue"), "error");
+                    btnPreflightDirect.disabled = false;
+                    btnPreflightDirect.textContent = "▶ Preflight ▾";
+                  }
+                } catch (err) {
+                  showNotification("❌ Preflight : " + err.message, "error");
+                  btnPreflightDirect.disabled = false;
+                  btnPreflightDirect.textContent = "▶ Preflight ▾";
+                }
+              };
+              dropdown.appendChild(item);
+            });
+
+            document.body.appendChild(dropdown);
+            const rect = btnPreflightDirect.getBoundingClientRect();
+            const dropW = 200;
+            let left = rect.left + window.scrollX;
+            if (left + dropW > window.innerWidth) left = window.innerWidth - dropW - 8;
+            dropdown.style.top = (rect.bottom + window.scrollY + 4) + "px";
+            dropdown.style.left = left + "px";
+
+            setTimeout(() => {
+              document.addEventListener("click", function closePfDropdown(ev) {
+                if (!dropdown.contains(ev.target)) {
+                  dropdown.remove();
+                  document.removeEventListener("click", closePfDropdown);
+                }
+              });
+            }, 10);
+          };
+          actions.appendChild(btnPreflightDirect);
+        }
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
           actions.appendChild(btnDelete);
