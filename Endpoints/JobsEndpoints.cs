@@ -729,24 +729,33 @@ app.MapPost("/api/acrobat/preflight", async (HttpContext ctx) =>
         var doc = await JsonDocument.ParseAsync(ctx.Request.Body);
         if (!doc.RootElement.TryGetProperty("fullPath", out var fpEl))
             return Results.Json(new { ok = false, error = "fullPath manquant" });
-        if (!doc.RootElement.TryGetProperty("folder", out var folderEl))
-            return Results.Json(new { ok = false, error = "folder manquant" });
 
         var fullPath = Path.GetFullPath(fpEl.GetString() ?? "");
-        var folder = folderEl.GetString() ?? "";
+        var folder = doc.RootElement.TryGetProperty("folder", out var folderEl) ? folderEl.GetString() ?? "" : "";
 
         if (!File.Exists(fullPath))
             return Results.Json(new { ok = false, error = "Fichier introuvable" });
 
-        // Get droplet paths from settings
-        var preflightCfg = MongoDbHelper.GetSettings<PreflightSettings>("preflight") ?? new PreflightSettings();
+        // Get droplet path: direct dropletPath param takes precedence over folder-based selection
         string dropletExe;
-        if (folder == "Corrections")
-            dropletExe = preflightCfg.DropletStandard;
-        else if (folder == "Corrections et fond perdu")
-            dropletExe = preflightCfg.DropletFondPerdu;
+        if (doc.RootElement.TryGetProperty("dropletPath", out var dpEl) && !string.IsNullOrWhiteSpace(dpEl.GetString()))
+        {
+            // Mode "droplet direct" — utilisé quand les tuiles Preflight sont masquées
+            dropletExe = dpEl.GetString()!;
+        }
         else
-            return Results.Json(new { ok = false, error = $"Dossier non pris en charge pour le Preflight : {folder}" });
+        {
+            // Mode classique — choisir le droplet en fonction du folder
+            var preflightCfg = MongoDbHelper.GetSettings<PreflightSettings>("preflight") ?? new PreflightSettings();
+            if (string.IsNullOrWhiteSpace(folder))
+                return Results.Json(new { ok = false, error = "Paramètre 'folder' requis quand 'dropletPath' n'est pas fourni." });
+            if (folder == "Corrections")
+                dropletExe = preflightCfg.DropletStandard;
+            else if (folder == "Corrections et fond perdu")
+                dropletExe = preflightCfg.DropletFondPerdu;
+            else
+                return Results.Json(new { ok = false, error = $"Dossier non pris en charge pour le Preflight en mode automatique : {folder}" });
+        }
 
         if (string.IsNullOrWhiteSpace(dropletExe))
             return Results.Json(new { ok = false, error = $"Chemin du droplet non configuré pour '{folder}'. Configurez-le dans Paramétrage > Preflight." });

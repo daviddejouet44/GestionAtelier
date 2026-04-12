@@ -51,5 +51,41 @@ public class PreflightSettings
 
     [JsonPropertyName("dropletFondPerdu")]
     public string DropletFondPerdu { get; set; } = "";
+
+    [JsonPropertyName("droplets")]
+    public List<DropletConfig> Droplets { get; set; } = new();
+}
+
+public class DropletConfig
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = "";
+}
+
+public class KanbanColumnConfig
+{
+    [JsonPropertyName("folder")]
+    public string Folder { get; set; } = "";
+
+    [JsonPropertyName("label")]
+    public string Label { get; set; } = "";
+
+    [JsonPropertyName("color")]
+    public string Color { get; set; } = "#8f8f8f";
+
+    [JsonPropertyName("visible")]
+    public bool Visible { get; set; } = true;
+
+    [JsonPropertyName("order")]
+    public int Order { get; set; } = 0;
+}
+
+public class KanbanSettings
+{
+    [JsonPropertyName("columns")]
+    public List<KanbanColumnConfig> Columns { get; set; } = new();
 }
 

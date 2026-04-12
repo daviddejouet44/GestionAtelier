@@ -1158,7 +1158,7 @@ app.MapGet("/api/config/preflight", (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var cfg = MongoDbHelper.GetSettings<PreflightSettings>("preflight") ?? new PreflightSettings();
-        return Results.Json(new { ok = true, config = new { dropletStandard = cfg.DropletStandard, dropletFondPerdu = cfg.DropletFondPerdu } });
+        return Results.Json(new { ok = true, config = new { dropletStandard = cfg.DropletStandard, dropletFondPerdu = cfg.DropletFondPerdu, droplets = cfg.Droplets } });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
@@ -1178,8 +1178,92 @@ app.MapPut("/api/config/preflight", async (HttpContext ctx) =>
 
         if (json.TryGetProperty("dropletStandard", out var ds)) existing.DropletStandard = ds.GetString() ?? existing.DropletStandard;
         if (json.TryGetProperty("dropletFondPerdu", out var df)) existing.DropletFondPerdu = df.GetString() ?? existing.DropletFondPerdu;
+        if (json.TryGetProperty("droplets", out var dropletsEl) && dropletsEl.ValueKind == JsonValueKind.Array)
+        {
+            existing.Droplets = new List<DropletConfig>();
+            foreach (var d in dropletsEl.EnumerateArray())
+            {
+                var name = d.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+                var path = d.TryGetProperty("path", out var p) ? p.GetString() ?? "" : "";
+                existing.Droplets.Add(new DropletConfig { Name = name, Path = path });
+            }
+        }
 
         MongoDbHelper.UpsertSettings("preflight", existing);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// PREFLIGHT — liste des droplets (accessible à tous)
+// ======================================================
+app.MapGet("/api/config/preflight/droplets", () =>
+{
+    try
+    {
+        var cfg = MongoDbHelper.GetSettings<PreflightSettings>("preflight") ?? new PreflightSettings();
+        return Results.Json(new { ok = true, droplets = cfg.Droplets });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// KANBAN COLUMNS CONFIG
+// ======================================================
+static List<KanbanColumnConfig> GetDefaultKanbanColumns() => new()
+{
+    new KanbanColumnConfig { Folder = "Début de production", Label = "Jobs à traiter",           Color = "#5fa8c4", Visible = true, Order = 0 },
+    new KanbanColumnConfig { Folder = "Corrections",         Label = "Preflight",                Color = "#e0e0e0", Visible = true, Order = 1 },
+    new KanbanColumnConfig { Folder = "Corrections et fond perdu", Label = "Preflight avec fond perdu", Color = "#e0e0e0", Visible = true, Order = 2 },
+    new KanbanColumnConfig { Folder = "Prêt pour impression", Label = "En attente",              Color = "#b8b8b8", Visible = true, Order = 3 },
+    new KanbanColumnConfig { Folder = "PrismaPrepare",        Label = "PrismaPrepare",            Color = "#8f8f8f", Visible = true, Order = 4 },
+    new KanbanColumnConfig { Folder = "Fiery",                Label = "Fiery",                    Color = "#8f8f8f", Visible = true, Order = 5 },
+    new KanbanColumnConfig { Folder = "Impression en cours",  Label = "Impression en cours",      Color = "#7a7a7a", Visible = true, Order = 6 },
+    new KanbanColumnConfig { Folder = "Façonnage",            Label = "Façonnage",                Color = "#666666", Visible = true, Order = 7 },
+    new KanbanColumnConfig { Folder = "Fin de production",    Label = "Fin de production",        Color = "#22c55e", Visible = true, Order = 8 },
+};
+
+app.MapGet("/api/config/kanban-columns", () =>
+{
+    try
+    {
+        var cfg = MongoDbHelper.GetSettings<KanbanSettings>("kanbanColumns");
+        if (cfg == null || cfg.Columns == null || cfg.Columns.Count == 0)
+            return Results.Json(new { ok = true, columns = GetDefaultKanbanColumns() });
+        return Results.Json(new { ok = true, columns = cfg.Columns });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapPut("/api/config/kanban-columns", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        if (!json.TryGetProperty("columns", out var colsEl) || colsEl.ValueKind != JsonValueKind.Array)
+            return Results.Json(new { ok = false, error = "columns manquant" });
+
+        var columns = new List<KanbanColumnConfig>();
+        foreach (var c in colsEl.EnumerateArray())
+        {
+            columns.Add(new KanbanColumnConfig
+            {
+                Folder  = c.TryGetProperty("folder",  out var f)   ? f.GetString()  ?? "" : "",
+                Label   = c.TryGetProperty("label",   out var l)   ? l.GetString()  ?? "" : "",
+                Color   = c.TryGetProperty("color",   out var col) ? col.GetString() ?? "#8f8f8f" : "#8f8f8f",
+                Visible = c.TryGetProperty("visible", out var v)   ? v.GetBoolean() : true,
+                Order   = c.TryGetProperty("order",   out var o)   ? o.GetInt32()   : 0,
+            });
+        }
+
+        MongoDbHelper.UpsertSettings("kanbanColumns", new KanbanSettings { Columns = columns });
         return Results.Json(new { ok = true });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
