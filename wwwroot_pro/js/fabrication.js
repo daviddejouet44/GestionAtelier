@@ -147,9 +147,9 @@ function updateDateLivraison() {
   const depart = fabDateDepart.value;
   if (!depart) return;
   const departDate = new Date(depart);
-  departDate.setHours(departDate.getHours() + _deliveryDelayHours);
+  const livraisonDate = new Date(departDate.getTime() + _deliveryDelayHours * 3600000);
   if (!fabDateLivraison._manuallyEdited) {
-    fabDateLivraison.value = departDate.toISOString().split("T")[0];
+    fabDateLivraison.value = livraisonDate.toISOString().split("T")[0];
   }
   updatePlanningMachine();
 }
