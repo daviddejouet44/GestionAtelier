@@ -12,7 +12,8 @@ export const state = {
   dateFilter: "",        // was _kanbanDateFilter
   operatorFilter: "",    // was _kanbanOperatorFilter
   preflightColumnsHidden: false,  // was _preflightColumnsHidden
-  columnCache: {}        // was _columnCache
+  columnCache: {},       // was _columnCache
+  visibleActionsMap: {}  // folder → string[] | null (null = show all)
 };
 
 // Default kanban columns (used as fallback if API fails)
@@ -50,6 +51,16 @@ export async function buildKanban() {
   const correctionsCol = allColumns.find(c => c.folder === "Corrections");
   const correctionsFpCol = allColumns.find(c => c.folder === "Corrections et fond perdu");
   state.preflightColumnsHidden = (correctionsCol?.visible === false) && (correctionsFpCol?.visible === false);
+
+  // Build visible actions map: folder → string[] | null
+  state.visibleActionsMap = {};
+  for (const c of allColumns) {
+    if (Array.isArray(c.visibleActions) && c.visibleActions.length > 0) {
+      state.visibleActionsMap[c.folder] = c.visibleActions;
+    } else {
+      state.visibleActionsMap[c.folder] = null; // null = show all (retrocompat)
+    }
+  }
 
   kanbanDiv.innerHTML = "";
   kanbanDiv.style.gridTemplateColumns = "repeat(3, 1fr)";

@@ -84,11 +84,26 @@ public class KanbanColumnConfig
 
     [JsonPropertyName("order")]
     public int Order { get; set; } = 0;
+
+    [JsonPropertyName("visibleActions")]
+    public List<string>? VisibleActions { get; set; }
 }
 
 public class KanbanSettings
 {
     [JsonPropertyName("columns")]
     public List<KanbanColumnConfig> Columns { get; set; } = new();
+}
+
+public class BatMailTemplate
+{
+    [JsonPropertyName("to")]
+    public string To { get; set; } = "";
+
+    [JsonPropertyName("subject")]
+    public string Subject { get; set; } = "BAT - Dossier {{numeroDossier}} - {{nomClient}}";
+
+    [JsonPropertyName("body")]
+    public string Body { get; set; } = "Bonjour,\n\nVeuillez trouver ci-joint le BAT pour le dossier {{numeroDossier}}.\n\nCordialement,";
 }
 

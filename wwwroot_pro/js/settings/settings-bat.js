@@ -22,19 +22,23 @@ export async function renderSettingsBatConfig(panel) {
   let intCfg = { tempCopyPath: "", prismaPrepareOutputPath: "" };
   let batCmd = "";
   let batAlertDelayHours = 48;
+  let batSimpleDropletPath = "";
   let routings = [];
   let types = [];
+  let mailTemplate = { to: "", subject: "BAT - Dossier {{numeroDossier}} - {{nomClient}}", body: "Bonjour,\n\nVeuillez trouver ci-joint le BAT pour le dossier {{numeroDossier}}.\n\nCordialement," };
   try {
-    const [r1, r2, r3, r4] = await Promise.all([
+    const [r1, r2, r3, r4, r5] = await Promise.all([
       fetch("/api/config/integrations", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
       fetch("/api/config/bat-command").then(r => r.json()).catch(() => ({})),
       fetch("/api/config/hotfolder-routing").then(r => r.json()).catch(() => []),
-      fetch("/api/config/work-types").then(r => r.json()).catch(() => [])
+      fetch("/api/config/work-types").then(r => r.json()).catch(() => []),
+      fetch("/api/config/bat-mail-template").then(r => r.json()).catch(() => ({}))
     ]);
     if (r1.ok && r1.config) intCfg = r1.config;
-    if (r2.ok) { batCmd = r2.command || ""; batAlertDelayHours = r2.batAlertDelayHours ?? 48; }
+    if (r2.ok) { batCmd = r2.command || ""; batAlertDelayHours = r2.batAlertDelayHours ?? 48; batSimpleDropletPath = r2.batSimpleDropletPath || ""; }
     if (Array.isArray(r3)) routings = r3;
     if (Array.isArray(r4)) types = r4;
+    if (r5.ok && r5.template) mailTemplate = r5.template;
   } catch(e) { /* use defaults */ }
 
   const typeOptions = types.map(t => `<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join("");
@@ -97,11 +101,55 @@ export async function renderSettingsBatConfig(panel) {
         <input type="text" id="bat-cmd-input" value="${(batCmd || '').replace(/"/g,'&quot;')}" class="settings-input settings-input-wide" />
       </div>
       <div class="settings-form-group" style="margin-top:16px;">
+        <label>Chemin du droplet BAT Simple</label>
+        <input type="text" id="bat-simple-droplet-input" value="${(batSimpleDropletPath || '').replace(/"/g,'&quot;')}" class="settings-input settings-input-wide" placeholder="Ex: C:\\Droplets\\MonDroplet.exe" />
+        <p style="color:#6b7280;font-size:12px;margin-top:4px;">Exécutable lancé par le bouton "BAT Simple" avec le fichier en paramètre.</p>
+      </div>
+      <div class="settings-form-group" style="margin-top:16px;">
         <label>Délai alerte BAT sans réponse (heures)</label>
         <input type="number" id="bat-alert-delay-input" value="${batAlertDelayHours}" min="1" class="settings-input" style="width:120px;" />
         <p style="color:#6b7280;font-size:12px;margin-top:4px;">Affiche une alerte si un BAT reste sans validation/refus après ce délai. Défaut : 48h.</p>
       </div>
       <button id="bat-cmd-save" class="btn btn-primary">Enregistrer la commande</button>
+    </div>
+
+    <div class="settings-section-card">
+      <h4>Template email BAT</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">Personnalisez le mail ouvert dans le client de messagerie lorsque vous cliquez sur "Envoyé" dans l'onglet BAT.</p>
+      <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;">
+        <div style="flex:1;min-width:300px;">
+          <div class="settings-form-group">
+            <label>Destinataire (To)</label>
+            <input type="text" id="bat-mail-to" value="${esc(mailTemplate.to || '')}" class="settings-input settings-input-wide" placeholder="client@example.com (laisser vide pour utiliser le mail client)" />
+          </div>
+          <div class="settings-form-group" style="margin-top:12px;">
+            <label>Objet du mail</label>
+            <input type="text" id="bat-mail-subject" value="${esc(mailTemplate.subject || '')}" class="settings-input settings-input-wide" placeholder="BAT - Dossier {{numeroDossier}} - {{nomClient}}" />
+          </div>
+          <div class="settings-form-group" style="margin-top:12px;">
+            <label>Corps du mail</label>
+            <textarea id="bat-mail-body" class="settings-input settings-input-wide" rows="6" style="font-family:monospace;font-size:12px;">${esc(mailTemplate.body || '')}</textarea>
+          </div>
+          <button id="bat-mail-save" class="btn btn-primary" style="margin-top:10px;">Enregistrer le template</button>
+        </div>
+        <div style="flex:0 0 240px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;">
+          <p style="font-size:12px;font-weight:600;color:#374151;margin:0 0 10px;">Variables disponibles</p>
+          <p style="font-size:11px;color:#6b7280;margin:0 0 8px;">Copiez-collez dans l'objet ou le corps du mail :</p>
+          ${[
+            ['{{numeroDossier}}', 'N° du dossier'],
+            ['{{nomClient}}',     'Nom du client'],
+            ['{{nomFichier}}',    'Nom du fichier'],
+            ['{{dateCreation}}',  'Date de création'],
+            ['{{typeTravail}}',   'Type de travail'],
+            ['{{quantite}}',      'Quantité'],
+            ['{{operateur}}',     'Opérateur'],
+            ['{{dateLivraison}}', 'Date de livraison'],
+          ].map(([v, l]) => `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f3f4f6;font-size:11px;">
+            <code style="color:#1d4ed8;">${v}</code>
+            <span style="color:#6b7280;">${l}</span>
+          </div>`).join('')}
+        </div>
+      </div>
     </div>
   `;
 
@@ -162,15 +210,30 @@ export async function renderSettingsBatConfig(panel) {
   // BAT command save
   panel.querySelector("#bat-cmd-save").onclick = async () => {
     const command = panel.querySelector("#bat-cmd-input").value;
+    const batSimpleDropletPathNew = panel.querySelector("#bat-simple-droplet-input").value.trim();
     const rawDelay = parseInt(panel.querySelector("#bat-alert-delay-input").value);
     const batAlertDelayHoursNew = (rawDelay > 0) ? rawDelay : 48;
     const r = await fetch("/api/config/bat-command", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ command, batAlertDelayHours: batAlertDelayHoursNew })
+      body: JSON.stringify({ command, batAlertDelayHours: batAlertDelayHoursNew, batSimpleDropletPath: batSimpleDropletPathNew })
     }).then(r => r.json());
     if (r.ok) showNotification("Commande BAT enregistrée", "success");
     else alert("Erreur");
+  };
+
+  // BAT mail template save
+  panel.querySelector("#bat-mail-save").onclick = async () => {
+    const to = panel.querySelector("#bat-mail-to").value.trim();
+    const subject = panel.querySelector("#bat-mail-subject").value;
+    const body = panel.querySelector("#bat-mail-body").value;
+    const r = await fetch("/api/config/bat-mail-template", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ template: { to, subject, body } })
+    }).then(r => r.json());
+    if (r.ok) showNotification("✅ Template email BAT enregistré", "success");
+    else alert("Erreur : " + (r.error || ""));
   };
 }
 
