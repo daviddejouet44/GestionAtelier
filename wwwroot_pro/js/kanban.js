@@ -596,10 +596,6 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       sub.textContent = new Date(job.modified).toLocaleDateString("fr-FR");
       centerDiv.appendChild(sub);
 
-      const pressEl = document.createElement("p");
-      pressEl.style.cssText = "margin:2px 0 0;font-size:11px;color:#6b7280;";
-      centerDiv.appendChild(pressEl);
-
       layout.appendChild(centerDiv);
 
       // Right: delivery date + operator
@@ -633,7 +629,12 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName))
         .then(r => r.json()).then(d => {
           if (d && d.numeroDossier) dossierEl.textContent = d.numeroDossier;
-          if (d && d.moteurImpression) pressEl.textContent = d.moteurImpression;
+          if (d && d.moteurImpression) {
+            const pressEl = document.createElement("p");
+            pressEl.style.cssText = "margin:2px 0 0;font-size:11px;color:#6b7280;";
+            pressEl.textContent = d.moteurImpression;
+            centerDiv.appendChild(pressEl);
+          }
         }).catch(() => {});
 
       const actions = document.createElement("div");

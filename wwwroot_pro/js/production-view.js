@@ -32,7 +32,6 @@ function getStageProgress(stage) {
 
 function getStageColor(progress) {
   if (progress === 0) return "#6b7280";
-  if (progress <= 15) return "#f59e0b";
   if (progress <= 25) return "#f59e0b";
   if (progress <= 35) return "#8b5cf6";
   if (progress <= 50) return "#3b82f6";
