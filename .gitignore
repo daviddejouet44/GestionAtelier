@@ -1,2 +1,30 @@
+# Build outputs
 bin/
 obj/
+out/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.DotSettings.user
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs.txt
+logs/
+
+# Publish output
+publish/
+
+# NuGet
+*.nupkg
+
+# Runtime data
+appsettings.Development.json
