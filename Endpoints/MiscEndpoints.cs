@@ -331,5 +331,87 @@ app.MapDelete("/api/logo", (HttpContext ctx) =>
         return Results.Json(new { ok = false, error = ex.Message });
     }
 });
+
+// ======================================================
+// LOGO CONNEXION — Upload et affichage (logo dédié à la page de connexion)
+// ======================================================
+app.MapGet("/api/logo-login", (HttpContext ctx) =>
+{
+    var logoDir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
+    string? found = null;
+    foreach (var ext in new[] { ".png", ".jpg", ".jpeg", ".gif", ".webp" })
+    {
+        var candidate = Path.Combine(logoDir, "logo-login" + ext);
+        if (File.Exists(candidate)) { found = candidate; break; }
+    }
+    if (found == null)
+        return Results.NotFound();
+    var provider = new FileExtensionContentTypeProvider();
+    if (!provider.TryGetContentType(found, out var ct)) ct = "image/png";
+    ctx.Response.Headers["Cache-Control"] = "no-cache, no-store";
+    return Results.File(File.OpenRead(found), ct);
+});
+
+app.MapPost("/api/logo-login", async (HttpContext ctx) =>
+{
+    try
+    {
+        var form = await ctx.Request.ReadFormAsync();
+        var file = form.Files.GetFile("file");
+        if (file == null || file.Length == 0)
+            return Results.Json(new { ok = false, error = "Fichier manquant" });
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".gif" && ext != ".webp")
+            return Results.Json(new { ok = false, error = "Format non supporté (PNG, JPG, GIF, WEBP)" });
+
+        var logoDir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
+        Directory.CreateDirectory(logoDir);
+
+        foreach (var old in Directory.GetFiles(logoDir, "logo-login.*"))
+        {
+            if (Path.GetFileNameWithoutExtension(old).Equals("logo-login", StringComparison.OrdinalIgnoreCase))
+                File.Delete(old);
+        }
+
+        var logoPath = Path.Combine(logoDir, "logo-login" + ext);
+        using var stream = File.Create(logoPath);
+        await file.CopyToAsync(stream);
+
+        if (ext != ".png")
+        {
+            var pngPath = Path.Combine(logoDir, "logo-login.png");
+            File.Copy(logoPath, pngPath, overwrite: true);
+        }
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ERROR] POST /api/logo-login: {ex.Message}");
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapDelete("/api/logo-login", (HttpContext ctx) =>
+{
+    try
+    {
+        var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
+        if (Directory.Exists(dir))
+        {
+            foreach (var logoFile in Directory.GetFiles(dir, "logo-login.*"))
+            {
+                if (Path.GetFileNameWithoutExtension(logoFile).Equals("logo-login", StringComparison.OrdinalIgnoreCase))
+                    File.Delete(logoFile);
+            }
+        }
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
     }
 }

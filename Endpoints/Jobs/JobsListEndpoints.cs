@@ -24,17 +24,31 @@ public static class JobsListEndpoints
 {
     public static void MapJobsListEndpoints(this WebApplication app, string recyclePath)
     {
-app.MapGet("/api/jobs", (string folder) =>
+app.MapGet("/api/jobs", (HttpContext ctx) =>
 {
     try
     {
-        var root = BackendUtils.HotfoldersRoot();
-        // Security: reject path traversal sequences before combining
-        if (folder.Contains("..") || Path.IsPathRooted(folder))
-            return Results.Json(new { ok = false, error = "Dossier non autorisé" });
-        var dir = Path.GetFullPath(Path.Combine(root, folder));
-        if (!dir.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-            return Results.Json(new { ok = false, error = "Dossier non autorisé" });
+        var folder = ctx.Request.Query["folder"].ToString();
+        var folderPathParam = ctx.Request.Query["folderPath"].ToString();
+
+        string dir;
+        if (!string.IsNullOrWhiteSpace(folderPathParam))
+        {
+            // Admin-configured physical path: use directly (no traversal allowed)
+            if (folderPathParam.Contains(".."))
+                return Results.Json(new { ok = false, error = "Chemin non autorisé" });
+            dir = Path.GetFullPath(folderPathParam);
+        }
+        else
+        {
+            var root = BackendUtils.HotfoldersRoot();
+            // Security: reject path traversal sequences before combining
+            if (string.IsNullOrWhiteSpace(folder) || folder.Contains("..") || Path.IsPathRooted(folder))
+                return Results.Json(new { ok = false, error = "Dossier non autorisé" });
+            dir = Path.GetFullPath(Path.Combine(root, folder));
+            if (!dir.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                return Results.Json(new { ok = false, error = "Dossier non autorisé" });
+        }
         if (!Directory.Exists(dir))
             return Results.Json(Array.Empty<object>());
 

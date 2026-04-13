@@ -7,9 +7,12 @@ import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js';
 // ======================================================
 // COLONNE KANBAN (opérateur)
 // ======================================================
-export async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = false) {
+export async function refreshKanbanColumnOperator(folderName, q, sort, col, readOnly = false, folderPath = null) {
   try {
-    const jobs = await fetch(`/api/jobs?folder=${encodeURIComponent(folderName)}`)
+    const jobsUrl = folderPath
+      ? `/api/jobs?folder=${encodeURIComponent(folderName)}&folderPath=${encodeURIComponent(folderPath)}`
+      : `/api/jobs?folder=${encodeURIComponent(folderName)}`;
+    const jobs = await fetch(jobsUrl)
       .then(r => r.json())
       .catch(() => []);
 
