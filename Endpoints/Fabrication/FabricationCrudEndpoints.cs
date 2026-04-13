@@ -946,7 +946,7 @@ app.MapPost("/api/bat/simple", async (HttpContext ctx) =>
         var psi = new System.Diagnostics.ProcessStartInfo(dropletPath, $"\"{fullPath}\"")
         {
             UseShellExecute = true,
-            WorkingDirectory = Path.GetDirectoryName(dropletPath)!
+            WorkingDirectory = Path.GetDirectoryName(dropletPath) ?? Path.GetDirectoryName(fullPath) ?? ""
         };
         System.Diagnostics.Process.Start(psi);
 
