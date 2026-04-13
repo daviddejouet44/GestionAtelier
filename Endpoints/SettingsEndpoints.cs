@@ -787,6 +787,8 @@ app.MapGet("/api/config/paper-catalog", () =>
         // Look for Paper Catalog.xml in app directory or common locations
         var searchPaths = new[]
         {
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data", "Paper Catalog.xml"),
+            Path.Combine(Directory.GetCurrentDirectory(), "data", "Paper Catalog.xml"),
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Paper Catalog.xml"),
             Path.Combine(Directory.GetCurrentDirectory(), "Paper Catalog.xml"),
             Path.Combine(BackendUtils.HotfoldersRoot(), "..", "Paper Catalog.xml"),
