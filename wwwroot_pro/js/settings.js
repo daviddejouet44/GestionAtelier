@@ -494,11 +494,11 @@ async function renderSettingsKanbanColumns(panel) {
   panel.innerHTML = `
     <h3>Tuiles Kanban</h3>
     <p style="font-size:13px;color:#6b7280;margin-bottom:20px;">
-      Configurez les tuiles affichées dans le Kanban : nom du dossier physique, label affiché, couleur, visibilité et ordre.
+      Configurez les tuiles affichées dans le Kanban : chemin complet du dossier physique, label affiché, couleur, visibilité et ordre.
     </p>
-    <div id="kanban-cols-list" style="display:flex;flex-direction:column;gap:8px;max-width:900px;margin-bottom:16px;">
-      <div style="display:grid;grid-template-columns:200px 200px 80px 70px 70px;gap:8px;font-size:12px;font-weight:600;color:#6b7280;padding:0 4px;">
-        <span>Dossier physique</span>
+    <div id="kanban-cols-list" style="display:flex;flex-direction:column;gap:8px;max-width:1000px;margin-bottom:16px;">
+      <div style="display:grid;grid-template-columns:1fr 200px 80px 70px 80px;gap:8px;font-size:12px;font-weight:600;color:#6b7280;padding:0 4px;">
+        <span>Chemin complet du dossier</span>
         <span>Label affiché</span>
         <span>Couleur</span>
         <span>Visible</span>
@@ -514,15 +514,15 @@ async function renderSettingsKanbanColumns(panel) {
   function renderRow(col) {
     const row = document.createElement("div");
     row.className = "kanban-cfg-row";
-    row.style.cssText = "display:grid;grid-template-columns:200px 200px 80px 70px 70px;gap:8px;align-items:center;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:6px 8px;";
+    row.style.cssText = "display:grid;grid-template-columns:1fr 200px 80px 70px 80px;gap:8px;align-items:center;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:6px 8px;";
     row.innerHTML = `
-      <input type="text" class="settings-input kcol-folder" value="${esc(col.folder)}" placeholder="Nom dossier" style="font-size:12px;" />
+      <input type="text" class="settings-input kcol-folder" value="${esc(col.folder)}" placeholder="Chemin complet du dossier" style="font-size:12px;" />
       <input type="text" class="settings-input kcol-label" value="${esc(col.label)}" placeholder="Label affiché" style="font-size:12px;" />
       <input type="color" class="kcol-color" value="${esc(col.color || '#8f8f8f')}" style="width:60px;height:32px;padding:2px;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;" />
       <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" class="kcol-visible" ${col.visible !== false ? "checked" : ""} /> Visible</label>
       <div style="display:flex;gap:4px;">
-        <button class="btn btn-sm kcol-up" title="Monter" style="padding:2px 6px;">↑</button>
-        <button class="btn btn-sm kcol-down" title="Descendre" style="padding:2px 6px;">↓</button>
+        <button class="btn btn-sm kcol-up" title="Monter" style="padding:6px 12px;font-size:18px;">↑</button>
+        <button class="btn btn-sm kcol-down" title="Descendre" style="padding:6px 12px;font-size:18px;">↓</button>
       </div>
     `;
     row.querySelector(".kcol-up").onclick = () => {
@@ -796,10 +796,12 @@ async function refreshPrintEnginesPanel(panel) {
         ? '<p style="color:#9ca3af;">Aucun moteur configuré</p>'
         : engines.map(e => {
             const name = extractEngineName(e);
+            const ip = (typeof e === "object" && e !== null) ? (e.ip || "") : "";
             const safeName = name.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             return `
           <div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: white; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 6px;">
             <span style="flex: 1; font-size: 13px;">${name}</span>
+            ${ip ? `<span style="font-size: 12px; color: #6b7280; font-family: monospace;">${ip}</span>` : ""}
             <button class="btn btn-sm pe-delete" data-name="${safeName}" style="color:#ef4444;border-color:#ef4444;">Supprimer</button>
           </div>`;
           }).join("")
