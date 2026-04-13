@@ -124,3 +124,20 @@
 @media (max-width: 740px) {
   .fab-form-grid { grid-template-columns: 1fr; }
 }
+
+/* Section headers inside fab form */
+.fab-section-header {
+  grid-column: 1 / -1;
+  background: #f0f4f8;
+  border-left: 3px solid var(--primary, #1a1a2e);
+  padding: 6px 12px;
+  border-radius: 4px;
+  margin-top: 8px;
+}
+.fab-section-header span {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--primary, #1a1a2e);
+}

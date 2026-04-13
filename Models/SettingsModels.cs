@@ -107,3 +107,44 @@ public class BatMailTemplate
     public string Body { get; set; } = "Bonjour,\n\nVeuillez trouver ci-joint le BAT pour le dossier {{numeroDossier}}.\n\nCordialement,";
 }
 
+
+public class CoverProductsSettings
+{
+    [JsonPropertyName("products")]
+    public List<string> Products { get; set; } = new();
+}
+
+public class SheetCalculationSettings
+{
+    [JsonPropertyName("rules")]
+    public Dictionary<string, int> Rules { get; set; } = new()
+    {
+        ["Brochure"] = 4,
+        ["CDV"] = 21,
+        ["Affiche A3"] = 1,
+        ["Affiche A4"] = 2,
+        ["Flyer A5"] = 4
+    };
+}
+
+public class DeliveryDelaySettings
+{
+    [JsonPropertyName("delayHours")]
+    public int DelayHours { get; set; } = 48;
+}
+
+public class PassesConfig
+{
+    [JsonPropertyName("faconnage")]
+    public int Faconnage { get; set; } = 0;
+    [JsonPropertyName("pelliculageRecto")]
+    public int PelliculageRecto { get; set; } = 0;
+    [JsonPropertyName("pelliculageRectoVerso")]
+    public int PelliculageRectoVerso { get; set; } = 0;
+    [JsonPropertyName("rainage")]
+    public int Rainage { get; set; } = 0;
+    [JsonPropertyName("dorure")]
+    public int Dorure { get; set; } = 0;
+    [JsonPropertyName("dosCarreColle")]
+    public int DosCarreColle { get; set; } = 0;
+}
