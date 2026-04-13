@@ -546,6 +546,11 @@ public static class BackendUtils
                     ["adresse"]  = r.Adresse  == null ? BsonNull.Value : (BsonValue)r.Adresse
                 }))
         };
+
+        // Preserve finitionSteps if they exist on the existing document (they are managed separately)
+        if (existing != null && existing.Contains("finitionSteps") && existing["finitionSteps"] != BsonNull.Value)
+            doc["finitionSteps"] = existing["finitionSteps"];
+
         if (existing != null)
         {
             // Preserve the locked field if it was set on the existing document
@@ -653,8 +658,69 @@ public static class BackendUtils
                         Adresse  = r.Contains("adresse")  && r["adresse"]  != BsonNull.Value ? r["adresse"].AsString : null
                     };
                 }).ToList()
-                : null
+                : null,
+            FinitionSteps = BsonDocToFinitionSteps(d)
         };
+    }
+
+    public static FinitionSteps BsonDocToFinitionSteps(BsonDocument d)
+    {
+        var fs = new FinitionSteps();
+        if (!d.Contains("finitionSteps") || d["finitionSteps"] == BsonNull.Value || !d["finitionSteps"].IsBsonDocument)
+            return fs;
+        var doc = d["finitionSteps"].AsBsonDocument;
+        fs.Embellissement = BsonDocToFinitionStep(doc, "embellissement");
+        fs.Rainage        = BsonDocToFinitionStep(doc, "rainage");
+        fs.Pliage         = BsonDocToFinitionStep(doc, "pliage");
+        fs.Faconnage      = BsonDocToFinitionStep(doc, "faconnage");
+        fs.Coupe          = BsonDocToFinitionStep(doc, "coupe");
+        fs.Emballage      = BsonDocToFinitionStep(doc, "emballage");
+        fs.Depart         = BsonDocToFinitionStep(doc, "depart");
+        fs.Livraison      = BsonDocToFinitionStep(doc, "livraison");
+        return fs;
+    }
+
+    private static FinitionStep BsonDocToFinitionStep(BsonDocument doc, string key)
+    {
+        if (!doc.Contains(key) || doc[key] == BsonNull.Value || !doc[key].IsBsonDocument)
+            return new FinitionStep();
+        var s = doc[key].AsBsonDocument;
+        return new FinitionStep
+        {
+            Done            = s.Contains("done") && s["done"] != BsonNull.Value && s["done"].AsBoolean,
+            DoneAt          = s.Contains("doneAt") && s["doneAt"] != BsonNull.Value ? (DateTime?)s["doneAt"].ToUniversalTime() : null,
+            DoneBy          = s.Contains("doneBy") && s["doneBy"] != BsonNull.Value ? s["doneBy"].AsString : null,
+            Conditionnement = s.Contains("conditionnement") && s["conditionnement"] != BsonNull.Value ? s["conditionnement"].AsString : null,
+            Tracking        = s.Contains("tracking") && s["tracking"] != BsonNull.Value ? s["tracking"].AsString : null
+        };
+    }
+
+    public static BsonDocument FinitionStepsToBsonDoc(FinitionSteps fs)
+    {
+        return new BsonDocument
+        {
+            ["embellissement"] = FinitionStepToBsonDoc(fs.Embellissement),
+            ["rainage"]        = FinitionStepToBsonDoc(fs.Rainage),
+            ["pliage"]         = FinitionStepToBsonDoc(fs.Pliage),
+            ["faconnage"]      = FinitionStepToBsonDoc(fs.Faconnage),
+            ["coupe"]          = FinitionStepToBsonDoc(fs.Coupe),
+            ["emballage"]      = FinitionStepToBsonDoc(fs.Emballage),
+            ["depart"]         = FinitionStepToBsonDoc(fs.Depart),
+            ["livraison"]      = FinitionStepToBsonDoc(fs.Livraison)
+        };
+    }
+
+    private static BsonDocument FinitionStepToBsonDoc(FinitionStep s)
+    {
+        var doc = new BsonDocument
+        {
+            ["done"]  = s.Done,
+            ["doneAt"] = s.DoneAt == null ? BsonNull.Value : (BsonValue)s.DoneAt.Value,
+            ["doneBy"] = s.DoneBy == null ? BsonNull.Value : (BsonValue)s.DoneBy
+        };
+        if (s.Conditionnement != null) doc["conditionnement"] = s.Conditionnement;
+        if (s.Tracking != null) doc["tracking"] = s.Tracking;
+        return doc;
     }
 
     private static string? GetNullableString(BsonDocument d, string key)

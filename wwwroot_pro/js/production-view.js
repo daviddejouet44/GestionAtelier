@@ -184,7 +184,7 @@ const PRODUCTION_FOLDER_CONFIG = [
   { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#8f8f8f" },
   { folder: "Fiery", label: "Fiery", color: "#8f8f8f" },
   { folder: "Impression en cours", label: "Impression en cours", color: "#7a7a7a" },
-  { folder: "Façonnage", label: "Façonnage", color: "#666666" },
+  { folder: "Façonnage", label: "Finitions", color: "#666666" },
   { folder: "Fin de production", label: "Fin de production", color: "#22c55e" }
 ];
 

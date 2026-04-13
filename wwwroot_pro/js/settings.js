@@ -10,7 +10,8 @@ import { renderSettingsPrintEngines, refreshPrintEnginesPanel, extractEngineName
 import { renderSettingsWorkTypes, refreshWorkTypesPanel } from './settings/settings-work-types.js';
 import { renderSettingsPrintRouting, refreshPrintRoutingPanel, renderSettingsHotfolderRouting, refreshHotfolderRoutingPanel } from './settings/settings-routing.js';
 import { renderSettingsFabricationImports } from './settings/settings-fabrication-imports.js';
-import { renderSettingsFaconnage } from './settings/settings-faconnage.js';
+import { renderSettingsFinitions } from './settings/settings-finitions.js';
+import { renderSettingsReports } from './settings/settings-reports.js';
 import { renderSettingsLogo } from './settings/settings-logo.js';
 import { renderSettingsLogs, loadSettingsLogs } from './settings/settings-logs.js';
 import { renderSettingsSheetFormats } from './settings/settings-sheet-formats.js';
@@ -147,7 +148,8 @@ export async function initSettingsView() {
         <button class="settings-tab" data-tab="work-types">Types de travail</button>
         <button class="settings-tab" data-tab="print-routing">Routage Impression</button>
         <button class="settings-tab" data-tab="fabrication-imports">Imports fiche</button>
-        <button class="settings-tab" data-tab="faconnage">Façonnage</button>
+        <button class="settings-tab" data-tab="faconnage">Finitions</button>
+        <button class="settings-tab" data-tab="reports">Rapports</button>
         <button class="settings-tab" data-tab="sheet-formats">Formats feuille</button>
         <button class="settings-tab" data-tab="cover-products">Couverture</button>
         <button class="settings-tab" data-tab="sheet-calc-rules">Calcul feuilles</button>
@@ -167,6 +169,7 @@ export async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-print-routing"></div>
       <div class="settings-panel hidden" id="settings-panel-fabrication-imports"></div>
       <div class="settings-panel hidden" id="settings-panel-faconnage"></div>
+      <div class="settings-panel hidden" id="settings-panel-reports"></div>
       <div class="settings-panel hidden" id="settings-panel-sheet-formats"></div>
       <div class="settings-panel hidden" id="settings-panel-cover-products"></div>
       <div class="settings-panel hidden" id="settings-panel-sheet-calc-rules"></div>
@@ -210,7 +213,8 @@ export async function loadSettingsPanel(tabName, panelEl) {
     case "print-routing": await renderSettingsPrintRouting(panelEl); break;
     case "fabrication-imports": await renderSettingsFabricationImports(panelEl); break;
     case "bat-command": await renderSettingsBatConfig(panelEl); break;
-    case "faconnage": await renderSettingsFaconnage(panelEl); break;
+    case "faconnage": await renderSettingsFinitions(panelEl); break;
+    case "reports": await renderSettingsReports(panelEl); break;
     case "sheet-formats": await renderSettingsSheetFormats(panelEl); break;
     case "cover-products": await renderSettingsCoverProducts(panelEl); break;
     case "sheet-calc-rules": await renderSettingsSheetCalcRules(panelEl); break;

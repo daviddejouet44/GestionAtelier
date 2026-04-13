@@ -25,7 +25,8 @@ export const STAGE_DISPLAY_LABELS = {
   "Début de production": "Jobs à traiter",
   "Corrections": "Preflight",
   "Corrections et fond perdu": "Preflight avec fond perdu",
-  "Prêt pour impression": "En attente"
+  "Prêt pour impression": "En attente",
+  "Façonnage": "Finitions"
 };
 
 export function getStageLabelDisplay(stage) {
