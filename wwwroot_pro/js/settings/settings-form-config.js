@@ -167,16 +167,17 @@ function renderSections(panel, config) {
       if (f) f.width = sel.value;
     };
   });
-  // Section rename
+  // Section rename — track current name via dataset to support multi-step renames
   container.querySelectorAll(".ffc-section-name").forEach(inp => {
-    const oldName = inp.value;
+    inp.dataset.oldName = inp.value; // initialise with original name
     inp.oninput = () => {
-      const newName = inp.value.trim();
-      if (!newName || newName === oldName) return;
-      const secIdx = config.sections.indexOf(oldName);
-      if (secIdx >= 0) config.sections[secIdx] = newName;
-      fields.forEach(f => { if (f.section === oldName) f.section = newName; });
-      inp.dataset.oldName = newName;
+      const oldN = inp.dataset.oldName;
+      const newN = inp.value.trim();
+      if (!newN || newN === oldN) return;
+      const secIdx = config.sections.indexOf(oldN);
+      if (secIdx >= 0) config.sections[secIdx] = newN;
+      fields.forEach(f => { if (f.section === oldN) f.section = newN; });
+      inp.dataset.oldName = newN; // update tracked name
     };
   });
 }

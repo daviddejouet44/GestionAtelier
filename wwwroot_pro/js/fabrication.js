@@ -255,7 +255,7 @@ function renderFabForm(config, opts) {
 }
 
 function populateFabForm(d, faconnageOptions) {
-  function fmtDate(v){try{return new Date(v).toISOString().split('T')[0];}catch(e2){return '';}}
+  function fmtDate(v){return fmtDate2(v);}
   function fmtDateTime(v){try{return new Date(v).toISOString().slice(0,16);}catch(e2){return '';}}
   function set(id,val){
     const el=gEl(id); if(!el) return;

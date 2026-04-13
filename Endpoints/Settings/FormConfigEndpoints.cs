@@ -12,6 +12,9 @@ public static class FormConfigEndpoints
 {
     private const string SettingsKey = "formConfig";
 
+    // Cache the default config so it is only built once per process lifetime.
+    public static readonly FabricationFormConfig DefaultConfig = BuildDefaultConfig();
+
     public static void MapFormConfigEndpoints(this WebApplication app)
     {
         // GET /api/settings/form-config
@@ -21,7 +24,7 @@ public static class FormConfigEndpoints
             try
             {
                 var saved = MongoDbHelper.GetSettings<FabricationFormConfig>(SettingsKey);
-                var config = saved ?? BuildDefaultConfig();
+                var config = saved ?? DefaultConfig;
                 return Results.Json(config);
             }
             catch (Exception ex)
@@ -66,7 +69,7 @@ public static class FormConfigEndpoints
                     return Results.Json(new { ok = false, error = "Admin uniquement" });
 
                 MongoDbHelper.DeleteSettings(SettingsKey);
-                return Results.Json(new { ok = true, config = BuildDefaultConfig() });
+                return Results.Json(new { ok = true, config = DefaultConfig });
             }
             catch (Exception ex)
             {

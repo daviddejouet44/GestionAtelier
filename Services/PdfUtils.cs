@@ -13,10 +13,7 @@ public static class PdfUtils
 {
     public static Document CreateFabricationPdf(FabricationSheet s, FabricationFormConfig? formConfig = null)
     {
-        var config = formConfig ?? FormConfigEndpoints.BuildDefaultConfig();
-
-        // Build fast lookup: fieldId -> FormFieldConfig
-        var fieldMap = config.Fields.ToDictionary(f => f.Id, f => f);
+        var config = formConfig ?? FormConfigEndpoints.DefaultConfig;
 
         // Determine creation date from history (first entry) or now
         var historyOrdered = s.History.OrderBy(h => h.Date).ToList();
