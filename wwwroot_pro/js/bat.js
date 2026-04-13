@@ -204,7 +204,7 @@ export function openBatChoiceModal(fullPath, onComplete) {
           <div class="bat-choice-icon">📄</div>
           <div class="bat-choice-text">
             <strong>BAT Simple</strong>
-            <span>Ouverture du fichier dans Acrobat Pro (sans déplacer le fichier)</span>
+            <span>Ouverture du fichier via le droplet configuré par l'administrateur</span>
           </div>
         </button>
       </div>
@@ -281,22 +281,22 @@ async function sendBatComplet(fullPath) {
 }
 
 // ======================================================
-// BAT SIMPLE — Ouvrir dans Acrobat Pro (sans déplacer le fichier)
+// BAT SIMPLE — Lance le droplet configuré (sans déplacer le fichier)
 // ======================================================
 async function sendBatSimple(fullPath) {
   const path = normalizePath(fullPath);
 
   try {
-    const r = await fetch("/api/acrobat/open", {
+    const r = await fetch("/api/bat/simple", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fullPath: path })
     }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
 
     if (r.ok) {
-      showNotification("✅ BAT Simple : fichier ouvert dans Acrobat Pro", "success");
+      showNotification("✅ BAT Simple : droplet lancé", "success");
     } else {
-      showNotification("❌ BAT Simple : " + (r.error || "Erreur ouverture Acrobat"), "error");
+      showNotification("❌ BAT Simple : " + (r.error || "Erreur lancement droplet"), "error");
     }
   } catch (err) {
     showNotification("❌ BAT Simple : " + err.message, "error");

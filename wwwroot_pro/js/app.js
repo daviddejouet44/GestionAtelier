@@ -350,7 +350,42 @@ async function buildBatView() {
         btnSent.innerHTML = status.sentAt
           ? `✉️ Envoyé<span style="font-size:9px;font-weight:400;margin-left:4px;">${sentTs}</span>`
           : "✉️ Marquer envoyé";
-        btnSent.onclick = () => fetch("/api/bat/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(buildBatView);
+        btnSent.onclick = async () => {
+          // Load mail template
+          let tmpl = null;
+          try {
+            const tr = await fetch("/api/config/bat-mail-template").then(r => r.json()).catch(() => null);
+            if (tr && tr.ok && tr.template) tmpl = tr.template;
+          } catch(e) { /* ignore */ }
+
+          // If a template is configured, open the mail client
+          if (tmpl && (tmpl.subject || tmpl.body)) {
+            // Load fabrication data for variable substitution
+            let fab = {};
+            try {
+              fab = await fetch("/api/fabrication?fileName=" + encodeURIComponent(lookupFn)).then(r => r.json()).catch(() => ({}));
+            } catch(e) { /* ignore */ }
+
+            const replaceVars = (str) => (str || '')
+              .replace(/\{\{numeroDossier\}\}/g, fab.numeroDossier || '')
+              .replace(/\{\{nomClient\}\}/g, fab.nomClient || '')
+              .replace(/\{\{nomFichier\}\}/g, job.name || '')
+              .replace(/\{\{dateCreation\}\}/g, fab.dateCreation ? new Date(fab.dateCreation).toLocaleDateString('fr-FR') : '')
+              .replace(/\{\{typeTravail\}\}/g, fab.typeTravail || '')
+              .replace(/\{\{quantite\}\}/g, fab.quantite || '')
+              .replace(/\{\{operateur\}\}/g, fab.operateur || '')
+              .replace(/\{\{dateLivraison\}\}/g, fab.dateLivraison ? new Date(fab.dateLivraison).toLocaleDateString('fr-FR') : '');
+
+            const to = tmpl.to || fab.mailClient || '';
+            const subject = replaceVars(tmpl.subject);
+            const body = replaceVars(tmpl.body);
+            const mailto = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            window.open(mailto);
+          }
+
+          // Mark as sent in DB
+          fetch("/api/bat/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(buildBatView);
+        };
 
         const sep1 = document.createElement("span");
         sep1.className = "bat-tracking-sep";

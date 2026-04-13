@@ -896,7 +896,8 @@ app.MapGet("/api/config/bat-command", () =>
     var cmd = doc != null && doc.Contains("command") ? doc["command"].AsString :
         @"C:\Program Files\Canon\PRISMACore\PRISMAprepare.exe ""{filePath}"" /T ""{type}"" /SP /C {qty}";
     var alertDelayHours = doc != null && doc.Contains("batAlertDelayHours") ? doc["batAlertDelayHours"].AsInt32 : 48;
-    return Results.Json(new { ok = true, command = cmd, batAlertDelayHours = alertDelayHours });
+    var batSimpleDropletPath = doc != null && doc.Contains("batSimpleDropletPath") ? doc["batSimpleDropletPath"].AsString : "";
+    return Results.Json(new { ok = true, command = cmd, batAlertDelayHours = alertDelayHours, batSimpleDropletPath });
 });
 
 app.MapPut("/api/config/bat-command", async (HttpContext ctx) =>
@@ -909,8 +910,86 @@ app.MapPut("/api/config/bat-command", async (HttpContext ctx) =>
     doc["command"] = cmd;
     if (json.TryGetProperty("batAlertDelayHours", out var dh))
         doc["batAlertDelayHours"] = dh.ValueKind == JsonValueKind.Number ? dh.GetInt32() : 48;
+    if (json.TryGetProperty("batSimpleDropletPath", out var dp))
+        doc["batSimpleDropletPath"] = dp.GetString() ?? "";
     col.ReplaceOne(Builders<BsonDocument>.Filter.Empty, doc, new ReplaceOptions { IsUpsert = true });
     return Results.Json(new { ok = true });
+});
+
+// ======================================================
+// BAT SIMPLE — Lance le droplet configuré
+// ======================================================
+
+app.MapPost("/api/bat/simple", async (HttpContext ctx) =>
+{
+    try
+    {
+        var doc2 = await JsonDocument.ParseAsync(ctx.Request.Body);
+        if (!doc2.RootElement.TryGetProperty("fullPath", out var fpEl))
+            return Results.Json(new { ok = false, error = "fullPath manquant" });
+
+        var fullPath = Path.GetFullPath(fpEl.GetString() ?? "");
+        if (!File.Exists(fullPath))
+            return Results.Json(new { ok = false, error = "Fichier introuvable" });
+
+        var cfgCol = MongoDbHelper.GetCollection<BsonDocument>("batCommandConfig");
+        var cfgDoc = cfgCol.Find(Builders<BsonDocument>.Filter.Empty).FirstOrDefault();
+        var dropletPath = cfgDoc != null && cfgDoc.Contains("batSimpleDropletPath")
+            ? cfgDoc["batSimpleDropletPath"].AsString : "";
+
+        if (string.IsNullOrWhiteSpace(dropletPath))
+            return Results.Json(new { ok = false, error = "Aucun droplet BAT Simple configuré. Paramétrez-le dans Paramétrage > Configuration BAT." });
+
+        if (!File.Exists(dropletPath))
+            return Results.Json(new { ok = false, error = $"Droplet introuvable : {dropletPath}. Vérifiez le chemin dans Paramétrage > Configuration BAT." });
+
+        var psi = new System.Diagnostics.ProcessStartInfo(dropletPath, $"\"{fullPath}\"")
+        {
+            UseShellExecute = true,
+            WorkingDirectory = Path.GetDirectoryName(dropletPath)!
+        };
+        System.Diagnostics.Process.Start(psi);
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// BAT MAIL TEMPLATE
+// ======================================================
+
+app.MapGet("/api/config/bat-mail-template", () =>
+{
+    var cfg = MongoDbHelper.GetSettings<BatMailTemplate>("batMailTemplate") ?? new BatMailTemplate();
+    return Results.Json(new { ok = true, template = new { to = cfg.To, subject = cfg.Subject, body = cfg.Body } });
+});
+
+app.MapPut("/api/config/bat-mail-template", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var tmpl = json.TryGetProperty("template", out var tEl) ? tEl : json;
+        var existing = MongoDbHelper.GetSettings<BatMailTemplate>("batMailTemplate") ?? new BatMailTemplate();
+
+        if (tmpl.TryGetProperty("to", out var toEl)) existing.To = toEl.GetString() ?? existing.To;
+        if (tmpl.TryGetProperty("subject", out var subEl)) existing.Subject = subEl.GetString() ?? existing.Subject;
+        if (tmpl.TryGetProperty("body", out var bodyEl)) existing.Body = bodyEl.GetString() ?? existing.Body;
+
+        MongoDbHelper.UpsertSettings("batMailTemplate", existing);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
 // ======================================================

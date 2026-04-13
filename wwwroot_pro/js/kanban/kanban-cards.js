@@ -4,6 +4,13 @@ import { openBatChoiceModal } from '../bat.js';
 import { state, refreshKanban } from './kanban-core.js';
 import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js';
 
+// Returns true if the action should be visible for the given folder
+function isActionVisible(folderName, actionId) {
+  const allowed = state.visibleActionsMap[folderName];
+  if (!allowed) return true; // null = show all (retrocompat)
+  return allowed.includes(actionId);
+}
+
 // ======================================================
 // COLONNE KANBAN (opérateur)
 // ======================================================
@@ -180,15 +187,15 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       btnDelete.onclick = () => { if (window._deleteFile) window._deleteFile(full); };
 
       if (folderName === "Début de production") {
-        actions.appendChild(btnOpen);
-        actions.appendChild(btnFiche);
-        actions.appendChild(btnAssign);
+        if (isActionVisible(folderName, "ouvrirFichier")) actions.appendChild(btnOpen);
+        if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
+        if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
         const btnPlan = document.createElement("button");
         btnPlan.className = "btn btn-sm";
         btnPlan.textContent = "📅 Planifier";
         btnPlan.onclick = () => { if (window._openPlanificationCalendar) window._openPlanificationCalendar(full); };
-        actions.appendChild(btnPlan);
+        if (isActionVisible(folderName, "planifier")) actions.appendChild(btnPlan);
 
         // Bouton Preflight conditionnel — visible uniquement si les tuiles Preflight sont masquées
         if (state.preflightColumnsHidden) {
@@ -268,23 +275,23 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
               });
             }, 10);
           };
-          actions.appendChild(btnPreflightDirect);
+          if (isActionVisible(folderName, "preflight")) actions.appendChild(btnPreflightDirect);
         }
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
-          actions.appendChild(btnDelete);
+          if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
       } else if (folderName === "Prêt pour impression") {
-        actions.appendChild(btnOpen);
-        actions.appendChild(btnFiche);
-        actions.appendChild(btnAssign);
+        if (isActionVisible(folderName, "ouvrirFichier")) actions.appendChild(btnOpen);
+        if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
+        if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
         // Planning button — opens the planning dialog
         const btnPlan = document.createElement("button");
         btnPlan.className = "btn btn-sm";
         btnPlan.textContent = "📅 Planifier";
         btnPlan.onclick = () => { if (window._openPlanificationCalendar) window._openPlanificationCalendar(full); };
-        actions.appendChild(btnPlan);
+        if (isActionVisible(folderName, "planifier")) actions.appendChild(btnPlan);
 
         // BAT button — ouvre popup BAT complet / BAT simple
         const btnBAT = document.createElement("button");
@@ -295,21 +302,21 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             await refreshKanban();
           });
         };
-        actions.appendChild(btnBAT);
+        if (isActionVisible(folderName, "bat")) actions.appendChild(btnBAT);
 
         const btnPrint = document.createElement("button");
         btnPrint.className = "btn btn-sm btn-primary";
         btnPrint.innerHTML = "Actions ▾";
         btnPrint.onclick = (e) => { e.stopPropagation(); openActionsDropdown(btnPrint, full); };
-        actions.appendChild(btnPrint);
+        if (isActionVisible(folderName, "actions")) actions.appendChild(btnPrint);
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
-          actions.appendChild(btnDelete);
+          if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
       } else if (folderName === "Corrections" || folderName === "Corrections et fond perdu") {
-        actions.appendChild(btnOpen);
-        actions.appendChild(btnFiche);
-        actions.appendChild(btnAssign);
+        if (isActionVisible(folderName, "ouvrirFichier")) actions.appendChild(btnOpen);
+        if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
+        if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
         // Bouton Preflight automatique
         const btnPreflight = document.createElement("button");
@@ -342,14 +349,14 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             btnPreflight.textContent = "▶ Preflight";
           }
         };
-        actions.appendChild(btnPreflight);
+        if (isActionVisible(folderName, "preflight")) actions.appendChild(btnPreflight);
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
-          actions.appendChild(btnDelete);
+          if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
       } else if (folderName === "PrismaPrepare") {
-        actions.appendChild(btnFiche);
-        actions.appendChild(btnAssign);
+        if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
+        if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
         // BAT button — ouvre popup BAT complet / BAT simple
         const btnBATprisma = document.createElement("button");
@@ -360,7 +367,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             await refreshKanban();
           });
         };
-        actions.appendChild(btnBATprisma);
+        if (isActionVisible(folderName, "bat")) actions.appendChild(btnBATprisma);
 
         const btnPrisma = document.createElement("button");
         btnPrisma.className = "btn btn-sm btn-primary";
@@ -374,7 +381,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
           if (!r.ok) showNotification("❌ " + (r.error || "Erreur"), "error");
         };
-        actions.appendChild(btnPrisma);
+        if (isActionVisible(folderName, "prismaPrepare")) actions.appendChild(btnPrisma);
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
           const btnImpressionLancee = document.createElement("button");
@@ -390,12 +397,12 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             if (r.ok) { showNotification("✅ Déplacé vers Impression en cours", "success"); await refreshKanban(); }
             else showNotification("❌ " + (r.error || "Erreur"), "error");
           };
-          actions.appendChild(btnImpressionLancee);
-          actions.appendChild(btnDelete);
+          if (isActionVisible(folderName, "impressionLancee")) actions.appendChild(btnImpressionLancee);
+          if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
       } else if (folderName === "Fiery") {
-        actions.appendChild(btnFiche);
-        actions.appendChild(btnAssign);
+        if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
+        if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
         const btnFiery = document.createElement("button");
         btnFiery.className = "btn btn-sm btn-primary";
@@ -409,7 +416,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
           if (!r.ok) showNotification("❌ " + (r.error || "Erreur"), "error");
         };
-        actions.appendChild(btnFiery);
+        if (isActionVisible(folderName, "fiery")) actions.appendChild(btnFiery);
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
           const btnLancerImpression = document.createElement("button");
@@ -425,12 +432,12 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             if (r.ok) { showNotification("✅ Impression lancée", "success"); await refreshKanban(); }
             else showNotification("❌ " + (r.error || "Erreur"), "error");
           };
-          actions.appendChild(btnLancerImpression);
-          actions.appendChild(btnDelete);
+          if (isActionVisible(folderName, "impressionLancee")) actions.appendChild(btnLancerImpression);
+          if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
       } else if (folderName === "Impression en cours") {
-        actions.appendChild(btnFiche);
-        actions.appendChild(btnAssign);
+        if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
+        if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
           const btnImpTerminee = document.createElement("button");
@@ -446,12 +453,12 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             if (r.ok) { showNotification("✅ Déplacé vers Façonnage", "success"); await refreshKanban(); }
             else showNotification("❌ " + (r.error || "Erreur"), "error");
           };
-          actions.appendChild(btnImpTerminee);
-          actions.appendChild(btnDelete);
+          if (isActionVisible(folderName, "impressionTerminee")) actions.appendChild(btnImpTerminee);
+          if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
       } else if (folderName === "Façonnage") {
-        actions.appendChild(btnFiche);
-        actions.appendChild(btnAssign);
+        if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
+        if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
         // Façonnage badges — loaded asynchronously
         const badgesDiv = document.createElement("div");
@@ -484,13 +491,13 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             if (r.ok) { showNotification("✅ Déplacé vers Fin de production", "success"); await refreshKanban(); }
             else showNotification("❌ " + (r.error || "Erreur"), "error");
           };
-          actions.appendChild(btnTerminee);
+          if (isActionVisible(folderName, "faconnageTermine")) actions.appendChild(btnTerminee);
         }
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
-          actions.appendChild(btnDelete);
+          if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
       } else if (folderName === "Fin de production") {
-        actions.appendChild(btnFiche);
+        if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
           const btnTermine = document.createElement("button");
@@ -515,7 +522,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
               showNotification("❌ " + (r.error || "Erreur"), "error");
             }
           };
-          actions.appendChild(btnTermine);
+          if (isActionVisible(folderName, "verrouiller")) actions.appendChild(btnTermine);
 
           const btnArchiver = document.createElement("button");
           btnArchiver.className = "btn btn-sm";
@@ -531,15 +538,15 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             if (r.ok) { showNotification("✅ Archivé", "success"); await refreshKanban(); }
             else showNotification("❌ " + (r.error || "Erreur"), "error");
           };
-          actions.appendChild(btnArchiver);
-          actions.appendChild(btnDelete);
+          if (isActionVisible(folderName, "archiver")) actions.appendChild(btnArchiver);
+          if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
       } else {
-        actions.appendChild(btnOpen);
-        actions.appendChild(btnFiche);
-        actions.appendChild(btnAssign);
+        if (isActionVisible(folderName, "ouvrirFichier")) actions.appendChild(btnOpen);
+        if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
+        if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
-          actions.appendChild(btnDelete);
+          if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
       }
 

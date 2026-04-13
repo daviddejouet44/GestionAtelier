@@ -67,14 +67,25 @@ app.MapPut("/api/config/kanban-columns", async (HttpContext ctx) =>
         foreach (var c in colsEl.EnumerateArray())
         {
             var fp = c.TryGetProperty("folderPath", out var fpEl) ? fpEl.GetString() : null;
+            List<string>? visibleActions = null;
+            if (c.TryGetProperty("visibleActions", out var vaEl) && vaEl.ValueKind == JsonValueKind.Array)
+            {
+                visibleActions = new List<string>();
+                foreach (var a in vaEl.EnumerateArray())
+                {
+                    var s = a.GetString();
+                    if (!string.IsNullOrWhiteSpace(s)) visibleActions.Add(s!);
+                }
+            }
             columns.Add(new KanbanColumnConfig
             {
-                Folder     = c.TryGetProperty("folder",  out var f)   ? f.GetString()  ?? "" : "",
-                FolderPath = string.IsNullOrWhiteSpace(fp) ? null : fp,
-                Label      = c.TryGetProperty("label",   out var l)   ? l.GetString()  ?? "" : "",
-                Color      = c.TryGetProperty("color",   out var col) ? col.GetString() ?? "#8f8f8f" : "#8f8f8f",
-                Visible    = c.TryGetProperty("visible", out var v)   ? v.GetBoolean() : true,
-                Order      = c.TryGetProperty("order",   out var o)   ? o.GetInt32()   : 0,
+                Folder         = c.TryGetProperty("folder",  out var f)   ? f.GetString()  ?? "" : "",
+                FolderPath     = string.IsNullOrWhiteSpace(fp) ? null : fp,
+                Label          = c.TryGetProperty("label",   out var l)   ? l.GetString()  ?? "" : "",
+                Color          = c.TryGetProperty("color",   out var col) ? col.GetString() ?? "#8f8f8f" : "#8f8f8f",
+                Visible        = c.TryGetProperty("visible", out var v)   ? v.GetBoolean() : true,
+                Order          = c.TryGetProperty("order",   out var o)   ? o.GetInt32()   : 0,
+                VisibleActions = visibleActions,
             });
         }
 
