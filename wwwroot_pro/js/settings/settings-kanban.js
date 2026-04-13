@@ -26,11 +26,12 @@ export async function renderSettingsKanbanColumns(panel) {
   panel.innerHTML = `
     <h3>Tuiles Kanban</h3>
     <p style="font-size:13px;color:#6b7280;margin-bottom:20px;">
-      Configurez les tuiles affichées dans le Kanban : chemin complet du dossier physique, label affiché, couleur, visibilité et ordre.
+      Configurez les tuiles affichées dans le Kanban : nom du stage (interne), chemin physique optionnel, label affiché, couleur, visibilité et ordre.
     </p>
-    <div id="kanban-cols-list" style="display:flex;flex-direction:column;gap:8px;max-width:1000px;margin-bottom:16px;">
-      <div style="display:grid;grid-template-columns:1fr 200px 80px 70px 80px;gap:8px;font-size:12px;font-weight:600;color:#6b7280;padding:0 4px;">
-        <span>Chemin complet du dossier</span>
+    <div id="kanban-cols-list" style="display:flex;flex-direction:column;gap:8px;max-width:1200px;margin-bottom:16px;">
+      <div style="display:grid;grid-template-columns:160px 1fr 180px 80px 70px 80px;gap:8px;font-size:12px;font-weight:600;color:#6b7280;padding:0 4px;">
+        <span>Nom du stage</span>
+        <span>Chemin physique du dossier (ex: C:\Flux\MonDossier)</span>
         <span>Label affiché</span>
         <span>Couleur</span>
         <span>Visible</span>
@@ -46,9 +47,10 @@ export async function renderSettingsKanbanColumns(panel) {
   function renderRow(col) {
     const row = document.createElement("div");
     row.className = "kanban-cfg-row";
-    row.style.cssText = "display:grid;grid-template-columns:1fr 200px 80px 70px 80px;gap:8px;align-items:center;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:6px 8px;";
+    row.style.cssText = "display:grid;grid-template-columns:160px 1fr 180px 80px 70px 80px;gap:8px;align-items:center;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:6px 8px;";
     row.innerHTML = `
-      <input type="text" class="settings-input kcol-folder" value="${esc(col.folder)}" placeholder="Chemin complet du dossier" style="font-size:12px;" />
+      <input type="text" class="settings-input kcol-folder" value="${esc(col.folder)}" placeholder="Nom du stage" style="font-size:12px;" />
+      <input type="text" class="settings-input kcol-folderpath" value="${esc(col.folderPath || '')}" placeholder="C:\\Flux\\MonDossier (optionnel)" style="font-size:12px;" />
       <input type="text" class="settings-input kcol-label" value="${esc(col.label)}" placeholder="Label affiché" style="font-size:12px;" />
       <input type="color" class="kcol-color" value="${esc(col.color || '#8f8f8f')}" style="width:60px;height:32px;padding:2px;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;" />
       <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" class="kcol-visible" ${col.visible !== false ? "checked" : ""} /> Visible</label>
@@ -72,11 +74,12 @@ export async function renderSettingsKanbanColumns(panel) {
 
   const collectColumns = () => {
     return Array.from(listEl.querySelectorAll(".kanban-cfg-row")).map((row, i) => ({
-      folder:  row.querySelector(".kcol-folder")?.value.trim() || "",
-      label:   row.querySelector(".kcol-label")?.value.trim() || "",
-      color:   row.querySelector(".kcol-color")?.value || "#8f8f8f",
-      visible: row.querySelector(".kcol-visible")?.checked ?? true,
-      order:   i
+      folder:     row.querySelector(".kcol-folder")?.value.trim() || "",
+      folderPath: row.querySelector(".kcol-folderpath")?.value.trim() || "",
+      label:      row.querySelector(".kcol-label")?.value.trim() || "",
+      color:      row.querySelector(".kcol-color")?.value || "#8f8f8f",
+      visible:    row.querySelector(".kcol-visible")?.checked ?? true,
+      order:      i
     }));
   };
 

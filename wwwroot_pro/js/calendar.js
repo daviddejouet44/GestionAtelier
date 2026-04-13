@@ -119,7 +119,8 @@ export async function initCalendar() {
         const list = await fetch("/api/delivery").then(r => r.json());
         const ev = list.map(x => {
           const full = normalizePath(x.fullPath);
-          const locked = !!x.locked;
+          const inFinProd = full.toLowerCase().includes(FIN_PROD_FOLDER.toLowerCase());
+          const locked = !!x.locked || inFinProd;
           const bg = locked ? "#22c55e" : colorForEvent(full, x.date).bg;
           const bc = locked ? "#16a34a" : colorForEvent(full, x.date).bc;
           const tc = locked ? "#ffffff" : colorForEvent(full, x.date).tc;
@@ -245,7 +246,8 @@ export async function initSubmissionCalendar() {
         const list = await fetch("/api/delivery").then(r => r.json());
         const ev = list.map(x => {
           const full = normalizePath(x.fullPath);
-          const locked = !!x.locked;
+          const inFinProd = full.toLowerCase().includes(FIN_PROD_FOLDER.toLowerCase());
+          const locked = !!x.locked || inFinProd;
           const bg = locked ? "#22c55e" : colorForEvent(full, x.date).bg;
           const bc = locked ? "#16a34a" : colorForEvent(full, x.date).bc;
           const tc = locked ? "#ffffff" : colorForEvent(full, x.date).tc;

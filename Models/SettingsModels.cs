@@ -70,6 +70,9 @@ public class KanbanColumnConfig
     [JsonPropertyName("folder")]
     public string Folder { get; set; } = "";
 
+    [JsonPropertyName("folderPath")]
+    public string? FolderPath { get; set; }
+
     [JsonPropertyName("label")]
     public string Label { get; set; } = "";
 

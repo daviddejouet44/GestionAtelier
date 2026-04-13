@@ -61,6 +61,7 @@ export async function buildKanban() {
     const col = document.createElement("div");
     col.className = "kanban-col-operator";
     col.dataset.folder = cfg.folder;
+    if (cfg.folderPath) col.dataset.folderPath = cfg.folderPath;
     const title = document.createElement("div");
     title.className = "kanban-col-operator__title";
     title.style.background = `linear-gradient(135deg, ${cfg.color} 0%, ${darkenColor(cfg.color, 15)} 100%)`;
@@ -343,7 +344,7 @@ export async function refreshKanban() {
     // Profile 1 (Production lecture seule) and Profile 4 (Façonnage): read-only for all but Façonnage
     const readOnly = currentUser?.profile === 1 ||
                      (currentUser?.profile === 4 && col.dataset.folder !== "Façonnage");
-    await refreshKanbanColumnOperator(col.dataset.folder, q, sort, col, readOnly);
+    await refreshKanbanColumnOperator(col.dataset.folder, q, sort, col, readOnly, col.dataset.folderPath || null);
   }
   await updateKanbanSummary();
 
@@ -370,7 +371,11 @@ export async function updateKanbanSummary() {
     const folders = allColumns.filter(c => c.visible !== false).map(c => c.folder);
     const counts = {};
     for (const f of folders) {
-      const jobs = await fetch(`/api/jobs?folder=${encodeURIComponent(f)}`).then(r => r.json()).catch(() => []);
+      const cfg = allColumns.find(c => c.folder === f);
+      const url = cfg?.folderPath
+        ? `/api/jobs?folder=${encodeURIComponent(f)}&folderPath=${encodeURIComponent(cfg.folderPath)}`
+        : `/api/jobs?folder=${encodeURIComponent(f)}`;
+      const jobs = await fetch(url).then(r => r.json()).catch(() => []);
       counts[f] = Array.isArray(jobs) ? jobs.length : 0;
     }
 
