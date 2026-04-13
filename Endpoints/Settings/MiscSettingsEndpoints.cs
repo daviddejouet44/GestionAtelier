@@ -11,8 +11,10 @@ using System.Threading.Tasks;
 using System.Diagnostics;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using MongoDB.Bson;
 using GestionAtelier.Models;
@@ -680,7 +682,31 @@ app.MapGet("/api/settings/passes-config", () =>
     catch { return Results.Json(new { ok = true, config = new PassesConfig() }); }
 });
 
-app.MapPost("/api/settings/passes-config", async (HttpContext ctx) =>
+// ======================================================
+// SETTINGS — ICÔNES FINITIONS
+// ======================================================
+
+app.MapGet("/api/settings/finition-icons", (HttpContext ctx) =>
+{
+    try
+    {
+        var iconsDir = Path.Combine(ctx.RequestServices.GetRequiredService<IWebHostEnvironment>().ContentRootPath, "wwwroot_pro", "images", "finitions");
+        if (!Directory.Exists(iconsDir))
+            return Results.Json(new { ok = true, icons = new object[0] });
+
+        var icons = Directory.GetFiles(iconsDir)
+            .Select(f =>
+            {
+                var name = Path.GetFileNameWithoutExtension(f);
+                var ext  = Path.GetExtension(f);
+                return new { type = name, url = $"/pro/images/finitions/{Path.GetFileName(f)}", ext };
+            }).ToArray();
+        return Results.Json(new { ok = true, icons });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapPost("/api/settings/finition-icons", async (HttpContext ctx) =>
 {
     try
     {
@@ -693,9 +719,32 @@ app.MapPost("/api/settings/passes-config", async (HttpContext ctx) =>
                 return Results.Json(new { ok = false, error = "Admin only" });
         }
 
-        var cfg = await ctx.Request.ReadFromJsonAsync<PassesConfig>() ?? new PassesConfig();
-        MongoDbHelper.UpsertSettings("passesConfig", cfg);
-        return Results.Json(new { ok = true });
+        var form = await ctx.Request.ReadFormAsync();
+        var file = form.Files.GetFile("file");
+        var finitionType = form["type"].ToString();
+
+        if (file == null || file.Length == 0)
+            return Results.Json(new { ok = false, error = "Fichier manquant" });
+        if (string.IsNullOrWhiteSpace(finitionType))
+            return Results.Json(new { ok = false, error = "Type de finition manquant" });
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var allowed = new[] { ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg" };
+        if (!allowed.Contains(ext))
+            return Results.Json(new { ok = false, error = "Format non supporté" });
+
+        var iconsDir = Path.Combine(ctx.RequestServices.GetRequiredService<IWebHostEnvironment>().ContentRootPath, "wwwroot_pro", "images", "finitions");
+        Directory.CreateDirectory(iconsDir);
+
+        // Remove any existing icon for this type
+        foreach (var old in Directory.GetFiles(iconsDir, finitionType + ".*"))
+            File.Delete(old);
+
+        var dest = Path.Combine(iconsDir, finitionType + ext);
+        using var stream = File.Create(dest);
+        await file.CopyToAsync(stream);
+
+        return Results.Json(new { ok = true, url = $"/pro/images/finitions/{finitionType}{ext}" });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });

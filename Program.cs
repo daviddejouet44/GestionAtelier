@@ -37,6 +37,8 @@ var recyclePath    = builder.Configuration["RecycleBin:Path"] ?? Path.Combine(ho
 var recycleDays    = int.TryParse(builder.Configuration["RecycleBin:DaysToKeep"], out var d) ? d : 7;
 Directory.CreateDirectory(recyclePath);
 
+builder.Services.AddHostedService<GestionAtelier.Services.DailyReportService>();
+
 var app = builder.Build();
 
 QuestPDF.Settings.License = LicenseType.Community;
@@ -120,6 +122,7 @@ app.MapFabricationEndpoints();
 app.MapNotificationEndpoints();
 app.MapDossiersEndpoints();
 app.MapSettingsEndpoints(recyclePath);
+app.MapReportsEndpoints();
 
 // 5. Routes /pro
 app.MapGet("/pro", (HttpContext ctx) =>

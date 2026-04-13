@@ -99,6 +99,9 @@ public record FabricationSheet
 
     // ── Répartitions ─────────────────────────────────────
     public List<RepartitionItem>? Repartitions { get; init; }
+
+    // ── Étapes finitions ─────────────────────────────────
+    public FinitionSteps? FinitionSteps { get; init; }
 }
 
 public class FabricationInput
@@ -184,6 +187,31 @@ public class FabricationInput
 
     // ── Répartitions ─────────────────────────────────────
     public List<RepartitionItem>? Repartitions { get; set; }
+}
+
+// ======================================================
+// Finition Steps
+// ======================================================
+
+public class FinitionStep
+{
+    public bool Done { get; set; } = false;
+    public DateTime? DoneAt { get; set; }
+    public string? DoneBy { get; set; }
+    public string? Conditionnement { get; set; }  // for emballage
+    public string? Tracking { get; set; }          // for livraison
+}
+
+public class FinitionSteps
+{
+    public FinitionStep Embellissement { get; set; } = new();
+    public FinitionStep Rainage { get; set; } = new();
+    public FinitionStep Pliage { get; set; } = new();
+    public FinitionStep Faconnage { get; set; } = new();
+    public FinitionStep Coupe { get; set; } = new();
+    public FinitionStep Emballage { get; set; } = new();
+    public FinitionStep Depart { get; set; } = new();
+    public FinitionStep Livraison { get; set; } = new();
 }
 
 // ======================================================

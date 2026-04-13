@@ -25,7 +25,7 @@ const DEFAULT_KANBAN_COLUMNS = [
   { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#8f8f8f", visible: true, order: 4 },
   { folder: "Fiery", label: "Fiery", color: "#8f8f8f", visible: true, order: 5 },
   { folder: "Impression en cours", label: "Impression en cours", color: "#7a7a7a", visible: true, order: 6 },
-  { folder: "Façonnage", label: "Façonnage", color: "#666666", visible: true, order: 7 },
+  { folder: "Façonnage", label: "Finitions", color: "#666666", visible: true, order: 7 },
   { folder: "Fin de production", label: "Fin de production", color: "#22c55e", visible: true, order: 8 }
 ];
 

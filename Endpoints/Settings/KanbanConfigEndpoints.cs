@@ -31,7 +31,7 @@ public static class KanbanConfigEndpoints
         new KanbanColumnConfig { Folder = "PrismaPrepare",        Label = "PrismaPrepare",            Color = "#8f8f8f", Visible = true, Order = 4 },
         new KanbanColumnConfig { Folder = "Fiery",                Label = "Fiery",                    Color = "#8f8f8f", Visible = true, Order = 5 },
         new KanbanColumnConfig { Folder = "Impression en cours",  Label = "Impression en cours",      Color = "#7a7a7a", Visible = true, Order = 6 },
-        new KanbanColumnConfig { Folder = "Façonnage",            Label = "Façonnage",                Color = "#666666", Visible = true, Order = 7 },
+        new KanbanColumnConfig { Folder = "Façonnage",            Label = "Finitions",                Color = "#666666", Visible = true, Order = 7 },
         new KanbanColumnConfig { Folder = "Fin de production",    Label = "Fin de production",        Color = "#22c55e", Visible = true, Order = 8 },
     };
 

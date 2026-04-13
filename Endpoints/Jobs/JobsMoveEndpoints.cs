@@ -17,6 +17,7 @@ using MongoDB.Driver;
 using MongoDB.Bson;
 using GestionAtelier.Models;
 using GestionAtelier.Services;
+using GestionAtelier.Endpoints.Fabrication;
 
 namespace GestionAtelier.Endpoints.Jobs;
 
@@ -90,6 +91,54 @@ app.MapPost("/api/jobs/move", async (HttpContext ctx) =>
             Console.WriteLine($"[DEBUG] src (raw) = {s.GetString()}");
             Console.WriteLine($"[DEBUG] src (normalized) = {src}");
             Console.WriteLine($"[DEBUG] dstFolder = {dstFolder}");
+
+            // Validate finition steps when moving OUT of Façonnage (Finitions) tile
+            try
+            {
+                var srcDir = Path.GetFileName(Path.GetDirectoryName(src) ?? "");
+                bool movingOutOfFinitions = string.Equals(srcDir, "Façonnage", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(dstFolder.Trim(), "Façonnage", StringComparison.OrdinalIgnoreCase);
+
+                if (movingOutOfFinitions)
+                {
+                    var fileName = Path.GetFileName(src).ToLowerInvariant();
+                    var fabCol   = MongoDbHelper.GetFabricationsCollection();
+                    var fabDoc   = fabCol.Find(Builders<BsonDocument>.Filter.Or(
+                        Builders<BsonDocument>.Filter.Eq("fullPath", src),
+                        Builders<BsonDocument>.Filter.Eq("fileName", fileName)
+                    )).SortByDescending(x => x["_id"]).FirstOrDefault();
+
+                    if (fabDoc != null)
+                    {
+                        var missing = FinitionStepsEndpoints.GetMissingSteps(fabDoc);
+                        if (missing.Count > 0)
+                        {
+                            var stepLabels = new Dictionary<string, string>
+                            {
+                                ["embellissement"] = "Embellissement",
+                                ["rainage"]        = "Rainage",
+                                ["pliage"]         = "Pliage",
+                                ["faconnage"]      = "Façonnage (reliure)",
+                                ["coupe"]          = "Coupe",
+                                ["emballage"]      = "Emballage",
+                                ["depart"]         = "Départ",
+                                ["livraison"]      = "Livraison"
+                            };
+                            var labels = missing.Select(k => stepLabels.TryGetValue(k, out var lbl) ? lbl : k).ToList();
+                            return Results.Json(new
+                            {
+                                ok = false,
+                                error = $"Étapes de finition non validées : {string.Join(", ", labels)}",
+                                missingSteps = missing
+                            });
+                        }
+                    }
+                }
+            }
+            catch (Exception exVal)
+            {
+                Console.WriteLine($"[WARN] Finition steps validation error: {exVal.Message}");
+            }
             
             var (ok, moved, error) = MoveOne(src, dstFolder, overwrite);
 

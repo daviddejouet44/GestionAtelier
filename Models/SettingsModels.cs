@@ -133,6 +133,18 @@ public class DeliveryDelaySettings
     public int DelayHours { get; set; } = 48;
 }
 
+public class DailyReportConfig
+{
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; } = false;
+    [JsonPropertyName("reportHour")]
+    public int ReportHour { get; set; } = 18;
+    [JsonPropertyName("reportMinute")]
+    public int ReportMinute { get; set; } = 0;
+    [JsonPropertyName("reportPath")]
+    public string ReportPath { get; set; } = "";
+}
+
 public class PassesConfig
 {
     [JsonPropertyName("faconnage")]

@@ -703,7 +703,7 @@ function setupProfileUI() {
   const btnRapport = document.getElementById("btnViewRapport");
   const userInfo = document.getElementById("user-info");
 
-  const profileLabel = currentUser.profile === 4 ? "Façonnage" : `Profil ${currentUser.profile}`;
+  const profileLabel = currentUser.profile === 4 ? "Finitions" : `Profil ${currentUser.profile}`;
   userInfo.textContent = `${currentUser.name} (${profileLabel})`;
 
   // Profile 4 (Façonnage): read-only access, only sees kanban (not submission/settings)

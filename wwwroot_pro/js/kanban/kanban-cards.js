@@ -1,5 +1,5 @@
 // kanban/kanban-cards.js — Kanban card rendering
-import { currentUser, deliveriesByPath, assignmentsByPath, fnKey, normalizePath, daysDiffFromToday, showNotification } from '../core.js';
+import { currentUser, authToken, deliveriesByPath, assignmentsByPath, fnKey, normalizePath, daysDiffFromToday, showNotification } from '../core.js';
 import { openBatChoiceModal } from '../bat.js';
 import { state, refreshKanban } from './kanban-core.js';
 import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js';
@@ -450,7 +450,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ source: full, destination: "Façonnage", overwrite: true })
             }).then(res => res.json()).catch(() => ({ ok: false }));
-            if (r.ok) { showNotification("✅ Déplacé vers Façonnage", "success"); await refreshKanban(); }
+            if (r.ok) { showNotification("✅ Déplacé vers Finitions", "success"); await refreshKanban(); }
             else showNotification("❌ " + (r.error || "Erreur"), "error");
           };
           if (isActionVisible(folderName, "impressionTerminee")) actions.appendChild(btnImpTerminee);
@@ -460,27 +460,155 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
         if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
-        // Façonnage badges — loaded asynchronously
-        const badgesDiv = document.createElement("div");
-        badgesDiv.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;";
-        card.appendChild(badgesDiv);
-        const jfn = jobFileName;
-        fetch("/api/fabrication?fileName=" + encodeURIComponent(jfn))
-          .then(r => r.json()).then(d => {
-            if (Array.isArray(d.faconnage)) {
-              d.faconnage.forEach(opt => {
-                const badge = document.createElement("span");
-                badge.style.cssText = "background:#fef9c3;color:#92400e;border:1px solid #fde68a;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;";
-                badge.textContent = opt;
-                badgesDiv.appendChild(badge);
-              });
+        // Finitions steps panel — loaded asynchronously
+        const finitionsPanel = document.createElement("div");
+        finitionsPanel.style.cssText = "margin-top:8px;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa;padding:8px;";
+        card.appendChild(finitionsPanel);
+
+        const STEP_LABELS = {
+          embellissement: "✨ Embellissement",
+          rainage:        "📐 Rainage",
+          pliage:         "📄 Pliage",
+          faconnage:      "📚 Façonnage (reliure)",
+          coupe:          "✂️ Coupe",
+          emballage:      "📦 Emballage",
+          depart:         "🚪 Départ",
+          livraison:      "🚚 Livraison"
+        };
+
+        const jobId = encodeURIComponent(full);
+        const jfn   = jobFileName;
+
+        // Load finition steps + fabrication data in parallel
+        Promise.all([
+          fetch(`/api/fabrication/${jobId}/finition-steps`).then(r => r.json()).catch(() => ({ ok: false })),
+          fetch("/api/fabrication?fileName=" + encodeURIComponent(jfn)).then(r => r.json()).catch(() => ({}))
+        ]).then(([stepsData, fabData]) => {
+          const steps = stepsData.ok ? stepsData.finitionSteps : {};
+
+          // Determine applicable steps from fab data
+          const hasEnnob  = Array.isArray(fabData.ennoblissement) && fabData.ennoblissement.length > 0;
+          const hasRainage = fabData.rainage === true;
+          const hasPlis   = fabData.plis && fabData.plis.trim() !== "";
+          const hasFaconnage = (fabData.faconnageBinding && fabData.faconnageBinding.trim() !== "") ||
+                               (Array.isArray(fabData.faconnage) && fabData.faconnage.length > 0);
+
+          const applicable = {
+            embellissement: hasEnnob,
+            rainage:        hasRainage,
+            pliage:         hasPlis,
+            faconnage:      hasFaconnage,
+            coupe:          true,
+            emballage:      true,
+            depart:         true,
+            livraison:      true
+          };
+
+          finitionsPanel.innerHTML = '<div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Étapes finitions</div>';
+
+          const allApplicableDone = Object.entries(applicable).every(([k, isApplicable]) => {
+            if (!isApplicable) return true;
+            return steps[k]?.done === true;
+          });
+
+          Object.keys(STEP_LABELS).forEach(key => {
+            const isApplicable = applicable[key];
+            const stepData = steps[key] || {};
+            const isDone = isApplicable ? stepData.done === true : true; // non-applicable = auto done
+
+            const row = document.createElement("div");
+            row.style.cssText = "display:flex;align-items:flex-start;gap:6px;padding:3px 0;font-size:11px;";
+
+            if (!isApplicable) {
+              row.innerHTML = `<span style="color:#9ca3af;text-decoration:line-through;">${STEP_LABELS[key]} (N/A)</span>`;
+            } else {
+              const cb = document.createElement("input");
+              cb.type = "checkbox";
+              cb.checked = stepData.done === true;
+              cb.disabled = readOnly;
+              cb.style.cssText = "margin-top:2px;flex-shrink:0;cursor:pointer;";
+
+              const labelDiv = document.createElement("div");
+              labelDiv.style.cssText = "flex:1;";
+
+              const nameSpan = document.createElement("span");
+              nameSpan.style.cssText = isDone ? "color:#16a34a;font-weight:600;" : "color:#374151;";
+              nameSpan.textContent = STEP_LABELS[key];
+              labelDiv.appendChild(nameSpan);
+
+              if (isDone && stepData.doneAt) {
+                const ts = document.createElement("div");
+                ts.style.cssText = "color:#6b7280;font-size:10px;";
+                const dt = new Date(stepData.doneAt);
+                ts.textContent = `${stepData.doneBy || ""} — ${dt.toLocaleDateString('fr-FR')} ${dt.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'})}`;
+                labelDiv.appendChild(ts);
+              }
+
+              // Extra fields
+              if (key === "emballage" && isDone && stepData.conditionnement) {
+                const cond = document.createElement("div");
+                cond.style.cssText = "color:#4b5563;font-size:10px;";
+                cond.textContent = `Conditionnement: ${stepData.conditionnement}`;
+                labelDiv.appendChild(cond);
+              }
+              if (key === "livraison" && isDone && stepData.tracking) {
+                const trk = document.createElement("div");
+                trk.style.cssText = "color:#4b5563;font-size:10px;";
+                trk.textContent = `Suivi: ${stepData.tracking}`;
+                labelDiv.appendChild(trk);
+              }
+
+              if (!readOnly) {
+                cb.onchange = async (e) => {
+                  e.stopPropagation();
+                  const newDone = cb.checked;
+                  let conditionnement = null;
+                  let tracking = null;
+
+                  if (key === "emballage" && newDone) {
+                    conditionnement = prompt("Conditionnement (obligatoire) :");
+                    if (!conditionnement || conditionnement.trim() === "") {
+                      cb.checked = false;
+                      return;
+                    }
+                  }
+                  if (key === "livraison" && newDone) {
+                    tracking = prompt("Numéro de suivi (optionnel) :");
+                  }
+
+                  const body = { step: key, done: newDone };
+                  if (conditionnement) body.conditionnement = conditionnement;
+                  if (tracking) body.tracking = tracking;
+
+                  const authHeader = authToken || "";
+                  const r = await fetch(`/api/fabrication/${jobId}/finition-step`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + authHeader },
+                    body: JSON.stringify(body)
+                  }).then(res => res.json()).catch(() => ({ ok: false }));
+
+                  if (r.ok) {
+                    // Reload the card
+                    await refreshKanban();
+                  } else {
+                    cb.checked = !newDone;
+                    showNotification("❌ " + (r.error || "Erreur"), "error");
+                  }
+                };
+              }
+
+              row.appendChild(cb);
+              row.appendChild(labelDiv);
             }
-          }).catch(() => {});
+            finitionsPanel.appendChild(row);
+          });
+        }).catch(() => {});
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3 || currentUser.profile === 4)) {
           const btnTerminee = document.createElement("button");
           btnTerminee.className = "btn btn-sm btn-primary";
           btnTerminee.textContent = "✅ Terminée";
+          btnTerminee.title = "Déplacer vers Fin de production (toutes les étapes doivent être validées)";
           btnTerminee.onclick = async (e) => {
             e.stopPropagation();
             const r = await fetch("/api/jobs/move", {
@@ -489,7 +617,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
               body: JSON.stringify({ source: full, destination: "Fin de production", overwrite: true })
             }).then(res => res.json()).catch(() => ({ ok: false }));
             if (r.ok) { showNotification("✅ Déplacé vers Fin de production", "success"); await refreshKanban(); }
-            else showNotification("❌ " + (r.error || "Erreur"), "error");
+            else showNotification("❌ " + (r.error || "Étapes de finition non validées"), "error");
           };
           if (isActionVisible(folderName, "faconnageTermine")) actions.appendChild(btnTerminee);
         }
