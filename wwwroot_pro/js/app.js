@@ -18,6 +18,7 @@ import { initDossiersView, loadDossiersList, openDossierDetail } from './dossier
 import { initSettingsView } from './settings.js';
 import { pollNotifications, initNotificationBell } from './notifications.js';
 import { initGlobalProductionView, refreshProductionViewKanban, buildProductionView } from './production-view.js';
+import { STAGE_PROGRESS, STAGE_DISPLAY_LABELS } from './constants.js';
 
 import { hideAllViews, showDossiers, showSettings, showGlobalProduction } from './app/navigation.js';
 import { initDashboardView } from './app/dashboard.js';
@@ -564,21 +565,11 @@ async function buildKanbanSidebar() {
         headers: { "Authorization": `Bearer ${authToken}` }
       }).then(r => r.json()).catch(() => []);
 
-      const STAGE_PROGRESS = {
-        "Début de production": 0, "Corrections": 25, "Corrections et fond perdu": 25,
-        "Prêt pour impression": 50, "BAT": 65, "PrismaPrepare": 75, "Fiery": 75,
-        "Impression en cours": 75, "Façonnage": 90, "Fin de production": 100
-      };
-      const STAGE_LABELS = {
-        "Début de production": "Jobs à traiter", "Corrections": "Preflight",
-        "Corrections et fond perdu": "Preflight fp", "Prêt pour impression": "En attente"
-      };
-
       if (Array.isArray(prodJobs) && prodJobs.length > 0) {
         prodRows = prodJobs.slice(0, 8).map(job => {
-          const stageLabel = STAGE_LABELS[job.currentStage] || job.currentStage || "—";
+          const stageLabel = STAGE_DISPLAY_LABELS[job.currentStage] || job.currentStage || "—";
           const progress = Object.entries(STAGE_PROGRESS).find(([k]) => (job.currentStage || "").includes(k))?.[1] ?? 0;
-          const color = progress === 100 ? "#22c55e" : progress >= 75 ? "#f97316" : progress >= 50 ? "#3b82f6" : "#f59e0b";
+          const color = progress === 100 ? "#22c55e" : progress >= 65 ? "#f97316" : progress >= 35 ? "#3b82f6" : "#f59e0b";
           return `
             <div style="padding:6px 0;border-bottom:1px solid #f0f0f0;">
               <div style="font-size:11px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${job.numeroDossier || job.fileName || '—'}</div>
