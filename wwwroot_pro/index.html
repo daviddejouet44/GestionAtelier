@@ -113,162 +113,12 @@
       <div class="fab-modal-content">
         <h2>Fiche de fabrication</h2>
         <div id="fab-stage-banner" style="display:none;margin-bottom:12px;padding:8px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:13px;color:#0369a1;font-weight:500;"></div>
-        <div class="fab-form-grid">
-          <!-- Informations générales -->
-          <div class="fab-form-group"><label>Délai</label><input id="fab-delai" type="date" readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;" /></div>
-          <div class="fab-form-group"><label>Numéro de dossier <span class="required-star">*</span></label><input id="fab-numero-dossier" type="text" /></div>
-          <div class="fab-form-group"><label>Client</label><input id="fab-client" type="text" /></div>
-          <div class="fab-form-group"><label>Opérateur</label><input id="fab-operateur" type="text" readonly style="background:#f3f4f6;cursor:not-allowed;" /></div>
-          <div class="fab-form-group">
-            <label>Type de travail <span class="required-star">*</span></label>
-            <select id="fab-type"><option value="">— Sélectionner —</option></select>
-          </div>
-          <div class="fab-form-group"><label>Format fini</label><input id="fab-format" type="text" /></div>
-          <div class="fab-form-group"><label>Quantité</label><input id="fab-quantite" type="number" /></div>
-          <div class="fab-form-group"><label>Moteur d'impression</label><select id="fab-moteur"><option value="">— Sélectionner —</option></select></div>
-          <div class="fab-form-group"><label>Recto/Verso</label><select id="fab-recto-verso"><option value="">— Sélectionner —</option><option value="Oui">Oui</option><option value="Non">Non</option></select></div>
-          <div class="fab-form-group"><label>Forme de découpe</label><input id="fab-forme-decoupe" type="text" /></div>
-
-          <!-- Donneur d'ordre -->
-          <div class="fab-form-group fab-full-width fab-section-header"><span>Donneur d'ordre</span></div>
-          <div class="fab-form-group"><label>Nom</label><input id="fab-donneur-nom" type="text" /></div>
-          <div class="fab-form-group"><label>Prénom</label><input id="fab-donneur-prenom" type="text" /></div>
-          <div class="fab-form-group"><label>Téléphone</label><input id="fab-donneur-tel" type="text" /></div>
-          <div class="fab-form-group"><label>Email</label><input id="fab-donneur-email" type="email" /></div>
-
-          <!-- Pagination & Format feuille -->
-          <div class="fab-form-group"><label>Pagination</label><input id="fab-pagination" type="text" placeholder="ex: 4+4, 8 pages…" /></div>
-          <div class="fab-form-group"><label>Format feuille en machine</label><select id="fab-format-feuille"><option value="">— Sélectionner —</option></select></div>
-
-          <!-- Nombre de feuilles (calculé) -->
-          <div class="fab-form-group"><label>Nombre de feuilles <small style="color:#9ca3af;font-size:10px;">(calculé)</small></label><input id="fab-nombre-feuilles" type="number" placeholder="auto" /></div>
-          <div class="fab-form-group"></div>
-
-          <!-- Médias avec fabricants -->
-          <div class="fab-form-group"><label>Media 1</label><select id="fab-media1"><option value="">— Sélectionner —</option></select></div>
-          <div class="fab-form-group"><label>Fabricant media 1</label><input id="fab-media1-fabricant" type="text" /></div>
-          <div class="fab-form-group"><label>Media 2</label><select id="fab-media2"><option value="">— Sélectionner —</option></select></div>
-          <div class="fab-form-group"><label>Fabricant media 2</label><input id="fab-media2-fabricant" type="text" /></div>
-          <div class="fab-form-group"><label>Media 3</label><select id="fab-media3"><option value="">— Sélectionner —</option></select></div>
-          <div class="fab-form-group"><label>Fabricant media 3</label><input id="fab-media3-fabricant" type="text" /></div>
-          <div class="fab-form-group"><label>Media 4</label><select id="fab-media4"><option value="">— Sélectionner —</option></select></div>
-          <div class="fab-form-group"><label>Fabricant media 4</label><input id="fab-media4-fabricant" type="text" /></div>
-
-          <!-- Couverture (conditionnel) -->
-          <div id="fab-couverture-section" class="fab-form-group fab-full-width fab-section-header" style="display:none;"><span>Couverture</span></div>
-          <div id="fab-couverture-media-row" class="fab-form-group" style="display:none;"><label>Média couverture</label><select id="fab-media-couverture"><option value="">— Sélectionner —</option></select></div>
-          <div id="fab-couverture-fab-row" class="fab-form-group" style="display:none;"><label>Fabricant couverture</label><input id="fab-media-couverture-fabricant" type="text" /></div>
-
-          <!-- Rainage -->
-          <div class="fab-form-group"><label>Rainage</label>
-            <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
-              <input id="fab-rainage" type="checkbox" style="width:16px;height:16px;" />
-              <span id="fab-rainage-label">Non</span>
-            </label>
-          </div>
-          <div class="fab-form-group"></div>
-
-          <!-- BAT + import mail BAT -->
-          <div class="fab-form-group"><label>BAT</label><select id="fab-bat"><option value="">— Sélectionner —</option><option value="Non">Non</option><option value="Numérique">Numérique</option><option value="Papier">Papier</option></select></div>
-          <div class="fab-form-group"><label>Mail validation BAT</label>
-            <div style="display:flex;align-items:center;gap:8px;">
-              <button id="fab-import-mail-bat" class="btn" style="font-size:12px;padding:4px 10px;">📎 Importer</button>
-              <span id="fab-mail-bat-name" style="font-size:12px;color:#6b7280;"></span>
-              <input id="fab-mail-bat-file" type="file" accept=".eml,.msg" style="display:none;" />
-            </div>
-          </div>
-
-          <!-- Import mail devis -->
-          <div class="fab-form-group"><label>Mail validation devis</label>
-            <div style="display:flex;align-items:center;gap:8px;">
-              <button id="fab-import-mail-devis" class="btn" style="font-size:12px;padding:4px 10px;">📎 Importer</button>
-              <span id="fab-mail-devis-name" style="font-size:12px;color:#6b7280;"></span>
-              <input id="fab-mail-devis-file" type="file" accept=".eml,.msg" style="display:none;" />
-            </div>
-          </div>
-          <div class="fab-form-group"></div>
-
-          <!-- Ennoblissement -->
-          <div class="fab-form-group fab-full-width"><label>Ennoblissement</label>
-            <div id="fab-ennoblissement-container" style="display:flex;flex-wrap:wrap;gap:8px;padding:6px 0;">
-              <label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;"><input type="checkbox" class="fab-ennob-cb" value="Vernis sélectif" /> Vernis sélectif</label>
-              <label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;"><input type="checkbox" class="fab-ennob-cb" value="Dorure à chaud : Or" /> Dorure à chaud : Or</label>
-              <label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;"><input type="checkbox" class="fab-ennob-cb" value="Dorure à chaud : Argent" /> Dorure à chaud : Argent</label>
-              <label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;"><input type="checkbox" class="fab-ennob-cb" value="Pelliculage : Mat recto" /> Pelliculage : Mat recto</label>
-              <label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;"><input type="checkbox" class="fab-ennob-cb" value="Pelliculage : Mat recto/verso" /> Pelliculage : Mat recto/verso</label>
-              <label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;"><input type="checkbox" class="fab-ennob-cb" value="Pelliculage : Brillant recto" /> Pelliculage : Brillant recto</label>
-              <label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;"><input type="checkbox" class="fab-ennob-cb" value="Pelliculage : Brillant recto/verso" /> Pelliculage : Brillant recto/verso</label>
-              <label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;"><input type="checkbox" class="fab-ennob-cb" value="Pelliculage : Soft Touch recto" /> Pelliculage : Soft Touch recto</label>
-              <label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;"><input type="checkbox" class="fab-ennob-cb" value="Pelliculage : Soft Touch recto/verso" /> Pelliculage : Soft Touch recto/verso</label>
-            </div>
-          </div>
-
-          <!-- Façonnage multi-select (CSV admin) -->
-          <div class="fab-form-group fab-full-width"><label>Façonnage (finitions)</label><div id="fab-faconnage-container" style="display:flex;flex-wrap:wrap;gap:8px;padding:6px 0;"></div></div>
-
-          <!-- Façonnage type reliure (single select) -->
-          <div class="fab-form-group"><label>Type de reliure</label>
-            <select id="fab-faconnage-binding">
-              <option value="">— Sélectionner —</option>
-              <option value="2 piques métal">2 piques métal</option>
-              <option value="2 piques à plat">2 piques à plat</option>
-              <option value="2 piques booklet">2 piques booklet</option>
-              <option value="Dos carré collé">Dos carré collé</option>
-              <option value="Dos carré piqué">Dos carré piqué</option>
-              <option value="2 piques calendrier (à l'italienne)">2 piques calendrier (à l'italienne)</option>
-              <option value="Wire'O">Wire'O</option>
-            </select>
-          </div>
-
-          <!-- Plis -->
-          <div class="fab-form-group"><label>Plis</label>
-            <select id="fab-plis">
-              <option value="">— Sélectionner —</option>
-              <option value="Pli accordéon">Pli accordéon</option>
-              <option value="Pli roulé">Pli roulé</option>
-              <option value="Pli fenêtre">Pli fenêtre</option>
-            </select>
-          </div>
-
-          <!-- Sortie -->
-          <div class="fab-form-group"><label>Sortie</label>
-            <select id="fab-sortie">
-              <option value="">— Sélectionner —</option>
-              <option value="À plat">À plat</option>
-              <option value="Assemblée">Assemblée</option>
-            </select>
-          </div>
-
-          <!-- Livraison -->
-          <div class="fab-form-group"><label>Retrait imprimerie ou livraison</label><select id="fab-retrait-livraison"><option value="">— Sélectionner —</option><option value="Retrait imprimerie">Retrait imprimerie</option><option value="Livraison">Livraison</option></select></div>
-          <div class="fab-form-group"><label>Adresse de livraison</label><input id="fab-adresse-livraison" type="text" /></div>
-
-          <!-- Passes (affichage calculé) -->
-          <div class="fab-form-group fab-full-width fab-section-header"><span>Passes <small style="font-weight:normal;color:#9ca3af;">(feuilles supplémentaires)</small></span></div>
-          <div class="fab-form-group fab-full-width"><div id="fab-passes-display" style="font-size:13px;color:#374151;padding:4px 0;"></div></div>
-
-          <!-- Dates -->
-          <div class="fab-form-group fab-full-width fab-section-header"><span>Dates</span></div>
-          <div class="fab-form-group"><label>Date de départ</label><input id="fab-date-depart" type="date" /></div>
-          <div class="fab-form-group"><label>Date de livraison <small style="color:#9ca3af;font-size:10px;">(calculée)</small></label><input id="fab-date-livraison" type="date" /></div>
-          <div class="fab-form-group"><label>Planning machine <small style="color:#9ca3af;font-size:10px;">(calculé)</small></label><input id="fab-planning-machine" type="datetime-local" /></div>
-          <div class="fab-form-group"></div>
-
-          <!-- Justifs clients -->
-          <div class="fab-form-group fab-full-width fab-section-header"><span>Justificatifs clients</span></div>
-          <div class="fab-form-group"><label>Quantité justifs</label><input id="fab-justifs-qte" type="number" min="0" /></div>
-          <div class="fab-form-group"><label>Adresse justifs</label><input id="fab-justifs-adresse" type="text" /></div>
-
-          <!-- Répartitions -->
-          <div class="fab-form-group fab-full-width fab-section-header"><span>Répartitions et quantités</span></div>
-          <div class="fab-form-group fab-full-width">
-            <div id="fab-repartitions-container"></div>
-            <button id="fab-repartitions-add" class="btn" style="margin-top:8px;font-size:12px;padding:4px 12px;">+ Ajouter une adresse</button>
-          </div>
-
-          <!-- Notes et Historique -->
-          <div class="fab-form-group fab-full-width"><label>Note</label><textarea id="fab-notes" rows="3"></textarea></div>
-          <div class="fab-form-group fab-full-width"><label>Historique</label><div id="fab-history" style="max-height:120px;overflow-y:auto;font-size:12px;color:#6b7280;"></div></div>
+        <!-- Dynamic form injected here by fabrication.js -->
+        <div id="fab-dynamic-form" class="fab-form-grid"></div>
+        <!-- History always shown below the dynamic form -->
+        <div class="fab-form-group fab-full-width" style="margin-top:8px;">
+          <label>Historique</label>
+          <div id="fab-history" style="max-height:120px;overflow-y:auto;font-size:12px;color:#6b7280;"></div>
         </div>
         <div class="fab-modal-buttons">
           <button id="fab-close">Fermer</button>
@@ -283,7 +133,7 @@
 
   </div>
 
-  <script type="module" src="js/app.js?v=29"></script>
+  <script type="module" src="js/app.js?v=30"></script>
 
 </body>
 </html>

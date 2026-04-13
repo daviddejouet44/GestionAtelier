@@ -1,739 +1,458 @@
-// fabrication.js — Fiche de fabrication
+// fabrication.js — Fiche de fabrication (formulaire dynamique)
 import { authToken, deliveriesByPath, fnKey, normalizePath, showNotification, FIN_PROD_FOLDER } from './core.js';
 import { calendar, submissionCalendar } from './calendar.js';
 
-// ======================================================
-// RÉFÉRENCES DOM
-// ======================================================
+// Fixed DOM refs
 const fabModal = document.getElementById("fab-modal");
 const fabClose = document.getElementById("fab-close");
 const fabSave = document.getElementById("fab-save");
 const fabPdf = document.getElementById("fab-pdf");
 const fabFinProd = document.getElementById("fab-finprod");
 const fabPrisma = document.getElementById("fab-prisma");
-
-const fabMoteur = document.getElementById("fab-moteur");
-const fabOperateur = document.getElementById("fab-operateur");
-const fabQuantite = document.getElementById("fab-quantite");
-const fabType = document.getElementById("fab-type");
-const fabFormat = document.getElementById("fab-format");
-const fabRectoVerso = document.getElementById("fab-recto-verso");
-const fabFormeDecoupe = document.getElementById("fab-forme-decoupe");
-const fabBat = document.getElementById("fab-bat");
-const fabRetraitLivraison = document.getElementById("fab-retrait-livraison");
-const fabAdresseLivraison = document.getElementById("fab-adresse-livraison");
-const fabClient = document.getElementById("fab-client");
-const fabNumeroDossier = document.getElementById("fab-numero-dossier");
-const fabNotes = document.getElementById("fab-notes");
-const fabDelai = document.getElementById("fab-delai");
-const fabFaconnageContainer = document.getElementById("fab-faconnage-container");
-const fabMedia1 = document.getElementById("fab-media1");
-const fabMedia2 = document.getElementById("fab-media2");
-const fabMedia3 = document.getElementById("fab-media3");
-const fabMedia4 = document.getElementById("fab-media4");
+const fabStageBanner = document.getElementById("fab-stage-banner");
 const fabHistory = document.getElementById("fab-history");
 const fabRemove = document.getElementById("fab-delivery-remove");
-const fabStageBanner = document.getElementById("fab-stage-banner");
-
-// New fields
-const fabDonneurNom    = document.getElementById("fab-donneur-nom");
-const fabDonneurPrenom = document.getElementById("fab-donneur-prenom");
-const fabDonneurTel    = document.getElementById("fab-donneur-tel");
-const fabDonneurEmail  = document.getElementById("fab-donneur-email");
-const fabPagination    = document.getElementById("fab-pagination");
-const fabFormatFeuille = document.getElementById("fab-format-feuille");
-const fabNombreFeuilles = document.getElementById("fab-nombre-feuilles");
-const fabMedia1Fabricant = document.getElementById("fab-media1-fabricant");
-const fabMedia2Fabricant = document.getElementById("fab-media2-fabricant");
-const fabMedia3Fabricant = document.getElementById("fab-media3-fabricant");
-const fabMedia4Fabricant = document.getElementById("fab-media4-fabricant");
-const fabCouvertureSection    = document.getElementById("fab-couverture-section");
-const fabCouvertureMediaRow   = document.getElementById("fab-couverture-media-row");
-const fabCouvertureFabRow     = document.getElementById("fab-couverture-fab-row");
-const fabMediaCouverture      = document.getElementById("fab-media-couverture");
-const fabMediaCouvertureFab   = document.getElementById("fab-media-couverture-fabricant");
-const fabRainage      = document.getElementById("fab-rainage");
-const fabRainageLabel = document.getElementById("fab-rainage-label");
-const fabEnnobContainer = document.getElementById("fab-ennoblissement-container");
-const fabFaconnageBinding = document.getElementById("fab-faconnage-binding");
-const fabPlis         = document.getElementById("fab-plis");
-const fabSortie       = document.getElementById("fab-sortie");
-const fabImportMailBat   = document.getElementById("fab-import-mail-bat");
-const fabMailBatFile     = document.getElementById("fab-mail-bat-file");
-const fabMailBatName     = document.getElementById("fab-mail-bat-name");
-const fabImportMailDevis = document.getElementById("fab-import-mail-devis");
-const fabMailDevisFile   = document.getElementById("fab-mail-devis-file");
-const fabMailDevisName   = document.getElementById("fab-mail-devis-name");
-const fabPassesDisplay  = document.getElementById("fab-passes-display");
-const fabDateDepart     = document.getElementById("fab-date-depart");
-const fabDateLivraison  = document.getElementById("fab-date-livraison");
-const fabPlanningMachine = document.getElementById("fab-planning-machine");
-const fabJustifsQte    = document.getElementById("fab-justifs-qte");
-const fabJustifsAdresse = document.getElementById("fab-justifs-adresse");
-const fabRepartitionsContainer = document.getElementById("fab-repartitions-container");
-const fabRepartitionsAdd = document.getElementById("fab-repartitions-add");
+const fabDynamicForm = document.getElementById("fab-dynamic-form");
 
 export let fabCurrentPath = null;
 
-// ======================================================
-// CLIENT-SIDE CACHE (TTL: 5 minutes)
-// ======================================================
+// Cache
 const _fabCache = {};
 const FAB_CACHE_TTL = 5 * 60 * 1000;
+let _formConfigCache = null;
+let _formConfigCacheTs = 0;
+window._invalidateFabFormConfig = () => { _formConfigCache = null; _formConfigCacheTs = 0; };
 
 async function fetchCached(url) {
   const now = Date.now();
-  if (_fabCache[url] && now - _fabCache[url].ts < FAB_CACHE_TTL) {
-    return _fabCache[url].data;
-  }
+  if (_fabCache[url] && now - _fabCache[url].ts < FAB_CACHE_TTL) return _fabCache[url].data;
   const data = await fetch(url).then(r => r.json()).catch(() => []);
   _fabCache[url] = { data, ts: now };
   return data;
 }
 
-// ======================================================
-// HELPERS — RAINAGE AUTO
-// ======================================================
-function updateRainageAuto() {
-  if (!fabMediaCouverture || !fabRainage) return;
-  const mediaName = fabMediaCouverture.value || "";
-  const match = mediaName.match(/(\d+)\s*g/i);
-  if (match && parseInt(match[1]) > 170) {
-    fabRainage.checked = true;
-    fabRainage.disabled = true;
-    if (fabRainageLabel) fabRainageLabel.textContent = "Oui (auto)";
-  } else {
-    fabRainage.disabled = false;
-    if (fabRainageLabel) fabRainageLabel.textContent = fabRainage.checked ? "Oui" : "Non";
-  }
+async function fetchFormConfig() {
+  const now = Date.now();
+  if (_formConfigCache && now - _formConfigCacheTs < FAB_CACHE_TTL) return _formConfigCache;
+  try {
+    const cfg = await fetch("/api/settings/form-config").then(r => r.json());
+    _formConfigCache = cfg; _formConfigCacheTs = now; return cfg;
+  } catch(e) { return null; }
 }
 
-// ======================================================
-// HELPERS — COUVERTURE CONDITIONNELLE
-// ======================================================
+// Field ID to HTML element ID mapping
+const FIELD_HTML_IDS = {
+  "numeroDossier":         "fab-numero-dossier",
+  "client":                "fab-client",
+  "operateur":             "fab-operateur",
+  "delai":                 "fab-delai",
+  "typeTravail":           "fab-type",
+  "formatFini":            "fab-format",
+  "quantite":              "fab-quantite",
+  "moteurImpression":      "fab-moteur",
+  "donneurOrdreNom":       "fab-donneur-nom",
+  "donneurOrdrePrenom":    "fab-donneur-prenom",
+  "donneurOrdreTelephone": "fab-donneur-tel",
+  "donneurOrdreEmail":     "fab-donneur-email",
+  "rectoVerso":            "fab-recto-verso",
+  "formeDecoupe":          "fab-forme-decoupe",
+  "pagination":            "fab-pagination",
+  "formatFeuilleMachine":  "fab-format-feuille",
+  "media1":                "fab-media1",
+  "media1Fabricant":       "fab-media1-fabricant",
+  "media2":                "fab-media2",
+  "media2Fabricant":       "fab-media2-fabricant",
+  "media3":                "fab-media3",
+  "media3Fabricant":       "fab-media3-fabricant",
+  "media4":                "fab-media4",
+  "media4Fabricant":       "fab-media4-fabricant",
+  "couvertureMedia":       "fab-media-couverture",
+  "couvertureFabricant":   "fab-media-couverture-fabricant",
+  "bat":                   "fab-bat",
+  "mailValidationBat":     "fab-mail-bat",
+  "mailValidationDevis":   "fab-mail-devis",
+  "rainage":               "fab-rainage",
+  "ennoblissement":        "fab-ennoblissement-container",
+  "faconnageBinding":      "fab-faconnage-binding",
+  "plis":                  "fab-plis",
+  "sortie":                "fab-sortie",
+  "nombreFeuilles":        "fab-nombre-feuilles",
+  "dateDepart":            "fab-date-depart",
+  "dateLivraison":         "fab-date-livraison",
+  "planningMachine":       "fab-planning-machine",
+  "passes":                "fab-passes-display",
+  "retraitLivraison":      "fab-retrait-livraison",
+  "adresseLivraison":      "fab-adresse-livraison",
+  "justifsQuantite":       "fab-justifs-qte",
+  "justifsAdresse":        "fab-justifs-adresse",
+  "repartitions":          "fab-repartitions-container",
+  "notes":                 "fab-notes",
+};
+function gElId(id) { return FIELD_HTML_IDS[id] || ('fab-' + id); }
+function gEl(id) { return document.getElementById(gElId(id)); }
+function fmtDate2(v) { try { return new Date(v).toISOString().split('T')[0]; } catch(e) { return ''; } }
+
+// Settings vars
 let _coverProducts = [];
-function updateCouvertureVisibility() {
-  const typeTravail = fabType ? fabType.value : "";
-  const show = _coverProducts.includes(typeTravail);
-  if (fabCouvertureSection)  fabCouvertureSection.style.display  = show ? "" : "none";
-  if (fabCouvertureMediaRow) fabCouvertureMediaRow.style.display = show ? "" : "none";
-  if (fabCouvertureFabRow)   fabCouvertureFabRow.style.display   = show ? "" : "none";
-}
-
-// ======================================================
-// HELPERS — NOMBRE DE FEUILLES CALCULÉ
-// ======================================================
 let _sheetCalcRules = {};
 let _deliveryDelayHours = 48;
-let _passesConfig = { faconnage: 0, pelliculageRecto: 0, pelliculageRectoVerso: 0, rainage: 0, dorure: 0, dosCarreColle: 0 };
+let _passesConfig = { faconnage:0, pelliculageRecto:0, pelliculageRectoVerso:0, rainage:0, dorure:0, dosCarreColle:0 };
+
+function updateRainageAuto() {
+  const couv = gEl("couvertureMedia"); const rain = gEl("rainage"); const lbl = document.getElementById("fab-rainage-label");
+  if (!couv || !rain) return;
+  const m = (couv.value || '').match(/(\d+)\s*g/i);
+  if (m && parseInt(m[1]) > 170) { rain.checked=true; rain.disabled=true; if(lbl) lbl.textContent='Oui (auto)'; }
+  else { rain.disabled=false; if(lbl) lbl.textContent=rain.checked?'Oui':'Non'; }
+}
+
+function updateCouvertureVisibility() {
+  const typeEl = gEl("typeTravail");
+  const show = typeEl ? _coverProducts.includes(typeEl.value) : false;
+  if (fabDynamicForm) {
+    fabDynamicForm.querySelectorAll('[data-depends-on="typeTravail"]').forEach(el => { el.style.display = show ? '' : 'none'; });
+  }
+}
 
 function updateNombreFeuilles() {
-  const typeTravail = fabType ? fabType.value : "";
-  const quantite = parseInt(fabQuantite ? fabQuantite.value : "0") || 0;
-  if (typeTravail && _sheetCalcRules[typeTravail] && quantite > 0) {
-    const divisor = _sheetCalcRules[typeTravail];
-    const calculated = Math.ceil(quantite / divisor);
-    if (fabNombreFeuilles && !fabNombreFeuilles._manuallyEdited) {
-      fabNombreFeuilles.value = calculated;
-    }
-  }
+  const typeEl=gEl("typeTravail"); const qteEl=gEl("quantite"); const nfEl=gEl("nombreFeuilles");
+  const type=typeEl?typeEl.value:''; const qte=parseInt(qteEl?qteEl.value:'0')||0;
+  if(type && _sheetCalcRules[type] && qte>0 && nfEl && !nfEl._manuallyEdited) nfEl.value=Math.ceil(qte/_sheetCalcRules[type]);
 }
 
-// ======================================================
-// HELPERS — DATES CALCULÉES
-// ======================================================
 function updateDateLivraison() {
-  if (!fabDateDepart || !fabDateLivraison) return;
-  const depart = fabDateDepart.value;
-  if (!depart) return;
-  const departDate = new Date(depart);
-  const livraisonDate = new Date(departDate.getTime() + _deliveryDelayHours * 3600000);
-  if (!fabDateLivraison._manuallyEdited) {
-    fabDateLivraison.value = livraisonDate.toISOString().split("T")[0];
-  }
-  updatePlanningMachine();
-}
-
-function updatePlanningMachine() {
-  // planningMachine is calculated per-machine; leave editable but auto-calc if engine has delay
-  // For now, planning machine can be set manually
-}
-
-// ======================================================
-// HELPERS — PASSES DISPLAY
-// ======================================================
-function updatePassesDisplay() {
-  if (!fabPassesDisplay) return;
-  const ennob = getEnnoblissementSelected();
-  const faconnageBinding = fabFaconnageBinding ? fabFaconnageBinding.value : "";
-  const rainage = fabRainage ? fabRainage.checked : false;
-
-  const lines = [];
-  if (faconnageBinding && _passesConfig.faconnage > 0)
-    lines.push(`Façonnage : +${_passesConfig.faconnage} feuilles`);
-  if (ennob.some(e => e.includes("Pelliculage") && e.includes("recto/verso")) && _passesConfig.pelliculageRectoVerso > 0)
-    lines.push(`Pelliculage recto/verso : +${_passesConfig.pelliculageRectoVerso} feuilles`);
-  else if (ennob.some(e => e.includes("Pelliculage") && e.includes("recto")) && _passesConfig.pelliculageRecto > 0)
-    lines.push(`Pelliculage recto : +${_passesConfig.pelliculageRecto} feuilles`);
-  if (rainage && _passesConfig.rainage > 0)
-    lines.push(`Rainage : +${_passesConfig.rainage} feuilles`);
-  if (ennob.some(e => e.includes("Dorure")) && _passesConfig.dorure > 0)
-    lines.push(`Dorure : +${_passesConfig.dorure} feuilles`);
-  if (faconnageBinding === "Dos carré collé" && _passesConfig.dosCarreColle > 0)
-    lines.push(`Dos carré collé : +${_passesConfig.dosCarreColle} exemplaires`);
-
-  fabPassesDisplay.innerHTML = lines.length > 0
-    ? lines.map(l => `<span style="display:inline-block;background:#f3f4f6;padding:3px 8px;border-radius:4px;margin:2px;font-size:12px;">${l}</span>`).join("")
-    : '<span style="color:#9ca3af;font-size:12px;">Aucune passe applicable</span>';
+  const depEl=gEl("dateDepart"); const livEl=gEl("dateLivraison");
+  if(!depEl||!livEl||!depEl.value) return;
+  const lDate=new Date(new Date(depEl.value).getTime()+_deliveryDelayHours*3600000);
+  if(!livEl._manuallyEdited) livEl.value=lDate.toISOString().split('T')[0];
 }
 
 function getEnnoblissementSelected() {
-  if (!fabEnnobContainer) return [];
-  return Array.from(fabEnnobContainer.querySelectorAll('.fab-ennob-cb:checked')).map(cb => cb.value);
+  const c=gEl("ennoblissement");
+  return c ? Array.from(c.querySelectorAll('.fab-ennob-cb:checked')).map(cb=>cb.value) : [];
 }
 
-// ======================================================
-// HELPERS — RÉPARTITIONS
-// ======================================================
-function addRepartitionRow(quantite = "", adresse = "") {
-  if (!fabRepartitionsContainer) return;
-  const row = document.createElement("div");
-  row.className = "fab-repartition-row";
-  row.style.cssText = "display:flex;gap:8px;align-items:center;margin-bottom:6px;";
-  row.innerHTML = `
-    <input type="number" class="fab-rep-qte" placeholder="Quantité" value="${quantite}" style="width:100px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" min="0" />
-    <input type="text" class="fab-rep-adresse" placeholder="Adresse de répartition" value="${adresse}" style="flex:1;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" />
-    <button class="fab-rep-remove btn" style="padding:4px 10px;font-size:12px;color:#ef4444;">×</button>
-  `;
-  row.querySelector(".fab-rep-remove").onclick = () => row.remove();
-  fabRepartitionsContainer.appendChild(row);
+function updatePassesDisplay() {
+  const disp=gEl("passes"); if(!disp) return;
+  const ennob=getEnnoblissementSelected();
+  const fb=(gEl("faconnageBinding")||{value:""}).value;
+  const rv=(gEl("rainage")||{checked:false}).checked;
+  const lines=[];
+  if(fb && _passesConfig.faconnage>0) lines.push('Façonnage : +'+_passesConfig.faconnage+' feuilles');
+  if(ennob.some(e=>e.includes('Pelliculage')&&e.includes('recto/verso'))&&_passesConfig.pelliculageRectoVerso>0) lines.push('Pelliculage recto/verso : +'+_passesConfig.pelliculageRectoVerso+' feuilles');
+  else if(ennob.some(e=>e.includes('Pelliculage')&&e.includes('recto'))&&_passesConfig.pelliculageRecto>0) lines.push('Pelliculage recto : +'+_passesConfig.pelliculageRecto+' feuilles');
+  if(rv&&_passesConfig.rainage>0) lines.push('Rainage : +'+_passesConfig.rainage+' feuilles');
+  if(ennob.some(e=>e.includes('Dorure'))&&_passesConfig.dorure>0) lines.push('Dorure : +'+_passesConfig.dorure+' feuilles');
+  if(fb==='Dos carré collé'&&_passesConfig.dosCarreColle>0) lines.push('Dos carré collé : +'+_passesConfig.dosCarreColle+' exemplaires');
+  disp.innerHTML=lines.length>0
+    ? lines.map(l=>'<span style="display:inline-block;background:#f3f4f6;padding:3px 8px;border-radius:4px;margin:2px;font-size:12px;">'+l+'</span>').join('')
+    : '<span style="color:#9ca3af;font-size:12px;">Aucune passe applicable</span>';
+}
+
+function addRepartitionRow(quantite, adresse) {
+  quantite=quantite||''; adresse=adresse||'';
+  const container=gEl("repartitions"); if(!container) return;
+  const row=document.createElement('div');
+  row.className='fab-repartition-row';
+  row.style.cssText='display:flex;gap:8px;align-items:center;margin-bottom:6px;';
+  row.innerHTML='<input type="number" class="fab-rep-qte" placeholder="Quantité" value="'+quantite+'" style="width:100px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" min="0" />'
+    +'<input type="text" class="fab-rep-adresse" placeholder="Adresse de répartition" value="'+adresse+'" style="flex:1;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" />'
+    +'<button class="fab-rep-remove btn" style="padding:4px 10px;font-size:12px;color:#ef4444;">×</button>';
+  row.querySelector('.fab-rep-remove').onclick=()=>row.remove();
+  container.appendChild(row);
 }
 
 function getRepartitions() {
-  if (!fabRepartitionsContainer) return [];
-  return Array.from(fabRepartitionsContainer.querySelectorAll(".fab-repartition-row")).map(row => ({
-    quantite: parseInt(row.querySelector(".fab-rep-qte").value) || null,
-    adresse: row.querySelector(".fab-rep-adresse").value.trim() || null
-  })).filter(r => r.quantite || r.adresse);
+  const container=gEl("repartitions"); if(!container) return [];
+  return Array.from(container.querySelectorAll('.fab-repartition-row')).map(row=>({
+    quantite:parseInt(row.querySelector('.fab-rep-qte').value)||null,
+    adresse:row.querySelector('.fab-rep-adresse').value.trim()||null
+  })).filter(r=>r.quantite||r.adresse);
 }
 
-// ======================================================
-// INIT ÉVÉNEMENTS
-// ======================================================
-export function initFabrication() {
-  fabClose.onclick = () => fabModal.classList.add("hidden");
-  document.addEventListener("keydown", e => { if (e.key === "Escape") fabModal.classList.add("hidden"); });
+const ENNOBLISSEMENT_OPTIONS=[
+  'Vernis sélectif','Dorure à chaud : Or','Dorure à chaud : Argent',
+  'Pelliculage : Mat recto','Pelliculage : Mat recto/verso',
+  'Pelliculage : Brillant recto','Pelliculage : Brillant recto/verso',
+  'Pelliculage : Soft Touch recto','Pelliculage : Soft Touch recto/verso',
+];
 
-  fabSave.onclick = async () => {
-    if (!fabCurrentPath) return;
+function renderFabForm(config, opts) {
+  if(!fabDynamicForm) return;
+  fabDynamicForm.innerHTML='';
+  const {engines=[],types=[],papers=[],sheetFormats=[],faconnageOptions=[]}=opts;
+  const paperHtml='<option value="">— Sélectionner —</option>'+papers.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
+  const fields=(config.fields||[]).filter(f=>f.visible).sort((a,b)=>a.order-b.order);
+  const sections=config.sections||[];
+  const sectionMap={}; sections.forEach(s=>{sectionMap[s]=[];});
+  fields.forEach(f=>{const sec=f.section||'_other';if(!sectionMap[sec])sectionMap[sec]=[];sectionMap[sec].push(f);});
+  const orderedSections=[...sections,...Object.keys(sectionMap).filter(s=>!sections.includes(s))];
 
-    // Validate required fields
-    let hasError = false;
-    if (!fabNumeroDossier || !fabNumeroDossier.value.trim()) {
-      if (fabNumeroDossier) {
-        fabNumeroDossier.style.borderColor = "#ef4444";
-        fabNumeroDossier.style.boxShadow = "0 0 0 3px rgba(239,68,68,0.2)";
-      }
-      hasError = true;
-    } else {
-      if (fabNumeroDossier) { fabNumeroDossier.style.borderColor = ""; fabNumeroDossier.style.boxShadow = ""; }
-    }
-    if (!fabType || !fabType.value) {
-      if (fabType) {
-        fabType.style.borderColor = "#ef4444";
-        fabType.style.boxShadow = "0 0 0 3px rgba(239,68,68,0.2)";
-      }
-      hasError = true;
-    } else {
-      if (fabType) { fabType.style.borderColor = ""; fabType.style.boxShadow = ""; }
-    }
-    if (hasError) {
-      showNotification("❌ Numéro de dossier et Type de travail sont obligatoires", "error");
-      return;
-    }
+  orderedSections.forEach(section=>{
+    const sf=sectionMap[section]; if(!sf||sf.length===0) return;
+    const hdr=document.createElement('div');
+    hdr.className='fab-form-group fab-full-width fab-section-header';
+    hdr.innerHTML='<span>'+section+'</span>';
+    fabDynamicForm.appendChild(hdr);
 
-    const ok = await saveFabrication();
-    if (ok) {
-      fabModal.classList.add("hidden");
-      showNotification("✅ Fiche enregistrée", "success");
-    }
-  };
+    sf.forEach(field=>{
+      const isFull=field.width==='full';
+      const wrap=document.createElement('div');
+      wrap.className='fab-form-group'+(isFull?' fab-full-width':'');
+      if(field.dependsOn){wrap.dataset.dependsOn=field.dependsOn;wrap.style.display='none';}
+      const elId=gElId(field.id);
+      const reqStar=field.required?' <span class="required-star">*</span>':'';
+      const calcNote=field.calculationRule?' <small style="color:#9ca3af;font-size:10px;">(calculé)</small>':'';
+      const roAttr=field.readOnly?' readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;"':'';
+      const roSel=field.readOnly?' disabled style="background:#f3f4f6;color:#6b7280;"':'';
+      const selPH='<option value="">— Sélectionner —</option>';
 
-  fabPdf.onclick = async () => {
-    if (!fabCurrentPath) return;
-    await saveFabrication();
-    // Small delay to ensure MongoDB write is committed before reading it back for PDF
-    await new Promise(r => setTimeout(r, 300));
-    const fabCurrentFileName = fnKey(fabCurrentPath);
-    try {
-      const r = await fetch("/api/fabrication/pdf?fileName=" + encodeURIComponent(fabCurrentFileName) + "&fullPath=" + encodeURIComponent(fabCurrentPath) + "&save=true", {
-        headers: { "Authorization": `Bearer ${authToken}` }
-      });
-      if (r.ok) {
-        const blob = await r.blob();
-        const url = URL.createObjectURL(blob);
-        window.open(url, "_blank");
-        showNotification("✅ PDF généré et enregistré dans le dossier de production", "success");
+      if(field.type==='text'||field.type==='number'){
+        wrap.innerHTML='<label>'+field.label+reqStar+calcNote+'</label><input id="'+elId+'" type="'+field.type+'"'+roAttr+' />';
+      } else if(field.type==='date'){
+        wrap.innerHTML='<label>'+field.label+reqStar+calcNote+'</label><input id="'+elId+'" type="date"'+roAttr+' />';
+      } else if(field.type==='textarea'){
+        wrap.innerHTML='<label>'+field.label+'</label><textarea id="'+elId+'" rows="3"></textarea>';
+      } else if(field.type==='select'){
+        let optHtml=selPH;
+        if(field.id==='moteurImpression') optHtml+=engines.map(e=>{const n=typeof e==='object'?(e.name||''):String(e||'');return '<option value="'+n+'">'+n+'</option>';}).join('');
+        else if(field.id==='typeTravail') optHtml+=types.map(t=>'<option value="'+t+'">'+t+'</option>').join('');
+        else if(['media1','media2','media3','media4','couvertureMedia'].includes(field.id)) optHtml=paperHtml;
+        else if(field.id==='formatFeuilleMachine') optHtml+=sheetFormats.map(f2=>'<option value="'+f2+'">'+f2+'</option>').join('');
+        else if(Array.isArray(field.options)) optHtml+=field.options.map(o=>'<option value="'+o+'">'+o+'</option>').join('');
+        wrap.innerHTML='<label>'+field.label+reqStar+'</label><select id="'+elId+'"'+roSel+'>'+optHtml+'</select>';
+      } else if(field.type==='multiselect'){
+        const cbHtml=ENNOBLISSEMENT_OPTIONS.map(o=>'<label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;"><input type="checkbox" class="fab-ennob-cb" value="'+o+'" /> '+o+'</label>').join('');
+        wrap.innerHTML='<label>'+field.label+'</label><div id="'+elId+'" style="display:flex;flex-wrap:wrap;gap:8px;padding:6px 0;">'+cbHtml+'</div>';
+      } else if(field.type==='checkbox'){
+        wrap.innerHTML='<label>'+field.label+'</label><label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;"><input id="'+elId+'" type="checkbox" style="width:16px;height:16px;" /><span id="fab-rainage-label">Non</span></label>';
+      } else if(field.type==='file-import'){
+        const btnId=field.id==='mailValidationBat'?'fab-import-mail-bat':'fab-import-mail-devis';
+        const fileId=field.id==='mailValidationBat'?'fab-mail-bat-file':'fab-mail-devis-file';
+        const nameId=field.id==='mailValidationBat'?'fab-mail-bat-name':'fab-mail-devis-name';
+        wrap.innerHTML='<label>'+field.label+'</label><div id="'+elId+'" style="display:flex;align-items:center;gap:8px;"><button id="'+btnId+'" class="btn" style="font-size:12px;padding:4px 10px;">📎 Importer</button><span id="'+nameId+'" style="font-size:12px;color:#6b7280;"></span><input id="'+fileId+'" type="file" accept=".eml,.msg" style="display:none;" /></div>';
+      } else if(field.type==='calculated'){
+        if(field.id==='passes'){
+          wrap.innerHTML='<label>'+field.label+'</label><div id="'+elId+'" style="font-size:13px;color:#374151;padding:4px 0;"></div>';
+        } else {
+          wrap.innerHTML='<label>'+field.label+calcNote+'</label><input id="'+elId+'" type="number" placeholder="auto" />';
+        }
+      } else if(field.type==='group'){
+        wrap.innerHTML='<div id="'+elId+'"></div><button id="fab-repartitions-add" class="btn" style="margin-top:8px;font-size:12px;padding:4px 12px;">+ Ajouter une adresse</button>';
       } else {
-        const err = await r.json().catch(() => ({}));
-        showNotification("❌ Erreur : " + (err.error || "Impossible de générer le PDF"), "error");
+        wrap.innerHTML='<label>'+field.label+reqStar+'</label><input id="'+elId+'" type="text"'+roAttr+' />';
       }
-    } catch(err) {
-      showNotification("❌ Erreur réseau", "error");
+      fabDynamicForm.appendChild(wrap);
+    });
+
+    if(section==='Finitions'){
+      const fw=document.createElement('div');
+      fw.className='fab-form-group fab-full-width';
+      fw.innerHTML='<label>Façonnage (finitions)</label><div id="fab-faconnage-container" style="display:flex;flex-wrap:wrap;gap:8px;padding:6px 0;"></div>';
+      fabDynamicForm.appendChild(fw);
     }
-  };
-
-  fabFinProd.onclick = async () => {
-    if (!fabCurrentPath) { alert("Erreur : chemin introuvable"); return; }
-    if (!confirm("Marquer comme 'Fin de production' ?")) return;
-
-    const moveResp = await fetch("/api/jobs/move", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source: fabCurrentPath, destination: FIN_PROD_FOLDER, overwrite: true })
-    }).then(r => r.json()).catch(() => ({ ok: false }));
-
-    if (!moveResp.ok) { alert("Erreur : " + (moveResp.error || "")); return; }
-
-    // Lock the fabrication sheet so calendar shows it as completed (green, non-draggable)
-    const movedPath = moveResp.moved || fabCurrentPath;
-    await fetch("/api/jobs/lock", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullPath: movedPath })
-    }).catch(err => console.warn("[fabrication] Lock failed:", err));
-
-    fabModal.classList.add("hidden");
-    alert("Fin de production marquée");
-    // Trigger kanban refresh via global callback
-    if (window._refreshKanban) await window._refreshKanban();
-    if (window._refreshSubmissionView) await window._refreshSubmissionView();
-    // Refresh calendar to reflect the locked (completed) status
-    if (typeof calendar !== "undefined" && calendar) calendar.refetchEvents();
-    if (typeof submissionCalendar !== "undefined" && submissionCalendar) submissionCalendar.refetchEvents();
-  };
-
-  // Masquer le bouton PrismaPrepare (remplacé par le bouton BAT dans la tuile kanban)
-  if (fabPrisma) {
-    fabPrisma.style.display = "none";
-  }
-
-  // Rainage auto update when couverture media changes
-  if (fabMediaCouverture) {
-    fabMediaCouverture.addEventListener("change", () => {
-      updateRainageAuto();
-      updatePassesDisplay();
-    });
-  }
-
-  // Rainage label update
-  if (fabRainage) {
-    fabRainage.addEventListener("change", () => {
-      if (fabRainageLabel) fabRainageLabel.textContent = fabRainage.checked ? "Oui" : "Non";
-      updatePassesDisplay();
-    });
-  }
-
-  // Nombre de feuilles: mark as manually edited when user changes it
-  if (fabNombreFeuilles) {
-    fabNombreFeuilles.addEventListener("input", () => {
-      fabNombreFeuilles._manuallyEdited = true;
-    });
-  }
-
-  // Update nombre feuilles when type or quantite changes
-  if (fabType) fabType.addEventListener("change", () => { updateNombreFeuilles(); updateCouvertureVisibility(); });
-  if (fabQuantite) fabQuantite.addEventListener("input", updateNombreFeuilles);
-
-  // Date de livraison auto calculation
-  if (fabDateDepart) {
-    fabDateDepart.addEventListener("change", updateDateLivraison);
-  }
-  if (fabDateLivraison) {
-    fabDateLivraison.addEventListener("input", () => { fabDateLivraison._manuallyEdited = true; });
-  }
-
-  // Passes display update on ennoblissement/faconnage change
-  if (fabEnnobContainer) {
-    fabEnnobContainer.addEventListener("change", updatePassesDisplay);
-  }
-  if (fabFaconnageBinding) {
-    fabFaconnageBinding.addEventListener("change", updatePassesDisplay);
-  }
-
-  // Import mail devis
-  if (fabImportMailDevis) {
-    fabImportMailDevis.onclick = () => fabMailDevisFile && fabMailDevisFile.click();
-  }
-  if (fabMailDevisFile) {
-    fabMailDevisFile.addEventListener("change", async () => {
-      const file = fabMailDevisFile.files[0];
-      if (!file) return;
-      const fileName = fnKey(fabCurrentPath);
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("fileName", fileName);
-      try {
-        const r = await fetch("/api/fabrication/import-mail-devis", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${authToken}` },
-          body: formData
-        }).then(r => r.json());
-        if (r.ok) {
-          if (fabMailDevisName) fabMailDevisName.textContent = file.name;
-          showNotification("✅ Mail devis importé", "success");
-        } else {
-          showNotification("❌ " + (r.error || "Erreur d'import"), "error");
-        }
-      } catch(e) {
-        showNotification("❌ Erreur réseau", "error");
-      }
-    });
-  }
-
-  // Import mail BAT
-  if (fabImportMailBat) {
-    fabImportMailBat.onclick = () => fabMailBatFile && fabMailBatFile.click();
-  }
-  if (fabMailBatFile) {
-    fabMailBatFile.addEventListener("change", async () => {
-      const file = fabMailBatFile.files[0];
-      if (!file) return;
-      const fileName = fnKey(fabCurrentPath);
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("fileName", fileName);
-      try {
-        const r = await fetch("/api/fabrication/import-mail-bat", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${authToken}` },
-          body: formData
-        }).then(r => r.json());
-        if (r.ok) {
-          if (fabMailBatName) fabMailBatName.textContent = file.name;
-          showNotification("✅ Mail BAT importé", "success");
-        } else {
-          showNotification("❌ " + (r.error || "Erreur d'import"), "error");
-        }
-      } catch(e) {
-        showNotification("❌ Erreur réseau", "error");
-      }
-    });
-  }
-
-  // Répartitions — add row button
-  if (fabRepartitionsAdd) {
-    fabRepartitionsAdd.onclick = () => addRepartitionRow();
-  }
+  });
 }
 
-// ======================================================
-// OUVERTURE DE LA FICHE
-// ======================================================
+function populateFabForm(d, faconnageOptions) {
+  function fmtDate(v){try{return new Date(v).toISOString().split('T')[0];}catch(e2){return '';}}
+  function fmtDateTime(v){try{return new Date(v).toISOString().slice(0,16);}catch(e2){return '';}}
+  function set(id,val){
+    const el=gEl(id); if(!el) return;
+    if(el.type==='checkbox'){el.checked=!!val;const lbl=document.getElementById('fab-rainage-label');if(lbl)lbl.textContent=el.checked?'Oui':'Non';}
+    else if(el.type==='date'){el.value=val?fmtDate(val):'';}
+    else if(el.type==='datetime-local'){el.value=val?fmtDateTime(val):'';}
+    else{el.value=val!=null?val:'';}
+  }
+  set('numeroDossier',d.numeroDossier);set('client',d.client);set('operateur',d.operateur);
+  set('typeTravail',d.typeTravail);set('formatFini',d.format);set('quantite',d.quantite);
+  set('moteurImpression',d.moteurImpression||d.machine);
+  set('donneurOrdreNom',d.donneurOrdreNom);set('donneurOrdrePrenom',d.donneurOrdrePrenom);
+  set('donneurOrdreTelephone',d.donneurOrdreTelephone);set('donneurOrdreEmail',d.donneurOrdreEmail);
+  set('rectoVerso',d.rectoVerso);set('formeDecoupe',d.formeDecoupe);set('pagination',d.pagination);
+  set('formatFeuilleMachine',d.formatFeuille);
+  set('media1',d.media1);set('media1Fabricant',d.media1Fabricant);set('media2',d.media2);set('media2Fabricant',d.media2Fabricant);
+  set('media3',d.media3);set('media3Fabricant',d.media3Fabricant);set('media4',d.media4);set('media4Fabricant',d.media4Fabricant);
+  set('couvertureMedia',d.mediaCouverture);set('couvertureFabricant',d.mediaCouvertureFabricant);
+  set('bat',d.bat);set('retraitLivraison',d.retraitLivraison);set('adresseLivraison',d.adresseLivraison);
+  set('plis',d.plis);set('sortie',d.sortie);set('faconnageBinding',d.faconnageBinding);set('notes',d.notes);
+  set('justifsQuantite',d.justifsClientsQuantite!=null?d.justifsClientsQuantite:'');set('justifsAdresse',d.justifsClientsAdresse);
+  set('dateDepart',d.dateDepart);set('planningMachine',d.planningMachine);set('rainage',d.rainage);
+  const livEl=gEl("dateLivraison");
+  if(livEl){livEl.value=d.dateLivraison?fmtDate(d.dateLivraison):'';}
+  if(livEl){livEl._manuallyEdited=!!d.dateLivraison;}
+  const nfEl=gEl("nombreFeuilles");
+  if(nfEl){nfEl.value=d.nombreFeuilles||'';nfEl._manuallyEdited=!!d.nombreFeuilles;}
+  const ennob=gEl("ennoblissement");
+  if(ennob){const chk=Array.isArray(d.ennoblissement)?d.ennoblissement:[];ennob.querySelectorAll('.fab-ennob-cb').forEach(cb=>{cb.checked=chk.includes(cb.value);});}
+  const facCont=document.getElementById('fab-faconnage-container');
+  if(facCont){
+    let cFac=[];
+    if(Array.isArray(d.faconnage))cFac=d.faconnage;
+    else if(typeof d.faconnage==='string'&&d.faconnage.startsWith('['))try{cFac=JSON.parse(d.faconnage);}catch(e2){}
+    const opts2=Array.isArray(faconnageOptions)?faconnageOptions:[];
+    if(opts2.length===0){facCont.innerHTML='<span style="color:#9ca3af;font-size:12px;">Aucune option</span>';}
+    else{facCont.innerHTML='';opts2.forEach(opt=>{const lbl2=document.createElement('label');lbl2.style.cssText='display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;';const cb2=document.createElement('input');cb2.type='checkbox';cb2.className='fab-faconnage-cb';cb2.value=opt;cb2.checked=cFac.includes(opt);lbl2.appendChild(cb2);lbl2.appendChild(document.createTextNode(opt));facCont.appendChild(lbl2);});}
+  }
+  const mdn=document.getElementById('fab-mail-devis-name');const mbn=document.getElementById('fab-mail-bat-name');
+  if(mdn)mdn.textContent=d.mailDevisFileName||'';if(mbn)mbn.textContent=d.mailBatFileName||'';
+  const repCont=gEl("repartitions");
+  if(repCont){repCont.innerHTML='';(Array.isArray(d.repartitions)?d.repartitions:[]).forEach(r=>addRepartitionRow(r.quantite||'',r.adresse||''));}
+  const ndEl2=gEl("numeroDossier");if(ndEl2){ndEl2.style.borderColor="";ndEl2.style.boxShadow="";}
+  const tyEl2=gEl("typeTravail");if(tyEl2){tyEl2.style.borderColor="";tyEl2.style.boxShadow="";}
+}
+
+function attachFormHandlers(fabCurrentFileName) {
+  if(!fabDynamicForm) return;
+  fabDynamicForm.addEventListener('change',e=>{
+    const id=e.target.id;
+    if(id===gElId('couvertureMedia')){updateRainageAuto();updatePassesDisplay();}
+    if(id===gElId('rainage')){const l=document.getElementById('fab-rainage-label');const r=gEl('rainage');if(l&&r)l.textContent=r.checked?'Oui':'Non';updatePassesDisplay();}
+    if(id===gElId('typeTravail')){updateNombreFeuilles();updateCouvertureVisibility();}
+    if(id===gElId('faconnageBinding')||e.target.classList.contains('fab-ennob-cb'))updatePassesDisplay();
+    if(id===gElId('dateLivraison')){const el=gEl('dateLivraison');if(el)el._manuallyEdited=true;}
+    if(id===gElId('nombreFeuilles')){const el=gEl('nombreFeuilles');if(el)el._manuallyEdited=true;}
+  });
+  fabDynamicForm.addEventListener('input',e=>{
+    const id=e.target.id;
+    if(id===gElId('quantite'))updateNombreFeuilles();
+    if(id===gElId('dateDepart'))updateDateLivraison();
+    if(id===gElId('nombreFeuilles')){const el=gEl('nombreFeuilles');if(el)el._manuallyEdited=true;}
+  });
+  const repsAdd=document.getElementById('fab-repartitions-add'); if(repsAdd)repsAdd.onclick=()=>addRepartitionRow();
+  const iBat=document.getElementById('fab-import-mail-bat');const fBat=document.getElementById('fab-mail-bat-file');
+  if(iBat)iBat.onclick=()=>fBat&&fBat.click();
+  if(fBat)fBat.onchange=async()=>{
+    const file=fBat.files[0];if(!file)return;
+    const fd=new FormData();fd.append('file',file);fd.append('fileName',fabCurrentFileName);
+    try{const r=await fetch('/api/fabrication/import-mail-bat',{method:'POST',headers:{'Authorization':'Bearer '+authToken},body:fd}).then(r2=>r2.json());
+    if(r.ok){const n=document.getElementById('fab-mail-bat-name');if(n)n.textContent=file.name;showNotification('✅ Mail BAT importé','success');}else showNotification('❌ '+(r.error||"Erreur d'import"),'error');
+    }catch(err){showNotification('❌ Erreur réseau','error');}};
+  const iDevis=document.getElementById('fab-import-mail-devis');const fDevis=document.getElementById('fab-mail-devis-file');
+  if(iDevis)iDevis.onclick=()=>fDevis&&fDevis.click();
+  if(fDevis)fDevis.onchange=async()=>{
+    const file=fDevis.files[0];if(!file)return;
+    const fd=new FormData();fd.append('file',file);fd.append('fileName',fabCurrentFileName);
+    try{const r=await fetch('/api/fabrication/import-mail-devis',{method:'POST',headers:{'Authorization':'Bearer '+authToken},body:fd}).then(r2=>r2.json());
+    if(r.ok){const n=document.getElementById('fab-mail-devis-name');if(n)n.textContent=file.name;showNotification('✅ Mail devis importé','success');}else showNotification('❌ '+(r.error||"Erreur d'import"),'error');
+    }catch(err){showNotification('❌ Erreur réseau','error');}};
+}
+
+export function initFabrication() {
+  fabClose.onclick=()=>fabModal.classList.add('hidden');
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')fabModal.classList.add('hidden');});
+  fabSave.onclick=async()=>{
+    if(!fabCurrentPath)return;
+    const ndEl=gEl('numeroDossier');const tyEl=gEl('typeTravail');let hasError=false;
+    if(!ndEl||!ndEl.value.trim()){if(ndEl){ndEl.style.borderColor='#ef4444';ndEl.style.boxShadow='0 0 0 3px rgba(239,68,68,0.2)';}hasError=true;}else{if(ndEl){ndEl.style.borderColor='';ndEl.style.boxShadow='';} }
+    if(!tyEl||!tyEl.value){if(tyEl){tyEl.style.borderColor='#ef4444';tyEl.style.boxShadow='0 0 0 3px rgba(239,68,68,0.2)';}hasError=true;}else{if(tyEl){tyEl.style.borderColor='';tyEl.style.boxShadow='';} }
+    if(hasError){showNotification('❌ Numéro de dossier et Type de travail sont obligatoires','error');return;}
+    const ok=await saveFabrication();
+    if(ok){fabModal.classList.add('hidden');showNotification('✅ Fiche enregistrée','success');}
+  };
+  fabPdf.onclick=async()=>{
+    if(!fabCurrentPath)return;
+    await saveFabrication();await new Promise(res=>setTimeout(res,300));
+    const fn=fnKey(fabCurrentPath);
+    try{const r=await fetch('/api/fabrication/pdf?fileName='+encodeURIComponent(fn)+'&fullPath='+encodeURIComponent(fabCurrentPath)+'&save=true',{headers:{'Authorization':'Bearer '+authToken}});
+    if(r.ok){const blob=await r.blob();window.open(URL.createObjectURL(blob),'_blank');showNotification('✅ PDF généré et enregistré','success');}
+    else{const err=await r.json().catch(()=>({}));showNotification('❌ '+(err.error||'Impossible de générer le PDF'),'error');}
+    }catch(err2){showNotification('❌ Erreur réseau','error');}};
+  fabFinProd.onclick=async()=>{
+    if(!fabCurrentPath){alert('Erreur : chemin introuvable');return;}
+    if(!confirm("Marquer comme 'Fin de production' ?"))return;
+    const moveResp=await fetch('/api/jobs/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:fabCurrentPath,destination:FIN_PROD_FOLDER,overwrite:true})}).then(r=>r.json()).catch(()=>({ok:false}));
+    if(!moveResp.ok){alert('Erreur : '+(moveResp.error||''));return;}
+    const movedPath=moveResp.moved||fabCurrentPath;
+    await fetch('/api/jobs/lock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fullPath:movedPath})}).catch(err=>console.warn('[fabrication] Lock failed:',err));
+    fabModal.classList.add('hidden');alert('Fin de production marquée');
+    if(window._refreshKanban)await window._refreshKanban();
+    if(window._refreshSubmissionView)await window._refreshSubmissionView();
+    if(typeof calendar!=='undefined'&&calendar)calendar.refetchEvents();
+    if(typeof submissionCalendar!=='undefined'&&submissionCalendar)submissionCalendar.refetchEvents();
+  };
+  if(fabPrisma)fabPrisma.style.display='none';
+}
+
 export async function openFabrication(fullPath) {
-  fabCurrentPath = normalizePath(fullPath);
-  const fabCurrentFileName = fnKey(fabCurrentPath);
-
-  // Show modal immediately with spinner to reduce perceived latency
-  const formGrid = fabModal.querySelector(".fab-form-grid");
-  if (formGrid) {
-    formGrid.style.opacity = "0.5";
-    formGrid.style.pointerEvents = "none";
-  }
-  if (fabStageBanner) fabStageBanner.style.display = "none";
-  fabModal.classList.remove("hidden");
-
-  // Parallelize all API calls at once
-  const [j, engines, types, papers, faconnageOptions, stageData, sheetFormats, coverProducts, sheetCalcRulesResp, deliveryDelayResp, passesConfigResp] = await Promise.all([
-    fetch("/api/fabrication?fileName=" + encodeURIComponent(fabCurrentFileName), {
-      headers: { "Authorization": `Bearer ${authToken}` }
-    }).then(r => r.json()).catch(() => ({})),
-    fetchCached("/api/config/print-engines"),
-    fetchCached("/api/config/work-types"),
-    fetchCached("/api/config/paper-catalog"),
-    fetch("/api/settings/faconnage-options", {
-      headers: { "Authorization": `Bearer ${authToken}` }
-    }).then(r => r.json()).catch(() => []),
-    fetch("/api/file-stage?fileName=" + encodeURIComponent(fabCurrentFileName), {
-      headers: { "Authorization": `Bearer ${authToken}` }
-    }).then(r => r.json()).catch(() => null),
-    fetch("/api/settings/sheet-formats").then(r => r.json()).catch(() => []),
-    fetch("/api/settings/cover-products").then(r => r.json()).catch(() => []),
-    fetch("/api/settings/sheet-calculation-rules").then(r => r.json()).catch(() => ({ rules: {} })),
-    fetch("/api/settings/delivery-delay").then(r => r.json()).catch(() => ({ delayHours: 48 })),
-    fetch("/api/settings/passes-config").then(r => r.json()).catch(() => ({ config: {} }))
+  fabCurrentPath=normalizePath(fullPath);
+  const fabCurrentFileName=fnKey(fabCurrentPath);
+  if(fabDynamicForm){fabDynamicForm.style.opacity='0.5';fabDynamicForm.style.pointerEvents='none';}
+  if(fabStageBanner)fabStageBanner.style.display='none';
+  fabModal.classList.remove('hidden');
+  const [j,engines,types,papers,faconnageOptions,stageData,sheetFormats,coverProducts,sheetCalcRulesResp,deliveryDelayResp,passesConfigResp,formConfig]=await Promise.all([
+    fetch('/api/fabrication?fileName='+encodeURIComponent(fabCurrentFileName),{headers:{'Authorization':'Bearer '+authToken}}).then(r=>r.json()).catch(()=>({})),
+    fetchCached('/api/config/print-engines'),
+    fetchCached('/api/config/work-types'),
+    fetchCached('/api/config/paper-catalog'),
+    fetch('/api/settings/faconnage-options',{headers:{'Authorization':'Bearer '+authToken}}).then(r=>r.json()).catch(()=>[]),
+    fetch('/api/file-stage?fileName='+encodeURIComponent(fabCurrentFileName),{headers:{'Authorization':'Bearer '+authToken}}).then(r=>r.json()).catch(()=>null),
+    fetch('/api/settings/sheet-formats').then(r=>r.json()).catch(()=>[]),
+    fetch('/api/settings/cover-products').then(r=>r.json()).catch(()=>[]),
+    fetch('/api/settings/sheet-calculation-rules').then(r=>r.json()).catch(()=>({rules:{}})),
+    fetch('/api/settings/delivery-delay').then(r=>r.json()).catch(()=>({delayHours:48})),
+    fetch('/api/settings/passes-config').then(r=>r.json()).catch(()=>({config:{}})),
+    fetchFormConfig()
   ]);
-
-  const d = (j && j.ok === false) ? {} : (j || {});
-
-  // Store settings
-  _coverProducts = Array.isArray(coverProducts) ? coverProducts : [];
-  _sheetCalcRules = (sheetCalcRulesResp && sheetCalcRulesResp.rules) ? sheetCalcRulesResp.rules : {};
-  _deliveryDelayHours = (deliveryDelayResp && deliveryDelayResp.delayHours) ? deliveryDelayResp.delayHours : 48;
-  _passesConfig = (passesConfigResp && passesConfigResp.config) ? passesConfigResp.config : { faconnage: 0, pelliculageRecto: 0, pelliculageRectoVerso: 0, rainage: 0, dorure: 0, dosCarreColle: 0 };
-
-  // Populate print engines
-  fabMoteur.innerHTML = '<option value="">— Sélectionner —</option>';
-  (Array.isArray(engines) ? engines : []).forEach(e => {
-    const name = (typeof e === "object" && e !== null) ? (e.name || "") : String(e || "");
-    const opt = document.createElement("option");
-    opt.value = name;
-    opt.textContent = name;
-    fabMoteur.appendChild(opt);
-  });
-
-  // Populate work types
-  fabType.innerHTML = '<option value="">— Sélectionner —</option>';
-  (Array.isArray(types) ? types : []).forEach(t => {
-    const opt = document.createElement("option");
-    opt.value = t;
-    opt.textContent = t;
-    fabType.appendChild(opt);
-  });
-
-  // Populate paper catalog
-  const paperHtml = '<option value="">— Sélectionner —</option>' +
-    (Array.isArray(papers) ? papers : []).map(p => `<option value="${p}">${p}</option>`).join("");
-  [fabMedia1, fabMedia2, fabMedia3, fabMedia4, fabMediaCouverture].forEach(sel => {
-    if (sel) sel.innerHTML = paperHtml;
-  });
-
-  // Populate format feuille en machine
-  if (fabFormatFeuille) {
-    fabFormatFeuille.innerHTML = '<option value="">— Sélectionner —</option>' +
-      (Array.isArray(sheetFormats) ? sheetFormats : []).map(f => `<option value="${f}">${f}</option>`).join("");
-  }
-
-  // Populate existing field values
-  fabMoteur.value = d.moteurImpression || d.machine || "";
-  fabOperateur.value = d.operateur || "";
-  fabQuantite.value = d.quantite || "";
-  fabType.value = d.typeTravail || "";
-  if (fabType) { fabType.style.borderColor = ""; fabType.style.boxShadow = ""; }
-  fabFormat.value = d.format || "";
-  fabRectoVerso.value = d.rectoVerso || "";
-  if (fabFormeDecoupe) fabFormeDecoupe.value = d.formeDecoupe || "";
-  if (fabBat) fabBat.value = d.bat || "";
-  if (fabRetraitLivraison) fabRetraitLivraison.value = d.retraitLivraison || "";
-  if (fabAdresseLivraison) fabAdresseLivraison.value = d.adresseLivraison || "";
-  fabClient.value = d.client || "";
-  if (fabNumeroDossier) { fabNumeroDossier.value = d.numeroDossier || ""; fabNumeroDossier.style.borderColor = ""; fabNumeroDossier.style.boxShadow = ""; }
-  fabNotes.value = d.notes || "";
-
-  if (fabMedia1) fabMedia1.value = d.media1 || "";
-  if (fabMedia2) fabMedia2.value = d.media2 || "";
-  if (fabMedia3) fabMedia3.value = d.media3 || "";
-  if (fabMedia4) fabMedia4.value = d.media4 || "";
-
-  // New fields
-  if (fabDonneurNom)    fabDonneurNom.value    = d.donneurOrdreNom    || "";
-  if (fabDonneurPrenom) fabDonneurPrenom.value = d.donneurOrdrePrenom || "";
-  if (fabDonneurTel)    fabDonneurTel.value    = d.donneurOrdreTelephone || "";
-  if (fabDonneurEmail)  fabDonneurEmail.value  = d.donneurOrdreEmail  || "";
-  if (fabPagination)    fabPagination.value    = d.pagination  || "";
-  if (fabFormatFeuille) fabFormatFeuille.value = d.formatFeuille || "";
-  if (fabMedia1Fabricant) fabMedia1Fabricant.value = d.media1Fabricant || "";
-  if (fabMedia2Fabricant) fabMedia2Fabricant.value = d.media2Fabricant || "";
-  if (fabMedia3Fabricant) fabMedia3Fabricant.value = d.media3Fabricant || "";
-  if (fabMedia4Fabricant) fabMedia4Fabricant.value = d.media4Fabricant || "";
-  if (fabMediaCouverture) fabMediaCouverture.value = d.mediaCouverture || "";
-  if (fabMediaCouvertureFab) fabMediaCouvertureFab.value = d.mediaCouvertureFabricant || "";
-  if (fabRainage) {
-    fabRainage.checked = !!d.rainage;
-    fabRainage.disabled = false;
-    if (fabRainageLabel) fabRainageLabel.textContent = d.rainage ? "Oui" : "Non";
-  }
-
-  // Ennoblissement
-  if (fabEnnobContainer) {
-    const checked = Array.isArray(d.ennoblissement) ? d.ennoblissement : [];
-    fabEnnobContainer.querySelectorAll('.fab-ennob-cb').forEach(cb => {
-      cb.checked = checked.includes(cb.value);
-    });
-  }
-
-  if (fabFaconnageBinding) fabFaconnageBinding.value = d.faconnageBinding || "";
-  if (fabPlis) fabPlis.value = d.plis || "";
-  if (fabSortie) fabSortie.value = d.sortie || "";
-
-  // Mail import filenames
-  if (fabMailDevisName) fabMailDevisName.textContent = d.mailDevisFileName || "";
-  if (fabMailBatName) fabMailBatName.textContent = d.mailBatFileName || "";
-
-  // Dates
-  if (fabDateDepart) { fabDateDepart.value = d.dateDepart ? new Date(d.dateDepart).toISOString().split("T")[0] : ""; }
-  if (fabDateLivraison) { fabDateLivraison.value = d.dateLivraison ? new Date(d.dateLivraison).toISOString().split("T")[0] : ""; fabDateLivraison._manuallyEdited = !!d.dateLivraison; }
-  if (fabPlanningMachine) { fabPlanningMachine.value = d.planningMachine ? new Date(d.planningMachine).toISOString().slice(0, 16) : ""; }
-
-  // Nombre de feuilles
-  if (fabNombreFeuilles) {
-    fabNombreFeuilles.value = d.nombreFeuilles || "";
-    fabNombreFeuilles._manuallyEdited = !!d.nombreFeuilles;
-  }
-
-  // Justifs clients
-  if (fabJustifsQte)    fabJustifsQte.value    = d.justifsClientsQuantite != null ? d.justifsClientsQuantite : "";
-  if (fabJustifsAdresse) fabJustifsAdresse.value = d.justifsClientsAdresse || "";
-
-  // Répartitions
-  if (fabRepartitionsContainer) {
-    fabRepartitionsContainer.innerHTML = "";
-    const reps = Array.isArray(d.repartitions) ? d.repartitions : [];
-    reps.forEach(r => addRepartitionRow(r.quantite || "", r.adresse || ""));
-  }
-
-  // Façonnage checkboxes
-  if (fabFaconnageContainer) {
-    let checked = [];
-    if (Array.isArray(d.faconnage)) {
-      checked = d.faconnage;
-    } else if (typeof d.faconnage === 'string' && d.faconnage.startsWith('[')) {
-      try { checked = JSON.parse(d.faconnage); } catch(e) { /* ignore */ }
-    }
-    const opts = Array.isArray(faconnageOptions) ? faconnageOptions : [];
-    if (opts.length === 0) {
-      fabFaconnageContainer.innerHTML = '<span style="color:#9ca3af;font-size:12px;">Aucune option — importer un CSV dans Paramétrage &gt; Façonnage</span>';
-    } else {
-      fabFaconnageContainer.innerHTML = "";
-      opts.forEach(opt => {
-        const label = document.createElement("label");
-        label.style.cssText = "display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;";
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.className = "fab-faconnage-cb";
-        cb.value = opt;
-        cb.checked = checked.includes(opt);
-        label.appendChild(cb);
-        label.appendChild(document.createTextNode(opt));
-        fabFaconnageContainer.appendChild(label);
-      });
-    }
-  }
-
-  const deliveryDate = deliveriesByPath[fabCurrentFileName];
-  if (d.delai) {
-    fabDelai.value = new Date(d.delai).toISOString().split("T")[0];
-  } else if (deliveryDate) {
-    fabDelai.value = deliveryDate;
-  } else {
-    fabDelai.value = "";
-  }
-
-  fabHistory.innerHTML = "";
-  (d.history || []).forEach(h => {
-    const div = document.createElement("div");
-    div.textContent = `${new Date(h.date).toLocaleDateString("fr-FR", {day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})} — ${h.user} — ${h.action}`;
-    fabHistory.appendChild(div);
-  });
-
-  // Stage banner
-  if (fabStageBanner && stageData && stageData.ok && stageData.folder) {
-    fabStageBanner.textContent = "📍 Étape actuelle : " + stageData.folder;
-    fabStageBanner.style.display = "block";
-    if (stageData.fullPath) fabCurrentPath = normalizePath(stageData.fullPath);
-  }
-
-  fabRemove.onclick = async () => {
-    if (!fabCurrentFileName) return;
-    if (!confirm("Retirer du planning ?")) return;
-
-    const resp = await fetch("/api/delivery?fileName=" + encodeURIComponent(fabCurrentFileName), { method: "DELETE" }).then(r => r.json()).catch(() => ({ ok: false }));
-    if (!resp.ok) { alert("Erreur"); return; }
-
-    delete deliveriesByPath[fabCurrentFileName];
-    delete deliveriesByPath[fabCurrentFileName + "_time"];
-    calendar?.refetchEvents();
-    submissionCalendar?.refetchEvents();
-    if (window._refreshKanban) await window._refreshKanban();
-    if (window._updateGlobalAlert) window._updateGlobalAlert();
-    alert("Retiré du planning");
+  const d=(j&&j.ok===false)?{}:(j||{});
+  _coverProducts=Array.isArray(coverProducts)?coverProducts:[];
+  _sheetCalcRules=(sheetCalcRulesResp&&sheetCalcRulesResp.rules)?sheetCalcRulesResp.rules:{};
+  _deliveryDelayHours=(deliveryDelayResp&&deliveryDelayResp.delayHours)?deliveryDelayResp.delayHours:48;
+  _passesConfig=(passesConfigResp&&passesConfigResp.config)?passesConfigResp.config:{faconnage:0,pelliculageRecto:0,pelliculageRectoVerso:0,rainage:0,dorure:0,dosCarreColle:0};
+  const config=formConfig||{fields:[],sections:[]};
+  renderFabForm(config,{engines:Array.isArray(engines)?engines:[],types:Array.isArray(types)?types:[],papers:Array.isArray(papers)?papers:[],sheetFormats:Array.isArray(sheetFormats)?sheetFormats:[],faconnageOptions:Array.isArray(faconnageOptions)?faconnageOptions:[]});
+  populateFabForm(d,Array.isArray(faconnageOptions)?faconnageOptions:[]);
+  attachFormHandlers(fabCurrentFileName);
+  const delaiEl=gEl('delai');
+  if(delaiEl){const dd=deliveriesByPath[fabCurrentFileName];delaiEl.value=d.delai?fmtDate2(d.delai):dd||'';}
+  if(fabHistory){fabHistory.innerHTML='';(d.history||[]).forEach(h=>{const div=document.createElement('div');div.textContent=new Date(h.date).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})+' — '+h.user+' — '+h.action;fabHistory.appendChild(div);});}
+  if(fabStageBanner&&stageData&&stageData.ok&&stageData.folder){fabStageBanner.textContent='📍 Étape actuelle : '+stageData.folder;fabStageBanner.style.display='block';if(stageData.fullPath)fabCurrentPath=normalizePath(stageData.fullPath);}
+  fabRemove.onclick=async()=>{
+    if(!fabCurrentFileName)return;if(!confirm('Retirer du planning ?'))return;
+    const resp=await fetch('/api/delivery?fileName='+encodeURIComponent(fabCurrentFileName),{method:'DELETE'}).then(r=>r.json()).catch(()=>({ok:false}));
+    if(!resp.ok){alert('Erreur');return;}
+    delete deliveriesByPath[fabCurrentFileName];delete deliveriesByPath[fabCurrentFileName+'_time'];
+    if(calendar)calendar.refetchEvents();if(submissionCalendar)submissionCalendar.refetchEvents();
+    if(window._refreshKanban)await window._refreshKanban();if(window._updateGlobalAlert)window._updateGlobalAlert();
+    alert('Retiré du planning');
   };
-
-  // Update conditional fields
-  updateCouvertureVisibility();
-  updateRainageAuto();
-  if (!d.nombreFeuilles) updateNombreFeuilles();
+  updateCouvertureVisibility();updateRainageAuto();
+  const nfEl2=gEl('nombreFeuilles');if(!nfEl2||!nfEl2._manuallyEdited)updateNombreFeuilles();
   updatePassesDisplay();
-
-  // Restore form opacity
-  if (formGrid) {
-    formGrid.style.opacity = "";
-    formGrid.style.pointerEvents = "";
-  }
+  if(fabDynamicForm){fabDynamicForm.style.opacity='';fabDynamicForm.style.pointerEvents='';}
 }
 
-// ======================================================
-// SAUVEGARDE DE LA FICHE
-// ======================================================
 export async function saveFabrication() {
-  if (!fabCurrentPath) return false;
-  const fileName = fnKey(fabCurrentPath);
-
-  const payload = {
-    fullPath: fabCurrentPath,
-    fileName: fileName,
-    moteurImpression: fabMoteur.value,
-    machine: fabMoteur.value,
-    operateur: fabOperateur ? fabOperateur.value || null : null,
-    quantite: parseInt(fabQuantite.value) || null,
-    typeTravail: fabType.value,
-    format: fabFormat.value,
-    rectoVerso: fabRectoVerso.value,
-    formeDecoupe: fabFormeDecoupe ? fabFormeDecoupe.value || null : null,
-    bat: fabBat ? fabBat.value || null : null,
-    retraitLivraison: fabRetraitLivraison ? fabRetraitLivraison.value || null : null,
-    adresseLivraison: fabAdresseLivraison ? fabAdresseLivraison.value || null : null,
-    client: fabClient.value,
-    numeroDossier: fabNumeroDossier ? fabNumeroDossier.value || null : null,
-    notes: fabNotes.value,
-    faconnage: fabFaconnageContainer
-      ? Array.from(fabFaconnageContainer.querySelectorAll('.fab-faconnage-cb:checked')).map(cb => cb.value)
-      : [],
-    delai: fabDelai.value || null,
-    media1: fabMedia1 ? fabMedia1.value || null : null,
-    media2: fabMedia2 ? fabMedia2.value || null : null,
-    media3: fabMedia3 ? fabMedia3.value || null : null,
-    media4: fabMedia4 ? fabMedia4.value || null : null,
-
-    // New fields
-    donneurOrdreNom:       fabDonneurNom    ? fabDonneurNom.value    || null : null,
-    donneurOrdrePrenom:    fabDonneurPrenom ? fabDonneurPrenom.value || null : null,
-    donneurOrdreTelephone: fabDonneurTel    ? fabDonneurTel.value    || null : null,
-    donneurOrdreEmail:     fabDonneurEmail  ? fabDonneurEmail.value  || null : null,
-    pagination:    fabPagination    ? fabPagination.value    || null : null,
-    formatFeuille: fabFormatFeuille ? fabFormatFeuille.value || null : null,
-    media1Fabricant: fabMedia1Fabricant ? fabMedia1Fabricant.value || null : null,
-    media2Fabricant: fabMedia2Fabricant ? fabMedia2Fabricant.value || null : null,
-    media3Fabricant: fabMedia3Fabricant ? fabMedia3Fabricant.value || null : null,
-    media4Fabricant: fabMedia4Fabricant ? fabMedia4Fabricant.value || null : null,
-    mediaCouverture:         fabMediaCouverture    ? fabMediaCouverture.value    || null : null,
-    mediaCouvertureFabricant: fabMediaCouvertureFab ? fabMediaCouvertureFab.value || null : null,
-    rainage: fabRainage ? fabRainage.checked : null,
-    ennoblissement: fabEnnobContainer
-      ? Array.from(fabEnnobContainer.querySelectorAll('.fab-ennob-cb:checked')).map(cb => cb.value)
-      : [],
-    faconnageBinding: fabFaconnageBinding ? fabFaconnageBinding.value || null : null,
-    plis:             fabPlis   ? fabPlis.value   || null : null,
-    sortie:           fabSortie ? fabSortie.value || null : null,
-    nombreFeuilles:   fabNombreFeuilles ? parseInt(fabNombreFeuilles.value) || null : null,
-    dateDepart:       fabDateDepart      ? fabDateDepart.value      || null : null,
-    dateLivraison:    fabDateLivraison   ? fabDateLivraison.value   || null : null,
-    planningMachine:  fabPlanningMachine ? fabPlanningMachine.value || null : null,
-    justifsClientsQuantite: fabJustifsQte    ? parseInt(fabJustifsQte.value) || null : null,
-    justifsClientsAdresse:  fabJustifsAdresse ? fabJustifsAdresse.value || null : null,
-    repartitions: getRepartitions()
+  if(!fabCurrentPath)return false;
+  const fileName=fnKey(fabCurrentPath);
+  const get=id=>{const el=gEl(id);return el?el.value:null;};
+  const getN=id=>{const el=gEl(id);return el?(parseInt(el.value)||null):null;};
+  const getCb=id=>{const el=gEl(id);return el?el.checked:null;};
+  const facCont=document.getElementById('fab-faconnage-container');
+  const ennob=gEl('ennoblissement');
+  const payload={
+    fullPath:fabCurrentPath,fileName,
+    moteurImpression:get('moteurImpression'),machine:get('moteurImpression'),
+    operateur:get('operateur')||null,quantite:getN('quantite'),typeTravail:get('typeTravail'),
+    format:get('formatFini'),rectoVerso:get('rectoVerso'),formeDecoupe:get('formeDecoupe')||null,
+    bat:get('bat')||null,retraitLivraison:get('retraitLivraison')||null,adresseLivraison:get('adresseLivraison')||null,
+    client:get('client'),numeroDossier:get('numeroDossier')||null,notes:get('notes'),
+    faconnage:facCont?Array.from(facCont.querySelectorAll('.fab-faconnage-cb:checked')).map(cb=>cb.value):[],
+    delai:get('delai')||null,media1:get('media1')||null,media2:get('media2')||null,media3:get('media3')||null,media4:get('media4')||null,
+    donneurOrdreNom:get('donneurOrdreNom')||null,donneurOrdrePrenom:get('donneurOrdrePrenom')||null,
+    donneurOrdreTelephone:get('donneurOrdreTelephone')||null,donneurOrdreEmail:get('donneurOrdreEmail')||null,
+    pagination:get('pagination')||null,formatFeuille:get('formatFeuilleMachine')||null,
+    media1Fabricant:get('media1Fabricant')||null,media2Fabricant:get('media2Fabricant')||null,
+    media3Fabricant:get('media3Fabricant')||null,media4Fabricant:get('media4Fabricant')||null,
+    mediaCouverture:get('couvertureMedia')||null,mediaCouvertureFabricant:get('couvertureFabricant')||null,
+    rainage:getCb('rainage'),
+    ennoblissement:ennob?Array.from(ennob.querySelectorAll('.fab-ennob-cb:checked')).map(cb=>cb.value):[],
+    faconnageBinding:get('faconnageBinding')||null,plis:get('plis')||null,sortie:get('sortie')||null,
+    nombreFeuilles:getN('nombreFeuilles'),dateDepart:get('dateDepart')||null,
+    dateLivraison:get('dateLivraison')||null,planningMachine:get('planningMachine')||null,
+    justifsClientsQuantite:getN('justifsQuantite'),justifsClientsAdresse:get('justifsAdresse')||null,
+    repartitions:getRepartitions()
   };
-
-  const r = await fetch("/api/fabrication", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-    body: JSON.stringify(payload)
-  }).then(r => r.json());
-
-  if (!r.ok) {
-    alert("Erreur : " + r.error);
-    return false;
-  }
-  return true;
+  const r=await fetch('/api/fabrication',{method:'PUT',headers:{'Content-Type':'application/json','Authorization':'Bearer '+authToken},body:JSON.stringify(payload)}).then(r2=>r2.json());
+  if(!r.ok){alert('Erreur : '+r.error);return false;}return true;
 }
-
