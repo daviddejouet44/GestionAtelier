@@ -250,16 +250,16 @@ app.MapGet("/api/production-folders/global-progress", () =>
         {
             { "Début de production", 0 },
             { "1.Reception", 0 },
-            { "Corrections", 25 },
-            { "Corrections et fond perdu", 25 },
-            { "Prêt pour impression", 50 },
-            { "6.Archivage", 50 },
-            { "BAT", 65 },
-            { "4.BAT", 65 },
-            { "PrismaPrepare", 75 },
-            { "Fiery", 75 },
-            { "Impression en cours", 75 },
-            { "Façonnage", 90 },
+            { "Corrections", 15 },
+            { "Corrections et fond perdu", 15 },
+            { "Prêt pour impression", 25 },
+            { "6.Archivage", 25 },
+            { "BAT", 35 },
+            { "4.BAT", 35 },
+            { "PrismaPrepare", 50 },
+            { "Fiery", 50 },
+            { "Impression en cours", 65 },
+            { "Façonnage", 80 },
             { "Fin de production", 100 }
         };
 
@@ -313,14 +313,14 @@ app.MapGet("/api/production/summary", () =>
         var stageProgress = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
         {
             { "Début de production", 0 },
-            { "Corrections", 25 },
-            { "Corrections et fond perdu", 25 },
-            { "Prêt pour impression", 50 },
-            { "BAT", 65 },
-            { "PrismaPrepare", 75 },
-            { "Fiery", 75 },
-            { "Impression en cours", 75 },
-            { "Façonnage", 90 },
+            { "Corrections", 15 },
+            { "Corrections et fond perdu", 15 },
+            { "Prêt pour impression", 25 },
+            { "BAT", 35 },
+            { "PrismaPrepare", 50 },
+            { "Fiery", 50 },
+            { "Impression en cours", 65 },
+            { "Façonnage", 80 },
             { "Fin de production", 100 }
         };
 

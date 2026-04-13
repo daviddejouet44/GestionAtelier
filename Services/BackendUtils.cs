@@ -296,14 +296,14 @@ public static class BackendUtils
             }
         }
 
-        // Build folder name: use numeroDossier alone if available, else auto-increment NNN_safeName
+        // Build folder name: use numeroDossier_safeName if available, else auto-increment NNN_safeName
         var safeName = SafeNameRegex.Replace(Path.GetFileNameWithoutExtension(fileName), "_");
         string folderName;
         int? number = null;
         if (!string.IsNullOrWhiteSpace(numeroDossier))
         {
-            // Name the folder with just the dossier number (e.g. "2026-0010")
-            folderName = numeroDossier;
+            // Name the folder with dossier number + PDF name (e.g. "2026-0010_MyFile")
+            folderName = $"{numeroDossier}_{safeName}";
         }
         else
         {

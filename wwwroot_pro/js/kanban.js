@@ -625,10 +625,16 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
 
       card.appendChild(layout);
 
-      // Load dossier number asynchronously
+      // Load dossier number and press name asynchronously
       fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName))
         .then(r => r.json()).then(d => {
           if (d && d.numeroDossier) dossierEl.textContent = d.numeroDossier;
+          if (d && d.moteurImpression) {
+            const pressEl = document.createElement("p");
+            pressEl.style.cssText = "margin:2px 0 0;font-size:11px;color:#6b7280;";
+            pressEl.textContent = d.moteurImpression;
+            centerDiv.appendChild(pressEl);
+          }
         }).catch(() => {});
 
       const actions = document.createElement("div");
@@ -825,6 +831,17 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       } else if (folderName === "PrismaPrepare") {
         actions.appendChild(btnFiche);
         actions.appendChild(btnAssign);
+
+        // BAT button — ouvre popup BAT complet / BAT simple
+        const btnBATprisma = document.createElement("button");
+        btnBATprisma.className = "btn btn-sm btn-primary";
+        btnBATprisma.innerHTML = "→ BAT";
+        btnBATprisma.onclick = () => {
+          openBatChoiceModal(full, async () => {
+            await refreshKanban();
+          });
+        };
+        actions.appendChild(btnBATprisma);
 
         const btnPrisma = document.createElement("button");
         btnPrisma.className = "btn btn-sm btn-primary";

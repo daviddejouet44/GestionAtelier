@@ -13,14 +13,14 @@ export function showGlobalProduction() {
 
 const STAGE_PROGRESS = {
   "Début de production": 0,
-  "Corrections": 25,
-  "Corrections et fond perdu": 25,
-  "Prêt pour impression": 50,
-  "BAT": 65,
-  "PrismaPrepare": 65,
-  "Fiery": 65,
-  "Impression en cours": 75,
-  "Façonnage": 90,
+  "Corrections": 15,
+  "Corrections et fond perdu": 15,
+  "Prêt pour impression": 25,
+  "BAT": 35,
+  "PrismaPrepare": 50,
+  "Fiery": 50,
+  "Impression en cours": 65,
+  "Façonnage": 80,
   "Fin de production": 100
 };
 
@@ -33,10 +33,10 @@ function getStageProgress(stage) {
 function getStageColor(progress) {
   if (progress === 0) return "#6b7280";
   if (progress <= 25) return "#f59e0b";
+  if (progress <= 35) return "#8b5cf6";
   if (progress <= 50) return "#3b82f6";
-  if (progress <= 65) return "#8b5cf6";
-  if (progress <= 75) return "#f97316";
-  if (progress <= 90) return "#06b6d4";
+  if (progress <= 65) return "#f97316";
+  if (progress <= 80) return "#06b6d4";
   return "#22c55e";
 }
 

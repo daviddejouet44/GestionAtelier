@@ -99,7 +99,7 @@ header {
   display: flex; align-items: center; justify-content: space-between;
   position: sticky; top: 0; z-index: 100; flex-shrink: 0;
 }
-header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+header h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 .header-brand { display: flex; align-items: center; gap: 0; }
 .header-right { display: flex; align-items: center; gap: 12px; }
 #user-info { font-size: 12px; color: rgba(255,255,255,0.6); }
@@ -515,8 +515,6 @@ header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 
   background: #E11D48; color: white; border-color: #E11D48;
   box-shadow: 0 3px 10px rgba(225,29,72,0.35);
 }
-.bat-status-badge.active, .bat-btn.active { animation: batPulse 2s infinite; }
-@keyframes batPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
 
 /* =========================================================
    CALENDRIER
