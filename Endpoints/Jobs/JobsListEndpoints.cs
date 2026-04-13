@@ -29,7 +29,10 @@ app.MapGet("/api/jobs", (string folder) =>
     try
     {
         var root = BackendUtils.HotfoldersRoot();
-        var dir  = Path.Combine(root, folder);
+        var dir  = Path.GetFullPath(Path.Combine(root, folder));
+        // Security: ensure directory is within hotfolders root
+        if (!dir.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            return Results.Json(new { ok = false, error = "Dossier non autorisé" });
         if (!Directory.Exists(dir))
             return Results.Json(Array.Empty<object>());
 
