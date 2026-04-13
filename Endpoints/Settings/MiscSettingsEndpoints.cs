@@ -490,5 +490,215 @@ app.MapGet("/api/config/preflight/droplets", () =>
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
+// ======================================================
+// SETTINGS — FORMATS FEUILLE EN MACHINE
+// ======================================================
+
+app.MapGet("/api/settings/sheet-formats", () =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("sheetFormats");
+        var docs = col.Find(new BsonDocument()).ToList();
+        var formats = docs.Select(d => d.Contains("label") ? d["label"].AsString : "").Where(s => !string.IsNullOrEmpty(s)).ToList();
+        return Results.Json(formats);
+    }
+    catch { return Results.Json(new List<string>()); }
+});
+
+app.MapPost("/api/settings/sheet-formats/import", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (!string.IsNullOrEmpty(token))
+        {
+            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            var parts = decoded.Split(':');
+            if (parts.Length < 3 || parts[2] != "3")
+                return Results.Json(new { ok = false, error = "Admin only" });
+        }
+
+        if (!ctx.Request.HasFormContentType)
+            return Results.Json(new { ok = false, error = "Form data required" });
+
+        var form = await ctx.Request.ReadFormAsync();
+        var file = form.Files.GetFile("file");
+        if (file == null)
+            return Results.Json(new { ok = false, error = "Fichier CSV requis" });
+
+        using var reader = new System.IO.StreamReader(file.OpenReadStream());
+        var content = await reader.ReadToEndAsync();
+        var labels = content
+            .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Split(',').First().Trim().Trim('"'))
+            .Where(l => !string.IsNullOrEmpty(l))
+            .Distinct()
+            .ToList();
+
+        if (labels.Count == 0)
+            return Results.Json(new { ok = false, error = "Aucun format trouvé dans le CSV" });
+
+        var col = MongoDbHelper.GetCollection<BsonDocument>("sheetFormats");
+        col.DeleteMany(new BsonDocument());
+        col.InsertMany(labels.Select(l => new BsonDocument { ["label"] = l }).ToList());
+
+        return Results.Json(new { ok = true, count = labels.Count });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// SETTINGS — PRODUITS NÉCESSITANT UNE COUVERTURE
+// ======================================================
+
+app.MapGet("/api/settings/cover-products", () =>
+{
+    try
+    {
+        var cfg = MongoDbHelper.GetSettings<CoverProductsSettings>("coverProducts") ?? new CoverProductsSettings();
+        return Results.Json(cfg.Products ?? new List<string>());
+    }
+    catch { return Results.Json(new List<string>()); }
+});
+
+app.MapPost("/api/settings/cover-products", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (!string.IsNullOrEmpty(token))
+        {
+            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            var parts = decoded.Split(':');
+            if (parts.Length < 3 || parts[2] != "3")
+                return Results.Json(new { ok = false, error = "Admin only" });
+        }
+
+        var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var products = new List<string>();
+        if (body.TryGetProperty("products", out var arr) && arr.ValueKind == System.Text.Json.JsonValueKind.Array)
+            products = arr.EnumerateArray().Select(v => v.GetString() ?? "").Where(s => !string.IsNullOrEmpty(s)).ToList();
+
+        MongoDbHelper.UpsertSettings("coverProducts", new CoverProductsSettings { Products = products });
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// SETTINGS — RÈGLES DE CALCUL NOMBRE DE FEUILLES
+// ======================================================
+
+app.MapGet("/api/settings/sheet-calculation-rules", () =>
+{
+    try
+    {
+        var cfg = MongoDbHelper.GetSettings<SheetCalculationSettings>("sheetCalculationRules") ?? new SheetCalculationSettings();
+        return Results.Json(new { ok = true, rules = cfg.Rules ?? new Dictionary<string, int>() });
+    }
+    catch { return Results.Json(new { ok = true, rules = new Dictionary<string, int>() }); }
+});
+
+app.MapPost("/api/settings/sheet-calculation-rules", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (!string.IsNullOrEmpty(token))
+        {
+            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            var parts = decoded.Split(':');
+            if (parts.Length < 3 || parts[2] != "3")
+                return Results.Json(new { ok = false, error = "Admin only" });
+        }
+
+        var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var rules = new Dictionary<string, int>();
+        if (body.TryGetProperty("rules", out var rulesEl) && rulesEl.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            foreach (var prop in rulesEl.EnumerateObject())
+            {
+                if (prop.Value.TryGetInt32(out int divisor))
+                    rules[prop.Name] = divisor;
+            }
+        }
+
+        MongoDbHelper.UpsertSettings("sheetCalculationRules", new SheetCalculationSettings { Rules = rules });
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// SETTINGS — DÉLAI DE LIVRAISON
+// ======================================================
+
+app.MapGet("/api/settings/delivery-delay", () =>
+{
+    try
+    {
+        var cfg = MongoDbHelper.GetSettings<DeliveryDelaySettings>("deliveryDelay") ?? new DeliveryDelaySettings();
+        return Results.Json(new { ok = true, delayHours = cfg.DelayHours });
+    }
+    catch { return Results.Json(new { ok = true, delayHours = 48 }); }
+});
+
+app.MapPost("/api/settings/delivery-delay", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (!string.IsNullOrEmpty(token))
+        {
+            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            var parts = decoded.Split(':');
+            if (parts.Length < 3 || parts[2] != "3")
+                return Results.Json(new { ok = false, error = "Admin only" });
+        }
+
+        var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        int delayHours = 48;
+        if (body.TryGetProperty("delayHours", out var d)) d.TryGetInt32(out delayHours);
+        MongoDbHelper.UpsertSettings("deliveryDelay", new DeliveryDelaySettings { DelayHours = delayHours });
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// SETTINGS — PASSES (feuilles supplémentaires)
+// ======================================================
+
+app.MapGet("/api/settings/passes-config", () =>
+{
+    try
+    {
+        var cfg = MongoDbHelper.GetSettings<PassesConfig>("passesConfig") ?? new PassesConfig();
+        return Results.Json(new { ok = true, config = cfg });
+    }
+    catch { return Results.Json(new { ok = true, config = new PassesConfig() }); }
+});
+
+app.MapPost("/api/settings/passes-config", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (!string.IsNullOrEmpty(token))
+        {
+            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            var parts = decoded.Split(':');
+            if (parts.Length < 3 || parts[2] != "3")
+                return Results.Json(new { ok = false, error = "Admin only" });
+        }
+
+        var cfg = await ctx.Request.ReadFromJsonAsync<PassesConfig>() ?? new PassesConfig();
+        MongoDbHelper.UpsertSettings("passesConfig", cfg);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
     }
 }

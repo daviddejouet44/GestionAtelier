@@ -163,7 +163,33 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             Media3        = input.Media3,
             Media4        = input.Media4,
             TypeDocument  = isAdmin ? input.TypeDocument  : old?.TypeDocument,
-            NombreFeuilles = isAdmin ? input.NombreFeuilles : old?.NombreFeuilles,
+            NombreFeuilles = input.NombreFeuilles ?? old?.NombreFeuilles,
+
+            DonneurOrdreNom       = input.DonneurOrdreNom,
+            DonneurOrdrePrenom    = input.DonneurOrdrePrenom,
+            DonneurOrdreTelephone = input.DonneurOrdreTelephone,
+            DonneurOrdreEmail     = input.DonneurOrdreEmail,
+            Pagination            = input.Pagination,
+            FormatFeuille         = input.FormatFeuille,
+            Media1Fabricant       = input.Media1Fabricant,
+            Media2Fabricant       = input.Media2Fabricant,
+            Media3Fabricant       = input.Media3Fabricant,
+            Media4Fabricant       = input.Media4Fabricant,
+            MediaCouverture         = input.MediaCouverture,
+            MediaCouvertureFabricant = input.MediaCouvertureFabricant,
+            Rainage        = input.Rainage,
+            Ennoblissement = input.Ennoblissement,
+            FaconnageBinding = input.FaconnageBinding,
+            Plis             = input.Plis,
+            Sortie           = input.Sortie,
+            MailDevisFileName = input.MailDevisFileName ?? old?.MailDevisFileName,
+            MailBatFileName   = input.MailBatFileName   ?? old?.MailBatFileName,
+            DateDepart      = input.DateDepart,
+            DateLivraison   = input.DateLivraison,
+            PlanningMachine = input.PlanningMachine,
+            JustifsClientsQuantite = input.JustifsClientsQuantite,
+            JustifsClientsAdresse  = input.JustifsClientsAdresse,
+            Repartitions = input.Repartitions,
 
             History = old?.History ?? new List<FabricationHistory>()
         };
@@ -995,6 +1021,108 @@ app.MapPut("/api/config/bat-mail-template", async (HttpContext ctx) =>
 // ======================================================
 // ALERTS — BAT EN ATTENTE
 // ======================================================
+
+// ======================================================
+// IMPORT MAIL DEVIS
+// ======================================================
+app.MapPost("/api/fabrication/import-mail-devis", async (HttpContext ctx) =>
+{
+    try
+    {
+        if (!ctx.Request.HasFormContentType)
+            return Results.Json(new { ok = false, error = "Form data required" });
+
+        var form = await ctx.Request.ReadFormAsync();
+        var file = form.Files.GetFile("file");
+        var fileName = form["fileName"].ToString();
+
+        if (file == null)
+            return Results.Json(new { ok = false, error = "Fichier requis" });
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext != ".eml" && ext != ".msg")
+            return Results.Json(new { ok = false, error = "Seuls les fichiers .eml et .msg sont acceptés" });
+
+        // Find production folder for this fabrication file
+        var savedName = "";
+        if (!string.IsNullOrEmpty(fileName))
+        {
+            var pfCol = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+            var pfDoc = pfCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", fileName))
+                             .SortByDescending(x => x["createdAt"]).FirstOrDefault();
+            if (pfDoc != null && pfDoc.Contains("folderPath") && !string.IsNullOrEmpty(pfDoc["folderPath"].AsString))
+            {
+                var folderPath = pfDoc["folderPath"].AsString;
+                Directory.CreateDirectory(folderPath);
+                var destPath = Path.Combine(folderPath, "mail_validation_devis" + ext);
+                using var stream = file.OpenReadStream();
+                using var fs = File.Create(destPath);
+                await stream.CopyToAsync(fs);
+                savedName = file.FileName;
+
+                // Update fabrication record with mail file name
+                var fabCol = MongoDbHelper.GetFabricationsCollection();
+                var fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", fileName)).FirstOrDefault();
+                if (fabDoc != null)
+                    fabCol.UpdateOne(Builders<BsonDocument>.Filter.Eq("_id", fabDoc["_id"]),
+                        Builders<BsonDocument>.Update.Set("mailDevisFileName", file.FileName));
+            }
+        }
+
+        return Results.Json(new { ok = true, fileName = savedName });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// IMPORT MAIL BAT
+// ======================================================
+app.MapPost("/api/fabrication/import-mail-bat", async (HttpContext ctx) =>
+{
+    try
+    {
+        if (!ctx.Request.HasFormContentType)
+            return Results.Json(new { ok = false, error = "Form data required" });
+
+        var form = await ctx.Request.ReadFormAsync();
+        var file = form.Files.GetFile("file");
+        var fileName = form["fileName"].ToString();
+
+        if (file == null)
+            return Results.Json(new { ok = false, error = "Fichier requis" });
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext != ".eml" && ext != ".msg")
+            return Results.Json(new { ok = false, error = "Seuls les fichiers .eml et .msg sont acceptés" });
+
+        var savedName = "";
+        if (!string.IsNullOrEmpty(fileName))
+        {
+            var pfCol = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+            var pfDoc = pfCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", fileName))
+                             .SortByDescending(x => x["createdAt"]).FirstOrDefault();
+            if (pfDoc != null && pfDoc.Contains("folderPath") && !string.IsNullOrEmpty(pfDoc["folderPath"].AsString))
+            {
+                var folderPath = pfDoc["folderPath"].AsString;
+                Directory.CreateDirectory(folderPath);
+                var destPath = Path.Combine(folderPath, "mail_validation_bat" + ext);
+                using var stream = file.OpenReadStream();
+                using var fs = File.Create(destPath);
+                await stream.CopyToAsync(fs);
+                savedName = file.FileName;
+
+                var fabCol = MongoDbHelper.GetFabricationsCollection();
+                var fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", fileName)).FirstOrDefault();
+                if (fabDoc != null)
+                    fabCol.UpdateOne(Builders<BsonDocument>.Filter.Eq("_id", fabDoc["_id"]),
+                        Builders<BsonDocument>.Update.Set("mailBatFileName", file.FileName));
+            }
+        }
+
+        return Results.Json(new { ok = true, fileName = savedName });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
 
     }
 }

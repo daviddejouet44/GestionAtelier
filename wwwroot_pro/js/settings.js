@@ -13,6 +13,8 @@ import { renderSettingsFabricationImports } from './settings/settings-fabricatio
 import { renderSettingsFaconnage } from './settings/settings-faconnage.js';
 import { renderSettingsLogo } from './settings/settings-logo.js';
 import { renderSettingsLogs, loadSettingsLogs } from './settings/settings-logs.js';
+import { renderSettingsSheetFormats } from './settings/settings-sheet-formats.js';
+import { renderSettingsCoverProducts, renderSettingsSheetCalcRules, renderSettingsDeliveryDelay, renderSettingsPassesConfig } from './settings/settings-production-config.js';
 
 // calendar and submissionCalendar are accessed via window globals set by app.js
 
@@ -41,6 +43,11 @@ export async function initSettingsView() {
         <button class="settings-tab" data-tab="print-routing">Routage Impression</button>
         <button class="settings-tab" data-tab="fabrication-imports">Imports fiche</button>
         <button class="settings-tab" data-tab="faconnage">Façonnage</button>
+        <button class="settings-tab" data-tab="sheet-formats">Formats feuille</button>
+        <button class="settings-tab" data-tab="cover-products">Couverture</button>
+        <button class="settings-tab" data-tab="sheet-calc-rules">Calcul feuilles</button>
+        <button class="settings-tab" data-tab="delivery-delay">Délai livraison</button>
+        <button class="settings-tab" data-tab="passes-config">Passes</button>
         <button class="settings-tab" data-tab="logo">Logo</button>
         <button class="settings-tab" data-tab="logs">Logs</button>
       </div>
@@ -55,6 +62,11 @@ export async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-print-routing"></div>
       <div class="settings-panel hidden" id="settings-panel-fabrication-imports"></div>
       <div class="settings-panel hidden" id="settings-panel-faconnage"></div>
+      <div class="settings-panel hidden" id="settings-panel-sheet-formats"></div>
+      <div class="settings-panel hidden" id="settings-panel-cover-products"></div>
+      <div class="settings-panel hidden" id="settings-panel-sheet-calc-rules"></div>
+      <div class="settings-panel hidden" id="settings-panel-delivery-delay"></div>
+      <div class="settings-panel hidden" id="settings-panel-passes-config"></div>
       <div class="settings-panel hidden" id="settings-panel-logo"></div>
       <div class="settings-panel hidden" id="settings-panel-logs"></div>
     </div>
@@ -94,6 +106,11 @@ export async function loadSettingsPanel(tabName, panelEl) {
     case "fabrication-imports": await renderSettingsFabricationImports(panelEl); break;
     case "bat-command": await renderSettingsBatConfig(panelEl); break;
     case "faconnage": await renderSettingsFaconnage(panelEl); break;
+    case "sheet-formats": await renderSettingsSheetFormats(panelEl); break;
+    case "cover-products": await renderSettingsCoverProducts(panelEl); break;
+    case "sheet-calc-rules": await renderSettingsSheetCalcRules(panelEl); break;
+    case "delivery-delay": await renderSettingsDeliveryDelay(panelEl); break;
+    case "passes-config": await renderSettingsPassesConfig(panelEl); break;
     case "logo": await renderSettingsLogo(panelEl); break;
     case "logs": await renderSettingsLogs(panelEl); break;
   }
