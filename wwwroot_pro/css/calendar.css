@@ -1,0 +1,24 @@
+/* =========================================================
+   CALENDRIER
+========================================================= */
+#calendar { min-height: 480px; }
+.fc { font-family: inherit !important; font-size: 13px; }
+.fc .fc-toolbar-title { font-size: 16px; font-weight: 600; }
+.fc .fc-button {
+  background: var(--bg-card) !important; border: 1px solid var(--border) !important;
+  color: var(--text-primary) !important; border-radius: var(--radius-sm) !important;
+  font-size: 12px !important; font-weight: 500 !important; padding: 5px 10px !important;
+}
+.fc .fc-button:hover { background: var(--bg-hover) !important; }
+.fc .fc-button-active,
+.fc .fc-button-primary:not(:disabled).fc-button-active {
+  background: var(--primary) !important; border-color: var(--primary) !important; color: white !important;
+}
+.fc .fc-today-button { background: var(--primary) !important; border-color: var(--primary) !important; color: white !important; }
+.fc-daygrid-day.fc-day-today { background: var(--primary-light) !important; }
+
+/* =========================================================
+   CALENDAR
+========================================================= */
+#calendar { height: calc(100vh - 120px); }
+.fc { height: 100% !important; }

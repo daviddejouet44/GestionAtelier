@@ -1,0 +1,5 @@
+/* =========================================================
+   DOSSIER CARDS
+========================================================= */
+.dossier-card { overflow: hidden; }
+.dossier-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: break-word; max-width: 100%; }
