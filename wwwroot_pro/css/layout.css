@@ -1,0 +1,116 @@
+/* =========================================================
+   APP CONTAINER
+========================================================= */
+.app-container { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.app-container.hidden { display: none !important; }
+
+/* =========================================================
+   HEADER
+========================================================= */
+header {
+  background: #1D1D1F; color: white; padding: 0 32px; height: 52px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 100; flex-shrink: 0;
+}
+header h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+.header-brand { display: flex; align-items: center; gap: 0; }
+.header-right { display: flex; align-items: center; gap: 12px; }
+#user-info { font-size: 12px; color: rgba(255,255,255,0.6); }
+
+/* =========================================================
+   ALERT GLOBALE
+========================================================= */
+.global-alert {
+  background: var(--danger); color: white; padding: 8px 32px;
+  font-weight: 600; font-size: 13px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+.global-alert.orange { background: var(--warning); color: var(--text-primary); }
+.global-alert-urgences {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.global-alert-urgences-label {
+  font-size: 13px; font-weight: 700; white-space: nowrap;
+  display: flex; align-items: center; gap: 5px;
+}
+.global-alert-bat {
+  margin-left: auto; display: flex; align-items: center; gap: 8px;
+  background: rgba(0,0,0,0.15); border-radius: 6px; padding: 4px 12px;
+  white-space: nowrap;
+}
+.global-alert-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 10px; font-size: 12px; font-weight: 700;
+  background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3);
+}
+.global-alert-badge.j0 { background: rgba(255,59,48,0.3); border-color: rgba(255,59,48,0.6); }
+.global-alert-badge.j1 { background: rgba(255,159,10,0.3); border-color: rgba(255,159,10,0.6); }
+.global-alert-badge.j2, .global-alert-badge.j3 { background: rgba(52,199,89,0.2); border-color: rgba(52,199,89,0.5); }
+
+/* =========================================================
+   TOOLBAR
+========================================================= */
+.toolbar {
+  background: var(--bg-card); border-bottom: 1px solid var(--border-light);
+  padding: 10px 32px; display: flex; gap: 12px; align-items: center;
+  flex-wrap: wrap; flex-shrink: 0;
+}
+.toolbar input[type="text"] {
+  padding: 7px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 13px; background: var(--bg-subtle); color: var(--text-primary);
+  outline: none; transition: var(--transition-fast); width: 180px;
+}
+.toolbar input[type="text"]:focus {
+  border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); background: var(--bg-card);
+}
+.toolbar select {
+  padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 13px; background: var(--bg-card); color: var(--text-primary); cursor: pointer; outline: none;
+}
+
+/* =========================================================
+   TAB BUTTONS
+========================================================= */
+.tab-buttons {
+  display: flex; gap: 0; background: var(--bg-subtle);
+  border-radius: var(--radius-md); padding: 3px; margin-left: auto;
+}
+.tab-btn {
+  padding: 7px 16px; border: none; border-radius: 9px; background: transparent;
+  color: var(--text-secondary); cursor: pointer; font-weight: 500; font-size: 13px;
+  transition: var(--transition-fast); white-space: nowrap;
+}
+.tab-btn:hover { color: var(--text-primary); }
+.tab-btn.active {
+  background: var(--bg-card); color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08); font-weight: 600;
+}
+
+/* =========================================================
+   CONTAINER PRINCIPAL
+========================================================= */
+.container {
+  flex: 1; overflow-y: auto; padding: 24px 32px; background: var(--bg-page);
+}
+
+/* =========================================================
+   NOTIFICATION BELL
+========================================================= */
+.notif-bell { position: relative; display: flex; align-items: center; }
+.notif-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 4px; display: flex; align-items: center; }
+.notif-count { position: absolute; top: -4px; right: -4px; background: #FF3B30; color: white; font-size: 10px; font-weight: 700; border-radius: 10px; min-width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
+.notif-dropdown { position: absolute; right: 0; top: 100%; background: white; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); width: 300px; max-height: 400px; overflow-y: auto; z-index: 9999; border: 1px solid #e8e8ed; }
+.notif-item { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; font-size: 13px; cursor: pointer; color: var(--text-primary); }
+.notif-item:hover { background: #f5f5f7; }
+.notif-item.unread { font-weight: 600; }
+.notif-empty { padding: 24px; text-align: center; color: #86868b; font-size: 13px; }
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+@media (max-width: 740px) {
+  .container { padding: 16px; }
+  .toolbar { padding: 10px 16px; }
+  header { padding: 0 16px; }
+  .tab-buttons { margin-left: 0; flex-wrap: wrap; }
+}
