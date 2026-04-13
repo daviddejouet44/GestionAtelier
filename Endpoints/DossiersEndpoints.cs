@@ -17,6 +17,7 @@ using MongoDB.Driver;
 using MongoDB.Bson;
 using GestionAtelier.Models;
 using GestionAtelier.Services;
+using GestionAtelier.Constants;
 
 namespace GestionAtelier.Endpoints;
 
@@ -246,32 +247,6 @@ app.MapGet("/api/production-folders/global-progress", () =>
 {
     try
     {
-        var stageProgress = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-        {
-            { "Début de production", 0 },
-            { "1.Reception", 0 },
-            { "Corrections", 15 },
-            { "Corrections et fond perdu", 15 },
-            { "Prêt pour impression", 25 },
-            { "6.Archivage", 25 },
-            { "BAT", 35 },
-            { "4.BAT", 35 },
-            { "PrismaPrepare", 50 },
-            { "Fiery", 50 },
-            { "Impression en cours", 65 },
-            { "Façonnage", 80 },
-            { "Fin de production", 100 }
-        };
-
-        int GetProgress(string? stage)
-        {
-            if (string.IsNullOrEmpty(stage)) return 0;
-            foreach (var kv in stageProgress)
-                if (stage.IndexOf(kv.Key, StringComparison.OrdinalIgnoreCase) >= 0)
-                    return kv.Value;
-            return 0;
-        }
-
         var col = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
         var docs = col.Find(new BsonDocument()).SortByDescending(x => x["createdAt"]).ToList();
         var result = docs.Select(d =>
@@ -284,7 +259,7 @@ app.MapGet("/api/production-folders/global-progress", () =>
                 fileName = d.Contains("fileName") ? d["fileName"].AsString : "",
                 numeroDossier = d.Contains("numeroDossier") ? d["numeroDossier"].AsString : "",
                 currentStage = stage,
-                progress = GetProgress(stage)
+                progress = StageConstants.GetProgress(stage)
             };
         }).ToList();
         return Results.Json(result);
@@ -309,29 +284,6 @@ app.MapGet("/api/production/summary", () =>
             "Prêt pour impression", "BAT", "PrismaPrepare", "Fiery",
             "Impression en cours", "Façonnage", "Fin de production"
         };
-
-        var stageProgress = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-        {
-            { "Début de production", 0 },
-            { "Corrections", 15 },
-            { "Corrections et fond perdu", 15 },
-            { "Prêt pour impression", 25 },
-            { "BAT", 35 },
-            { "PrismaPrepare", 50 },
-            { "Fiery", 50 },
-            { "Impression en cours", 65 },
-            { "Façonnage", 80 },
-            { "Fin de production", 100 }
-        };
-
-        int GetProgress(string? stage)
-        {
-            if (string.IsNullOrEmpty(stage)) return 0;
-            foreach (var kv in stageProgress)
-                if (stage.IndexOf(kv.Key, StringComparison.OrdinalIgnoreCase) >= 0)
-                    return kv.Value;
-            return 0;
-        }
 
         var fabCol = MongoDbHelper.GetFabricationsCollection();
         var allFabs = fabCol.Find(new BsonDocument()).ToList();
@@ -383,7 +335,7 @@ app.MapGet("/api/production/summary", () =>
                     fileName = fName,
                     fullPath = filePath,
                     currentStage = effectiveStage,
-                    progress = GetProgress(effectiveStage),
+                    progress = StageConstants.GetProgress(effectiveStage),
                     numeroDossier,
                     client,
                     typeTravail
