@@ -39,7 +39,7 @@ app.MapGet("/api/fabrication/pdf", (string? fullPath, string? fileName, bool? sa
         if (sheet == null)
             return Results.Json(new { ok = false, error = "Fiche introuvable" });
 
-        var doc = PdfUtils.CreateFabricationPdf(sheet);
+        var doc = PdfUtils.CreateFabricationPdf(sheet, MongoDbHelper.GetSettings<FabricationFormConfig>("formConfig"));
         using var ms = new MemoryStream();
         doc.GeneratePdf(ms);
         ms.Position = 0;

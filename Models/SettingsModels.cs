@@ -148,3 +148,57 @@ public class PassesConfig
     [JsonPropertyName("dosCarreColle")]
     public int DosCarreColle { get; set; } = 0;
 }
+
+public class FormFieldConfig
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = "";
+
+    [JsonPropertyName("label")]
+    public string Label { get; set; } = "";
+
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "text";
+
+    [JsonPropertyName("order")]
+    public int Order { get; set; } = 0;
+
+    [JsonPropertyName("visible")]
+    public bool Visible { get; set; } = true;
+
+    [JsonPropertyName("required")]
+    public bool Required { get; set; } = false;
+
+    [JsonPropertyName("readOnly")]
+    public bool ReadOnly { get; set; } = false;
+
+    [JsonPropertyName("defaultValue")]
+    public string? DefaultValue { get; set; }
+
+    [JsonPropertyName("options")]
+    public List<string>? Options { get; set; }
+
+    [JsonPropertyName("section")]
+    public string? Section { get; set; }
+
+    [JsonPropertyName("width")]
+    public string? Width { get; set; } = "half";
+
+    [JsonPropertyName("dependsOn")]
+    public string? DependsOn { get; set; }
+
+    [JsonPropertyName("dependsOnValue")]
+    public string? DependsOnValue { get; set; }
+
+    [JsonPropertyName("calculationRule")]
+    public string? CalculationRule { get; set; }
+}
+
+public class FabricationFormConfig
+{
+    [JsonPropertyName("fields")]
+    public List<FormFieldConfig> Fields { get; set; } = new();
+
+    [JsonPropertyName("sections")]
+    public List<string> Sections { get; set; } = new();
+}

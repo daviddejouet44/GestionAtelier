@@ -31,5 +31,6 @@ public static class SettingsEndpointsExtensions
         app.MapPrintConfigEndpoints(recyclePath);
         app.MapKanbanConfigEndpoints(recyclePath);
         app.MapAccountsEndpoints(recyclePath);
+        app.MapFormConfigEndpoints();
     }
 }
