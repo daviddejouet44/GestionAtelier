@@ -17,6 +17,8 @@ public class DailyReportService : BackgroundService
 {
     private Timer? _timer;
 
+    private static readonly string[] ProductionStages = new[] { "Impression en cours", "Façonnage" };
+
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
         ScheduleNextRun(stoppingToken);
@@ -96,8 +98,7 @@ public class DailyReportService : BackgroundService
         {
             var root = BackendUtils.HotfoldersRoot();
 
-            // Production stages to include
-            var stages = new[] { "Impression en cours", "Façonnage" };
+        var stages = ProductionStages;
             var fabCol = MongoDbHelper.GetFabricationsCollection();
 
             // Get configured print engines for grouping
@@ -148,7 +149,7 @@ public class DailyReportService : BackgroundService
         try
         {
             var root = BackendUtils.HotfoldersRoot();
-            var stages = new[] { "Impression en cours", "Façonnage" };
+            var stages = ProductionStages;
             var fabCol = MongoDbHelper.GetFabricationsCollection();
 
             foreach (var stage in stages)
