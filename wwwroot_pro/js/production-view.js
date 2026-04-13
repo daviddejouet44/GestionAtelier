@@ -1,5 +1,6 @@
 // production-view.js — Vue production globale (lecture seule, tous profils)
 import { authToken, isLight, darkenColor, fnKey, normalizePath, deliveriesByPath, assignmentsByPath, daysDiffFromToday, fmtBytes, showNotification } from './core.js';
+import { STAGE_PROGRESS, getStageProgress, STAGE_DISPLAY_LABELS, getStageLabelDisplay, getStageColor } from './constants.js';
 
 // ======================================================
 // VUE PRODUCTION GLOBALE (profils 1, 2 et 3)
@@ -9,35 +10,6 @@ import { authToken, isLight, darkenColor, fnKey, normalizePath, deliveriesByPath
 export function showGlobalProduction() {
   // Navigation handled by app.js
   initGlobalProductionView();
-}
-
-const STAGE_PROGRESS = {
-  "Début de production": 0,
-  "Corrections": 15,
-  "Corrections et fond perdu": 15,
-  "Prêt pour impression": 25,
-  "BAT": 35,
-  "PrismaPrepare": 50,
-  "Fiery": 50,
-  "Impression en cours": 65,
-  "Façonnage": 80,
-  "Fin de production": 100
-};
-
-function getStageProgress(stage) {
-  if (!stage) return 0;
-  const key = Object.keys(STAGE_PROGRESS).find(k => stage.toLowerCase().includes(k.toLowerCase()));
-  return key !== undefined ? STAGE_PROGRESS[key] : 0;
-}
-
-function getStageColor(progress) {
-  if (progress === 0) return "#6b7280";
-  if (progress <= 25) return "#f59e0b";
-  if (progress <= 35) return "#8b5cf6";
-  if (progress <= 50) return "#3b82f6";
-  if (progress <= 65) return "#f97316";
-  if (progress <= 80) return "#06b6d4";
-  return "#22c55e";
 }
 
 export async function initGlobalProductionView() {
@@ -198,16 +170,6 @@ function escapeHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-const STAGE_DISPLAY_LABELS = {
-  "Début de production": "Jobs à traiter",
-  "Corrections": "Preflight",
-  "Corrections et fond perdu": "Preflight avec fond perdu",
-  "Prêt pour impression": "En attente"
-};
-
-function getStageLabelDisplay(stage) {
-  return STAGE_DISPLAY_LABELS[stage] || stage;
-}
 
 // ======================================================
 // VUE PRODUCTION KANBAN (profil 2/3 — tuiles opérateur)
