@@ -238,9 +238,9 @@ async function buildBatView() {
       const card = document.createElement("div");
       card.className = "bat-card-modern";
 
-      // --- Thumbnail ---
       const thumbDiv = document.createElement("div");
       thumbDiv.className = "bat-card-thumb";
+      thumbDiv.style.cssText = "min-width:100px;width:100px;height:120px;display:flex;align-items:center;justify-content:center;background:#f3f4f6;border-radius:8px;font-size:12px;font-weight:600;color:#9ca3af;overflow:hidden;flex-shrink:0;";
       thumbDiv.textContent = "PDF";
       if ((job.name || "").toLowerCase().endsWith(".pdf") && window._renderPdfThumbnail) {
         window._renderPdfThumbnail(full, thumbDiv).catch(() => {});
@@ -252,6 +252,7 @@ async function buildBatView() {
 
       const dossierEl = document.createElement("div");
       dossierEl.className = "bat-card-dossier";
+      dossierEl.style.cssText = "font-size:20px;font-weight:700;color:#1d4ed8;margin-bottom:4px;";
       dossierEl.textContent = "—";
 
       const filenameEl = document.createElement("div");
@@ -1199,6 +1200,17 @@ async function initApp() {
 
   pollNotifications();
   setInterval(pollNotifications, 30000);
+
+  // Heartbeat for connected-user indicator (every 60s)
+  const sendHeartbeat = () => {
+    if (!authToken) return;
+    fetch("/api/auth/heartbeat", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).catch(() => {});
+  };
+  sendHeartbeat();
+  setInterval(sendHeartbeat, 60000);
 }
 
 // ======================================================

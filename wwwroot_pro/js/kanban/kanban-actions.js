@@ -170,7 +170,7 @@ export async function showFaconnageAlerts() {
   panel.style.cssText = "background:white;border-radius:12px;padding:24px;max-width:680px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,.3);";
 
   let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-    <h3 style="margin:0;font-size:18px;font-weight:700;">📋 Productions à venir — Prévision façonnage</h3>
+    <h3 style="margin:0;font-size:18px;font-weight:700;">📋 Productions à venir</h3>
     <button id="fa-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:#6b7280;">✕</button>
   </div>`;
 

@@ -1,7 +1,7 @@
 import { authToken, showNotification, esc } from '../core.js';
 
 export async function renderSettingsFaconnage(panel) {
-  panel.innerHTML = `<h3>Options de façonnage</h3><p style="color:#6b7280;">Chargement...</p>`;
+  panel.innerHTML = `<h3>Options de finitions</h3><p style="color:#6b7280;">Chargement...</p>`;
 
   let options = [];
   try {
@@ -15,7 +15,7 @@ export async function renderSettingsFaconnage(panel) {
     : options.map(o => `<span style="display:inline-block;background:#f3f4f6;color:#374151;padding:4px 10px;border-radius:6px;font-size:13px;margin:3px;">${esc(o)}</span>`).join("");
 
   panel.innerHTML = `
-    <h3>Options de façonnage</h3>
+    <h3>Options de finitions</h3>
     <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
       Importez un fichier CSV contenant une option par ligne (ou par colonne). Les options existantes seront remplacées.
     </p>
