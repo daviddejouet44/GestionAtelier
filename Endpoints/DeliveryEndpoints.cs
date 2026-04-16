@@ -32,6 +32,7 @@ app.MapGet("/api/delivery", () =>
     var data = map.Values
         .Select(v => {
             bool locked = false;
+            int? tempsProduitMinutes = null;
             if (!string.IsNullOrEmpty(v.FileName))
             {
                 // Normalize to lowercase (fabrication records store fileName as lowercase via fnKey)
@@ -39,9 +40,14 @@ app.MapGet("/api/delivery", () =>
                 var fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", lowerFn)).FirstOrDefault();
                 if (fabDoc == null && !string.IsNullOrEmpty(v.FullPath))
                     fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fullPath", v.FullPath)).FirstOrDefault();
-                if (fabDoc != null && fabDoc.Contains("locked") && fabDoc["locked"] != BsonNull.Value
-                    && fabDoc["locked"].BsonType == BsonType.Boolean)
-                    locked = fabDoc["locked"].AsBoolean;
+                if (fabDoc != null)
+                {
+                    if (fabDoc.Contains("locked") && fabDoc["locked"] != BsonNull.Value
+                        && fabDoc["locked"].BsonType == BsonType.Boolean)
+                        locked = fabDoc["locked"].AsBoolean;
+                    if (fabDoc.Contains("tempsProduitMinutes") && fabDoc["tempsProduitMinutes"] != BsonNull.Value)
+                        tempsProduitMinutes = fabDoc["tempsProduitMinutes"].AsInt32;
+                }
             }
             return new
             {
@@ -49,7 +55,8 @@ app.MapGet("/api/delivery", () =>
                 fileName = v.FileName,
                 date     = v.Date.ToString("yyyy-MM-dd"),
                 time     = v.Time,
-                locked
+                locked,
+                tempsProduitMinutes
             };
         });
     return Results.Json(data);

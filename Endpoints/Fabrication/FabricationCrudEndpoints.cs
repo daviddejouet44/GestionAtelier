@@ -187,6 +187,11 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             DateDepart      = input.DateDepart,
             DateLivraison   = input.DateLivraison,
             PlanningMachine = input.PlanningMachine,
+            DateReception         = input.DateReception,
+            DateEnvoi             = input.DateEnvoi,
+            DateProductionFinitions = input.DateProductionFinitions,
+            DateImpression        = input.DateImpression,
+            TempsProduitMinutes   = input.TempsProduitMinutes ?? old?.TempsProduitMinutes,
             JustifsClientsQuantite = input.JustifsClientsQuantite,
             JustifsClientsAdresse  = input.JustifsClientsAdresse,
             Repartitions = input.Repartitions,
@@ -316,6 +321,146 @@ app.MapGet("/api/fabrication/export-xml", async (string fullPath, HttpContext ct
         }
 
         return Results.Json(new { ok = true, xml = xmlContent, xmlPath = xmlSavePath });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// FABRICATION — GÉNÉRATION JDF
+// ======================================================
+
+app.MapPost("/api/fabrication/generate-jdf", async (HttpContext ctx) =>
+{
+    try
+    {
+        var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var fullPath = body.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
+        var fileName = body.TryGetProperty("fileName", out var fn) ? fn.GetString() ?? "" : "";
+
+        FabricationSheet? sheet = null;
+        if (!string.IsNullOrEmpty(fullPath)) sheet = BackendUtils.FindFabrication(fullPath);
+        if (sheet == null && !string.IsNullOrEmpty(fileName)) sheet = BackendUtils.FindFabricationByName(fileName);
+        if (sheet == null)
+            return Results.Json(new { ok = false, error = "Fiche introuvable" });
+
+        // Load JDF config to know which fields to include
+        var jdfConfig = MongoDbHelper.GetSettings<JdfConfig>("jdfConfig") ?? new JdfConfig();
+        if (!jdfConfig.Enabled)
+            return Results.Json(new { ok = false, error = "La génération JDF n'est pas activée dans les paramètres" });
+
+        var includedFields = jdfConfig.Fields.Where(f => f.Included).Select(f => f.FieldId).ToHashSet();
+
+        // Build JDF XML (Job Definition Format — simplified CIP4 JDF structure)
+        var jobId = $"JDF_{sheet.NumeroDossier ?? "0"}_{DateTime.Now:yyyyMMddHHmmss}";
+        var jdfEl = new XElement("JDF",
+            new XAttribute("ID", jobId),
+            new XAttribute("JobID", sheet.NumeroDossier ?? ""),
+            new XAttribute("Type", "Product"),
+            new XAttribute("Status", "Waiting"),
+            new XAttribute("Version", "1.6"),
+            new XAttribute(XNamespace.Xmlns + "xsi", "http://www.w3.org/2001/XMLSchema-instance"),
+            new XElement("AuditPool",
+                new XElement("Created",
+                    new XAttribute("TimeStamp", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")),
+                    new XAttribute("AgentName", "GestionAtelier"),
+                    new XAttribute("AgentVersion", "1.0")
+                )
+            )
+        );
+
+        var resourcePool = new XElement("ResourcePool");
+        if (includedFields.Contains("numeroDossier") || includedFields.Count == 0)
+            resourcePool.Add(new XElement("RunList", new XAttribute("ID", "RL1"), new XAttribute("Class", "Parameter"), new XAttribute("Status", "Available"), new XElement("LayoutElement", new XElement("FileSpec", new XAttribute("URL", sheet.FullPath ?? "")))));
+        if (includedFields.Contains("quantite") || includedFields.Count == 0)
+            resourcePool.Add(new XElement("Component", new XAttribute("ID", "C1"), new XAttribute("Class", "Quantity"), new XAttribute("Status", "Available"), new XAttribute("Amount", sheet.Quantite?.ToString() ?? "0")));
+
+        var jobEl = new XElement("NodeInfo", new XAttribute("JobPriority", "50"));
+        if ((includedFields.Contains("numeroDossier") || includedFields.Count == 0) && !string.IsNullOrEmpty(sheet.NumeroDossier))
+            jobEl.Add(new XElement("Comment", new XAttribute("Name", "NumeroDossier"), sheet.NumeroDossier));
+        if ((includedFields.Contains("client") || includedFields.Count == 0) && !string.IsNullOrEmpty(sheet.Client))
+            jobEl.Add(new XElement("Comment", new XAttribute("Name", "Client"), sheet.Client));
+        if ((includedFields.Contains("nombreFeuilles") || includedFields.Count == 0) && sheet.NombreFeuilles.HasValue)
+            jobEl.Add(new XElement("Comment", new XAttribute("Name", "NombreFeuilles"), sheet.NombreFeuilles.Value.ToString()));
+        if ((includedFields.Contains("formatFeuilleMachine") || includedFields.Count == 0) && !string.IsNullOrEmpty(sheet.FormatFeuille))
+            jobEl.Add(new XElement("Comment", new XAttribute("Name", "FormatFeuilleMachine"), sheet.FormatFeuille));
+        if ((includedFields.Contains("rectoVerso") || includedFields.Count == 0) && !string.IsNullOrEmpty(sheet.RectoVerso))
+            jobEl.Add(new XElement("Comment", new XAttribute("Name", "RectoVerso"), sheet.RectoVerso));
+        if ((includedFields.Contains("moteurImpression") || includedFields.Count == 0) && !string.IsNullOrEmpty(sheet.MoteurImpression ?? sheet.Machine))
+            jobEl.Add(new XElement("Comment", new XAttribute("Name", "MoteurImpression"), sheet.MoteurImpression ?? sheet.Machine ?? ""));
+        if ((includedFields.Contains("typeTravail") || includedFields.Count == 0) && !string.IsNullOrEmpty(sheet.TypeTravail))
+            jobEl.Add(new XElement("Comment", new XAttribute("Name", "TypeTravail"), sheet.TypeTravail));
+
+        jdfEl.Add(resourcePool);
+        jdfEl.Add(jobEl);
+
+        var xdoc = new XDocument(new XDeclaration("1.0", "UTF-8", null), jdfEl);
+        var jdfContent = xdoc.ToString(SaveOptions.None);
+
+        // Save JDF file
+        string jdfSavePath = "";
+        string pdfCopyPath = "";
+        try
+        {
+            var pfCol = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+            var pfDoc = pfCol.Find(Builders<BsonDocument>.Filter.Or(
+                Builders<BsonDocument>.Filter.Eq("originalFilePath", sheet.FullPath),
+                Builders<BsonDocument>.Filter.Eq("currentFilePath", sheet.FullPath),
+                Builders<BsonDocument>.Filter.Eq("fileName", sheet.FileName)
+            )).SortByDescending(x => x["createdAt"]).FirstOrDefault();
+
+            if (pfDoc != null && pfDoc.Contains("folderPath"))
+            {
+                var folderPath = pfDoc["folderPath"].AsString;
+                Directory.CreateDirectory(folderPath);
+                jdfSavePath = Path.Combine(folderPath, $"{Path.GetFileNameWithoutExtension(sheet.FileName ?? "job")}.jdf");
+                await File.WriteAllTextAsync(jdfSavePath, jdfContent, System.Text.Encoding.UTF8);
+
+                // Copy PDF alongside JDF if it exists
+                if (!string.IsNullOrEmpty(sheet.FullPath) && File.Exists(sheet.FullPath))
+                {
+                    pdfCopyPath = Path.Combine(folderPath, Path.GetFileName(sheet.FullPath));
+                    if (!string.Equals(sheet.FullPath, pdfCopyPath, StringComparison.OrdinalIgnoreCase))
+                        File.Copy(sheet.FullPath, pdfCopyPath, overwrite: true);
+                }
+            }
+        }
+        catch (Exception saveEx)
+        {
+            Console.WriteLine($"[WARN] JDF save failed: {saveEx.Message}");
+        }
+
+        // Optionally send to hotfolder if routing configured
+        try
+        {
+            var moteur = sheet.MoteurImpression ?? sheet.Machine ?? "";
+            if (!string.IsNullOrEmpty(moteur))
+            {
+                var routingCol = MongoDbHelper.GetCollection<BsonDocument>("prismaSyncRoutings");
+                var typeTravail = sheet.TypeTravail ?? "";
+                var routingDoc = routingCol.Find(Builders<BsonDocument>.Filter.And(
+                    Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail),
+                    Builders<BsonDocument>.Filter.Eq("moteurImpression", moteur)
+                )).FirstOrDefault();
+                if (routingDoc != null && routingDoc.Contains("prismaSyncPath") && !string.IsNullOrEmpty(routingDoc["prismaSyncPath"].AsString))
+                {
+                    var hotfolderPath = routingDoc["prismaSyncPath"].AsString;
+                    Directory.CreateDirectory(hotfolderPath);
+                    if (!string.IsNullOrEmpty(jdfSavePath) && File.Exists(jdfSavePath))
+                        File.Copy(jdfSavePath, Path.Combine(hotfolderPath, Path.GetFileName(jdfSavePath)), overwrite: true);
+                    if (!string.IsNullOrEmpty(sheet.FullPath) && File.Exists(sheet.FullPath))
+                        File.Copy(sheet.FullPath, Path.Combine(hotfolderPath, Path.GetFileName(sheet.FullPath)), overwrite: true);
+                }
+            }
+        }
+        catch (Exception hfEx)
+        {
+            Console.WriteLine($"[WARN] JDF hotfolder send failed: {hfEx.Message}");
+        }
+
+        return Results.Json(new { ok = true, jdfPath = jdfSavePath, pdfCopyPath });
     }
     catch (Exception ex)
     {

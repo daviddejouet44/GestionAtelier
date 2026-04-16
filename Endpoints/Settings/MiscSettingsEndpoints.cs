@@ -671,6 +671,139 @@ app.MapPost("/api/settings/delivery-delay", async (HttpContext ctx) =>
 });
 
 // ======================================================
+// SETTINGS — DATES CLÉS
+// ======================================================
+
+app.MapGet("/api/settings/key-dates", () =>
+{
+    try
+    {
+        var cfg = MongoDbHelper.GetSettings<KeyDatesSettings>("keyDates") ?? new KeyDatesSettings();
+        return Results.Json(new { ok = true, sendOffsetHours = cfg.SendOffsetHours, finitionsOffsetHours = cfg.FinitionsOffsetHours, impressionOffsetHours = cfg.ImpressionOffsetHours });
+    }
+    catch { return Results.Json(new { ok = true, sendOffsetHours = 48, finitionsOffsetHours = 72, impressionOffsetHours = 96 }); }
+});
+
+app.MapPut("/api/settings/key-dates", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (!string.IsNullOrEmpty(token))
+        {
+            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            var parts = decoded.Split(':');
+            if (parts.Length < 3 || parts[2] != "3")
+                return Results.Json(new { ok = false, error = "Admin only" });
+        }
+
+        var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        int sendH = 48, finH = 72, impH = 96;
+        if (body.TryGetProperty("sendOffsetHours", out var se)) se.TryGetInt32(out sendH);
+        if (body.TryGetProperty("finitionsOffsetHours", out var fi)) fi.TryGetInt32(out finH);
+        if (body.TryGetProperty("impressionOffsetHours", out var im)) im.TryGetInt32(out impH);
+        MongoDbHelper.UpsertSettings("keyDates", new KeyDatesSettings { SendOffsetHours = sendH, FinitionsOffsetHours = finH, ImpressionOffsetHours = impH });
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// SETTINGS — PALLIER TEMPS PAR GRAMMAGE
+// ======================================================
+
+app.MapGet("/api/settings/grammage-time-config", () =>
+{
+    try
+    {
+        var cfg = MongoDbHelper.GetSettings<GrammageTimeConfig>("grammageTimeConfig") ?? new GrammageTimeConfig();
+        return Results.Json(new { ok = true, rules = cfg.Rules });
+    }
+    catch { return Results.Json(new { ok = true, rules = new object[0] }); }
+});
+
+app.MapPut("/api/settings/grammage-time-config", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (!string.IsNullOrEmpty(token))
+        {
+            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            var parts = decoded.Split(':');
+            if (parts.Length < 3 || parts[2] != "3")
+                return Results.Json(new { ok = false, error = "Admin only" });
+        }
+
+        var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var rules = new List<GrammageTimeRule>();
+        if (body.TryGetProperty("rules", out var rulesEl) && rulesEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            foreach (var r in rulesEl.EnumerateArray())
+            {
+                var rule = new GrammageTimeRule();
+                if (r.TryGetProperty("engineName", out var en)) rule.EngineName = en.GetString() ?? "";
+                if (r.TryGetProperty("grammageMin", out var gmr)) { gmr.TryGetInt32(out int gmrV); rule.GrammageMin = gmrV; }
+                if (r.TryGetProperty("grammageMax", out var gmar)) { gmar.TryGetInt32(out int gmarV); rule.GrammageMax = gmarV; }
+                if (r.TryGetProperty("timePerSheetSeconds", out var tpsr)) { tpsr.TryGetInt32(out int tpsrV); rule.TimePerSheetSeconds = tpsrV; }
+                rules.Add(rule);
+            }
+        }
+        MongoDbHelper.UpsertSettings("grammageTimeConfig", new GrammageTimeConfig { Rules = rules });
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// SETTINGS — CONFIG JDF
+// ======================================================
+
+app.MapGet("/api/settings/jdf-config", () =>
+{
+    try
+    {
+        var cfg = MongoDbHelper.GetSettings<JdfConfig>("jdfConfig") ?? new JdfConfig();
+        return Results.Json(new { ok = true, enabled = cfg.Enabled, fields = cfg.Fields });
+    }
+    catch { return Results.Json(new { ok = true, enabled = false, fields = new object[0] }); }
+});
+
+app.MapPut("/api/settings/jdf-config", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (!string.IsNullOrEmpty(token))
+        {
+            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            var parts = decoded.Split(':');
+            if (parts.Length < 3 || parts[2] != "3")
+                return Results.Json(new { ok = false, error = "Admin only" });
+        }
+
+        var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        bool enabled = false;
+        if (body.TryGetProperty("enabled", out var en)) enabled = en.GetBoolean();
+        var fields = new List<JdfFieldConfig>();
+        if (body.TryGetProperty("fields", out var fieldsEl) && fieldsEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            foreach (var f in fieldsEl.EnumerateArray())
+            {
+                var fc = new JdfFieldConfig();
+                if (f.TryGetProperty("fieldId", out var fid)) fc.FieldId = fid.GetString() ?? "";
+                if (f.TryGetProperty("label", out var lbl)) fc.Label = lbl.GetString() ?? "";
+                if (f.TryGetProperty("included", out var inc)) fc.Included = inc.GetBoolean();
+                fields.Add(fc);
+            }
+        }
+        MongoDbHelper.UpsertSettings("jdfConfig", new JdfConfig { Enabled = enabled, Fields = fields });
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
 // SETTINGS — PASSES (feuilles supplémentaires)
 // ======================================================
 

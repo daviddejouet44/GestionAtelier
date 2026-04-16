@@ -136,6 +136,60 @@ public class DeliveryDelaySettings
     public int DelayHours { get; set; } = 48;
 }
 
+public class KeyDatesSettings
+{
+    [JsonPropertyName("sendOffsetHours")]
+    public int SendOffsetHours { get; set; } = 48;
+
+    [JsonPropertyName("finitionsOffsetHours")]
+    public int FinitionsOffsetHours { get; set; } = 72;
+
+    [JsonPropertyName("impressionOffsetHours")]
+    public int ImpressionOffsetHours { get; set; } = 96;
+}
+
+public class GrammageTimeRule
+{
+    [JsonPropertyName("engineName")]
+    public string EngineName { get; set; } = "";
+
+    [JsonPropertyName("grammageMin")]
+    public int GrammageMin { get; set; } = 0;
+
+    [JsonPropertyName("grammageMax")]
+    public int GrammageMax { get; set; } = 999;
+
+    [JsonPropertyName("timePerSheetSeconds")]
+    public int TimePerSheetSeconds { get; set; } = 5;
+}
+
+public class GrammageTimeConfig
+{
+    [JsonPropertyName("rules")]
+    public List<GrammageTimeRule> Rules { get; set; } = new();
+}
+
+public class JdfFieldConfig
+{
+    [JsonPropertyName("fieldId")]
+    public string FieldId { get; set; } = "";
+
+    [JsonPropertyName("label")]
+    public string Label { get; set; } = "";
+
+    [JsonPropertyName("included")]
+    public bool Included { get; set; } = false;
+}
+
+public class JdfConfig
+{
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; } = false;
+
+    [JsonPropertyName("fields")]
+    public List<JdfFieldConfig> Fields { get; set; } = new();
+}
+
 public class DailyReportConfig
 {
     [JsonPropertyName("enabled")]

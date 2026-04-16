@@ -93,6 +93,15 @@ public record FabricationSheet
     public DateTime? DateLivraison { get; init; }
     public DateTime? PlanningMachine { get; init; }
 
+    // ── Dates clés (calculées depuis DateReception) ──────
+    public DateTime? DateReception { get; init; }
+    public DateTime? DateEnvoi { get; init; }
+    public DateTime? DateProductionFinitions { get; init; }
+    public DateTime? DateImpression { get; init; }
+
+    // ── Temps théorique de production (minutes) ──────────
+    public int? TempsProduitMinutes { get; init; }
+
     // ── Justifs clients ──────────────────────────────────
     public int? JustifsClientsQuantite { get; init; }
     public string? JustifsClientsAdresse { get; init; }
@@ -180,6 +189,15 @@ public class FabricationInput
     public DateTime? DateDepart { get; set; }
     public DateTime? DateLivraison { get; set; }
     public DateTime? PlanningMachine { get; set; }
+
+    // ── Dates clés (calculées depuis DateReception) ──────
+    public DateTime? DateReception { get; set; }
+    public DateTime? DateEnvoi { get; set; }
+    public DateTime? DateProductionFinitions { get; set; }
+    public DateTime? DateImpression { get; set; }
+
+    // ── Temps théorique de production (minutes) ──────────
+    public int? TempsProduitMinutes { get; set; }
 
     // ── Justifs clients ──────────────────────────────────
     public int? JustifsClientsQuantite { get; set; }
