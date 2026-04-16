@@ -562,6 +562,11 @@ public static class BackendUtils
             ["dateDepart"]      = sheet.DateDepart      == null ? BsonNull.Value : (BsonValue)sheet.DateDepart.Value,
             ["dateLivraison"]   = sheet.DateLivraison   == null ? BsonNull.Value : (BsonValue)sheet.DateLivraison.Value,
             ["planningMachine"] = sheet.PlanningMachine == null ? BsonNull.Value : (BsonValue)sheet.PlanningMachine.Value,
+            ["dateReception"]         = sheet.DateReception         == null ? BsonNull.Value : (BsonValue)sheet.DateReception.Value,
+            ["dateEnvoi"]             = sheet.DateEnvoi             == null ? BsonNull.Value : (BsonValue)sheet.DateEnvoi.Value,
+            ["dateProductionFinitions"] = sheet.DateProductionFinitions == null ? BsonNull.Value : (BsonValue)sheet.DateProductionFinitions.Value,
+            ["dateImpression"]        = sheet.DateImpression        == null ? BsonNull.Value : (BsonValue)sheet.DateImpression.Value,
+            ["tempsProduitMinutes"]   = sheet.TempsProduitMinutes   == null ? BsonNull.Value : (BsonValue)(int)sheet.TempsProduitMinutes,
             ["justifsClientsQuantite"] = sheet.JustifsClientsQuantite == null ? BsonNull.Value : (BsonValue)(int)sheet.JustifsClientsQuantite,
             ["justifsClientsAdresse"]  = sheet.JustifsClientsAdresse  == null ? BsonNull.Value : (BsonValue)sheet.JustifsClientsAdresse,
             ["repartitions"] = sheet.Repartitions == null
@@ -672,6 +677,11 @@ public static class BackendUtils
             DateDepart      = d.Contains("dateDepart")      && d["dateDepart"]      != BsonNull.Value ? (DateTime?)d["dateDepart"].ToLocalTime()      : null,
             DateLivraison   = d.Contains("dateLivraison")   && d["dateLivraison"]   != BsonNull.Value ? (DateTime?)d["dateLivraison"].ToLocalTime()   : null,
             PlanningMachine = d.Contains("planningMachine") && d["planningMachine"] != BsonNull.Value ? (DateTime?)d["planningMachine"].ToLocalTime() : null,
+            DateReception         = d.Contains("dateReception")         && d["dateReception"]         != BsonNull.Value ? (DateTime?)d["dateReception"].ToLocalTime()         : null,
+            DateEnvoi             = d.Contains("dateEnvoi")             && d["dateEnvoi"]             != BsonNull.Value ? (DateTime?)d["dateEnvoi"].ToLocalTime()             : null,
+            DateProductionFinitions = d.Contains("dateProductionFinitions") && d["dateProductionFinitions"] != BsonNull.Value ? (DateTime?)d["dateProductionFinitions"].ToLocalTime() : null,
+            DateImpression        = d.Contains("dateImpression")        && d["dateImpression"]        != BsonNull.Value ? (DateTime?)d["dateImpression"].ToLocalTime()        : null,
+            TempsProduitMinutes   = d.Contains("tempsProduitMinutes")   && d["tempsProduitMinutes"]   != BsonNull.Value ? (int?)d["tempsProduitMinutes"].AsInt32             : null,
             JustifsClientsQuantite = d.Contains("justifsClientsQuantite") && d["justifsClientsQuantite"] != BsonNull.Value ? (int?)d["justifsClientsQuantite"].AsInt32 : null,
             JustifsClientsAdresse  = GetNullableString(d, "justifsClientsAdresse"),
             Repartitions = d.Contains("repartitions") && d["repartitions"] != BsonNull.Value && d["repartitions"].IsBsonArray

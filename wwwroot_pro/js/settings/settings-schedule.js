@@ -12,6 +12,29 @@ export async function renderSettingsSchedule(panel) {
 
   const holidays = Array.isArray(cfg.holidays) ? cfg.holidays : [];
 
+  // Auto-add holidays for current year and next year if missing
+  const currentYear = new Date().getFullYear();
+  const nextYear = currentYear + 1;
+  const missingYears = [];
+  if (!holidays.some(h => h.startsWith(String(currentYear)))) missingYears.push(currentYear);
+  if (!holidays.some(h => h.startsWith(String(nextYear)))) missingYears.push(nextYear);
+  if (missingYears.length > 0) {
+    for (const yr of missingYears) {
+      const frHolidays = getFrenchPublicHolidays(yr);
+      for (const date of frHolidays) {
+        if (!holidays.includes(date)) {
+          await fetch("/api/config/schedule/holidays", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+            body: JSON.stringify({ date })
+          }).then(r => r.json()).catch(() => ({ ok: false }));
+          holidays.push(date);
+        }
+      }
+    }
+    holidays.sort();
+  }
+
   panel.innerHTML = `
     <h3>Plages horaires et jours fériés</h3>
     <div class="settings-form-group">
@@ -25,9 +48,10 @@ export async function renderSettingsSchedule(panel) {
     <button id="sch-save" class="btn btn-primary" style="margin-top: 10px;">Enregistrer les plages</button>
     <hr style="margin: 20px 0;" />
     <h4>Jours fériés</h4>
-    <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
+    <div style="display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; align-items: center;">
       <input type="date" id="sch-holiday-date" class="settings-input" />
       <button id="sch-add-holiday" class="btn btn-primary">Ajouter</button>
+      <input type="number" id="sch-holiday-year" class="settings-input" value="${currentYear}" min="2020" max="2050" style="width:90px;" title="Année" />
       <button id="sch-add-french-holidays" class="btn">Ajouter jours fériés français</button>
     </div>
     <div id="sch-holidays-list">
@@ -79,7 +103,8 @@ export async function renderSettingsSchedule(panel) {
   };
 
   document.getElementById("sch-add-french-holidays").onclick = async () => {
-    const year = new Date().getFullYear();
+    const yearInput = document.getElementById("sch-holiday-year");
+    const year = parseInt(yearInput ? yearInput.value : String(new Date().getFullYear())) || new Date().getFullYear();
     const frenchHolidays = getFrenchPublicHolidays(year);
     let added = 0;
     for (const date of frenchHolidays) {
@@ -138,16 +163,16 @@ export function getFrenchPublicHolidays(year) {
   }
 
   return [
-    fmt(year, 1, 1),
-    addDays(easter, 1),
-    fmt(year, 5, 1),
-    fmt(year, 5, 8),
-    addDays(easter, 39),
-    addDays(easter, 50),
-    fmt(year, 7, 14),
-    fmt(year, 8, 15),
-    fmt(year, 11, 1),
-    fmt(year, 11, 11),
-    fmt(year, 12, 25)
+    fmt(year, 1, 1),   // Jour de l'An
+    addDays(easter, 1), // Lundi de Pâques
+    fmt(year, 5, 1),   // Fête du Travail
+    fmt(year, 5, 8),   // Victoire 1945
+    addDays(easter, 39), // Ascension
+    addDays(easter, 50), // Lundi de Pentecôte
+    fmt(year, 7, 14),  // Fête Nationale
+    fmt(year, 8, 15),  // Assomption
+    fmt(year, 11, 1),  // Toussaint
+    fmt(year, 11, 11), // Armistice
+    fmt(year, 12, 25)  // Noël
   ];
 }

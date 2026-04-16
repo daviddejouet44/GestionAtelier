@@ -132,39 +132,53 @@ export async function renderSettingsSheetCalcRules(panel) {
 export async function renderSettingsDeliveryDelay(panel) {
   panel.innerHTML = `<h3>Dates clés</h3><p style="color:#6b7280;">Chargement...</p>`;
 
-  let delayHours = 48;
+  let cfg = { sendOffsetHours: 48, finitionsOffsetHours: 72, impressionOffsetHours: 96 };
   try {
-    const r = await fetch("/api/settings/delivery-delay", {
+    const r = await fetch("/api/settings/key-dates", {
       headers: { "Authorization": `Bearer ${authToken}` }
-    }).then(r => r.json()).catch(() => ({ delayHours: 48 }));
-    delayHours = r.delayHours || 48;
+    }).then(r => r.json()).catch(() => cfg);
+    if (r.ok) cfg = { sendOffsetHours: r.sendOffsetHours ?? 48, finitionsOffsetHours: r.finitionsOffsetHours ?? 72, impressionOffsetHours: r.impressionOffsetHours ?? 96 };
   } catch(e) { /* ignore */ }
 
   panel.innerHTML = `
     <h3>Dates clés</h3>
     <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
-      Date de livraison = Date de départ + délai en heures
+      À partir de la date de réception souhaitée, les dates clés sont calculées automatiquement en remontant dans le temps.
     </p>
     <div class="settings-form-group">
-      <label>Délai (heures)</label>
-      <input type="number" id="delivery-delay-hours" class="settings-input" value="${delayHours}" min="0" style="width:120px;" />
+      <label>Décalage "Date d'envoi" (heures avant réception)</label>
+      <input type="number" id="kd-send-offset" class="settings-input" value="${cfg.sendOffsetHours}" min="0" style="width:120px;" />
+      <small style="color:#6b7280;margin-left:8px;">par défaut 48h</small>
     </div>
-    <button id="delivery-delay-save" class="btn btn-primary" style="margin-top:10px;">Enregistrer</button>
-    <div id="delivery-delay-msg" style="margin-top:8px;font-size:13px;"></div>
+    <div class="settings-form-group">
+      <label>Décalage "Date production Finitions" (heures avant réception)</label>
+      <input type="number" id="kd-finitions-offset" class="settings-input" value="${cfg.finitionsOffsetHours}" min="0" style="width:120px;" />
+      <small style="color:#6b7280;margin-left:8px;">par défaut 72h</small>
+    </div>
+    <div class="settings-form-group">
+      <label>Décalage "Date d'impression" (heures avant réception)</label>
+      <input type="number" id="kd-impression-offset" class="settings-input" value="${cfg.impressionOffsetHours}" min="0" style="width:120px;" />
+      <small style="color:#6b7280;margin-left:8px;">par défaut 96h</small>
+    </div>
+    <p style="color:#9ca3af;font-size:12px;margin-top:4px;">Les heures sont données à titre indicatif.</p>
+    <button id="kd-save" class="btn btn-primary" style="margin-top:10px;">Enregistrer</button>
+    <div id="kd-msg" style="margin-top:8px;font-size:13px;"></div>
   `;
 
-  panel.querySelector("#delivery-delay-save").onclick = async () => {
-    const msgEl = panel.querySelector("#delivery-delay-msg");
-    const hours = parseInt(panel.querySelector("#delivery-delay-hours").value);
+  panel.querySelector("#kd-save").onclick = async () => {
+    const msgEl = panel.querySelector("#kd-msg");
+    const sendOffsetHours = parseInt(panel.querySelector("#kd-send-offset").value) || 48;
+    const finitionsOffsetHours = parseInt(panel.querySelector("#kd-finitions-offset").value) || 72;
+    const impressionOffsetHours = parseInt(panel.querySelector("#kd-impression-offset").value) || 96;
     try {
-      const r = await fetch("/api/settings/delivery-delay", {
-        method: "POST",
+      const r = await fetch("/api/settings/key-dates", {
+        method: "PUT",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-        body: JSON.stringify({ delayHours: hours })
+        body: JSON.stringify({ sendOffsetHours, finitionsOffsetHours, impressionOffsetHours })
       }).then(r => r.json());
       if (r.ok) {
         msgEl.style.color = "#16a34a";
-        msgEl.textContent = "✅ Délai enregistré";
+        msgEl.textContent = "✅ Dates clés enregistrées";
       } else {
         msgEl.style.color = "#ef4444";
         msgEl.textContent = "❌ " + (r.error || "Erreur");
@@ -221,6 +235,227 @@ export async function renderSettingsPassesConfig(panel) {
       if (r.ok) {
         msgEl.style.color = "#16a34a";
         msgEl.textContent = "✅ Configuration enregistrée";
+      } else {
+        msgEl.style.color = "#ef4444";
+        msgEl.textContent = "❌ " + (r.error || "Erreur");
+      }
+    } catch(e) {
+      msgEl.style.color = "#ef4444";
+      msgEl.textContent = "❌ Erreur réseau";
+    }
+  };
+}
+
+// ============================================================
+// PALLIER TEMPS PAR GRAMMAGE
+// ============================================================
+export async function renderSettingsGrammageTimeConfig(panel) {
+  panel.innerHTML = `<h3>Pallier temps par grammage</h3><p style="color:#6b7280;">Chargement...</p>`;
+
+  let rules = [];
+  let engines = [];
+  try {
+    const [rr, er] = await Promise.all([
+      fetch("/api/settings/grammage-time-config", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()),
+      fetch("/api/config/print-engines").then(r => r.json())
+    ]);
+    rules = rr.rules || [];
+    engines = Array.isArray(er) ? er.map(e => typeof e === 'object' ? (e.name || '') : String(e || '')) : [];
+  } catch(e) { /* ignore */ }
+
+  const engineOptions = engines.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('');
+
+  function renderRulesTable(rs) {
+    if (rs.length === 0) return '<p style="color:#9ca3af;font-size:13px;">Aucune règle définie.</p>';
+    return `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px;">
+      <thead><tr>
+        <th style="text-align:left;padding:6px 8px;background:#f3f4f6;">Moteur</th>
+        <th style="text-align:left;padding:6px 8px;background:#f3f4f6;">Grammage min</th>
+        <th style="text-align:left;padding:6px 8px;background:#f3f4f6;">Grammage max</th>
+        <th style="text-align:left;padding:6px 8px;background:#f3f4f6;">Temps/feuille (s)</th>
+        <th style="padding:6px 8px;background:#f3f4f6;"></th>
+      </tr></thead>
+      <tbody>
+        ${rs.map((r, idx) => `<tr>
+          <td style="padding:4px 8px;">${esc(r.engineName || '')}</td>
+          <td style="padding:4px 8px;">${r.grammageMin ?? 0}</td>
+          <td style="padding:4px 8px;">${r.grammageMax ?? 999}</td>
+          <td style="padding:4px 8px;">${r.timePerSheetSeconds ?? 5}</td>
+          <td style="padding:4px 8px;"><button class="btn btn-sm gtt-delete" data-idx="${idx}" style="color:#ef4444;padding:2px 8px;">Supprimer</button></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+  }
+
+  panel.innerHTML = `
+    <h3>Pallier temps par grammage</h3>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
+      Configurez les plages de grammage et le temps indicatif de production par feuille pour chaque moteur d'impression.
+      <br>Formule : <code>(nombre de feuilles + passes) × temps/feuille</code>
+    </p>
+    <div id="gtt-rules-container">${renderRulesTable(rules)}</div>
+    <h4 style="margin-top:16px;margin-bottom:8px;">Ajouter une règle</h4>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+      <div>
+        <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Moteur</label>
+        <select id="gtt-engine" class="settings-input" style="min-width:160px;">
+          <option value="">— Sélectionner —</option>${engineOptions}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Grammage min (g/m²)</label>
+        <input type="number" id="gtt-gmin" class="settings-input" value="80" min="0" style="width:100px;" />
+      </div>
+      <div>
+        <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Grammage max (g/m²)</label>
+        <input type="number" id="gtt-gmax" class="settings-input" value="170" min="0" style="width:100px;" />
+      </div>
+      <div>
+        <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Temps par feuille (secondes)</label>
+        <input type="number" id="gtt-tps" class="settings-input" value="5" min="1" style="width:100px;" />
+      </div>
+      <button id="gtt-add" class="btn btn-primary">Ajouter</button>
+    </div>
+    <button id="gtt-save" class="btn btn-primary">Enregistrer toutes les règles</button>
+    <div id="gtt-msg" style="margin-top:8px;font-size:13px;"></div>
+  `;
+
+  let currentRules = [...rules];
+
+  function refreshTable() {
+    panel.querySelector("#gtt-rules-container").innerHTML = renderRulesTable(currentRules);
+    panel.querySelectorAll(".gtt-delete").forEach(btn => {
+      btn.onclick = () => {
+        const idx = parseInt(btn.dataset.idx);
+        currentRules.splice(idx, 1);
+        refreshTable();
+      };
+    });
+  }
+  refreshTable();
+
+  panel.querySelector("#gtt-add").onclick = () => {
+    const engine = panel.querySelector("#gtt-engine").value;
+    if (!engine) { alert("Sélectionnez un moteur"); return; }
+    const gmin = parseInt(panel.querySelector("#gtt-gmin").value) || 0;
+    const gmax = parseInt(panel.querySelector("#gtt-gmax").value) || 999;
+    const tps = parseInt(panel.querySelector("#gtt-tps").value) || 5;
+    currentRules.push({ engineName: engine, grammageMin: gmin, grammageMax: gmax, timePerSheetSeconds: tps });
+    refreshTable();
+  };
+
+  panel.querySelector("#gtt-save").onclick = async () => {
+    const msgEl = panel.querySelector("#gtt-msg");
+    try {
+      const r = await fetch("/api/settings/grammage-time-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+        body: JSON.stringify({ rules: currentRules })
+      }).then(r => r.json());
+      if (r.ok) {
+        msgEl.style.color = "#16a34a";
+        msgEl.textContent = "✅ Règles enregistrées";
+      } else {
+        msgEl.style.color = "#ef4444";
+        msgEl.textContent = "❌ " + (r.error || "Erreur");
+      }
+    } catch(e) {
+      msgEl.style.color = "#ef4444";
+      msgEl.textContent = "❌ Erreur réseau";
+    }
+  };
+}
+
+// ============================================================
+// CONFIG JDF
+// ============================================================
+const JDF_FIELDS = [
+  { fieldId: 'numeroDossier', label: 'Numéro de dossier' },
+  { fieldId: 'client', label: 'Client' },
+  { fieldId: 'quantite', label: 'Quantité' },
+  { fieldId: 'typeTravail', label: 'Type de travail' },
+  { fieldId: 'nombreFeuilles', label: 'Nombre de feuilles' },
+  { fieldId: 'formatFeuilleMachine', label: 'Format feuille machine' },
+  { fieldId: 'rectoVerso', label: 'Recto/Verso' },
+  { fieldId: 'moteurImpression', label: "Moteur d'impression" },
+  { fieldId: 'media1', label: 'Média 1' },
+  { fieldId: 'media2', label: 'Média 2' },
+  { fieldId: 'media3', label: 'Média 3' },
+  { fieldId: 'media4', label: 'Média 4' },
+  { fieldId: 'notes', label: 'Notes' },
+  { fieldId: 'faconnage', label: 'Façonnage' },
+  { fieldId: 'dateDepart', label: 'Date de départ' },
+  { fieldId: 'dateLivraison', label: 'Date de livraison' },
+];
+
+export async function renderSettingsJdfConfig(panel) {
+  panel.innerHTML = `<h3>Configuration JDF</h3><p style="color:#6b7280;">Chargement...</p>`;
+
+  let cfg = { enabled: false, fields: [] };
+  try {
+    const r = await fetch("/api/settings/jdf-config", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json());
+    if (r.ok) cfg = { enabled: r.enabled ?? false, fields: r.fields || [] };
+  } catch(e) { /* ignore */ }
+
+  const includedFields = new Set((cfg.fields || []).filter(f => f.included).map(f => f.fieldId));
+
+  const checkboxesHtml = JDF_FIELDS.map(f => {
+    const checked = includedFields.has(f.fieldId) ? 'checked' : '';
+    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:13px;">
+      <input type="checkbox" class="jdf-field-cb" value="${esc(f.fieldId)}" ${checked} />
+      <span>${esc(f.label)}</span>
+    </label>`;
+  }).join('');
+
+  panel.innerHTML = `
+    <h3>Configuration JDF</h3>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
+      Le JDF (Job Definition Format) permet d'envoyer les données de la fiche vers le moteur d'impression via PrismaSync ou Fiery.
+    </p>
+    <div class="settings-form-group">
+      <label>Activer la génération JDF</label>
+      <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
+        <input id="jdf-enabled" type="checkbox" style="width:16px;height:16px;" ${cfg.enabled ? 'checked' : ''} />
+        <span id="jdf-enabled-label">${cfg.enabled ? 'Activé' : 'Désactivé'}</span>
+      </label>
+    </div>
+    <div id="jdf-fields-section" style="${cfg.enabled ? '' : 'display:none;'}">
+      <h4 style="margin-top:16px;margin-bottom:8px;">Champs à inclure dans le JDF</h4>
+      <div style="display:flex;flex-direction:column;gap:6px;max-width:400px;margin-bottom:16px;">
+        ${checkboxesHtml}
+      </div>
+    </div>
+    <button id="jdf-save" class="btn btn-primary" style="margin-top:10px;">Enregistrer</button>
+    <div id="jdf-msg" style="margin-top:8px;font-size:13px;"></div>
+  `;
+
+  const enabledCb = panel.querySelector("#jdf-enabled");
+  const fieldsSection = panel.querySelector("#jdf-fields-section");
+  const enabledLabel = panel.querySelector("#jdf-enabled-label");
+  enabledCb.onchange = () => {
+    fieldsSection.style.display = enabledCb.checked ? '' : 'none';
+    enabledLabel.textContent = enabledCb.checked ? 'Activé' : 'Désactivé';
+  };
+
+  panel.querySelector("#jdf-save").onclick = async () => {
+    const msgEl = panel.querySelector("#jdf-msg");
+    const enabled = enabledCb.checked;
+    const fields = JDF_FIELDS.map(f => ({
+      fieldId: f.fieldId,
+      label: f.label,
+      included: !!panel.querySelector(`.jdf-field-cb[value="${f.fieldId}"]`)?.checked
+    }));
+    try {
+      const r = await fetch("/api/settings/jdf-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+        body: JSON.stringify({ enabled, fields })
+      }).then(r => r.json());
+      if (r.ok) {
+        msgEl.style.color = "#16a34a";
+        msgEl.textContent = "✅ Configuration JDF enregistrée";
       } else {
         msgEl.style.color = "#ef4444";
         msgEl.textContent = "❌ " + (r.error || "Erreur");

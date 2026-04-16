@@ -87,6 +87,11 @@ const FIELD_HTML_IDS = {
   "justifsAdresse":        "fab-justifs-adresse",
   "repartitions":          "fab-repartitions-container",
   "notes":                 "fab-notes",
+  "dateReception":              "fab-date-reception",
+  "dateEnvoi":                  "fab-date-envoi",
+  "dateProductionFinitions":    "fab-date-finitions",
+  "dateImpression":             "fab-date-impression",
+  "tempsProduitMinutes":        "fab-temps-produit",
 };
 function gElId(id) { return FIELD_HTML_IDS[id] || ('fab-' + id); }
 function gEl(id) { return document.getElementById(gElId(id)); }
@@ -97,6 +102,9 @@ let _coverProducts = [];
 let _sheetCalcRules = {};
 let _deliveryDelayHours = 48;
 let _passesConfig = { faconnage:0, pelliculageRecto:0, pelliculageRectoVerso:0, rainage:0, dorure:0, dosCarreColle:0 };
+let _keyDatesConfig = { sendOffsetHours: 48, finitionsOffsetHours: 72, impressionOffsetHours: 96 };
+let _grammageTimeRules = [];
+let _jdfEnabled = false;
 
 function updateRainageAuto() {
   const couv = gEl("couvertureMedia"); const rain = gEl("rainage"); const lbl = document.getElementById("fab-rainage-label");
@@ -125,6 +133,42 @@ function updateDateLivraison() {
   if(!depEl||!livEl||!depEl.value) return;
   const lDate=new Date(new Date(depEl.value).getTime()+_deliveryDelayHours*3600000);
   if(!livEl._manuallyEdited) livEl.value=lDate.toISOString().split('T')[0];
+}
+
+function updateKeyDates() {
+  const recEl=document.getElementById('fab-date-reception'); if(!recEl||!recEl.value) return;
+  const recTs=new Date(recEl.value+'T00:00:00').getTime();
+  const envEl=document.getElementById('fab-date-envoi');
+  const finEl=document.getElementById('fab-date-finitions');
+  const impEl=document.getElementById('fab-date-impression');
+  if(envEl) envEl.value=new Date(recTs-_keyDatesConfig.sendOffsetHours*3600000).toISOString().split('T')[0];
+  if(finEl) finEl.value=new Date(recTs-_keyDatesConfig.finitionsOffsetHours*3600000).toISOString().split('T')[0];
+  if(impEl) impEl.value=new Date(recTs-_keyDatesConfig.impressionOffsetHours*3600000).toISOString().split('T')[0];
+}
+
+function updateTempsProduction() {
+  const motEl=gEl('moteurImpression'); const nfEl=gEl('nombreFeuilles'); const tpEl=document.getElementById('fab-temps-produit');
+  if(!tpEl) return;
+  const moteur=(motEl?motEl.value:'').trim();
+  const nf=parseInt(nfEl?nfEl.value:'0')||0;
+  if(!moteur||!nf){tpEl.value='';return;}
+  // Try to extract grammage from media1
+  const m1El=gEl('media1'); const m1Val=m1El?m1El.value:'';
+  const gMatch=m1Val.match(/(\d+)\s*g/i);
+  const grammage=gMatch?parseInt(gMatch[1]):null;
+  let timePerSheet=null;
+  if(grammage!==null){
+    const rule=_grammageTimeRules.find(r=>r.engineName===moteur&&grammage>=r.grammageMin&&grammage<=r.grammageMax);
+    if(rule) timePerSheet=rule.timePerSheetSeconds;
+  }
+  if(timePerSheet===null){
+    const rule=_grammageTimeRules.find(r=>r.engineName===moteur);
+    if(rule) timePerSheet=rule.timePerSheetSeconds;
+  }
+  if(timePerSheet===null){tpEl.value='';return;}
+  const totalSecs=nf*timePerSheet;
+  const mins=Math.round(totalSecs/60);
+  tpEl.value=mins;
 }
 
 function getEnnoblissementSelected() {
@@ -252,7 +296,50 @@ function renderFabForm(config, opts) {
       fabDynamicForm.appendChild(fw);
     }
   });
-}
+
+  // Always append Dates clés section
+  const kdHdr=document.createElement('div');
+  kdHdr.className='fab-form-group fab-full-width fab-section-header';
+  kdHdr.innerHTML='<span>Dates clés</span>';
+  fabDynamicForm.appendChild(kdHdr);
+
+  const kdGrid=document.createElement('div');
+  kdGrid.className='fab-form-group fab-full-width';
+  kdGrid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;';
+  kdGrid.innerHTML=''
+    +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date de réception souhaitée</label>'
+    +'<input id="fab-date-reception" type="date" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" /></div>'
+    +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date d\'envoi <small style="color:#9ca3af;font-weight:normal;">(indicatif)</small></label>'
+    +'<input id="fab-date-envoi" type="date" readonly style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#f3f4f6;color:#6b7280;" /></div>'
+    +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date production Finitions <small style="color:#9ca3af;font-weight:normal;">(indicatif)</small></label>'
+    +'<input id="fab-date-finitions" type="date" readonly style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#f3f4f6;color:#6b7280;" /></div>'
+    +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date d\'impression <small style="color:#9ca3af;font-weight:normal;">(indicatif)</small></label>'
+    +'<input id="fab-date-impression" type="date" readonly style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#f3f4f6;color:#6b7280;" /></div>';
+  fabDynamicForm.appendChild(kdGrid);
+
+  // Temps théorique de production
+  const tpHdr=document.createElement('div');
+  tpHdr.className='fab-form-group fab-full-width fab-section-header';
+  tpHdr.innerHTML='<span>Temps de production</span>';
+  fabDynamicForm.appendChild(tpHdr);
+
+  const tpWrap=document.createElement('div');
+  tpWrap.className='fab-form-group';
+  tpWrap.innerHTML='<label>Temps théorique de production <small style="color:#9ca3af;font-size:10px;">(indicatif, calculé)</small></label>'
+    +'<div style="display:flex;align-items:center;gap:8px;">'
+    +'<input id="fab-temps-produit" type="number" placeholder="auto" readonly style="width:100px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#f3f4f6;color:#6b7280;" />'
+    +'<span style="font-size:13px;color:#6b7280;">minutes</span>'
+    +'</div>';
+  fabDynamicForm.appendChild(tpWrap);
+
+  // JDF button (will be shown/hidden based on JDF config)
+  const jdfWrap=document.createElement('div');
+  jdfWrap.className='fab-form-group fab-full-width';
+  jdfWrap.id='fab-jdf-section';
+  jdfWrap.style.display='none';
+  jdfWrap.innerHTML='<button id="fab-generate-jdf" class="btn btn-primary" style="font-size:13px;padding:6px 16px;">📄 Générer JDF</button>'
+    +'<span id="fab-jdf-msg" style="margin-left:10px;font-size:13px;"></span>';
+  fabDynamicForm.appendChild(jdfWrap);
 
 function populateFabForm(d, faconnageOptions) {
   function fmtDate(v){return fmtDate2(v);}
@@ -300,6 +387,19 @@ function populateFabForm(d, faconnageOptions) {
   if(repCont){repCont.innerHTML='';(Array.isArray(d.repartitions)?d.repartitions:[]).forEach(r=>addRepartitionRow(r.quantite||'',r.adresse||''));}
   const ndEl2=gEl("numeroDossier");if(ndEl2){ndEl2.style.borderColor="";ndEl2.style.boxShadow="";}
   const tyEl2=gEl("typeTravail");if(tyEl2){tyEl2.style.borderColor="";tyEl2.style.boxShadow="";}
+  // Key dates
+  const recEl=document.getElementById('fab-date-reception');
+  const envEl=document.getElementById('fab-date-envoi');
+  const finEl=document.getElementById('fab-date-finitions');
+  const impEl=document.getElementById('fab-date-impression');
+  if(recEl) recEl.value=d.dateReception?fmtDate(d.dateReception):'';
+  if(envEl) envEl.value=d.dateEnvoi?fmtDate(d.dateEnvoi):'';
+  if(finEl) finEl.value=d.dateProductionFinitions?fmtDate(d.dateProductionFinitions):'';
+  if(impEl) impEl.value=d.dateImpression?fmtDate(d.dateImpression):'';
+  const tpEl=document.getElementById('fab-temps-produit');
+  if(tpEl) tpEl.value=d.tempsProduitMinutes!=null?d.tempsProduitMinutes:'';
+  // If dateReception is set but calculated dates are missing, recalculate
+  if(recEl&&recEl.value&&(!envEl||!envEl.value)) updateKeyDates();
 }
 
 function attachFormHandlers(fabCurrentFileName) {
@@ -317,7 +417,9 @@ function attachFormHandlers(fabCurrentFileName) {
     const id=e.target.id;
     if(id===gElId('quantite'))updateNombreFeuilles();
     if(id===gElId('dateDepart'))updateDateLivraison();
+    if(id==='fab-date-reception')updateKeyDates();
     if(id===gElId('nombreFeuilles')){const el=gEl('nombreFeuilles');if(el)el._manuallyEdited=true;}
+    if(id===gElId('moteurImpression')||id===gElId('media1'))updateTempsProduction();
   });
   const repsAdd=document.getElementById('fab-repartitions-add'); if(repsAdd)repsAdd.onclick=()=>addRepartitionRow();
   const iBat=document.getElementById('fab-import-mail-bat');const fBat=document.getElementById('fab-mail-bat-file');
@@ -336,6 +438,20 @@ function attachFormHandlers(fabCurrentFileName) {
     try{const r=await fetch('/api/fabrication/import-mail-devis',{method:'POST',headers:{'Authorization':'Bearer '+authToken},body:fd}).then(r2=>r2.json());
     if(r.ok){const n=document.getElementById('fab-mail-devis-name');if(n)n.textContent=file.name;showNotification('✅ Mail devis importé','success');}else showNotification('❌ '+(r.error||"Erreur d'import"),'error');
     }catch(err){showNotification('❌ Erreur réseau','error');}};
+  // JDF button
+  const jdfBtn=document.getElementById('fab-generate-jdf');
+  if(jdfBtn){
+    jdfBtn.onclick=async()=>{
+      const msgEl=document.getElementById('fab-jdf-msg');
+      if(msgEl) msgEl.textContent='Génération en cours...';
+      const fn=fnKey(fabCurrentPath);
+      try{
+        const r=await fetch('/api/fabrication/generate-jdf',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+authToken},body:JSON.stringify({fullPath:fabCurrentPath,fileName:fn})}).then(r2=>r2.json());
+        if(r.ok){showNotification('✅ JDF généré','success');if(msgEl)msgEl.textContent='';}
+        else{showNotification('❌ '+(r.error||'Erreur JDF'),'error');if(msgEl)msgEl.textContent='';}
+      }catch(e){showNotification('❌ Erreur réseau','error');if(msgEl)msgEl.textContent='';}
+    };
+  }
 }
 
 export function initFabrication() {
@@ -380,7 +496,7 @@ export async function openFabrication(fullPath) {
   if(fabDynamicForm){fabDynamicForm.style.opacity='0.5';fabDynamicForm.style.pointerEvents='none';}
   if(fabStageBanner)fabStageBanner.style.display='none';
   fabModal.classList.remove('hidden');
-  const [j,engines,types,papers,faconnageOptions,stageData,sheetFormats,coverProducts,sheetCalcRulesResp,deliveryDelayResp,passesConfigResp,formConfig]=await Promise.all([
+  const [j,engines,types,papers,faconnageOptions,stageData,sheetFormats,coverProducts,sheetCalcRulesResp,deliveryDelayResp,passesConfigResp,formConfig,keyDatesResp,grammageTimeResp,jdfConfigResp]=await Promise.all([
     fetch('/api/fabrication?fileName='+encodeURIComponent(fabCurrentFileName),{headers:{'Authorization':'Bearer '+authToken}}).then(r=>r.json()).catch(()=>({})),
     fetchCached('/api/config/print-engines'),
     fetchCached('/api/config/work-types'),
@@ -392,13 +508,19 @@ export async function openFabrication(fullPath) {
     fetch('/api/settings/sheet-calculation-rules').then(r=>r.json()).catch(()=>({rules:{}})),
     fetch('/api/settings/delivery-delay').then(r=>r.json()).catch(()=>({delayHours:48})),
     fetch('/api/settings/passes-config').then(r=>r.json()).catch(()=>({config:{}})),
-    fetchFormConfig()
+    fetchFormConfig(),
+    fetch('/api/settings/key-dates').then(r=>r.json()).catch(()=>({sendOffsetHours:48,finitionsOffsetHours:72,impressionOffsetHours:96})),
+    fetch('/api/settings/grammage-time-config').then(r=>r.json()).catch(()=>({rules:[]})),
+    fetch('/api/settings/jdf-config').then(r=>r.json()).catch(()=>({enabled:false,fields:[]}))
   ]);
   const d=(j&&j.ok===false)?{}:(j||{});
   _coverProducts=Array.isArray(coverProducts)?coverProducts:[];
   _sheetCalcRules=(sheetCalcRulesResp&&sheetCalcRulesResp.rules)?sheetCalcRulesResp.rules:{};
   _deliveryDelayHours=(deliveryDelayResp&&deliveryDelayResp.delayHours)?deliveryDelayResp.delayHours:48;
   _passesConfig=(passesConfigResp&&passesConfigResp.config)?passesConfigResp.config:{faconnage:0,pelliculageRecto:0,pelliculageRectoVerso:0,rainage:0,dorure:0,dosCarreColle:0};
+  _keyDatesConfig={sendOffsetHours:keyDatesResp.sendOffsetHours??48,finitionsOffsetHours:keyDatesResp.finitionsOffsetHours??72,impressionOffsetHours:keyDatesResp.impressionOffsetHours??96};
+  _grammageTimeRules=Array.isArray(grammageTimeResp.rules)?grammageTimeResp.rules:[];
+  _jdfEnabled=!!(jdfConfigResp.enabled);
   const config=formConfig||{fields:[],sections:[]};
   renderFabForm(config,{engines:Array.isArray(engines)?engines:[],types:Array.isArray(types)?types:[],papers:Array.isArray(papers)?papers:[],sheetFormats:Array.isArray(sheetFormats)?sheetFormats:[],faconnageOptions:Array.isArray(faconnageOptions)?faconnageOptions:[]});
   populateFabForm(d,Array.isArray(faconnageOptions)?faconnageOptions:[]);
@@ -419,6 +541,10 @@ export async function openFabrication(fullPath) {
   updateCouvertureVisibility();updateRainageAuto();
   const nfEl2=gEl('nombreFeuilles');if(!nfEl2||!nfEl2._manuallyEdited)updateNombreFeuilles();
   updatePassesDisplay();
+  updateTempsProduction();
+  // Show JDF button if enabled
+  const jdfSection=document.getElementById('fab-jdf-section');
+  if(jdfSection) jdfSection.style.display=_jdfEnabled?'':'none';
   if(fabDynamicForm){fabDynamicForm.style.opacity='';fabDynamicForm.style.pointerEvents='';}
 }
 
@@ -450,6 +576,11 @@ export async function saveFabrication() {
     faconnageBinding:get('faconnageBinding')||null,plis:get('plis')||null,sortie:get('sortie')||null,
     nombreFeuilles:getN('nombreFeuilles'),dateDepart:get('dateDepart')||null,
     dateLivraison:get('dateLivraison')||null,planningMachine:get('planningMachine')||null,
+    dateReception:(()=>{const el=document.getElementById('fab-date-reception');return el&&el.value?el.value:null;})(),
+    dateEnvoi:(()=>{const el=document.getElementById('fab-date-envoi');return el&&el.value?el.value:null;})(),
+    dateProductionFinitions:(()=>{const el=document.getElementById('fab-date-finitions');return el&&el.value?el.value:null;})(),
+    dateImpression:(()=>{const el=document.getElementById('fab-date-impression');return el&&el.value?el.value:null;})(),
+    tempsProduitMinutes:(()=>{const el=document.getElementById('fab-temps-produit');return el&&el.value?parseInt(el.value)||null:null;})(),
     justifsClientsQuantite:getN('justifsQuantite'),justifsClientsAdresse:get('justifsAdresse')||null,
     repartitions:getRepartitions()
   };

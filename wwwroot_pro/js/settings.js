@@ -15,7 +15,7 @@ import { renderSettingsReports } from './settings/settings-reports.js';
 import { renderSettingsLogo } from './settings/settings-logo.js';
 import { renderSettingsLogs, loadSettingsLogs } from './settings/settings-logs.js';
 import { renderSettingsSheetFormats } from './settings/settings-sheet-formats.js';
-import { renderSettingsCoverProducts, renderSettingsSheetCalcRules, renderSettingsDeliveryDelay, renderSettingsPassesConfig } from './settings/settings-production-config.js';
+import { renderSettingsCoverProducts, renderSettingsSheetCalcRules, renderSettingsDeliveryDelay, renderSettingsPassesConfig, renderSettingsGrammageTimeConfig, renderSettingsJdfConfig } from './settings/settings-production-config.js';
 import { renderSettingsFormConfig } from './settings/settings-form-config.js';
 
 // calendar and submissionCalendar are accessed via window globals set by app.js
@@ -51,6 +51,8 @@ export async function initSettingsView() {
         <button class="settings-tab" data-tab="sheet-calc-rules">Calcul feuilles</button>
         <button class="settings-tab" data-tab="delivery-delay">Dates clés</button>
         <button class="settings-tab" data-tab="passes-config">Passes</button>
+        <button class="settings-tab" data-tab="grammage-time">Pallier grammage</button>
+        <button class="settings-tab" data-tab="jdf-config">JDF</button>
         <button class="settings-tab" data-tab="form-config">Fiche de production</button>
         <button class="settings-tab" data-tab="logo">Logos/Images</button>
         <button class="settings-tab" data-tab="logs">Logs</button>
@@ -72,6 +74,8 @@ export async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-sheet-calc-rules"></div>
       <div class="settings-panel hidden" id="settings-panel-delivery-delay"></div>
       <div class="settings-panel hidden" id="settings-panel-passes-config"></div>
+      <div class="settings-panel hidden" id="settings-panel-grammage-time"></div>
+      <div class="settings-panel hidden" id="settings-panel-jdf-config"></div>
       <div class="settings-panel hidden" id="settings-panel-form-config"></div>
       <div class="settings-panel hidden" id="settings-panel-logo"></div>
       <div class="settings-panel hidden" id="settings-panel-logs"></div>
@@ -118,6 +122,8 @@ export async function loadSettingsPanel(tabName, panelEl) {
     case "sheet-calc-rules": await renderSettingsSheetCalcRules(panelEl); break;
     case "delivery-delay": await renderSettingsDeliveryDelay(panelEl); break;
     case "passes-config": await renderSettingsPassesConfig(panelEl); break;
+    case "grammage-time": await renderSettingsGrammageTimeConfig(panelEl); break;
+    case "jdf-config": await renderSettingsJdfConfig(panelEl); break;
     case "form-config": await renderSettingsFormConfig(panelEl); break;
     case "logo": await renderSettingsLogo(panelEl); break;
     case "logs": await renderSettingsLogs(panelEl); break;
