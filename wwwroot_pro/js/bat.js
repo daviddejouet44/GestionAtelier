@@ -177,7 +177,7 @@ function escapeHtml(text) {
 // ======================================================
 
 /**
- * Affiche la popup de choix BAT (BAT Complet / BAT Simple).
+ * Affiche la popup de choix BAT (BAT Complet / BAT Papier / BAT Simple).
  * @param {string} fullPath - Chemin complet du fichier
  * @param {Function} onComplete - Callback appelé après le choix (ex: refreshKanban)
  */
@@ -198,6 +198,13 @@ export function openBatChoiceModal(fullPath, onComplete) {
           <div class="bat-choice-text">
             <strong>BAT Complet</strong>
             <span>Copie vers TEMP_COPY et le hotfolder PrismaPrepare (selon le type de travail). Le fichier Epreuve.pdf sera automatiquement renommé en BAT_{nom}.pdf et déplacé dans la tuile BAT.</span>
+          </div>
+        </button>
+        <button class="bat-choice-btn bat-papier-btn" id="bat-papier-btn">
+          <div class="bat-choice-icon">📄🖨</div>
+          <div class="bat-choice-text">
+            <strong>BAT Papier</strong>
+            <span>Même process que BAT Complet, avec un template email dédié pour le BAT papier.</span>
           </div>
         </button>
         <button class="bat-choice-btn bat-simple-btn" id="bat-simple-btn">
@@ -225,6 +232,12 @@ export function openBatChoiceModal(fullPath, onComplete) {
   overlay.querySelector("#bat-complet-btn").onclick = async () => {
     close();
     await sendBatComplet(fullPath);
+    if (onComplete) onComplete();
+  };
+
+  overlay.querySelector("#bat-papier-btn").onclick = async () => {
+    close();
+    await sendBatPapier(fullPath);
     if (onComplete) onComplete();
   };
 
@@ -300,5 +313,49 @@ async function sendBatSimple(fullPath) {
     }
   } catch (err) {
     showNotification("❌ BAT Simple : " + err.message, "error");
+  }
+}
+
+// ======================================================
+// BAT PAPIER — Même process que BAT Complet, template email dédié
+// ======================================================
+async function sendBatPapier(fullPath) {
+  const path = normalizePath(fullPath);
+  const fileName = fnKey(path);
+
+  try {
+    const status = await fetch("/api/bat/serialization-status", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => null);
+
+    if (status && status.inProgress) {
+      const currentFile = status.currentFileName || "un fichier";
+      showNotification(
+        `⏳ BAT en cours de génération pour "${currentFile}". Veuillez patienter avant d'en envoyer un nouveau.`,
+        "warning"
+      );
+      return;
+    }
+
+    const r = await fetch("/api/bat/bat-papier", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ fileName, fullPath: path, requestedBy: currentUser?.login || "" })
+    }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+
+    if (r.ok) {
+      showNotification(
+        `✅ BAT Papier : copié vers TEMP_COPY et hotfolder${r.hotfolder ? " (" + r.hotfolder + ")" : ""}. En attente de l'épreuve PrismaPrepare...`,
+        "success"
+      );
+      startBatProgressTracker();
+    } else if (r.error === "bat_in_progress") {
+      const msg = r.message || "Un BAT est déjà en cours de génération. Veuillez patienter.";
+      showNotification(`⏳ ${msg}`, "warning");
+    } else {
+      showNotification("❌ BAT Papier : " + (r.error || "Erreur inconnue"), "error");
+    }
+  } catch (err) {
+    showNotification("❌ BAT Papier : " + err.message, "error");
   }
 }

@@ -2,21 +2,23 @@ import { authToken, showNotification, esc } from '../core.js';
 
 // All actions with their IDs and human-readable labels
 const ALL_ACTIONS = [
-  { id: "ouvrirFichier",     label: "Ouvrir fichier" },
-  { id: "fiche",             label: "Fiche" },
-  { id: "affecter",          label: "Affecter à" },
-  { id: "planifier",         label: "Planifier" },
-  { id: "preflight",         label: "Preflight" },
-  { id: "bat",               label: "→ BAT" },
-  { id: "actions",           label: "Actions ▾" },
-  { id: "prismaPrepare",     label: "PrismaPrepare" },
-  { id: "impressionLancee",  label: "Impression lancée" },
-  { id: "fiery",             label: "Fiery" },
-  { id: "impressionTerminee", label: "Impression terminée" },
-  { id: "faconnageTermine",  label: "Façonnage terminé" },
-  { id: "verrouiller",       label: "Verrouiller (Terminé)" },
-  { id: "archiver",          label: "Archiver" },
-  { id: "supprimer",         label: "Supprimer" },
+  { id: "ouvrirFichier",        label: "Ouvrir fichier" },
+  { id: "fiche",                label: "Fiche" },
+  { id: "affecter",             label: "Affecter à" },
+  { id: "planifier",            label: "Planifier" },
+  { id: "preflight",            label: "Preflight" },
+  { id: "bat",                  label: "→ BAT" },
+  { id: "actions",              label: "Actions ▾" },
+  { id: "prismaPrepare",        label: "PrismaPrepare" },
+  { id: "impressionLancee",     label: "Impression lancée" },
+  { id: "fiery",                label: "Fiery" },
+  { id: "mailDebutProduction",  label: "Mail début de production" },
+  { id: "mailFinProduction",    label: "Mail fin de production" },
+  { id: "impressionTerminee",   label: "Impression terminée" },
+  { id: "faconnageTermine",     label: "Façonnage terminé" },
+  { id: "verrouiller",          label: "Verrouiller (Terminé)" },
+  { id: "archiver",             label: "Archiver" },
+  { id: "supprimer",            label: "Supprimer" },
 ];
 
 export async function renderSettingsKanbanColumns(panel) {

@@ -91,7 +91,23 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       const assignment = assignmentsByPath[jobFileName];
       const iso = deliveriesByPath[jobFileName];
 
-      // Card layout: vignette left, center info, right delivery+operator
+      // Top row: dossier N° + presse (loaded async below)
+      const topRow = document.createElement("div");
+      topRow.className = "kanban-card-top-row";
+
+      const dossierEl = document.createElement("div");
+      dossierEl.className = "kanban-card-dossier";
+      dossierEl.textContent = "—";
+      topRow.appendChild(dossierEl);
+
+      const presseEl = document.createElement("div");
+      presseEl.className = "kanban-card-presse";
+      presseEl.textContent = "";
+      topRow.appendChild(presseEl);
+
+      card.appendChild(topRow);
+
+      // Main row: thumbnail + info stack
       const layout = document.createElement("div");
       layout.className = "kanban-card-operator-layout";
 
@@ -103,63 +119,52 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         if (window._renderPdfThumbnail) window._renderPdfThumbnail(full, thumbDiv).catch(() => {});
       }
 
-      // Center: dossier number (big) + PDF name + import date
-      const centerDiv = document.createElement("div");
-      centerDiv.style.cssText = "flex: 1; min-width: 0;";
-
-      const dossierEl = document.createElement("div");
-      dossierEl.className = "kanban-card-dossier";
-      dossierEl.textContent = "—";
-      centerDiv.appendChild(dossierEl);
+      // Right info stack
+      const infoStack = document.createElement("div");
+      infoStack.className = "kanban-card-info-stack";
 
       const title = document.createElement("p");
       title.className = "kanban-card-operator-title";
       title.textContent = job.name || "Sans nom";
-      centerDiv.appendChild(title);
+      infoStack.appendChild(title);
 
-      const sub = document.createElement("p");
-      sub.className = "kanban-card-operator-info";
-      sub.textContent = new Date(job.modified).toLocaleDateString("fr-FR");
-      centerDiv.appendChild(sub);
+      // Operator row (filled async or from assignment)
+      const operatorEl = document.createElement("p");
+      operatorEl.className = "kanban-card-operator-info";
+      operatorEl.textContent = assignment ? assignment.operatorName : "";
+      infoStack.appendChild(operatorEl);
 
-      layout.appendChild(centerDiv);
+      // "Sur machine le" row (from fabrication.planningMachine, loaded async)
+      const machineEl = document.createElement("p");
+      machineEl.className = "kanban-card-operator-info";
+      infoStack.appendChild(machineEl);
 
-      // Right: delivery date + operator
-      if (iso || assignment) {
-        const rightDiv = document.createElement("div");
-        rightDiv.className = "kanban-card-operator-right";
-
-        if (iso) {
-          const deliveryEl = document.createElement("div");
-          deliveryEl.className = "kanban-card-operator-status";
-          const daysLeft = daysDiffFromToday(iso);
-          if (daysLeft <= 1) deliveryEl.classList.add("urgent");
-          else if (daysLeft <= 3) deliveryEl.classList.add("warning");
-          deliveryEl.textContent = new Date(iso).toLocaleDateString("fr-FR");
-          rightDiv.appendChild(deliveryEl);
-        }
-
-        if (assignment) {
-          const badge = document.createElement("div");
-          badge.className = "assignment-badge";
-          badge.textContent = assignment.operatorName;
-          rightDiv.appendChild(badge);
-        }
-
-        layout.appendChild(rightDiv);
+      // "Livraison le" row
+      const livraisonEl = document.createElement("p");
+      livraisonEl.className = "kanban-card-operator-info";
+      if (iso) {
+        const daysLeft = daysDiffFromToday(iso);
+        const livrText = new Date(iso).toLocaleDateString("fr-FR");
+        livraisonEl.textContent = "Livraison: " + livrText;
+        if (daysLeft <= 1) livraisonEl.style.cssText = "color:#991B1B;font-weight:700;";
+        else if (daysLeft <= 3) livraisonEl.style.cssText = "color:#9A3412;font-weight:600;";
       }
+      infoStack.appendChild(livraisonEl);
 
+      layout.appendChild(infoStack);
       card.appendChild(layout);
 
-      // Load dossier number and press name asynchronously
+      // Load dossier number, presse and planningMachine asynchronously
       fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName))
         .then(r => r.json()).then(d => {
-          if (d && d.numeroDossier) dossierEl.textContent = d.numeroDossier;
-          if (d && d.moteurImpression) {
-            const pressEl = document.createElement("p");
-            pressEl.style.cssText = "margin:2px 0 0;font-size:11px;color:#6b7280;";
-            pressEl.textContent = d.moteurImpression;
-            centerDiv.appendChild(pressEl);
+          if (d && d.numeroDossier) dossierEl.textContent = "N° " + d.numeroDossier;
+          if (d && d.moteurImpression) presseEl.textContent = d.moteurImpression;
+          if (d && d.planningMachine) {
+            const dt = new Date(d.planningMachine);
+            machineEl.textContent = "Machine: " + dt.toLocaleDateString("fr-FR");
+          }
+          if (d && d.operateur && !assignment) {
+            operatorEl.textContent = d.operateur;
           }
         }).catch(() => {});
 
@@ -440,6 +445,70 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          // Mail début de production
+          const btnMailDebut = document.createElement("button");
+          btnMailDebut.className = "btn btn-sm";
+          btnMailDebut.textContent = "✉️ Mail début";
+          btnMailDebut.title = "Envoyer mail de début de production";
+          btnMailDebut.onclick = async (e) => {
+            e.stopPropagation();
+            try {
+              const [tmplResp, fabResp] = await Promise.all([
+                fetch("/api/config/mail-template-production-start").then(r => r.json()).catch(() => ({})),
+                fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName)).then(r => r.json()).catch(() => ({}))
+              ]);
+              const tmpl = (tmplResp.ok && tmplResp.template) ? tmplResp.template : null;
+              const fab = fabResp || {};
+              if (tmpl && (tmpl.subject || tmpl.body)) {
+                const rv = (s) => (s || '')
+                  .replace(/\{\{numeroDossier\}\}/g, fab.numeroDossier || '')
+                  .replace(/\{\{nomClient\}\}/g, fab.nomClient || '')
+                  .replace(/\{\{nomFichier\}\}/g, job.name || '')
+                  .replace(/\{\{typeTravail\}\}/g, fab.typeTravail || '')
+                  .replace(/\{\{quantite\}\}/g, fab.quantite || '')
+                  .replace(/\{\{operateur\}\}/g, fab.operateur || '')
+                  .replace(/\{\{dateLivraison\}\}/g, fab.dateLivraison ? new Date(fab.dateLivraison).toLocaleDateString('fr-FR') : '');
+                const to = tmpl.to || fab.mailClient || '';
+                window.open(`mailto:${to}?subject=${encodeURIComponent(rv(tmpl.subject))}&body=${encodeURIComponent(rv(tmpl.body))}`);
+              } else {
+                showNotification("⚠️ Configurez le template 'Mail début de production' dans Paramétrage > Configuration BAT", "warning");
+              }
+            } catch(err) { showNotification("❌ " + err.message, "error"); }
+          };
+          if (isActionVisible(folderName, "mailDebutProduction")) actions.appendChild(btnMailDebut);
+
+          // Mail fin de production
+          const btnMailFin = document.createElement("button");
+          btnMailFin.className = "btn btn-sm";
+          btnMailFin.textContent = "✉️ Mail fin";
+          btnMailFin.title = "Envoyer mail de fin de production";
+          btnMailFin.onclick = async (e) => {
+            e.stopPropagation();
+            try {
+              const [tmplResp, fabResp] = await Promise.all([
+                fetch("/api/config/mail-template-production-end").then(r => r.json()).catch(() => ({})),
+                fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName)).then(r => r.json()).catch(() => ({}))
+              ]);
+              const tmpl = (tmplResp.ok && tmplResp.template) ? tmplResp.template : null;
+              const fab = fabResp || {};
+              if (tmpl && (tmpl.subject || tmpl.body)) {
+                const rv = (s) => (s || '')
+                  .replace(/\{\{numeroDossier\}\}/g, fab.numeroDossier || '')
+                  .replace(/\{\{nomClient\}\}/g, fab.nomClient || '')
+                  .replace(/\{\{nomFichier\}\}/g, job.name || '')
+                  .replace(/\{\{typeTravail\}\}/g, fab.typeTravail || '')
+                  .replace(/\{\{quantite\}\}/g, fab.quantite || '')
+                  .replace(/\{\{operateur\}\}/g, fab.operateur || '')
+                  .replace(/\{\{dateLivraison\}\}/g, fab.dateLivraison ? new Date(fab.dateLivraison).toLocaleDateString('fr-FR') : '');
+                const to = tmpl.to || fab.mailClient || '';
+                window.open(`mailto:${to}?subject=${encodeURIComponent(rv(tmpl.subject))}&body=${encodeURIComponent(rv(tmpl.body))}`);
+              } else {
+                showNotification("⚠️ Configurez le template 'Mail fin de production' dans Paramétrage > Configuration BAT", "warning");
+              }
+            } catch(err) { showNotification("❌ " + err.message, "error"); }
+          };
+          if (isActionVisible(folderName, "mailFinProduction")) actions.appendChild(btnMailFin);
+
           const btnImpTerminee = document.createElement("button");
           btnImpTerminee.className = "btn btn-sm btn-primary";
           btnImpTerminee.textContent = "✅ Impression terminée";

@@ -1,5 +1,5 @@
 /* =========================================================
-   BAT STATUS — Modern card layout
+   BAT STATUS — Modern card layout (style doctracking/freshprocess)
 ========================================================= */
 .bat-list-grid {
   display: flex;
@@ -10,28 +10,46 @@
   background: var(--bg-card);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
-  padding: 20px 22px;
-  display: grid;
-  grid-template-columns: 110px 1fr auto;
-  gap: 20px;
-  align-items: center;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
   box-shadow: var(--shadow-md);
   transition: box-shadow 0.2s, transform 0.18s;
+  overflow: hidden;
 }
 .bat-card-modern:hover {
   box-shadow: var(--shadow-hover);
   transform: translateY(-2px);
 }
+/* Status bar at top of each card */
+.bat-card-status-bar {
+  height: 4px;
+  background: #e5e7eb;
+  width: 100%;
+}
+.bat-card-status-bar.bat-status-new { background: #93c5fd; }
+.bat-card-status-bar.bat-status-sent { background: #2563eb; }
+.bat-card-status-bar.bat-status-validated { background: #16a34a; }
+.bat-card-status-bar.bat-status-rejected { background: #e11d48; }
+
+/* Inner layout: thumbnail + body + actions */
+.bat-card-inner {
+  display: grid;
+  grid-template-columns: 120px 1fr auto;
+  gap: 20px;
+  align-items: start;
+  padding: 20px 22px;
+}
 .bat-card-thumb {
-  width: 100px;
-  height: 130px;
+  width: 120px;
+  height: 155px;
   background: var(--bg-subtle);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   color: var(--primary);
   letter-spacing: 0.05em;
@@ -41,20 +59,20 @@
 .bat-card-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
 }
 .bat-card-dossier {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--text-primary);
+  font-size: 22px;
+  font-weight: 800;
+  color: #1d4ed8;
   letter-spacing: -0.02em;
   line-height: 1.1;
 }
 .bat-card-filename {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -63,14 +81,30 @@
   font-size: 11px;
   color: var(--text-tertiary);
 }
+/* Timeline tracking row */
+.bat-tracking {
+  display: flex;
+  gap: 6px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.bat-tracking-sep {
+  width: 24px;
+  height: 2px;
+  background: var(--border-light);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
 .bat-card-actions {
   display: flex;
   flex-direction: column;
   gap: 8px;
   align-items: flex-end;
+  flex-shrink: 0;
 }
 .bat-card-actions .btn {
-  min-width: 160px;
+  min-width: 150px;
   text-align: center;
   border-radius: 50px;
   font-size: 12px;
@@ -80,20 +114,6 @@
 }
 .bat-card-actions .btn:hover {
   transform: translateY(-1px);
-}
-.bat-tracking {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.bat-tracking-sep {
-  width: 32px;
-  height: 2px;
-  background: var(--border-light);
-  border-radius: 2px;
-  flex-shrink: 0;
 }
 .bat-status-badge, .bat-btn {
   font-size: 11px;
