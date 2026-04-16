@@ -15,8 +15,7 @@ export async function renderSettingsLogo(panel) {
       <label>Logo actuel (bandeau)</label>
       <div id="logo-preview" style="margin-bottom:12px;">
         <img src="/api/logo?v=${Date.now()}" alt="Logo actuel" id="logo-current-img"
-          style="max-height:60px;max-width:200px;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;"
-          onerror="this.parentElement.innerHTML='<span style=&quot;color:#9ca3af;font-size:13px;&quot;>Aucun logo configuré</span>'" />
+          style="max-height:60px;max-width:200px;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;" />
       </div>
       <input type="file" id="logo-file-input" accept=".png,.jpg,.jpeg,.gif,.webp" class="settings-input" style="margin-bottom:8px;" />
       <button id="logo-upload-btn" class="btn btn-primary">Enregistrer le logo</button>
@@ -34,8 +33,7 @@ export async function renderSettingsLogo(panel) {
       <label>Logo actuel (page de connexion)</label>
       <div id="logo-login-preview" style="margin-bottom:12px;">
         <img src="/api/logo-login?v=${Date.now()}" alt="Logo connexion actuel" id="logo-login-current-img"
-          style="max-height:60px;max-width:200px;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;"
-          onerror="this.parentElement.innerHTML='<span style=&quot;color:#9ca3af;font-size:13px;&quot;>Aucun logo de connexion configuré</span>'" />
+          style="max-height:60px;max-width:200px;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;" />
       </div>
       <input type="file" id="logo-login-file-input" accept=".png,.jpg,.jpeg,.gif,.webp" class="settings-input" style="margin-bottom:8px;" />
       <button id="logo-login-upload-btn" class="btn btn-primary">Enregistrer le logo de connexion</button>
@@ -52,8 +50,7 @@ export async function renderSettingsLogo(panel) {
     <div class="settings-form-group">
       <div id="bg-login-preview" style="margin-bottom:12px;">
         <img src="/api/background-login?v=${Date.now()}" alt="Image de fond connexion" id="bg-login-current-img"
-          style="max-height:100px;max-width:300px;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;"
-          onerror="this.parentElement.innerHTML='<span style=&quot;color:#9ca3af;font-size:13px;&quot;>Aucune image de fond configurée</span>'" />
+          style="max-height:100px;max-width:300px;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;" />
       </div>
       <input type="file" id="bg-login-file-input" accept=".png,.jpg,.jpeg,.gif,.webp" class="settings-input" style="margin-bottom:8px;" />
       <button id="bg-login-upload-btn" class="btn btn-primary">Enregistrer l'image de fond</button>
@@ -70,8 +67,7 @@ export async function renderSettingsLogo(panel) {
     <div class="settings-form-group">
       <div id="header-banner-preview" style="margin-bottom:12px;">
         <img src="/api/header-banner?v=${Date.now()}" alt="Image bandeau header" id="header-banner-current-img"
-          style="max-height:60px;max-width:300px;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;"
-          onerror="this.parentElement.innerHTML='<span style=&quot;color:#9ca3af;font-size:13px;&quot;>Aucune image de bandeau configurée</span>'" />
+          style="max-height:60px;max-width:300px;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;" />
       </div>
       <input type="file" id="header-banner-file-input" accept=".png,.jpg,.jpeg,.gif,.webp" class="settings-input" style="margin-bottom:8px;" />
       <button id="header-banner-upload-btn" class="btn btn-primary">Enregistrer l'image de bandeau</button>
@@ -79,6 +75,25 @@ export async function renderSettingsLogo(panel) {
       <div id="header-banner-msg" style="margin-top:8px;font-size:13px;"></div>
     </div>
   `;
+
+  // Set up image error fallbacks via JS (no onerror inline attribute needed)
+  const imgFallbacks = [
+    ["#logo-current-img",         "Aucun logo configuré"],
+    ["#logo-login-current-img",   "Aucun logo de connexion configuré"],
+    ["#bg-login-current-img",     "Aucune image de fond configurée"],
+    ["#header-banner-current-img","Aucune image de bandeau configurée"],
+  ];
+  imgFallbacks.forEach(([sel, msg]) => {
+    const img = panel.querySelector(sel);
+    if (img) {
+      img.onerror = () => {
+        const span = document.createElement("span");
+        span.style.cssText = "color:#9ca3af;font-size:13px;";
+        span.textContent = msg;
+        img.replaceWith(span);
+      };
+    }
+  });
 
   panel.querySelector("#logo-upload-btn").onclick = async () => {
     const fileInput = panel.querySelector("#logo-file-input");

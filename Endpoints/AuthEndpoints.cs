@@ -22,6 +22,9 @@ namespace GestionAtelier.Endpoints;
 
 public static class AuthEndpointsExtensions
 {
+    // A user is considered "online" if they sent a heartbeat within this window
+    private const int OnlineThresholdMinutes = 5;
+
     public static void MapAuthEndpoints(this WebApplication app)
     {
 app.MapPost("/api/auth/login", async (HttpContext ctx) =>
@@ -146,7 +149,7 @@ app.MapGet("/api/auth/users", (HttpContext ctx) =>
             profile = u.Profile,
             name = u.Name,
             lastActivityAt = u.LastActivityAt,
-            online = u.LastActivityAt.HasValue && (now - u.LastActivityAt.Value).TotalMinutes < 5
+            online = u.LastActivityAt.HasValue && (now - u.LastActivityAt.Value).TotalMinutes < OnlineThresholdMinutes
         });
 
         return Results.Json(new { ok = true, users = list });

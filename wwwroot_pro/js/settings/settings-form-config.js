@@ -160,12 +160,11 @@ function renderSections(panel, config) {
       const f = fields.find(x => x.id === cb.dataset.id);
       if (f) {
         f.readOnly = cb.checked;
-        // If readOnly, required makes no sense — uncheck it
+        // If readOnly, required makes no sense — find the req checkbox by data-id in the same container
+        const reqCb = container.querySelector(`.ffc-field-required[data-id="${CSS.escape(cb.dataset.id)}"]`);
         if (cb.checked) {
-          const reqCb = cb.closest("div,tr")?.parentElement?.querySelector(`.ffc-field-required[data-id="${cb.dataset.id}"]`);
           if (reqCb) { reqCb.checked = false; reqCb.disabled = true; f.required = false; }
         } else {
-          const reqCb = cb.closest("div,tr")?.parentElement?.querySelector(`.ffc-field-required[data-id="${cb.dataset.id}"]`);
           if (reqCb) reqCb.disabled = false;
         }
       }

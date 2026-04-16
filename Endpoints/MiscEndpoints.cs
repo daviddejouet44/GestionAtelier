@@ -22,6 +22,15 @@ namespace GestionAtelier.Endpoints;
 
 public static class MiscEndpointsExtensions
 {
+    // Helper to delete files matching a base name (no extension) in a directory
+    private static void DeleteImageFiles(string dir, string baseName)
+    {
+        if (!Directory.Exists(dir)) return;
+        foreach (var f in Directory.GetFiles(dir, baseName + ".*"))
+            if (Path.GetFileNameWithoutExtension(f).Equals(baseName, StringComparison.OrdinalIgnoreCase))
+                File.Delete(f);
+    }
+
     public static void MapMiscEndpoints(this WebApplication app)
     {
 app.MapGet("/api/ping", () => "pong");
@@ -192,13 +201,8 @@ app.MapPost("/api/logo", async (HttpContext ctx) =>
         var logoDir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
         // Ensure target directory exists before writing
         Directory.CreateDirectory(logoDir);
-
         // Remove any existing logo files
-        foreach (var old in Directory.GetFiles(logoDir, "logo.*"))
-        {
-            if (Path.GetFileNameWithoutExtension(old).Equals("logo", StringComparison.OrdinalIgnoreCase))
-                File.Delete(old);
-        }
+        DeleteImageFiles(logoDir, "logo");
 
         var logoPath = Path.Combine(logoDir, "logo" + ext);
         using var stream = File.Create(logoPath);
@@ -225,14 +229,7 @@ app.MapDelete("/api/logo", (HttpContext ctx) =>
     try
     {
         var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
-        if (Directory.Exists(dir))
-        {
-            foreach (var logoFile in Directory.GetFiles(dir, "logo.*"))
-            {
-                if (Path.GetFileNameWithoutExtension(logoFile).Equals("logo", StringComparison.OrdinalIgnoreCase))
-                    File.Delete(logoFile);
-            }
-        }
+        DeleteImageFiles(dir, "logo");
         return Results.Json(new { ok = true });
     }
     catch (Exception ex)
@@ -276,12 +273,7 @@ app.MapPost("/api/logo-login", async (HttpContext ctx) =>
 
         var logoDir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
         Directory.CreateDirectory(logoDir);
-
-        foreach (var old in Directory.GetFiles(logoDir, "logo-login.*"))
-        {
-            if (Path.GetFileNameWithoutExtension(old).Equals("logo-login", StringComparison.OrdinalIgnoreCase))
-                File.Delete(old);
-        }
+        DeleteImageFiles(logoDir, "logo-login");
 
         var logoPath = Path.Combine(logoDir, "logo-login" + ext);
         using var stream = File.Create(logoPath);
@@ -306,15 +298,7 @@ app.MapDelete("/api/logo-login", (HttpContext ctx) =>
 {
     try
     {
-        var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
-        if (Directory.Exists(dir))
-        {
-            foreach (var logoFile in Directory.GetFiles(dir, "logo-login.*"))
-            {
-                if (Path.GetFileNameWithoutExtension(logoFile).Equals("logo-login", StringComparison.OrdinalIgnoreCase))
-                    File.Delete(logoFile);
-            }
-        }
+        DeleteImageFiles(Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro"), "logo-login");
         return Results.Json(new { ok = true });
     }
     catch (Exception ex)
@@ -354,8 +338,7 @@ app.MapPost("/api/background-login", async (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = "Format non supporté" });
         var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
         Directory.CreateDirectory(dir);
-        foreach (var old in Directory.GetFiles(dir, "background-login.*"))
-            if (Path.GetFileNameWithoutExtension(old).Equals("background-login", StringComparison.OrdinalIgnoreCase)) File.Delete(old);
+        DeleteImageFiles(dir, "background-login");
         var path = Path.Combine(dir, "background-login" + ext);
         using var stream = File.Create(path);
         await file.CopyToAsync(stream);
@@ -368,10 +351,7 @@ app.MapDelete("/api/background-login", (HttpContext ctx) =>
 {
     try
     {
-        var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
-        if (Directory.Exists(dir))
-            foreach (var f in Directory.GetFiles(dir, "background-login.*"))
-                if (Path.GetFileNameWithoutExtension(f).Equals("background-login", StringComparison.OrdinalIgnoreCase)) File.Delete(f);
+        DeleteImageFiles(Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro"), "background-login");
         return Results.Json(new { ok = true });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
@@ -408,8 +388,7 @@ app.MapPost("/api/header-banner", async (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = "Format non supporté" });
         var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
         Directory.CreateDirectory(dir);
-        foreach (var old in Directory.GetFiles(dir, "header-banner.*"))
-            if (Path.GetFileNameWithoutExtension(old).Equals("header-banner", StringComparison.OrdinalIgnoreCase)) File.Delete(old);
+        DeleteImageFiles(dir, "header-banner");
         var path = Path.Combine(dir, "header-banner" + ext);
         using var stream = File.Create(path);
         await file.CopyToAsync(stream);
@@ -422,10 +401,7 @@ app.MapDelete("/api/header-banner", (HttpContext ctx) =>
 {
     try
     {
-        var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
-        if (Directory.Exists(dir))
-            foreach (var f in Directory.GetFiles(dir, "header-banner.*"))
-                if (Path.GetFileNameWithoutExtension(f).Equals("header-banner", StringComparison.OrdinalIgnoreCase)) File.Delete(f);
+        DeleteImageFiles(Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro"), "header-banner");
         return Results.Json(new { ok = true });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
