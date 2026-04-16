@@ -1124,5 +1124,200 @@ app.MapPost("/api/fabrication/import-mail-bat", async (HttpContext ctx) =>
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
+
+// ======================================================
+// BAT PAPIER — same process as BAT Complet, dedicated mail template
+// ======================================================
+app.MapPost("/api/bat/bat-papier", async (HttpContext ctx) =>
+{
+    bool lockAcquired = false;
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var fileName = json.TryGetProperty("fileName", out var fn) ? fn.GetString() ?? "" : "";
+        var fullPath = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
+        var requestedBy = json.TryGetProperty("requestedBy", out var rb) ? rb.GetString() ?? "" : "";
+
+        var displayName = !string.IsNullOrEmpty(fileName) ? fileName : (Path.GetFileName(fullPath) ?? "unknown");
+        var correlationId = Guid.NewGuid().ToString("N").Substring(0, 16);
+        if (!BatSerializationState.TryAcquire(displayName, correlationId))
+        {
+            var (_, currentFile, _, _, _) = BatSerializationState.Get();
+            return Results.Json(new { ok = false, error = "bat_in_progress", message = $"Un BAT est en cours de génération pour \"{currentFile}\". Veuillez patienter." });
+        }
+        lockAcquired = true;
+
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+        BsonDocument? fabDoc = null;
+        if (!string.IsNullOrEmpty(fileName))
+            fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", fileName)).FirstOrDefault();
+        if (fabDoc == null && !string.IsNullOrEmpty(fullPath))
+            fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fullPath", fullPath)).FirstOrDefault();
+        if (fabDoc == null && !string.IsNullOrEmpty(fileName))
+            fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Regex("fileName",
+                new BsonRegularExpression($"^{System.Text.RegularExpressions.Regex.Escape(fileName)}$", "i"))).FirstOrDefault();
+
+        if (fabDoc == null)
+            return Results.Json(new { ok = false, error = $"Fiche de fabrication introuvable pour \"{fileName}\"." });
+
+        var typeTravail = fabDoc.Contains("typeTravail") && fabDoc["typeTravail"].BsonType == BsonType.String
+            ? fabDoc["typeTravail"].AsString ?? "" : "";
+
+        if (string.IsNullOrEmpty(typeTravail))
+            return Results.Json(new { ok = false, error = "Type de travail non défini dans la fiche de fabrication." });
+
+        var routingCol = MongoDbHelper.GetCollection<BsonDocument>("hotfolderRouting");
+        var routingDoc = routingCol.Find(Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail)).FirstOrDefault();
+        if (routingDoc == null || !routingDoc.Contains("hotfolderPath") ||
+            routingDoc["hotfolderPath"].BsonType != BsonType.String ||
+            string.IsNullOrEmpty(routingDoc["hotfolderPath"].AsString))
+            return Results.Json(new { ok = false, error = $"Aucun hotfolder PrismaPrepare configuré pour le type \"{typeTravail}\"." });
+
+        var hotfolderPath = routingDoc["hotfolderPath"].AsString;
+
+        if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
+        {
+            var hotRoot = BackendUtils.HotfoldersRoot();
+            var found = Directory.GetFiles(hotRoot, string.IsNullOrEmpty(fileName) ? "*" : fileName, SearchOption.AllDirectories).FirstOrDefault();
+            if (found != null) fullPath = found;
+        }
+        if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
+            return Results.Json(new { ok = false, error = $"Fichier source introuvable : {fileName}" });
+
+        var sourceBaseName = Path.GetFileNameWithoutExtension(fullPath);
+        var integCfg = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations") ?? new IntegrationsSettings();
+        var tempCopyPath = integCfg.TempCopyPath ?? "";
+        if (string.IsNullOrWhiteSpace(tempCopyPath))
+            return Results.Json(new { ok = false, error = "Chemin TEMP_COPY non configuré." });
+
+        Directory.CreateDirectory(tempCopyPath);
+        BatSerializationState.SetStep("copying_to_temp");
+        var tempCopyDest = Path.Combine(tempCopyPath, Path.GetFileName(fullPath));
+        File.Copy(fullPath, tempCopyDest, overwrite: true);
+
+        if (!Directory.Exists(hotfolderPath)) Directory.CreateDirectory(hotfolderPath);
+        var hotfolderFileName = $"{sourceBaseName}__BATPAPIER_{correlationId}.pdf";
+        var hotfolderDest = Path.Combine(hotfolderPath, hotfolderFileName);
+        File.Copy(fullPath, hotfolderDest, overwrite: true);
+        BatSerializationState.SetStep("sent_to_hotfolder");
+
+        try
+        {
+            var batPendingCol = MongoDbHelper.GetCollection<BsonDocument>("batPending");
+            batPendingCol.InsertOne(new BsonDocument
+            {
+                ["sourceFileName"] = sourceBaseName,
+                ["batFolder"] = tempCopyPath,
+                ["createdAt"] = DateTime.UtcNow,
+                ["processed"] = false,
+                ["requestedBy"] = requestedBy,
+                ["correlationId"] = correlationId,
+                ["batType"] = "papier"
+            });
+        }
+        catch { /* non-blocking */ }
+
+        BatSerializationState.SetStep("waiting_for_epreuve");
+        lockAcquired = false;
+        return Results.Json(new { ok = true, hotfolder = hotfolderPath, tempCopy = tempCopyPath, typeTravail });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+    finally
+    {
+        if (lockAcquired) BatSerializationState.Release();
+    }
+});
+
+// ======================================================
+// MAIL TEMPLATES — Production start / end / BAT papier
+// ======================================================
+
+app.MapGet("/api/config/mail-template-production-start", () =>
+{
+    var cfg = MongoDbHelper.GetSettings<BatMailTemplate>("mailTemplateProductionStart")
+        ?? new BatMailTemplate { Subject = "Début de production — Dossier {{numeroDossier}}", Body = "Bonjour,\n\nLa production de votre dossier {{numeroDossier}} vient de démarrer.\n\nCordialement," };
+    return Results.Json(new { ok = true, template = new { to = cfg.To, subject = cfg.Subject, body = cfg.Body } });
+});
+
+app.MapPut("/api/config/mail-template-production-start", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var tmpl = json.TryGetProperty("template", out var tEl) ? tEl : json;
+        var existing = MongoDbHelper.GetSettings<BatMailTemplate>("mailTemplateProductionStart") ?? new BatMailTemplate();
+        if (tmpl.TryGetProperty("to", out var toEl)) existing.To = toEl.GetString() ?? existing.To;
+        if (tmpl.TryGetProperty("subject", out var subEl)) existing.Subject = subEl.GetString() ?? existing.Subject;
+        if (tmpl.TryGetProperty("body", out var bodyEl)) existing.Body = bodyEl.GetString() ?? existing.Body;
+        MongoDbHelper.UpsertSettings("mailTemplateProductionStart", existing);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapGet("/api/config/mail-template-production-end", () =>
+{
+    var cfg = MongoDbHelper.GetSettings<BatMailTemplate>("mailTemplateProductionEnd")
+        ?? new BatMailTemplate { Subject = "Fin de production — Dossier {{numeroDossier}}", Body = "Bonjour,\n\nLa production de votre dossier {{numeroDossier}} est terminée.\n\nCordialement," };
+    return Results.Json(new { ok = true, template = new { to = cfg.To, subject = cfg.Subject, body = cfg.Body } });
+});
+
+app.MapPut("/api/config/mail-template-production-end", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var tmpl = json.TryGetProperty("template", out var tEl) ? tEl : json;
+        var existing = MongoDbHelper.GetSettings<BatMailTemplate>("mailTemplateProductionEnd") ?? new BatMailTemplate();
+        if (tmpl.TryGetProperty("to", out var toEl)) existing.To = toEl.GetString() ?? existing.To;
+        if (tmpl.TryGetProperty("subject", out var subEl)) existing.Subject = subEl.GetString() ?? existing.Subject;
+        if (tmpl.TryGetProperty("body", out var bodyEl)) existing.Body = bodyEl.GetString() ?? existing.Body;
+        MongoDbHelper.UpsertSettings("mailTemplateProductionEnd", existing);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapGet("/api/config/mail-template-bat-papier", () =>
+{
+    var cfg = MongoDbHelper.GetSettings<BatMailTemplate>("mailTemplateBatPapier")
+        ?? new BatMailTemplate { Subject = "BAT Papier — Dossier {{numeroDossier}}", Body = "Bonjour,\n\nVeuillez trouver ci-joint le BAT papier pour le dossier {{numeroDossier}}.\n\nCordialement," };
+    return Results.Json(new { ok = true, template = new { to = cfg.To, subject = cfg.Subject, body = cfg.Body } });
+});
+
+app.MapPut("/api/config/mail-template-bat-papier", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var tmpl = json.TryGetProperty("template", out var tEl) ? tEl : json;
+        var existing = MongoDbHelper.GetSettings<BatMailTemplate>("mailTemplateBatPapier") ?? new BatMailTemplate();
+        if (tmpl.TryGetProperty("to", out var toEl)) existing.To = toEl.GetString() ?? existing.To;
+        if (tmpl.TryGetProperty("subject", out var subEl)) existing.Subject = subEl.GetString() ?? existing.Subject;
+        if (tmpl.TryGetProperty("body", out var bodyEl)) existing.Body = bodyEl.GetString() ?? existing.Body;
+        MongoDbHelper.UpsertSettings("mailTemplateBatPapier", existing);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
     }
 }

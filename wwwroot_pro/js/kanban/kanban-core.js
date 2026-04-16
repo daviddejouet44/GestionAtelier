@@ -370,50 +370,50 @@ export async function updateKanbanSummary() {
   if (!summaryEl) return;
 
   try {
-    // Load dynamic config (use defaults if API fails)
-    let allColumns = DEFAULT_KANBAN_COLUMNS;
-    try {
-      const resp = await fetch("/api/config/kanban-columns").then(r => r.json()).catch(() => null);
-      if (resp && resp.ok && Array.isArray(resp.columns) && resp.columns.length > 0) {
-        allColumns = resp.columns;
-      }
-    } catch(e) { /* use defaults */ }
+    const resp = await fetch("/api/urgences").then(r => r.json()).catch(() => ({ ok: false, groups: [] }));
+    const groups = (resp.ok && Array.isArray(resp.groups)) ? resp.groups : [];
 
-    const folders = allColumns.filter(c => c.visible !== false).map(c => c.folder);
-    const counts = {};
-    for (const f of folders) {
-      const cfg = allColumns.find(c => c.folder === f);
-      const url = cfg?.folderPath
-        ? `/api/jobs?folder=${encodeURIComponent(f)}&folderPath=${encodeURIComponent(cfg.folderPath)}`
-        : `/api/jobs?folder=${encodeURIComponent(f)}`;
-      const jobs = await fetch(url).then(r => r.json()).catch(() => []);
-      counts[f] = Array.isArray(jobs) ? jobs.length : 0;
+    // Filter only groups with at least one non-terminated urgent job
+    const activeGroups = groups.filter(g => g.jobs && g.jobs.some(j => !j.termine));
+
+    if (activeGroups.length === 0) {
+      summaryEl.style.display = "none";
+      return;
     }
 
-    const labelMap = {};
-    allColumns.forEach(c => { labelMap[c.folder] = c.label; });
+    const urgClasses = { 0: "urgent-j0", 1: "urgent-j1", 2: "urgent-j2", 3: "urgent-j3" };
 
-    const today = new Date(); today.setHours(0,0,0,0);
-    const urgent = Object.entries(deliveriesByPath)
-      .filter(([k]) => !k.endsWith("_time"))
-      .map(([name, date]) => {
-        const d = new Date(date + "T00:00:00");
-        const diff = Math.ceil((d - today) / 86400000);
-        return { name, date, diff };
-      })
-      .filter(x => x.diff >= 0 && x.diff <= 3)
-      .sort((a,b) => a.diff - b.diff);
-
-    const urgentHtml = urgent.length === 0 ? '<span style="color:#9ca3af;font-size:14px;">Aucune urgence</span>' :
-      urgent.map(x => {
-        const cls = x.diff === 0 ? "urgent-j0" : x.diff === 1 ? "urgent-j1" : x.diff === 2 ? "urgent-j2" : "urgent-j3";
-        const label = x.diff === 0 ? "Aujourd'hui" : `J+${x.diff}`;
-        return `<span class="urgent-badge ${cls}" title="${x.name}">${label}: ${x.name}</span>`;
-      }).join("");
+    const columnsHtml = activeGroups.map(g => {
+      const jobsHtml = g.jobs.map(job => {
+        const cls = urgClasses[job.diff] || "urgent-j3";
+        const livraisonFr = job.dateLivraison
+          ? new Date(job.dateLivraison + "T00:00:00").toLocaleDateString("fr-FR") : "—";
+        const machineFr = job.datePlanningMachine
+          ? new Date(job.datePlanningMachine + "T00:00:00").toLocaleDateString("fr-FR") : null;
+        const nameStyle = job.termine ? "text-decoration:line-through;color:#9ca3af;" : "";
+        const label = job.diff === 0 ? "Aujourd'hui" : `J+${job.diff}`;
+        return `
+          <div class="urgence-job ${cls}" style="border-left:4px solid;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
+              <strong style="font-size:11px;color:#111827;">${job.numeroDossier || '—'}</strong>
+              <span class="urgent-badge ${cls}" style="font-size:10px;padding:1px 6px;">${label}</span>
+            </div>
+            <div style="font-size:11px;${nameStyle}white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${job.fileName}">${job.fileName}</div>
+            ${machineFr ? `<div style="font-size:10px;color:#6b7280;">Machine: ${machineFr}</div>` : ''}
+            <div style="font-size:10px;color:#6b7280;">Livraison: ${livraisonFr}</div>
+          </div>`;
+      }).join('');
+      return `
+        <div class="urgence-column">
+          <div class="urgence-column-title">${g.moteur}</div>
+          ${jobsHtml}
+        </div>`;
+    }).join('');
 
     summaryEl.innerHTML = `
-      <div class="kanban-summary-urgent"><strong style="font-size:16px;color:#374151;margin-right:8px;">🚨 Urgences:</strong>${urgentHtml}</div>
+      <div class="urgence-header">🚨 <strong>Urgences</strong></div>
+      <div class="urgence-columns">${columnsHtml}</div>
     `;
-    summaryEl.style.display = ""; // show now that content is ready
+    summaryEl.style.display = "";
   } catch(e) { console.error("Erreur summary:", e); }
 }

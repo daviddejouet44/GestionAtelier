@@ -26,19 +26,28 @@ export async function renderSettingsBatConfig(panel) {
   let routings = [];
   let types = [];
   let mailTemplate = { to: "", subject: "BAT - Dossier {{numeroDossier}} - {{nomClient}}", body: "Bonjour,\n\nVeuillez trouver ci-joint le BAT pour le dossier {{numeroDossier}}.\n\nCordialement," };
+  let mailTemplateStart = { to: "", subject: "Début de production — Dossier {{numeroDossier}}", body: "Bonjour,\n\nLa production de votre dossier {{numeroDossier}} vient de démarrer.\n\nCordialement," };
+  let mailTemplateEnd = { to: "", subject: "Fin de production — Dossier {{numeroDossier}}", body: "Bonjour,\n\nLa production de votre dossier {{numeroDossier}} est terminée.\n\nCordialement," };
+  let mailTemplateBatPapier = { to: "", subject: "BAT Papier — Dossier {{numeroDossier}}", body: "Bonjour,\n\nVeuillez trouver ci-joint le BAT papier pour le dossier {{numeroDossier}}.\n\nCordialement," };
   try {
-    const [r1, r2, r3, r4, r5] = await Promise.all([
+    const [r1, r2, r3, r4, r5, r6, r7, r8] = await Promise.all([
       fetch("/api/config/integrations", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
       fetch("/api/config/bat-command").then(r => r.json()).catch(() => ({})),
       fetch("/api/config/hotfolder-routing").then(r => r.json()).catch(() => []),
       fetch("/api/config/work-types").then(r => r.json()).catch(() => []),
-      fetch("/api/config/bat-mail-template").then(r => r.json()).catch(() => ({}))
+      fetch("/api/config/bat-mail-template").then(r => r.json()).catch(() => ({})),
+      fetch("/api/config/mail-template-production-start").then(r => r.json()).catch(() => ({})),
+      fetch("/api/config/mail-template-production-end").then(r => r.json()).catch(() => ({})),
+      fetch("/api/config/mail-template-bat-papier").then(r => r.json()).catch(() => ({}))
     ]);
     if (r1.ok && r1.config) intCfg = r1.config;
     if (r2.ok) { batCmd = r2.command || ""; batAlertDelayHours = r2.batAlertDelayHours ?? 48; batSimpleDropletPath = r2.batSimpleDropletPath || ""; }
     if (Array.isArray(r3)) routings = r3;
     if (Array.isArray(r4)) types = r4;
     if (r5.ok && r5.template) mailTemplate = r5.template;
+    if (r6.ok && r6.template) mailTemplateStart = r6.template;
+    if (r7.ok && r7.template) mailTemplateEnd = r7.template;
+    if (r8.ok && r8.template) mailTemplateBatPapier = r8.template;
   } catch(e) { /* use defaults */ }
 
   const typeOptions = types.map(t => `<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join("");
@@ -147,6 +156,45 @@ export async function renderSettingsBatConfig(panel) {
         </div>
       </div>
     </div>
+
+    <div class="settings-section-card">
+      <h4>Template email BAT Papier</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">Mail envoyé lors d'un BAT Papier (même process que BAT Complet, template dédié).</p>
+      <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;">
+        <div style="flex:1;min-width:300px;">
+          <div class="settings-form-group"><label>Destinataire (To)</label><input type="text" id="bat-papier-mail-to" value="${esc(mailTemplateBatPapier.to || '')}" class="settings-input settings-input-wide" placeholder="client@example.com" /></div>
+          <div class="settings-form-group" style="margin-top:12px;"><label>Objet du mail</label><input type="text" id="bat-papier-mail-subject" value="${esc(mailTemplateBatPapier.subject || '')}" class="settings-input settings-input-wide" /></div>
+          <div class="settings-form-group" style="margin-top:12px;"><label>Corps du mail</label><textarea id="bat-papier-mail-body" class="settings-input settings-input-wide" rows="5" style="font-family:monospace;font-size:12px;">${esc(mailTemplateBatPapier.body || '')}</textarea></div>
+          <button id="bat-papier-mail-save" class="btn btn-primary" style="margin-top:10px;">Enregistrer le template BAT Papier</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section-card">
+      <h4>Template email — Début de production</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">Mail envoyé au client quand la production démarre (bouton "Mail début" dans la tuile Impression en cours).</p>
+      <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;">
+        <div style="flex:1;min-width:300px;">
+          <div class="settings-form-group"><label>Destinataire (To)</label><input type="text" id="prod-start-mail-to" value="${esc(mailTemplateStart.to || '')}" class="settings-input settings-input-wide" placeholder="client@example.com" /></div>
+          <div class="settings-form-group" style="margin-top:12px;"><label>Objet du mail</label><input type="text" id="prod-start-mail-subject" value="${esc(mailTemplateStart.subject || '')}" class="settings-input settings-input-wide" /></div>
+          <div class="settings-form-group" style="margin-top:12px;"><label>Corps du mail</label><textarea id="prod-start-mail-body" class="settings-input settings-input-wide" rows="5" style="font-family:monospace;font-size:12px;">${esc(mailTemplateStart.body || '')}</textarea></div>
+          <button id="prod-start-mail-save" class="btn btn-primary" style="margin-top:10px;">Enregistrer le template Début de production</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section-card">
+      <h4>Template email — Fin de production</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">Mail envoyé au client quand la production est terminée (bouton "Mail fin" dans la tuile Impression en cours).</p>
+      <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;">
+        <div style="flex:1;min-width:300px;">
+          <div class="settings-form-group"><label>Destinataire (To)</label><input type="text" id="prod-end-mail-to" value="${esc(mailTemplateEnd.to || '')}" class="settings-input settings-input-wide" placeholder="client@example.com" /></div>
+          <div class="settings-form-group" style="margin-top:12px;"><label>Objet du mail</label><input type="text" id="prod-end-mail-subject" value="${esc(mailTemplateEnd.subject || '')}" class="settings-input settings-input-wide" /></div>
+          <div class="settings-form-group" style="margin-top:12px;"><label>Corps du mail</label><textarea id="prod-end-mail-body" class="settings-input settings-input-wide" rows="5" style="font-family:monospace;font-size:12px;">${esc(mailTemplateEnd.body || '')}</textarea></div>
+          <button id="prod-end-mail-save" class="btn btn-primary" style="margin-top:10px;">Enregistrer le template Fin de production</button>
+        </div>
+      </div>
+    </div>
   `;
 
   // Workflow BAT save
@@ -228,6 +276,48 @@ export async function renderSettingsBatConfig(panel) {
       body: JSON.stringify({ template: { to, subject, body } })
     }).then(r => r.json());
     if (r.ok) showNotification("✅ Template email BAT enregistré", "success");
+    else alert("Erreur : " + (r.error || ""));
+  };
+
+  // BAT Papier mail template save
+  panel.querySelector("#bat-papier-mail-save").onclick = async () => {
+    const to = panel.querySelector("#bat-papier-mail-to").value.trim();
+    const subject = panel.querySelector("#bat-papier-mail-subject").value;
+    const body = panel.querySelector("#bat-papier-mail-body").value;
+    const r = await fetch("/api/config/mail-template-bat-papier", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ template: { to, subject, body } })
+    }).then(r => r.json());
+    if (r.ok) showNotification("✅ Template email BAT Papier enregistré", "success");
+    else alert("Erreur : " + (r.error || ""));
+  };
+
+  // Production start mail template save
+  panel.querySelector("#prod-start-mail-save").onclick = async () => {
+    const to = panel.querySelector("#prod-start-mail-to").value.trim();
+    const subject = panel.querySelector("#prod-start-mail-subject").value;
+    const body = panel.querySelector("#prod-start-mail-body").value;
+    const r = await fetch("/api/config/mail-template-production-start", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ template: { to, subject, body } })
+    }).then(r => r.json());
+    if (r.ok) showNotification("✅ Template mail début de production enregistré", "success");
+    else alert("Erreur : " + (r.error || ""));
+  };
+
+  // Production end mail template save
+  panel.querySelector("#prod-end-mail-save").onclick = async () => {
+    const to = panel.querySelector("#prod-end-mail-to").value.trim();
+    const subject = panel.querySelector("#prod-end-mail-subject").value;
+    const body = panel.querySelector("#prod-end-mail-body").value;
+    const r = await fetch("/api/config/mail-template-production-end", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ template: { to, subject, body } })
+    }).then(r => r.json());
+    if (r.ok) showNotification("✅ Template mail fin de production enregistré", "success");
     else alert("Erreur : " + (r.error || ""));
   };
 }

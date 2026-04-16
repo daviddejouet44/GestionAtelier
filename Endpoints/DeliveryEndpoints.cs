@@ -153,8 +153,112 @@ app.MapDelete("/api/delivery", (HttpContext ctx) =>
 });
 
 // ======================================================
-// FABRICATION
+// URGENCES — jobs groupés par moteur d'impression (livraison dans les 3 prochains jours)
 // ======================================================
+app.MapGet("/api/urgences", () =>
+{
+    try
+    {
+        var map = BackendUtils.LoadDeliveries();
+        var today = DateTime.Today;
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+
+        // Group urgent entries (livraison dans 0..3 jours) by moteurImpression
+        var grouped = new Dictionary<string, List<object>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var kv in map.Values)
+        {
+            if (kv.Date == default) continue;
+            var delivDate = kv.Date.Date;
+            var diff = (delivDate - today).Days;
+            if (diff < 0 || diff > 3) continue;
+
+            // Look up fabrication for this entry
+            BsonDocument? fabDoc = null;
+            if (!string.IsNullOrEmpty(kv.FileName))
+                fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", kv.FileName)).FirstOrDefault();
+            if (fabDoc == null && !string.IsNullOrEmpty(kv.FullPath))
+                fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fullPath", kv.FullPath)).FirstOrDefault();
+
+            var moteur = (fabDoc != null && fabDoc.Contains("moteurImpression") && fabDoc["moteurImpression"].BsonType == BsonType.String)
+                ? fabDoc["moteurImpression"].AsString ?? "—" : "—";
+            var numeroDossier = (fabDoc != null && fabDoc.Contains("numeroDossier") && fabDoc["numeroDossier"].BsonType == BsonType.String)
+                ? fabDoc["numeroDossier"].AsString ?? "" : "";
+            var nomClient = (fabDoc != null && fabDoc.Contains("nomClient") && fabDoc["nomClient"].BsonType == BsonType.String)
+                ? fabDoc["nomClient"].AsString ?? "" : "";
+            DateTime? planningMachine = null;
+            if (fabDoc != null && fabDoc.Contains("planningMachine") && fabDoc["planningMachine"].BsonType == BsonType.DateTime)
+                planningMachine = fabDoc["planningMachine"].ToUniversalTime().ToLocalTime();
+
+            bool termine = (fabDoc != null && fabDoc.Contains("locked") && fabDoc["locked"].BsonType == BsonType.Boolean && fabDoc["locked"].AsBoolean);
+
+            var entry = (object)new
+            {
+                fileName = kv.FileName ?? Path.GetFileName(kv.FullPath) ?? "",
+                numeroDossier,
+                nomClient,
+                dateLivraison = kv.Date.ToString("yyyy-MM-dd"),
+                datePlanningMachine = planningMachine.HasValue ? planningMachine.Value.ToString("yyyy-MM-dd") : null,
+                diff,
+                termine
+            };
+
+            if (!grouped.ContainsKey(moteur))
+                grouped[moteur] = new List<object>();
+            grouped[moteur].Add(entry);
+        }
+
+        // Sort each group by delivery date
+        var result = grouped
+            .OrderBy(g => g.Key == "—" ? 1 : 0)
+            .ThenBy(g => g.Key)
+            .Select(g => new
+            {
+                moteur = g.Key,
+                jobs = g.Value.OrderBy(j => ((dynamic)j).dateLivraison).ToList<object>()
+            })
+            .ToList();
+
+        return Results.Json(new { ok = true, groups = result });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message, groups = Array.Empty<object>() });
+    }
+});
+
+// ======================================================
+// PRISMASYNC URL SETTING
+// ======================================================
+app.MapGet("/api/config/prismasync-url", () =>
+{
+    var doc = MongoDbHelper.GetCollection<BsonDocument>("appSettings")
+        .Find(Builders<BsonDocument>.Filter.Eq("key", "prismaSyncUrl")).FirstOrDefault();
+    var url = (doc != null && doc.Contains("value") && doc["value"].BsonType == BsonType.String)
+        ? doc["value"].AsString ?? "" : "";
+    return Results.Json(new { ok = true, url });
+});
+
+app.MapPut("/api/config/prismasync-url", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var url = json.TryGetProperty("url", out var uEl) ? uEl.GetString() ?? "" : "";
+        var col = MongoDbHelper.GetCollection<BsonDocument>("appSettings");
+        col.ReplaceOne(
+            Builders<BsonDocument>.Filter.Eq("key", "prismaSyncUrl"),
+            new BsonDocument { ["key"] = "prismaSyncUrl", ["value"] = url },
+            new ReplaceOptions { IsUpsert = true });
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
 
 
     }

@@ -238,9 +238,17 @@ async function buildBatView() {
       const card = document.createElement("div");
       card.className = "bat-card-modern";
 
+      // Status bar (updated after loading status)
+      const statusBar = document.createElement("div");
+      statusBar.className = "bat-card-status-bar";
+      card.appendChild(statusBar);
+
+      // Inner layout wrapper
+      const innerDiv = document.createElement("div");
+      innerDiv.className = "bat-card-inner";
+
       const thumbDiv = document.createElement("div");
       thumbDiv.className = "bat-card-thumb";
-      thumbDiv.style.cssText = "min-width:100px;width:100px;height:120px;display:flex;align-items:center;justify-content:center;background:#f3f4f6;border-radius:8px;font-size:12px;font-weight:600;color:#9ca3af;overflow:hidden;flex-shrink:0;";
       thumbDiv.textContent = "PDF";
       if ((job.name || "").toLowerCase().endsWith(".pdf") && window._renderPdfThumbnail) {
         window._renderPdfThumbnail(full, thumbDiv).catch(() => {});
@@ -252,7 +260,6 @@ async function buildBatView() {
 
       const dossierEl = document.createElement("div");
       dossierEl.className = "bat-card-dossier";
-      dossierEl.style.cssText = "font-size:20px;font-weight:700;color:#1d4ed8;margin-bottom:4px;";
       dossierEl.textContent = "—";
 
       const filenameEl = document.createElement("div");
@@ -329,9 +336,10 @@ async function buildBatView() {
       actionsDiv.appendChild(btnArchiver);
       actionsDiv.appendChild(btnDelete);
 
-      card.appendChild(thumbDiv);
-      card.appendChild(bodyDiv);
-      card.appendChild(actionsDiv);
+      innerDiv.appendChild(thumbDiv);
+      innerDiv.appendChild(bodyDiv);
+      innerDiv.appendChild(actionsDiv);
+      card.appendChild(innerDiv);
       listEl.appendChild(card);
 
       // Load dossier number async — strip BAT_ prefix before lookup (MongoDB stores without it)
@@ -339,11 +347,17 @@ async function buildBatView() {
       if (lookupFn.toLowerCase().startsWith("bat_")) lookupFn = lookupFn.substring(4);
       fetch("/api/fabrication?fileName=" + encodeURIComponent(lookupFn))
         .then(r => r.json()).then(d => {
-          if (d && d.numeroDossier) dossierEl.textContent = d.numeroDossier;
+          if (d && d.numeroDossier) dossierEl.textContent = "N° " + d.numeroDossier;
         }).catch(() => {});
 
       try {
         const status = await fetch(`/api/bat/status?path=${encodeURIComponent(full)}`).then(r => r.json()).catch(() => ({}));
+
+        // Update status bar color
+        if (status.rejectedAt) statusBar.className = "bat-card-status-bar bat-status-rejected";
+        else if (status.validatedAt) statusBar.className = "bat-card-status-bar bat-status-validated";
+        else if (status.sentAt) statusBar.className = "bat-card-status-bar bat-status-sent";
+        else statusBar.className = "bat-card-status-bar bat-status-new";
 
         const btnSent = document.createElement("button");
         btnSent.className = "bat-status-badge bat-sent" + (status.sentAt ? " active" : "");
@@ -1167,12 +1181,46 @@ async function purgeRecycle() {
 }
 
 // ======================================================
+// BACKGROUND LOGIN + HEADER BANNER (ITEMS 13 & 14)
+// ======================================================
+function applyLoginBackground() {
+  const loginContainer = document.getElementById("login-container");
+  if (!loginContainer) return;
+  const img = new Image();
+  img.onload = () => {
+    loginContainer.style.backgroundImage = `url('/api/background-login?v=${Date.now()}')`;
+    loginContainer.style.backgroundSize = "cover";
+    loginContainer.style.backgroundPosition = "center";
+  };
+  img.onerror = () => { /* No background configured — keep default */ };
+  img.src = `/api/background-login?v=${Date.now()}`;
+}
+
+function applyHeaderBanner() {
+  const headerEl = document.querySelector("header");
+  if (!headerEl) return;
+  const img = new Image();
+  img.onload = () => {
+    headerEl.style.backgroundImage = `url('/api/header-banner?v=${Date.now()}')`;
+    headerEl.style.backgroundSize = "cover";
+    headerEl.style.backgroundPosition = "center";
+  };
+  img.onerror = () => { /* No banner configured — keep default */ };
+  img.src = `/api/header-banner?v=${Date.now()}`;
+}
+
+// ======================================================
 // INITIALISATION DE L'APP
 // ======================================================
 async function initApp() {
   // Expose calendar refs to settings.js via globals
   window._calendar = calendar;
   window._submissionCalendar = submissionCalendar;
+
+  // Apply login page background image (ITEM 13)
+  applyLoginBackground();
+  // Apply header banner (ITEM 14)
+  applyHeaderBanner();
 
   setupProfileUI();
   initNotificationBell();
@@ -1269,5 +1317,6 @@ setInterval(async () => {
 // DOMContentLoaded — POINT D'ENTRÉE
 // ======================================================
 document.addEventListener("DOMContentLoaded", () => {
+  applyLoginBackground();
   initLogin(initApp);
 });
