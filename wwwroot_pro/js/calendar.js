@@ -313,10 +313,11 @@ export async function initCalendar() {
           const time = x.time || "09:00";
           // Duration based on tempsProduitMinutes if available
           const durationMins = x.tempsProduitMinutes || 60;
+          const startDate = new Date(`${x.date}T${time}:00`);
           return {
             title: (locked ? "🔒 " : "") + x.fileName,
-            start: `${x.date}T${time}:00`,
-            end: new Date(new Date(`${x.date}T${time}:00`).getTime() + durationMins * 60000).toISOString(),
+            start: startDate.toISOString(),
+            end: new Date(startDate.getTime() + durationMins * 60000).toISOString(),
             allDay: false,
             backgroundColor: bg,
             borderColor: bc,

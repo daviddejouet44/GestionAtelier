@@ -151,7 +151,7 @@ function updateTempsProduction() {
   if(!tpEl) return;
   const moteur=(motEl?motEl.value:'').trim();
   const nf=parseInt(nfEl?nfEl.value:'0')||0;
-  if(!moteur||!nf||!_grammageTimeRules.length){tpEl.value='';return;}
+  if(!moteur||!nf){tpEl.value='';return;}
   // Try to extract grammage from media1
   const m1El=gEl('media1'); const m1Val=m1El?m1El.value:'';
   const gMatch=m1Val.match(/(\d+)\s*g/i);
