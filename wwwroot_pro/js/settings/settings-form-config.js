@@ -78,8 +78,8 @@ function renderSections(panel, config) {
     const table = document.createElement("div");
     table.style.cssText = "padding:10px 14px;";
     table.innerHTML = `
-      <div style="display:grid;grid-template-columns:40px 1fr 100px 70px 80px 60px;gap:8px;align-items:center;font-size:12px;font-weight:600;color:#6b7280;border-bottom:1px solid #f3f4f6;padding-bottom:8px;margin-bottom:8px;">
-        <span>Ordre</span><span>Label</span><span>Largeur</span><span>Visible</span><span>Req.</span><span></span>
+    <div style="display:grid;grid-template-columns:40px 1fr 100px 60px 60px 60px 60px;gap:8px;align-items:center;font-size:12px;font-weight:600;color:#6b7280;border-bottom:2px solid #e5e7eb;padding-bottom:8px;margin-bottom:8px;background:#f9fafb;padding:8px 10px;border-radius:6px 6px 0 0;">
+        <span>Ordre</span><span>Label</span><span>Largeur</span><span>Visible</span><span>Req.</span><span>Bloqué</span><span></span>
       </div>
       <div class="ffc-fields-list" data-section="${esc(section)}"></div>
     `;
@@ -155,6 +155,22 @@ function renderSections(panel, config) {
       if (f) f.required = cb.checked;
     };
   });
+  container.querySelectorAll(".ffc-field-readonly").forEach(cb => {
+    cb.onchange = () => {
+      const f = fields.find(x => x.id === cb.dataset.id);
+      if (f) {
+        f.readOnly = cb.checked;
+        // If readOnly, required makes no sense — uncheck it
+        if (cb.checked) {
+          const reqCb = cb.closest("div,tr")?.parentElement?.querySelector(`.ffc-field-required[data-id="${cb.dataset.id}"]`);
+          if (reqCb) { reqCb.checked = false; reqCb.disabled = true; f.required = false; }
+        } else {
+          const reqCb = cb.closest("div,tr")?.parentElement?.querySelector(`.ffc-field-required[data-id="${cb.dataset.id}"]`);
+          if (reqCb) reqCb.disabled = false;
+        }
+      }
+    };
+  });
   container.querySelectorAll(".ffc-field-label").forEach(inp => {
     inp.oninput = () => {
       const f = fields.find(x => x.id === inp.dataset.id);
@@ -184,7 +200,9 @@ function renderSections(panel, config) {
 
 function createFieldRow(field, fieldIdx, totalFields) {
   const row = document.createElement("div");
-  row.style.cssText = "display:grid;grid-template-columns:40px 1fr 100px 70px 80px 60px;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid #f9fafb;";
+  row.style.cssText = "display:grid;grid-template-columns:40px 1fr 100px 60px 60px 60px 60px;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid #f3f4f6;transition:background 0.1s;";
+  row.onmouseenter = () => row.style.background = "#f9fafb";
+  row.onmouseleave = () => row.style.background = "";
   row.innerHTML = `
     <div style="display:flex;gap:2px;">
       <button class="ffc-field-up btn" data-idx="${fieldIdx}" data-section="${esc(field.section || '')}" style="padding:2px 6px;font-size:11px;" ${fieldIdx === 0 ? 'disabled' : ''} title="Monter">↑</button>
@@ -198,15 +216,19 @@ function createFieldRow(field, fieldIdx, totalFields) {
       <option value="half" ${field.width === 'half' ? 'selected' : ''}>½ largeur</option>
       <option value="full" ${field.width === 'full' ? 'selected' : ''}>Pleine</option>
     </select>
-    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
+    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;" title="Afficher ce champ">
       <input type="checkbox" class="ffc-field-visible" data-id="${esc(field.id)}" ${field.visible ? 'checked' : ''} />
-      Visible
+      Vis.
     </label>
-    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
+    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;" title="Champ obligatoire">
       <input type="checkbox" class="ffc-field-required" data-id="${esc(field.id)}" ${field.required ? 'checked' : ''} ${field.readOnly ? 'disabled' : ''} />
       Req.
     </label>
-    <span style="font-size:10px;color:#9ca3af;">${field.readOnly ? '🔒' : ''}</span>
+    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;" title="Champ en lecture seule (bloqué pour l'opérateur)">
+      <input type="checkbox" class="ffc-field-readonly" data-id="${esc(field.id)}" ${field.readOnly ? 'checked' : ''} />
+      🔒
+    </label>
+    <span style="font-size:10px;color:#9ca3af;"></span>
   `;
   return row;
 }

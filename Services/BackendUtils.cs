@@ -66,7 +66,9 @@ public static class BackendUtils
                     Login    = d.Contains("login")    ? d["login"].AsString    : "",
                     Password = d.Contains("password") ? d["password"].AsString : "",
                     Profile  = d.Contains("profile")  ? d["profile"].AsInt32   : 1,
-                    Name     = d.Contains("name")     ? d["name"].AsString     : ""
+                    Name     = d.Contains("name")     ? d["name"].AsString     : "",
+                    LastActivityAt = d.Contains("lastActivityAt") && !d["lastActivityAt"].IsBsonNull
+                        ? (DateTime?)d["lastActivityAt"].ToUniversalTime() : null
                 }).ToList();
         }
         catch (Exception ex)
@@ -88,6 +90,30 @@ public static class BackendUtils
             ["name"]     = user.Name
         };
         col.InsertOne(doc);
+    }
+
+    public static void UpdateUser(UserItem user)
+    {
+        var col = MongoDbHelper.GetUsersCollection();
+        var filter = Builders<BsonDocument>.Filter.Eq("id", user.Id);
+        var update = Builders<BsonDocument>.Update
+            .Set("login", user.Login)
+            .Set("name", user.Name)
+            .Set("profile", user.Profile)
+            .Set("password", user.Password);
+        col.UpdateOne(filter, update);
+    }
+
+    public static void UpdateUserActivity(string login)
+    {
+        try
+        {
+            var col = MongoDbHelper.GetUsersCollection();
+            var filter = Builders<BsonDocument>.Filter.Eq("login", login);
+            var update = Builders<BsonDocument>.Update.Set("lastActivityAt", DateTime.UtcNow);
+            col.UpdateOne(filter, update);
+        }
+        catch { /* ignore */ }
     }
 
     public static bool DeleteUser(string userId)

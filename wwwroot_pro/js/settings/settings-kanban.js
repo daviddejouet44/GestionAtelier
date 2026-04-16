@@ -20,7 +20,7 @@ const ALL_ACTIONS = [
 ];
 
 export async function renderSettingsKanbanColumns(panel) {
-  panel.innerHTML = `<h3>Tuiles Kanban</h3><p style="color:#6b7280;">Chargement...</p>`;
+  panel.innerHTML = `<h3>Tuiles</h3><p style="color:#6b7280;">Chargement...</p>`;
 
   const DEFAULT_COLUMNS = [
     { folder: "Début de production", label: "Jobs à traiter", color: "#5fa8c4", visible: true, order: 0 },
@@ -43,14 +43,14 @@ export async function renderSettingsKanbanColumns(panel) {
   } catch(e) { /* use defaults */ }
 
   panel.innerHTML = `
-    <h3>Tuiles Kanban</h3>
+    <h3>Tuiles</h3>
     <p style="font-size:13px;color:#6b7280;margin-bottom:20px;">
-      Configurez les tuiles affichées dans le Kanban : nom du stage (interne), chemin physique optionnel, label affiché, couleur, visibilité et ordre.
+      Configurez les tuiles affichées dans le Kanban : nom de la tuile (interne), chemin physique optionnel, label affiché, couleur, visibilité et ordre.
       Dépliez chaque tuile pour choisir les actions visibles sur les cartes.
     </p>
     <div id="kanban-cols-list" style="display:flex;flex-direction:column;gap:8px;max-width:1200px;margin-bottom:16px;">
       <div style="display:grid;grid-template-columns:160px 1fr 180px 80px 70px 80px 60px;gap:8px;font-size:12px;font-weight:600;color:#6b7280;padding:0 4px;">
-        <span>Nom du stage</span>
+        <span>Nom de la tuile</span>
         <span>Chemin physique du dossier (ex: C:\Flux\MonDossier)</span>
         <span>Label affiché</span>
         <span>Couleur</span>
@@ -78,7 +78,7 @@ export async function renderSettingsKanbanColumns(panel) {
     const currentActions = Array.isArray(col.visibleActions) ? col.visibleActions : null;
 
     row.innerHTML = `
-      <input type="text" class="settings-input kcol-folder" value="${esc(col.folder)}" placeholder="Nom du stage" style="font-size:12px;" />
+      <input type="text" class="settings-input kcol-folder" value="${esc(col.folder)}" placeholder="Nom de la tuile" style="font-size:12px;" />
       <input type="text" class="settings-input kcol-folderpath" value="${esc(col.folderPath || '')}" placeholder="C:\\Flux\\MonDossier (optionnel)" style="font-size:12px;" />
       <input type="text" class="settings-input kcol-label" value="${esc(col.label)}" placeholder="Label affiché" style="font-size:12px;" />
       <input type="color" class="kcol-color" value="${esc(col.color || '#8f8f8f')}" style="width:60px;height:32px;padding:2px;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;" />
@@ -187,7 +187,7 @@ export async function renderSettingsKanbanColumns(panel) {
   };
 
   panel.querySelector("#kanban-cols-reset").onclick = async () => {
-    if (!confirm("Réinitialiser la configuration des tuiles Kanban aux valeurs par défaut ?")) return;
+    if (!confirm("Réinitialiser la configuration des tuiles aux valeurs par défaut ?")) return;
     const r = await fetch("/api/config/kanban-columns", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },

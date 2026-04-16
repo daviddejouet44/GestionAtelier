@@ -38,7 +38,7 @@ app.MapGet("/api/config/paths", (HttpContext ctx) =>
 
         var cfg = MongoDbHelper.GetSettings<PathsSettings>("paths")
             ?? new PathsSettings { HotfoldersRoot = BackendUtils.HotfoldersRoot(), RecycleBinPath = recyclePath };
-        return Results.Json(new { ok = true, config = new { hotfoldersRoot = cfg.HotfoldersRoot, recycleBinPath = cfg.RecycleBinPath, acrobatExePath = cfg.AcrobatExePath } });
+        return Results.Json(new { ok = true, config = new { hotfoldersRoot = cfg.HotfoldersRoot, recycleBinPath = cfg.RecycleBinPath, acrobatExePath = cfg.AcrobatExePath, fieryPaths = cfg.FieryPaths } });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
@@ -63,6 +63,8 @@ app.MapPut("/api/config/paths", async (HttpContext ctx) =>
             existing.RecycleBinPath = rbEl.GetString() ?? existing.RecycleBinPath;
         if (json.TryGetProperty("acrobatExePath", out var aeEl))
             existing.AcrobatExePath = aeEl.GetString() ?? existing.AcrobatExePath;
+        if (json.TryGetProperty("fieryPaths", out var fpEl) && fpEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+            existing.FieryPaths = fpEl.EnumerateArray().Select(e => e.GetString() ?? "").Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
 
         MongoDbHelper.UpsertSettings("paths", existing);
         return Results.Json(new { ok = true });

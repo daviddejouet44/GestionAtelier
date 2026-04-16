@@ -634,7 +634,6 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           btnTermine.title = "Verrouille le fichier et marque la tâche comme terminée (vert dans le calendrier)";
           btnTermine.onclick = async (e) => {
             e.stopPropagation();
-            if (!confirm("Marquer comme terminé et verrouiller ce fichier ?")) return;
             const r = await fetch("/api/jobs/lock", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -643,6 +642,9 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             if (r.ok) {
               showNotification("✅ Fichier verrouillé — tâche terminée", "success");
               card.draggable = false;
+              card.style.opacity = "0.6";
+              card.style.filter = "grayscale(0.5)";
+              card.style.pointerEvents = "none";
               btnTermine.disabled = true;
               btnTermine.textContent = "🔒 Verrouillé";
               if (window._calendar) window._calendar.refetchEvents();

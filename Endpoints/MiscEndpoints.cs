@@ -322,5 +322,113 @@ app.MapDelete("/api/logo-login", (HttpContext ctx) =>
         return Results.Json(new { ok = false, error = ex.Message });
     }
 });
+
+// ======================================================
+// IMAGE DE FOND CONNEXION
+// ======================================================
+app.MapGet("/api/background-login", (HttpContext ctx) =>
+{
+    var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
+    string? found = null;
+    foreach (var ext in new[] { ".png", ".jpg", ".jpeg", ".gif", ".webp" })
+    {
+        var candidate = Path.Combine(dir, "background-login" + ext);
+        if (File.Exists(candidate)) { found = candidate; break; }
+    }
+    if (found == null) return Results.NotFound();
+    var provider = new FileExtensionContentTypeProvider();
+    if (!provider.TryGetContentType(found, out var ct)) ct = "image/jpeg";
+    ctx.Response.Headers["Cache-Control"] = "no-cache, no-store";
+    return Results.File(File.OpenRead(found), ct);
+});
+
+app.MapPost("/api/background-login", async (HttpContext ctx) =>
+{
+    try
+    {
+        var form = await ctx.Request.ReadFormAsync();
+        var file = form.Files.GetFile("file");
+        if (file == null || file.Length == 0) return Results.Json(new { ok = false, error = "Fichier manquant" });
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".gif" && ext != ".webp")
+            return Results.Json(new { ok = false, error = "Format non supporté" });
+        var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
+        Directory.CreateDirectory(dir);
+        foreach (var old in Directory.GetFiles(dir, "background-login.*"))
+            if (Path.GetFileNameWithoutExtension(old).Equals("background-login", StringComparison.OrdinalIgnoreCase)) File.Delete(old);
+        var path = Path.Combine(dir, "background-login" + ext);
+        using var stream = File.Create(path);
+        await file.CopyToAsync(stream);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapDelete("/api/background-login", (HttpContext ctx) =>
+{
+    try
+    {
+        var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
+        if (Directory.Exists(dir))
+            foreach (var f in Directory.GetFiles(dir, "background-login.*"))
+                if (Path.GetFileNameWithoutExtension(f).Equals("background-login", StringComparison.OrdinalIgnoreCase)) File.Delete(f);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ======================================================
+// IMAGE DE BANDEAU HEADER
+// ======================================================
+app.MapGet("/api/header-banner", (HttpContext ctx) =>
+{
+    var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
+    string? found = null;
+    foreach (var ext in new[] { ".png", ".jpg", ".jpeg", ".gif", ".webp" })
+    {
+        var candidate = Path.Combine(dir, "header-banner" + ext);
+        if (File.Exists(candidate)) { found = candidate; break; }
+    }
+    if (found == null) return Results.NotFound();
+    var provider = new FileExtensionContentTypeProvider();
+    if (!provider.TryGetContentType(found, out var ct)) ct = "image/jpeg";
+    ctx.Response.Headers["Cache-Control"] = "no-cache, no-store";
+    return Results.File(File.OpenRead(found), ct);
+});
+
+app.MapPost("/api/header-banner", async (HttpContext ctx) =>
+{
+    try
+    {
+        var form = await ctx.Request.ReadFormAsync();
+        var file = form.Files.GetFile("file");
+        if (file == null || file.Length == 0) return Results.Json(new { ok = false, error = "Fichier manquant" });
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".gif" && ext != ".webp")
+            return Results.Json(new { ok = false, error = "Format non supporté" });
+        var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
+        Directory.CreateDirectory(dir);
+        foreach (var old in Directory.GetFiles(dir, "header-banner.*"))
+            if (Path.GetFileNameWithoutExtension(old).Equals("header-banner", StringComparison.OrdinalIgnoreCase)) File.Delete(old);
+        var path = Path.Combine(dir, "header-banner" + ext);
+        using var stream = File.Create(path);
+        await file.CopyToAsync(stream);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapDelete("/api/header-banner", (HttpContext ctx) =>
+{
+    try
+    {
+        var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
+        if (Directory.Exists(dir))
+            foreach (var f in Directory.GetFiles(dir, "header-banner.*"))
+                if (Path.GetFileNameWithoutExtension(f).Equals("header-banner", StringComparison.OrdinalIgnoreCase)) File.Delete(f);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
     }
 }

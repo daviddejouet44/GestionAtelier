@@ -3,39 +3,52 @@ import { authToken, showNotification, esc } from '../core.js';
 export async function renderSettingsCoverProducts(panel) {
   panel.innerHTML = `<h3>Produits nécessitant une couverture</h3><p style="color:#6b7280;">Chargement...</p>`;
 
-  let products = [];
+  let selectedProducts = [];
+  let workTypes = [];
   try {
-    products = await fetch("/api/settings/cover-products", {
+    selectedProducts = await fetch("/api/settings/cover-products", {
       headers: { "Authorization": `Bearer ${authToken}` }
     }).then(r => r.json()).catch(() => []);
+    const wt = await fetch("/api/settings/work-types", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => null);
+    if (wt && Array.isArray(wt.types)) workTypes = wt.types;
   } catch(e) { /* ignore */ }
+
+  const checkboxesHtml = workTypes.length === 0
+    ? `<p style="color:#9ca3af;font-size:13px;">Aucun type de travail configuré. Ajoutez des types dans l'onglet "Types de travail".</p>`
+    : workTypes.map(t => {
+        const checked = selectedProducts.includes(t) ? 'checked' : '';
+        return `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:13px;">
+          <input type="checkbox" class="cover-product-cb" value="${esc(t)}" ${checked} />
+          <span>${esc(t)}</span>
+        </label>`;
+      }).join("");
 
   panel.innerHTML = `
     <h3>Produits nécessitant une couverture</h3>
     <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
-      Saisissez les types de travail (un par ligne) pour lesquels le champ "Couverture" doit apparaître dans la fiche de production.
+      Sélectionnez les types de travail pour lesquels le champ "Couverture" doit apparaître dans la fiche de production.
     </p>
-    <div class="settings-form-group">
-      <label>Types de travail (un par ligne)</label>
-      <textarea id="cover-products-textarea" class="settings-input" rows="8" style="width:100%;max-width:500px;font-size:13px;">${products.map(p => esc(p)).join('\n')}</textarea>
+    <div style="display:flex;flex-direction:column;gap:6px;max-width:400px;margin-bottom:16px;">
+      ${checkboxesHtml}
     </div>
     <button id="cover-products-save" class="btn btn-primary" style="margin-top:10px;">Enregistrer</button>
     <div id="cover-products-msg" style="margin-top:8px;font-size:13px;"></div>
   `;
 
   panel.querySelector("#cover-products-save").onclick = async () => {
-    const textarea = panel.querySelector("#cover-products-textarea");
     const msgEl = panel.querySelector("#cover-products-msg");
-    const newProducts = textarea.value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const checked = Array.from(panel.querySelectorAll(".cover-product-cb:checked")).map(cb => cb.value);
     try {
       const r = await fetch("/api/settings/cover-products", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-        body: JSON.stringify({ products: newProducts })
+        body: JSON.stringify({ products: checked })
       }).then(r => r.json());
       if (r.ok) {
         msgEl.style.color = "#16a34a";
-        msgEl.textContent = `✅ ${newProducts.length} produit(s) enregistré(s)`;
+        msgEl.textContent = `✅ ${checked.length} produit(s) enregistré(s)`;
       } else {
         msgEl.style.color = "#ef4444";
         msgEl.textContent = "❌ " + (r.error || "Erreur");
@@ -117,7 +130,7 @@ export async function renderSettingsSheetCalcRules(panel) {
 }
 
 export async function renderSettingsDeliveryDelay(panel) {
-  panel.innerHTML = `<h3>Délai de livraison</h3><p style="color:#6b7280;">Chargement...</p>`;
+  panel.innerHTML = `<h3>Dates clés</h3><p style="color:#6b7280;">Chargement...</p>`;
 
   let delayHours = 48;
   try {
@@ -128,7 +141,7 @@ export async function renderSettingsDeliveryDelay(panel) {
   } catch(e) { /* ignore */ }
 
   panel.innerHTML = `
-    <h3>Délai de livraison</h3>
+    <h3>Dates clés</h3>
     <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
       Date de livraison = Date de départ + délai en heures
     </p>

@@ -24,6 +24,9 @@ public class PathsSettings
 
     [JsonPropertyName("acrobatExePath")]
     public string AcrobatExePath { get; set; } = @"C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe";
+
+    [JsonPropertyName("fieryPaths")]
+    public List<string> FieryPaths { get; set; } = new();
 }
 
 public class FabricationImportsSettings

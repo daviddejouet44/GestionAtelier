@@ -18,5 +18,8 @@ public class UserItem
     
     [JsonPropertyName("name")]
     public string Name { get; set; } = "";
+
+    [JsonPropertyName("lastActivityAt")]
+    public DateTime? LastActivityAt { get; set; }
 }
 

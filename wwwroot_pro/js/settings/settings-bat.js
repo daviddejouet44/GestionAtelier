@@ -94,13 +94,9 @@ export async function renderSettingsBatConfig(panel) {
     </div>
 
     <div class="settings-section-card">
-      <h4>Commande BAT</h4>
-      <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Utilisez <code>{filePath}</code>, <code>{type}</code> et <code>{qty}</code> comme variables.</p>
+      <h4>BAT Simple</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Configuration du bouton "BAT Simple" (ouvrir dans un droplet).</p>
       <div class="settings-form-group">
-        <label>Commande</label>
-        <input type="text" id="bat-cmd-input" value="${(batCmd || '').replace(/"/g,'&quot;')}" class="settings-input settings-input-wide" />
-      </div>
-      <div class="settings-form-group" style="margin-top:16px;">
         <label>Chemin du droplet BAT Simple</label>
         <input type="text" id="bat-simple-droplet-input" value="${(batSimpleDropletPath || '').replace(/"/g,'&quot;')}" class="settings-input settings-input-wide" placeholder="Ex: C:\\Droplets\\MonDroplet.exe" />
         <p style="color:#6b7280;font-size:12px;margin-top:4px;">Exécutable lancé par le bouton "BAT Simple" avec le fichier en paramètre.</p>
@@ -110,7 +106,7 @@ export async function renderSettingsBatConfig(panel) {
         <input type="number" id="bat-alert-delay-input" value="${batAlertDelayHours}" min="1" class="settings-input" style="width:120px;" />
         <p style="color:#6b7280;font-size:12px;margin-top:4px;">Affiche une alerte si un BAT reste sans validation/refus après ce délai. Défaut : 48h.</p>
       </div>
-      <button id="bat-cmd-save" class="btn btn-primary">Enregistrer la commande</button>
+      <button id="bat-cmd-save" class="btn btn-primary">Enregistrer</button>
     </div>
 
     <div class="settings-section-card">
@@ -207,18 +203,17 @@ export async function renderSettingsBatConfig(panel) {
     };
   });
 
-  // BAT command save
+  // BAT simple/delay save
   panel.querySelector("#bat-cmd-save").onclick = async () => {
-    const command = panel.querySelector("#bat-cmd-input").value;
     const batSimpleDropletPathNew = panel.querySelector("#bat-simple-droplet-input").value.trim();
     const rawDelay = parseInt(panel.querySelector("#bat-alert-delay-input").value);
     const batAlertDelayHoursNew = (rawDelay > 0) ? rawDelay : 48;
     const r = await fetch("/api/config/bat-command", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ command, batAlertDelayHours: batAlertDelayHoursNew, batSimpleDropletPath: batSimpleDropletPathNew })
+      body: JSON.stringify({ command: batCmd, batAlertDelayHours: batAlertDelayHoursNew, batSimpleDropletPath: batSimpleDropletPathNew })
     }).then(r => r.json());
-    if (r.ok) showNotification("Commande BAT enregistrée", "success");
+    if (r.ok) showNotification("✅ Configuration BAT Simple enregistrée", "success");
     else alert("Erreur");
   };
 
