@@ -9,10 +9,10 @@ export async function renderSettingsCoverProducts(panel) {
     selectedProducts = await fetch("/api/settings/cover-products", {
       headers: { "Authorization": `Bearer ${authToken}` }
     }).then(r => r.json()).catch(() => []);
-    const wt = await fetch("/api/settings/work-types", {
+    const wt = await fetch("/api/config/work-types", {
       headers: { "Authorization": `Bearer ${authToken}` }
     }).then(r => r.json()).catch(() => null);
-    if (wt && Array.isArray(wt.types)) workTypes = wt.types;
+    if (Array.isArray(wt)) workTypes = wt;
   } catch(e) { /* ignore */ }
 
   const checkboxesHtml = workTypes.length === 0

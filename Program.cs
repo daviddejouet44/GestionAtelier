@@ -29,6 +29,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseKestrel(k =>
 {
     k.ListenAnyIP(5080, o => o.Protocols = HttpProtocols.Http1AndHttp2);
+    k.Limits.MaxRequestBodySize = null; // No size limit for large PDF uploads
 });
 
 var recycleEnabled = builder.Configuration["RecycleBin:Enabled"] == "true";

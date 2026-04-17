@@ -875,12 +875,6 @@ async function handleSubmissionFiles(files) {
       continue;
     }
 
-    if (file.size > 100 * 1024 * 1024) {
-      uploadStatus.textContent = `❌ ${file.name} : > 100 Mo`;
-      errorCount++;
-      continue;
-    }
-
     uploadStatus.textContent = `Envoi ${file.name}...`;
 
     try {
