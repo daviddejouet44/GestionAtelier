@@ -20,6 +20,11 @@ export function hideAllViews() {
   // Hide kanban-specific controls
   const filterBarEl = document.getElementById("kanban-filter-bar");
   if (filterBarEl) filterBarEl.style.display = "none";
+  // Hide planning-specific controls (only visible in Planning tab)
+  const planSwitcher = document.getElementById("planning-view-switcher");
+  if (planSwitcher) planSwitcher.style.display = "none";
+  const planFinitions = document.getElementById("planning-finitions-view");
+  if (planFinitions) planFinitions.style.display = "none";
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
 }
 

@@ -1,5 +1,27 @@
 import { authToken, showNotification, esc } from '../core.js';
 
+// Shared mail variables list for all email templates
+function _mailVarsHtml() {
+  return [
+    ['{{numeroDossier}}',       'N° du dossier'],
+    ['{{nomClient}}',           'Nom du client'],
+    ['{{nomFichier}}',          'Nom du fichier'],
+    ['{{operateur}}',           'Opérateur'],
+    ['{{typeTravail}}',         'Type de travail'],
+    ['{{quantite}}',            'Quantité'],
+    ['{{dateReception}}',       'Date de réception'],
+    ['{{dateImpression}}',      'Date d\'impression'],
+    ['{{dateEnvoi}}',           'Date d\'envoi'],
+    ['{{dateProductionFinitions}}', 'Date production finitions'],
+    ['{{moteurImpression}}',    'Moteur d\'impression'],
+    ['{{dateLivraison}}',       'Date de livraison'],
+    ['{{dateCreation}}',        'Date de création'],
+  ].map(([v, l]) => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f3f4f6;font-size:11px;">
+    <code style="color:#1d4ed8;">${v}</code>
+    <span style="color:#6b7280;margin-left:8px;">${l}</span>
+  </div>`).join('');
+}
+
 export async function renderSettingsBatConfig(panel) {
   panel.innerHTML = `
     <h3>Configuration BAT</h3>
@@ -140,19 +162,7 @@ export async function renderSettingsBatConfig(panel) {
         <div style="flex:0 0 240px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;">
           <p style="font-size:12px;font-weight:600;color:#374151;margin:0 0 10px;">Variables disponibles</p>
           <p style="font-size:11px;color:#6b7280;margin:0 0 8px;">Copiez-collez dans l'objet ou le corps du mail :</p>
-          ${[
-            ['{{numeroDossier}}', 'N° du dossier'],
-            ['{{nomClient}}',     'Nom du client'],
-            ['{{nomFichier}}',    'Nom du fichier'],
-            ['{{dateCreation}}',  'Date de création'],
-            ['{{typeTravail}}',   'Type de travail'],
-            ['{{quantite}}',      'Quantité'],
-            ['{{operateur}}',     'Opérateur'],
-            ['{{dateLivraison}}', 'Date de livraison'],
-          ].map(([v, l]) => `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f3f4f6;font-size:11px;">
-            <code style="color:#1d4ed8;">${v}</code>
-            <span style="color:#6b7280;">${l}</span>
-          </div>`).join('')}
+          ${_mailVarsHtml()}
         </div>
       </div>
     </div>
@@ -167,6 +177,10 @@ export async function renderSettingsBatConfig(panel) {
           <div class="settings-form-group" style="margin-top:12px;"><label>Corps du mail</label><textarea id="bat-papier-mail-body" class="settings-input settings-input-wide" rows="5" style="font-family:monospace;font-size:12px;">${esc(mailTemplateBatPapier.body || '')}</textarea></div>
           <button id="bat-papier-mail-save" class="btn btn-primary" style="margin-top:10px;">Enregistrer le template BAT Papier</button>
         </div>
+        <div style="flex:0 0 240px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;">
+          <p style="font-size:12px;font-weight:600;color:#374151;margin:0 0 10px;">Variables disponibles</p>
+          ${_mailVarsHtml()}
+        </div>
       </div>
     </div>
 
@@ -180,6 +194,10 @@ export async function renderSettingsBatConfig(panel) {
           <div class="settings-form-group" style="margin-top:12px;"><label>Corps du mail</label><textarea id="prod-start-mail-body" class="settings-input settings-input-wide" rows="5" style="font-family:monospace;font-size:12px;">${esc(mailTemplateStart.body || '')}</textarea></div>
           <button id="prod-start-mail-save" class="btn btn-primary" style="margin-top:10px;">Enregistrer le template Début de production</button>
         </div>
+        <div style="flex:0 0 240px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;">
+          <p style="font-size:12px;font-weight:600;color:#374151;margin:0 0 10px;">Variables disponibles</p>
+          ${_mailVarsHtml()}
+        </div>
       </div>
     </div>
 
@@ -192,6 +210,10 @@ export async function renderSettingsBatConfig(panel) {
           <div class="settings-form-group" style="margin-top:12px;"><label>Objet du mail</label><input type="text" id="prod-end-mail-subject" value="${esc(mailTemplateEnd.subject || '')}" class="settings-input settings-input-wide" /></div>
           <div class="settings-form-group" style="margin-top:12px;"><label>Corps du mail</label><textarea id="prod-end-mail-body" class="settings-input settings-input-wide" rows="5" style="font-family:monospace;font-size:12px;">${esc(mailTemplateEnd.body || '')}</textarea></div>
           <button id="prod-end-mail-save" class="btn btn-primary" style="margin-top:10px;">Enregistrer le template Fin de production</button>
+        </div>
+        <div style="flex:0 0 240px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;">
+          <p style="font-size:12px;font-weight:600;color:#374151;margin:0 0 10px;">Variables disponibles</p>
+          ${_mailVarsHtml()}
         </div>
       </div>
     </div>

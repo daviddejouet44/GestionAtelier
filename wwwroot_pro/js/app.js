@@ -142,7 +142,7 @@ function showKanban() {
   // Show kanban-specific filter bar
   const filterBarEl = document.getElementById("kanban-filter-bar");
   if (filterBarEl) filterBarEl.style.display = "";
-  refreshKanban();
+  buildKanban();
   buildKanbanSidebar();
 }
 
@@ -151,6 +151,9 @@ async function showCalendar() {
   document.getElementById("calendar").classList.remove("hidden");
   document.getElementById("btnViewCalendar").classList.add("active");
   await ensureCalendar();
+  // Restore planning view switcher visibility
+  const planSwitcher = document.getElementById("planning-view-switcher");
+  if (planSwitcher) planSwitcher.style.display = "";
   // Update calendar refs for settings.js
   window._calendar = calendar;
   calendar?.refetchEvents();
@@ -812,6 +815,7 @@ async function initSubmissionView() {
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <h3 style="margin: 0;">Fichiers soumis</h3>
             <div style="display: flex; gap: 8px;">
+              <button id="btnImportFromMail" class="btn btn-sm">📧 Importer depuis un mail</button>
               <button id="btnSelectAll" class="btn btn-sm">Sélectionner tout</button>
               <button id="btnSendAnalysis" class="btn btn-primary btn-sm">Envoyer en production</button>
             </div>
@@ -850,6 +854,7 @@ async function initSubmissionView() {
 
   await refreshSubmissionView();
   setupSubmissionButtons();
+  setupMailImportButton();
 }
 
 async function handleSubmissionFiles(files) {
@@ -994,12 +999,6 @@ async function refreshSubmissionView() {
       btnAssignSub.onclick = (e) => { e.stopPropagation(); openAssignDropdown(btnAssignSub, full); };
       actions.appendChild(btnAssignSub);
 
-      const btnPlan = document.createElement("button");
-      btnPlan.className = "btn btn-primary";
-      btnPlan.textContent = "Planifier";
-      btnPlan.onclick = () => openPlanificationCalendar(full);
-      actions.appendChild(btnPlan);
-
       const btnDelete = document.createElement("button");
       btnDelete.className = "btn";
       btnDelete.textContent = "Supprimer";
@@ -1083,6 +1082,157 @@ function setupSubmissionButtons() {
   };
 
   updateSelectAllButton();
+}
+
+// ======================================================
+// IMPORT DEPUIS UN MAIL (ITEM 19)
+// ======================================================
+function setupMailImportButton() {
+  const btn = document.getElementById("btnImportFromMail");
+  if (!btn) return;
+
+  btn.onclick = () => openMailImportModal();
+}
+
+async function openMailImportModal() {
+  // Load IMAP settings if configured
+  let imapCfg = {};
+  try {
+    const r = await fetch("/api/settings/imap").then(res => res.json()).catch(() => ({}));
+    if (r.ok && r.settings) imapCfg = r.settings;
+  } catch(e) {}
+
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:10000;";
+
+  const modal = document.createElement("div");
+  modal.style.cssText = "background:white;border-radius:12px;padding:28px;min-width:400px;max-width:640px;width:94%;box-shadow:0 12px 50px rgba(0,0,0,.3);max-height:90vh;overflow-y:auto;";
+
+  modal.innerHTML = `
+    <h3 style="margin:0 0 18px;font-size:17px;font-weight:700;color:#111827;">📧 Importer depuis un mail</h3>
+    <div style="display:grid;grid-template-columns:1fr 80px;gap:8px;margin-bottom:10px;">
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">Serveur IMAP</label>
+        <input id="imap-host" type="text" class="settings-input settings-input-wide" placeholder="imap.gmail.com" value="${imapCfg.host || ''}" />
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">Port</label>
+        <input id="imap-port" type="number" class="settings-input" value="${imapCfg.port || 993}" style="width:70px;" />
+      </div>
+    </div>
+    <div style="margin-bottom:10px;">
+      <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">Email</label>
+      <input id="imap-email" type="email" class="settings-input settings-input-wide" placeholder="votre@email.com" value="${imapCfg.email || ''}" />
+    </div>
+    <div style="margin-bottom:10px;">
+      <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">Mot de passe</label>
+      <input id="imap-password" type="password" class="settings-input settings-input-wide" />
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+      <input type="checkbox" id="imap-ssl" ${imapCfg.useSsl !== false ? 'checked' : ''} />
+      <label for="imap-ssl" style="font-size:13px;color:#374151;">SSL / TLS</label>
+    </div>
+    <button id="imap-search-btn" class="btn btn-primary" style="width:100%;">🔍 Rechercher les mails récents</button>
+    <div id="imap-results" style="margin-top:16px;"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:16px;">
+      <button id="imap-close-btn" class="btn">Fermer</button>
+    </div>
+  `;
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  modal.querySelector("#imap-close-btn").onclick = () => overlay.remove();
+
+  modal.querySelector("#imap-search-btn").onclick = async () => {
+    const host = modal.querySelector("#imap-host").value.trim();
+    const port = parseInt(modal.querySelector("#imap-port").value) || 993;
+    const email = modal.querySelector("#imap-email").value.trim();
+    const password = modal.querySelector("#imap-password").value;
+    const useSsl = modal.querySelector("#imap-ssl").checked;
+
+    if (!host || !email || !password) {
+      showNotification("⚠️ Renseignez tous les champs IMAP", "warning");
+      return;
+    }
+
+    const resultsDiv = modal.querySelector("#imap-results");
+    const searchBtn = modal.querySelector("#imap-search-btn");
+    searchBtn.disabled = true;
+    searchBtn.textContent = "⏳ Recherche en cours...";
+    resultsDiv.innerHTML = '<div style="color:#6b7280;font-size:13px;">Connexion au serveur IMAP...</div>';
+
+    try {
+      const r = await fetch("/api/submission/list-mail-attachments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ host, port, email, password, useSsl })
+      }).then(res => res.json());
+
+      searchBtn.disabled = false;
+      searchBtn.textContent = "🔍 Rechercher les mails récents";
+
+      if (!r.ok) {
+        resultsDiv.innerHTML = `<div style="color:#dc2626;font-size:13px;">❌ ${r.error || "Erreur de connexion"}</div>`;
+        return;
+      }
+
+      const attachments = r.attachments || [];
+      if (attachments.length === 0) {
+        resultsDiv.innerHTML = '<div style="color:#6b7280;font-size:13px;">Aucune pièce jointe PDF trouvée dans les 48 dernières heures.</div>';
+        return;
+      }
+
+      resultsDiv.innerHTML = `<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:10px;">${attachments.length} pièce(s) jointe(s) PDF trouvée(s) :</div>`;
+
+      for (const att of attachments) {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:6px;gap:8px;";
+        const info = document.createElement("div");
+        info.style.cssText = "flex:1;min-width:0;";
+        info.innerHTML = `
+          <div style="font-size:13px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${att.attachmentName}">${att.attachmentName}</div>
+          <div style="font-size:11px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${att.subject} — ${att.from}</div>
+          <div style="font-size:10px;color:#9ca3af;">${new Date(att.date).toLocaleString('fr-FR')}</div>
+        `;
+        const btnImport = document.createElement("button");
+        btnImport.className = "btn btn-sm btn-primary";
+        btnImport.textContent = "📥 Importer";
+        btnImport.style.flexShrink = "0";
+        btnImport.onclick = async () => {
+          btnImport.disabled = true;
+          btnImport.textContent = "⏳ Import...";
+          try {
+            const ir = await fetch("/api/submission/import-mail-attachment", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ host, port, email, password, useSsl, messageId: att.messageId, attachmentName: att.attachmentName, destinationFolder: FOLDER_SOUMISSION })
+            }).then(res => res.json());
+            if (ir.ok) {
+              btnImport.textContent = "✅ Importé";
+              showNotification(`✅ ${ir.fileName} importé dans Soumission`, "success");
+              await refreshSubmissionView();
+            } else {
+              btnImport.disabled = false;
+              btnImport.textContent = "📥 Importer";
+              showNotification("❌ " + (ir.error || "Erreur"), "error");
+            }
+          } catch(err) {
+            btnImport.disabled = false;
+            btnImport.textContent = "📥 Importer";
+            showNotification("❌ " + err.message, "error");
+          }
+        };
+        row.appendChild(info);
+        row.appendChild(btnImport);
+        resultsDiv.appendChild(row);
+      }
+    } catch(err) {
+      searchBtn.disabled = false;
+      searchBtn.textContent = "🔍 Rechercher les mails récents";
+      resultsDiv.innerHTML = `<div style="color:#dc2626;font-size:13px;">❌ ${err.message}</div>`;
+    }
+  };
 }
 
 // ======================================================

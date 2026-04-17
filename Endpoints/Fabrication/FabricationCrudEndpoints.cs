@@ -1464,5 +1464,52 @@ app.MapPut("/api/config/mail-template-bat-papier", async (HttpContext ctx) =>
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
+// PUT /api/fabrication/statut-production — Met à jour le statut de production (valide/refuse)
+app.MapPut("/api/fabrication/statut-production", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        string userName = "Système";
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            try
+            {
+                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+                var parts = decoded.Split(':');
+                if (parts.Length >= 3)
+                {
+                    var users = BackendUtils.LoadUsers();
+                    var u = users.FirstOrDefault(x => x.Id == parts[0]);
+                    if (u != null) userName = u.Name;
+                }
+            }
+            catch { }
+        }
+
+        var json = await ctx.Request.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        var fileName = json.TryGetProperty("fileName", out var fnEl) ? fnEl.GetString() ?? "" : "";
+        var statut = json.TryGetProperty("statut", out var stEl) ? stEl.GetString() ?? "" : "";
+
+        if (string.IsNullOrWhiteSpace(fileName))
+            return Results.Json(new { ok = false, error = "fileName requis" });
+
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+        var filter = Builders<BsonDocument>.Filter.Eq("fileName", fileName.ToLowerInvariant());
+        var doc = fabCol.Find(filter).SortByDescending(x => x["_id"]).FirstOrDefault();
+        if (doc == null)
+            return Results.Json(new { ok = false, error = "Fiche introuvable" });
+
+        var update = Builders<BsonDocument>.Update.Set("statutProduction", statut);
+        fabCol.UpdateOne(filter, update);
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
     }
 }

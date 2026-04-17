@@ -196,12 +196,6 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
         if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
-        const btnPlan = document.createElement("button");
-        btnPlan.className = "btn btn-sm";
-        btnPlan.textContent = "📅 Planifier";
-        btnPlan.onclick = () => { if (window._openPlanificationCalendar) window._openPlanificationCalendar(full); };
-        if (isActionVisible(folderName, "planifier")) actions.appendChild(btnPlan);
-
         // Bouton Preflight conditionnel — visible uniquement si les tuiles Preflight sont masquées
         if (state.preflightColumnsHidden) {
           const btnPreflightDirect = document.createElement("button");
@@ -290,13 +284,6 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         if (isActionVisible(folderName, "ouvrirFichier")) actions.appendChild(btnOpen);
         if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
         if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
-
-        // Planning button — opens the planning dialog
-        const btnPlan = document.createElement("button");
-        btnPlan.className = "btn btn-sm";
-        btnPlan.textContent = "📅 Planifier";
-        btnPlan.onclick = () => { if (window._openPlanificationCalendar) window._openPlanificationCalendar(full); };
-        if (isActionVisible(folderName, "planifier")) actions.appendChild(btnPlan);
 
         // BAT button — ouvre popup BAT complet / BAT simple
         const btnBAT = document.createElement("button");
@@ -460,14 +447,21 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
               const tmpl = (tmplResp.ok && tmplResp.template) ? tmplResp.template : null;
               const fab = fabResp || {};
               if (tmpl && (tmpl.subject || tmpl.body)) {
+                const fmtDate = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '';
                 const rv = (s) => (s || '')
                   .replace(/\{\{numeroDossier\}\}/g, fab.numeroDossier || '')
-                  .replace(/\{\{nomClient\}\}/g, fab.nomClient || '')
+                  .replace(/\{\{nomClient\}\}/g, fab.nomClient || fab.client || '')
                   .replace(/\{\{nomFichier\}\}/g, job.name || '')
                   .replace(/\{\{typeTravail\}\}/g, fab.typeTravail || '')
                   .replace(/\{\{quantite\}\}/g, fab.quantite || '')
                   .replace(/\{\{operateur\}\}/g, fab.operateur || '')
-                  .replace(/\{\{dateLivraison\}\}/g, fab.dateLivraison ? new Date(fab.dateLivraison).toLocaleDateString('fr-FR') : '');
+                  .replace(/\{\{moteurImpression\}\}/g, fab.moteurImpression || '')
+                  .replace(/\{\{dateReception\}\}/g, fmtDate(fab.dateReception))
+                  .replace(/\{\{dateImpression\}\}/g, fmtDate(fab.dateImpression))
+                  .replace(/\{\{dateEnvoi\}\}/g, fmtDate(fab.dateEnvoi))
+                  .replace(/\{\{dateProductionFinitions\}\}/g, fmtDate(fab.dateProductionFinitions))
+                  .replace(/\{\{dateLivraison\}\}/g, fmtDate(fab.dateLivraison))
+                  .replace(/\{\{dateCreation\}\}/g, fmtDate(fab.dateCreation));
                 const to = tmpl.to || fab.mailClient || '';
                 window.open(`mailto:${to}?subject=${encodeURIComponent(rv(tmpl.subject))}&body=${encodeURIComponent(rv(tmpl.body))}`);
               } else {
@@ -492,14 +486,21 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
               const tmpl = (tmplResp.ok && tmplResp.template) ? tmplResp.template : null;
               const fab = fabResp || {};
               if (tmpl && (tmpl.subject || tmpl.body)) {
+                const fmtDate = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '';
                 const rv = (s) => (s || '')
                   .replace(/\{\{numeroDossier\}\}/g, fab.numeroDossier || '')
-                  .replace(/\{\{nomClient\}\}/g, fab.nomClient || '')
+                  .replace(/\{\{nomClient\}\}/g, fab.nomClient || fab.client || '')
                   .replace(/\{\{nomFichier\}\}/g, job.name || '')
                   .replace(/\{\{typeTravail\}\}/g, fab.typeTravail || '')
                   .replace(/\{\{quantite\}\}/g, fab.quantite || '')
                   .replace(/\{\{operateur\}\}/g, fab.operateur || '')
-                  .replace(/\{\{dateLivraison\}\}/g, fab.dateLivraison ? new Date(fab.dateLivraison).toLocaleDateString('fr-FR') : '');
+                  .replace(/\{\{moteurImpression\}\}/g, fab.moteurImpression || '')
+                  .replace(/\{\{dateReception\}\}/g, fmtDate(fab.dateReception))
+                  .replace(/\{\{dateImpression\}\}/g, fmtDate(fab.dateImpression))
+                  .replace(/\{\{dateEnvoi\}\}/g, fmtDate(fab.dateEnvoi))
+                  .replace(/\{\{dateProductionFinitions\}\}/g, fmtDate(fab.dateProductionFinitions))
+                  .replace(/\{\{dateLivraison\}\}/g, fmtDate(fab.dateLivraison))
+                  .replace(/\{\{dateCreation\}\}/g, fmtDate(fab.dateCreation));
                 const to = tmpl.to || fab.mailClient || '';
                 window.open(`mailto:${to}?subject=${encodeURIComponent(rv(tmpl.subject))}&body=${encodeURIComponent(rv(tmpl.body))}`);
               } else {
@@ -529,11 +530,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
         if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
-        // Finitions steps panel — loaded asynchronously
-        const finitionsPanel = document.createElement("div");
-        finitionsPanel.style.cssText = "margin-top:8px;border:1px solid #e5e7eb;border-radius:8px;background:#fafafa;padding:8px;";
-        card.appendChild(finitionsPanel);
-
+        // Bouton "Finitions" — ouvre un modal avec les étapes à cocher
         const STEP_LABELS = {
           embellissement: "✨ Embellissement",
           rainage:        "📐 Rainage",
@@ -544,134 +541,181 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           depart:         "🚪 Départ",
           livraison:      "🚚 Livraison"
         };
+        const STEP_ORDER = ["embellissement","rainage","pliage","faconnage","coupe","emballage","depart","livraison"];
 
         const jobId = encodeURIComponent(full);
         const jfn   = jobFileName;
 
-        // Load finition steps + fabrication data in parallel
+        // Mini progress badge on card (loaded async)
+        const finProgressBadge = document.createElement("div");
+        finProgressBadge.style.cssText = "font-size:10px;color:#6b7280;margin-top:2px;";
+        card.querySelector(".kanban-card-info-stack")?.appendChild(finProgressBadge);
+
+        // Load progress badge asynchronously
         Promise.all([
           fetch(`/api/fabrication/${jobId}/finition-steps`).then(r => r.json()).catch(() => ({ ok: false })),
           fetch("/api/fabrication?fileName=" + encodeURIComponent(jfn)).then(r => r.json()).catch(() => ({}))
         ]).then(([stepsData, fabData]) => {
           const steps = stepsData.ok ? stepsData.finitionSteps : {};
-
-          // Determine applicable steps from fab data
           const hasEnnob  = Array.isArray(fabData.ennoblissement) && fabData.ennoblissement.length > 0;
           const hasRainage = fabData.rainage === true;
           const hasPlis   = fabData.plis && fabData.plis.trim() !== "";
           const hasFaconnage = (fabData.faconnageBinding && fabData.faconnageBinding.trim() !== "") ||
                                (Array.isArray(fabData.faconnage) && fabData.faconnage.length > 0);
-
           const applicable = {
-            embellissement: hasEnnob,
-            rainage:        hasRainage,
-            pliage:         hasPlis,
-            faconnage:      hasFaconnage,
-            coupe:          true,
-            emballage:      true,
-            depart:         true,
-            livraison:      true
+            embellissement: hasEnnob, rainage: hasRainage, pliage: hasPlis,
+            faconnage: hasFaconnage, coupe: true, emballage: true, depart: true, livraison: true
+          };
+          const totalApplicable = STEP_ORDER.filter(k => applicable[k]).length;
+          const doneApplicable  = STEP_ORDER.filter(k => applicable[k] && steps[k]?.done).length;
+          if (totalApplicable > 0 && finProgressBadge) {
+            finProgressBadge.textContent = `Finitions : ${doneApplicable}/${totalApplicable}`;
+            finProgressBadge.style.color = doneApplicable === totalApplicable ? '#16a34a' : '#9a3412';
+          }
+        }).catch(() => {});
+
+        const btnFinitions = document.createElement("button");
+        btnFinitions.className = "btn btn-sm";
+        btnFinitions.textContent = "✂️ Finitions";
+        btnFinitions.title = "Voir et cocher les étapes de finition";
+        btnFinitions.onclick = async (e) => {
+          e.stopPropagation();
+
+          const [stepsData, fabData] = await Promise.all([
+            fetch(`/api/fabrication/${jobId}/finition-steps`).then(r => r.json()).catch(() => ({ ok: false })),
+            fetch("/api/fabrication?fileName=" + encodeURIComponent(jfn)).then(r => r.json()).catch(() => ({}))
+          ]);
+
+          const steps = stepsData.ok ? stepsData.finitionSteps : {};
+          const hasEnnob  = Array.isArray(fabData.ennoblissement) && fabData.ennoblissement.length > 0;
+          const hasRainage = fabData.rainage === true;
+          const hasPlis   = fabData.plis && fabData.plis.trim() !== "";
+          const hasFaconnage = (fabData.faconnageBinding && fabData.faconnageBinding.trim() !== "") ||
+                               (Array.isArray(fabData.faconnage) && fabData.faconnage.length > 0);
+          const applicable = {
+            embellissement: hasEnnob, rainage: hasRainage, pliage: hasPlis,
+            faconnage: hasFaconnage, coupe: true, emballage: true, depart: true, livraison: true
           };
 
-          finitionsPanel.innerHTML = '<div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Étapes finitions</div>';
+          const overlay = document.createElement("div");
+          overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:10000;";
 
-          const allApplicableDone = Object.entries(applicable).every(([k, isApplicable]) => {
-            if (!isApplicable) return true;
-            return steps[k]?.done === true;
-          });
+          const modal = document.createElement("div");
+          modal.style.cssText = "background:white;border-radius:12px;padding:24px;min-width:340px;max-width:500px;width:90%;box-shadow:0 10px 40px rgba(0,0,0,.3);max-height:90vh;overflow-y:auto;";
 
-          Object.keys(STEP_LABELS).forEach(key => {
-            const isApplicable = applicable[key];
+          const title = document.createElement("div");
+          title.style.cssText = "font-size:16px;font-weight:700;color:#111827;margin-bottom:4px;";
+          title.textContent = "✂️ Étapes de finition";
+          const subTitle = document.createElement("div");
+          subTitle.style.cssText = "font-size:12px;color:#6b7280;margin-bottom:16px;";
+          subTitle.textContent = fabData.numeroDossier ? `Dossier N° ${fabData.numeroDossier}` : "";
+          modal.appendChild(title);
+          modal.appendChild(subTitle);
+
+          const stepsList = document.createElement("div");
+          stepsList.style.cssText = "display:flex;flex-direction:column;gap:8px;";
+
+          let previousStepDone = true; // first step always unlocked
+
+          STEP_ORDER.forEach((key, idx) => {
+            if (!applicable[key]) return; // only show applicable finitions
             const stepData = steps[key] || {};
-            const isDone = isApplicable ? stepData.done === true : true; // non-applicable = auto done
+            const isDone = stepData.done === true;
 
             const row = document.createElement("div");
-            row.style.cssText = "display:flex;align-items:flex-start;gap:6px;padding:3px 0;font-size:11px;";
+            row.style.cssText = `display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:8px;border:1px solid ${isDone ? '#bbf7d0' : '#e5e7eb'};background:${isDone ? '#f0fdf4' : '#fff'};`;
 
-            if (!isApplicable) {
-              row.innerHTML = `<span style="color:#9ca3af;text-decoration:line-through;">${STEP_LABELS[key]} (N/A)</span>`;
-            } else {
-              const cb = document.createElement("input");
-              cb.type = "checkbox";
-              cb.checked = stepData.done === true;
-              cb.disabled = readOnly;
-              cb.style.cssText = "margin-top:2px;flex-shrink:0;cursor:pointer;";
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = isDone;
+            cb.disabled = readOnly || !previousStepDone; // sequential validation
+            cb.style.cssText = "margin-top:3px;flex-shrink:0;width:16px;height:16px;cursor:pointer;accent-color:#16a34a;";
 
-              const labelDiv = document.createElement("div");
-              labelDiv.style.cssText = "flex:1;";
+            const labelDiv = document.createElement("div");
+            labelDiv.style.cssText = "flex:1;";
 
-              const nameSpan = document.createElement("span");
-              nameSpan.style.cssText = isDone ? "color:#16a34a;font-weight:600;" : "color:#374151;";
-              nameSpan.textContent = STEP_LABELS[key];
-              labelDiv.appendChild(nameSpan);
+            const nameSpan = document.createElement("div");
+            nameSpan.style.cssText = `font-size:13px;font-weight:${isDone ? '600' : '500'};color:${isDone ? '#16a34a' : previousStepDone ? '#111827' : '#9ca3af'};`;
+            nameSpan.textContent = STEP_LABELS[key];
+            if (!previousStepDone) nameSpan.title = "Validez l'étape précédente d'abord";
+            labelDiv.appendChild(nameSpan);
 
-              if (isDone && stepData.doneAt) {
-                const ts = document.createElement("div");
-                ts.style.cssText = "color:#6b7280;font-size:10px;";
-                const dt = new Date(stepData.doneAt);
-                ts.textContent = `${stepData.doneBy || ""} — ${dt.toLocaleDateString('fr-FR')} ${dt.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'})}`;
-                labelDiv.appendChild(ts);
-              }
-
-              // Extra fields
-              if (key === "emballage" && isDone && stepData.conditionnement) {
-                const cond = document.createElement("div");
-                cond.style.cssText = "color:#4b5563;font-size:10px;";
-                cond.textContent = `Conditionnement: ${stepData.conditionnement}`;
-                labelDiv.appendChild(cond);
-              }
-              if (key === "livraison" && isDone && stepData.tracking) {
-                const trk = document.createElement("div");
-                trk.style.cssText = "color:#4b5563;font-size:10px;";
-                trk.textContent = `Suivi: ${stepData.tracking}`;
-                labelDiv.appendChild(trk);
-              }
-
-              if (!readOnly) {
-                cb.onchange = async (e) => {
-                  e.stopPropagation();
-                  const newDone = cb.checked;
-                  let conditionnement = null;
-                  let tracking = null;
-
-                  if (key === "emballage" && newDone) {
-                    conditionnement = prompt("Conditionnement (obligatoire) :");
-                    if (!conditionnement || conditionnement.trim() === "") {
-                      cb.checked = false;
-                      return;
-                    }
-                  }
-                  if (key === "livraison" && newDone) {
-                    tracking = prompt("Numéro de suivi (optionnel) :");
-                  }
-
-                  const body = { step: key, done: newDone };
-                  if (conditionnement) body.conditionnement = conditionnement;
-                  if (tracking) body.tracking = tracking;
-
-                  const authHeader = authToken || "";
-                  const r = await fetch(`/api/fabrication/${jobId}/finition-step`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + authHeader },
-                    body: JSON.stringify(body)
-                  }).then(res => res.json()).catch(() => ({ ok: false }));
-
-                  if (r.ok) {
-                    // Reload the card
-                    await refreshKanban();
-                  } else {
-                    cb.checked = !newDone;
-                    showNotification("❌ " + (r.error || "Erreur"), "error");
-                  }
-                };
-              }
-
-              row.appendChild(cb);
-              row.appendChild(labelDiv);
+            if (isDone && stepData.doneAt) {
+              const ts = document.createElement("div");
+              ts.style.cssText = "color:#6b7280;font-size:11px;margin-top:2px;";
+              const dt = new Date(stepData.doneAt);
+              ts.textContent = `${stepData.doneBy || ""} — ${dt.toLocaleDateString('fr-FR')} ${dt.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'})}`;
+              labelDiv.appendChild(ts);
             }
-            finitionsPanel.appendChild(row);
+            if (key === "emballage" && isDone && stepData.conditionnement) {
+              const cond = document.createElement("div");
+              cond.style.cssText = "color:#4b5563;font-size:11px;";
+              cond.textContent = `Conditionnement: ${stepData.conditionnement}`;
+              labelDiv.appendChild(cond);
+            }
+            if (key === "livraison" && isDone && stepData.tracking) {
+              const trk = document.createElement("div");
+              trk.style.cssText = "color:#4b5563;font-size:11px;";
+              trk.textContent = `Suivi: ${stepData.tracking}`;
+              labelDiv.appendChild(trk);
+            }
+
+            if (!readOnly && previousStepDone) {
+              cb.onchange = async (ev) => {
+                ev.stopPropagation();
+                const newDone = cb.checked;
+                let conditionnement = null;
+                let tracking = null;
+
+                if (key === "emballage" && newDone) {
+                  conditionnement = prompt("Conditionnement (obligatoire) :");
+                  if (!conditionnement || conditionnement.trim() === "") { cb.checked = false; return; }
+                }
+                if (key === "livraison" && newDone) {
+                  tracking = prompt("Numéro de suivi (optionnel) :");
+                }
+
+                const body = { step: key, done: newDone };
+                if (conditionnement) body.conditionnement = conditionnement;
+                if (tracking) body.tracking = tracking;
+
+                const r = await fetch(`/api/fabrication/${jobId}/finition-step`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (authToken || "") },
+                  body: JSON.stringify(body)
+                }).then(res => res.json()).catch(() => ({ ok: false }));
+
+                if (r.ok) {
+                  overlay.remove();
+                  await refreshKanban();
+                } else {
+                  cb.checked = !newDone;
+                  showNotification("❌ " + (r.error || "Erreur"), "error");
+                }
+              };
+            }
+
+            row.appendChild(cb);
+            row.appendChild(labelDiv);
+            stepsList.appendChild(row);
+
+            previousStepDone = isDone;
           });
-        }).catch(() => {});
+
+          modal.appendChild(stepsList);
+
+          const btnClose = document.createElement("button");
+          btnClose.className = "btn btn-sm";
+          btnClose.textContent = "Fermer";
+          btnClose.style.cssText = "margin-top:16px;width:100%;";
+          btnClose.onclick = () => overlay.remove();
+          modal.appendChild(btnClose);
+
+          overlay.appendChild(modal);
+          overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+          document.body.appendChild(overlay);
+        };
+        if (isActionVisible(folderName, "finitions")) actions.appendChild(btnFinitions);
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3 || currentUser.profile === 4)) {
           const btnTerminee = document.createElement("button");

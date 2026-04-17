@@ -124,6 +124,7 @@ app.MapNotificationEndpoints();
 app.MapDossiersEndpoints();
 app.MapSettingsEndpoints(recyclePath);
 app.MapReportsEndpoints();
+app.MapMailImportEndpoints();
 
 // 5. Routes /pro
 app.MapGet("/pro", (HttpContext ctx) =>
