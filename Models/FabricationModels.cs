@@ -111,6 +111,9 @@ public record FabricationSheet
 
     // ── Étapes finitions ─────────────────────────────────
     public FinitionSteps? FinitionSteps { get; init; }
+
+    // ── Statut de production (validé/refusé par opérateur) ──
+    public string? StatutProduction { get; init; }
 }
 
 public class FabricationInput

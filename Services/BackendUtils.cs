@@ -695,7 +695,8 @@ public static class BackendUtils
                     };
                 }).ToList()
                 : null,
-            FinitionSteps = BsonDocToFinitionSteps(d)
+            FinitionSteps = BsonDocToFinitionSteps(d),
+            StatutProduction = GetNullableString(d, "statutProduction")
         };
     }
 

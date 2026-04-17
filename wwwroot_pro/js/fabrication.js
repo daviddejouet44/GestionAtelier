@@ -532,11 +532,11 @@ export async function openFabrication(fullPath) {
   fabRemove.onclick=async()=>{
     if(!fabCurrentFileName)return;if(!confirm('Retirer du planning ?'))return;
     const resp=await fetch('/api/delivery?fileName='+encodeURIComponent(fabCurrentFileName),{method:'DELETE'}).then(r=>r.json()).catch(()=>({ok:false}));
-    if(!resp.ok){alert('Erreur');return;}
+    if(!resp.ok){showNotification('Erreur','error');return;}
     delete deliveriesByPath[fabCurrentFileName];delete deliveriesByPath[fabCurrentFileName+'_time'];
     if(calendar)calendar.refetchEvents();if(submissionCalendar)submissionCalendar.refetchEvents();
     if(window._refreshKanban)await window._refreshKanban();if(window._updateGlobalAlert)window._updateGlobalAlert();
-    alert('Retiré du planning');
+    showNotification('✅ Retiré du planning','success');
   };
   updateCouvertureVisibility();updateRainageAuto();
   const nfEl2=gEl('nombreFeuilles');if(!nfEl2||!nfEl2._manuallyEdited)updateNombreFeuilles();

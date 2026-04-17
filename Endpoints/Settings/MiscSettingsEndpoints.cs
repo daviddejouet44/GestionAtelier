@@ -884,5 +884,45 @@ app.MapPost("/api/settings/finition-icons", async (HttpContext ctx) =>
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
+// GET /api/settings/imap — Récupère la config IMAP
+app.MapGet("/api/settings/imap", () =>
+{
+    try
+    {
+        var cfg = MongoDbHelper.GetSettings<ImapSettings>("imapSettings");
+        return Results.Json(new { ok = true, settings = cfg ?? new ImapSettings() });
     }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// PUT /api/settings/imap — Enregistre la config IMAP (admin only)
+app.MapPut("/api/settings/imap", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (!string.IsNullOrEmpty(token))
+        {
+            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            var parts = decoded.Split(':');
+            if (parts.Length < 3 || parts[2] != "3")
+                return Results.Json(new { ok = false, error = "Admin only" });
+        }
+        var cfg = await ctx.Request.ReadFromJsonAsync<ImapSettings>();
+        if (cfg == null) return Results.Json(new { ok = false, error = "Payload invalide" });
+        MongoDbHelper.UpsertSettings("imapSettings", cfg);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+    }
+}
+
+public class ImapSettings
+{
+    public string Host { get; set; } = "";
+    public int Port { get; set; } = 993;
+    public string Email { get; set; } = "";
+    public bool UseSsl { get; set; } = true;
 }

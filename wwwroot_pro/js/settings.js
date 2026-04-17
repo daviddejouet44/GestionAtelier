@@ -55,6 +55,7 @@ export async function initSettingsView() {
         <button class="settings-tab" data-tab="jdf-config">JDF</button>
         <button class="settings-tab" data-tab="form-config">Fiche de production</button>
         <button class="settings-tab" data-tab="logo">Logos/Images</button>
+        <button class="settings-tab" data-tab="imap-config">Import email (IMAP)</button>
         <button class="settings-tab" data-tab="logs">Logs</button>
       </div>
       <div class="settings-panel" id="settings-panel-accounts"></div>
@@ -78,6 +79,7 @@ export async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-jdf-config"></div>
       <div class="settings-panel hidden" id="settings-panel-form-config"></div>
       <div class="settings-panel hidden" id="settings-panel-logo"></div>
+      <div class="settings-panel hidden" id="settings-panel-imap-config"></div>
       <div class="settings-panel hidden" id="settings-panel-logs"></div>
     </div>
   `;
@@ -126,7 +128,51 @@ export async function loadSettingsPanel(tabName, panelEl) {
     case "jdf-config": await renderSettingsJdfConfig(panelEl); break;
     case "form-config": await renderSettingsFormConfig(panelEl); break;
     case "logo": await renderSettingsLogo(panelEl); break;
+    case "imap-config": await renderSettingsImapConfig(panelEl); break;
     case "logs": await renderSettingsLogs(panelEl); break;
   }
   panelEl._loaded = true;
+}
+
+async function renderSettingsImapConfig(panel) {
+  let cfg = {};
+  try {
+    const r = await fetch('/api/settings/imap').then(res => res.json()).catch(() => ({}));
+    if (r.ok && r.settings) cfg = r.settings;
+  } catch(e) {}
+
+  panel.innerHTML = `
+    <h3>Import email (IMAP)</h3>
+    <p style='color:#6b7280;font-size:13px;margin-bottom:20px;'>Configurez les paramètres IMAP pour pré-remplir le formulaire d'import depuis un mail dans la vue Soumission.</p>
+    <div class='settings-section-card'>
+      <h4>Configuration serveur IMAP</h4>
+      <div style='display:grid;grid-template-columns:1fr 100px;gap:12px;margin-bottom:12px;'>
+        <div class='settings-form-group'><label>Serveur IMAP</label><input type='text' id='imap-cfg-host' value='${esc(cfg.host||"")}' class='settings-input settings-input-wide' placeholder='imap.gmail.com' /></div>
+        <div class='settings-form-group'><label>Port</label><input type='number' id='imap-cfg-port' value='${cfg.port||993}' class='settings-input' style='width:90px;' /></div>
+      </div>
+      <div class='settings-form-group' style='margin-bottom:12px;'>
+        <label>Email (compte par défaut)</label>
+        <input type='email' id='imap-cfg-email' value='${esc(cfg.email||"")}' class='settings-input settings-input-wide' placeholder='votre@email.com' />
+      </div>
+      <div style='display:flex;align-items:center;gap:8px;margin-bottom:16px;'>
+        <input type='checkbox' id='imap-cfg-ssl' ${cfg.useSsl!==false?'checked':''} />
+        <label for='imap-cfg-ssl' style='font-size:13px;color:#374151;'>Connexion SSL/TLS</label>
+      </div>
+      <button id='imap-cfg-save' class='btn btn-primary'>Enregistrer la configuration IMAP</button>
+    </div>
+  `;
+
+  panel.querySelector('#imap-cfg-save').onclick = async () => {
+    const host = panel.querySelector('#imap-cfg-host').value.trim();
+    const port = parseInt(panel.querySelector('#imap-cfg-port').value)||993;
+    const email = panel.querySelector('#imap-cfg-email').value.trim();
+    const useSsl = panel.querySelector('#imap-cfg-ssl').checked;
+    const r = await fetch('/api/settings/imap', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+      body: JSON.stringify({ host, port, email, useSsl })
+    }).then(res => res.json()).catch(() => ({ ok: false }));
+    if (r.ok) showNotification('✅ Configuration IMAP enregistrée', 'success');
+    else showNotification('❌ ' + (r.error||'Erreur'), 'error');
+  };
 }
