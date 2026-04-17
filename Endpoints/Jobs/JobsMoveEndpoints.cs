@@ -337,7 +337,24 @@ app.MapPost("/api/jobs/delete", async (HttpContext ctx) =>
             counter++;
         }
 
-        File.Move(fullPath, trashPath);
+        // Retry loop to handle file lock (e.g. preview handle still open)
+        Exception? lastMoveEx = null;
+        for (int i = 0; i < 3; i++)
+        {
+            try
+            {
+                File.Move(fullPath, trashPath);
+                lastMoveEx = null;
+                break;
+            }
+            catch (IOException ex) when (i < 2)
+            {
+                lastMoveEx = ex;
+                await Task.Delay(500);
+            }
+        }
+        if (lastMoveEx != null)
+            throw lastMoveEx;
 
         return Results.Json(new { ok = true, message = "Fichier supprimé avec succès" });
     }
@@ -454,8 +471,33 @@ app.MapPost("/api/jobs/archive", async (HttpContext ctx) =>
 
         Directory.CreateDirectory(archiveDir);
         var destPath = Path.Combine(archiveDir, fileName);
-        if (File.Exists(destPath)) File.Delete(destPath);
-        File.Move(fullPath, destPath);
+        if (File.Exists(destPath))
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                try { File.Delete(destPath); break; }
+                catch (IOException) when (i < 2) { await Task.Delay(500); }
+            }
+        }
+
+        // Retry loop to handle file lock
+        Exception? lastArchiveEx = null;
+        for (int i = 0; i < 3; i++)
+        {
+            try
+            {
+                File.Move(fullPath, destPath);
+                lastArchiveEx = null;
+                break;
+            }
+            catch (IOException ex) when (i < 2)
+            {
+                lastArchiveEx = ex;
+                await Task.Delay(500);
+            }
+        }
+        if (lastArchiveEx != null)
+            throw lastArchiveEx;
 
         return Results.Json(new { ok = true });
     }

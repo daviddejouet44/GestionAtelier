@@ -92,7 +92,6 @@ public static class FormConfigEndpoints
             new() { Id = "numeroDossier",   Label = "Numéro de dossier",       Type = "text",   Section = "Informations générales", Order = order++, Visible = true,  Required = true,  Width = "half" },
             new() { Id = "client",          Label = "Client",                  Type = "text",   Section = "Informations générales", Order = order++, Visible = true,  Width = "half" },
             new() { Id = "operateur",       Label = "Opérateur",               Type = "text",   Section = "Informations générales", Order = order++, Visible = true,  ReadOnly = true, Width = "half" },
-            new() { Id = "delai",           Label = "Délai",                   Type = "date",   Section = "Informations générales", Order = order++, Visible = true,  ReadOnly = true, Width = "half" },
             new() { Id = "typeTravail",     Label = "Type de travail",         Type = "select", Section = "Informations générales", Order = order++, Visible = true,  Required = true,  Width = "half" },
             new() { Id = "formatFini",      Label = "Format fini",             Type = "text",   Section = "Informations générales", Order = order++, Visible = true,  Width = "half" },
             new() { Id = "quantite",        Label = "Quantité",                Type = "number", Section = "Informations générales", Order = order++, Visible = true,  Width = "half" },
@@ -144,13 +143,9 @@ public static class FormConfigEndpoints
             // ── Section : Production ──────────────────────────────────────
             new() { Id = "nombreFeuilles",  Label = "Nombre de feuilles", Type = "calculated", Section = "Production", Order = order++, Visible = true, ReadOnly = true, Width = "half",
                     CalculationRule = "quantite/typeTravail" },
-            new() { Id = "dateDepart",      Label = "Date de départ",     Type = "date",        Section = "Production", Order = order++, Visible = true, Width = "half" },
-            new() { Id = "dateLivraison",   Label = "Date de livraison",  Type = "date",        Section = "Production", Order = order++, Visible = true, ReadOnly = false, Width = "half",
-                    CalculationRule = "dateDepart+delayHours" },
-            new() { Id = "planningMachine", Label = "Planning machine",   Type = "date",        Section = "Production", Order = order++, Visible = true, Width = "half" },
 
-            // ── Section : Passes ──────────────────────────────────────────
-            new() { Id = "passes", Label = "Passes (feuilles supplémentaires)", Type = "calculated", Section = "Passes", Order = order++, Visible = true, ReadOnly = true, Width = "full" },
+            // ── Section : Passes (regroupé dans Production) ───────────────
+            new() { Id = "passes", Label = "Passes (feuilles supplémentaires)", Type = "calculated", Section = "Production", Order = order++, Visible = true, ReadOnly = true, Width = "full" },
 
             // ── Section : Livraison ───────────────────────────────────────
             new() { Id = "retraitLivraison", Label = "Retrait / livraison", Type = "select", Section = "Livraison", Order = order++, Visible = true, Width = "half",
@@ -173,7 +168,6 @@ public static class FormConfigEndpoints
             "BAT",
             "Finitions",
             "Production",
-            "Passes",
             "Livraison",
             "Notes"
         };

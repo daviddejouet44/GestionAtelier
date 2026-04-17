@@ -38,6 +38,20 @@ export async function renderSettingsFabricationImports(panel) {
     if (r.ok) {
       showNotification("✅ Chemins d'import enregistrés", "success");
       if (msgEl) { msgEl.style.color = "#16a34a"; msgEl.textContent = "✅ Chemins enregistrés"; }
+      // Re-fetch and repopulate inputs so values are visible after save
+      try {
+        const resp2 = await fetch("/api/config/fabrication-imports", {
+          headers: { "Authorization": `Bearer ${authToken}` }
+        }).then(r2 => r2.json());
+        if (resp2.ok && resp2.config) {
+          const c = resp2.config;
+          panel.querySelector("#fi-media1").value = c.media1Path || '';
+          panel.querySelector("#fi-media2").value = c.media2Path || '';
+          panel.querySelector("#fi-media3").value = c.media3Path || '';
+          panel.querySelector("#fi-media4").value = c.media4Path || '';
+          panel.querySelector("#fi-typedoc").value = c.typeDocumentPath || '';
+        }
+      } catch(e) { /* ignore reload errors */ }
       panel._loaded = false;
     } else {
       if (msgEl) { msgEl.style.color = "#ef4444"; msgEl.textContent = "❌ " + (r.error || "Erreur"); }
