@@ -448,9 +448,10 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
               const fab = fabResp || {};
               if (tmpl && (tmpl.subject || tmpl.body)) {
                 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '';
+                const getClient = (f) => f.nomClient || f.client || '';
                 const rv = (s) => (s || '')
                   .replace(/\{\{numeroDossier\}\}/g, fab.numeroDossier || '')
-                  .replace(/\{\{nomClient\}\}/g, fab.nomClient || fab.client || '')
+                  .replace(/\{\{nomClient\}\}/g, getClient(fab))
                   .replace(/\{\{nomFichier\}\}/g, job.name || '')
                   .replace(/\{\{typeTravail\}\}/g, fab.typeTravail || '')
                   .replace(/\{\{quantite\}\}/g, fab.quantite || '')
@@ -487,9 +488,10 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
               const fab = fabResp || {};
               if (tmpl && (tmpl.subject || tmpl.body)) {
                 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '';
+                const getClient = (f) => f.nomClient || f.client || '';
                 const rv = (s) => (s || '')
                   .replace(/\{\{numeroDossier\}\}/g, fab.numeroDossier || '')
-                  .replace(/\{\{nomClient\}\}/g, fab.nomClient || fab.client || '')
+                  .replace(/\{\{nomClient\}\}/g, getClient(fab))
                   .replace(/\{\{nomFichier\}\}/g, job.name || '')
                   .replace(/\{\{typeTravail\}\}/g, fab.typeTravail || '')
                   .replace(/\{\{quantite\}\}/g, fab.quantite || '')

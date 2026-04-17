@@ -60,7 +60,7 @@ public static class MailImportEndpoints
                             From = msg.From?.ToString() ?? "",
                             Date = msg.Date.UtcDateTime,
                             AttachmentName = part.FileName,
-                            ContentId = part.ContentId ?? part.ContentTransferEncoding.ToString()
+                            ContentId = part.ContentId ?? Guid.NewGuid().ToString("N")
                         });
                     }
                 }
