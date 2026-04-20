@@ -340,6 +340,7 @@ function renderFabForm(config, opts) {
   jdfWrap.innerHTML='<button id="fab-generate-jdf" class="btn btn-primary" style="font-size:13px;padding:6px 16px;">📄 Générer JDF</button>'
     +'<span id="fab-jdf-msg" style="margin-left:10px;font-size:13px;"></span>';
   fabDynamicForm.appendChild(jdfWrap);
+} // end renderFabForm
 
 function populateFabForm(d, faconnageOptions) {
   function fmtDate(v){return fmtDate2(v);}

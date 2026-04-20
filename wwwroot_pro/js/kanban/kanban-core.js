@@ -193,6 +193,9 @@ export async function buildKanban() {
   // Filter bar (date + operator) — uses static #kanban-filter-bar from HTML
   buildKanbanFilterBar();
 
+  // Clear column cache so new settings (visibleActions, etc.) take effect immediately
+  state.columnCache = {};
+
   await refreshKanban();
 
   if (searchInput) searchInput.oninput = () => refreshKanban();

@@ -406,5 +406,55 @@ app.MapDelete("/api/header-banner", (HttpContext ctx) =>
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
+
+// ======================================================
+// IMAGE DASHBOARD
+// ======================================================
+app.MapGet("/api/dashboard-image", (HttpContext ctx) =>
+{
+    var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
+    string? found = null;
+    foreach (var ext in new[] { ".png", ".jpg", ".jpeg", ".gif", ".webp" })
+    {
+        var candidate = Path.Combine(dir, "dashboard-image" + ext);
+        if (File.Exists(candidate)) { found = candidate; break; }
+    }
+    if (found == null) return Results.NotFound();
+    var provider = new FileExtensionContentTypeProvider();
+    if (!provider.TryGetContentType(found, out var ct)) ct = "image/jpeg";
+    ctx.Response.Headers["Cache-Control"] = "no-cache, no-store";
+    return Results.File(File.OpenRead(found), ct);
+});
+
+app.MapPost("/api/dashboard-image", async (HttpContext ctx) =>
+{
+    try
+    {
+        var form = await ctx.Request.ReadFormAsync();
+        var file = form.Files.GetFile("file");
+        if (file == null || file.Length == 0) return Results.Json(new { ok = false, error = "Fichier manquant" });
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".gif" && ext != ".webp")
+            return Results.Json(new { ok = false, error = "Format non supporté" });
+        var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
+        Directory.CreateDirectory(dir);
+        DeleteImageFiles(dir, "dashboard-image");
+        var path = Path.Combine(dir, "dashboard-image" + ext);
+        using var stream = File.Create(path);
+        await file.CopyToAsync(stream);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapDelete("/api/dashboard-image", (HttpContext ctx) =>
+{
+    try
+    {
+        DeleteImageFiles(Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro"), "dashboard-image");
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
     }
 }
