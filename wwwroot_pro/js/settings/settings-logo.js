@@ -52,7 +52,7 @@ export async function renderSettingsLogo(panel) {
         <img src="/api/background-login?v=${Date.now()}" alt="Image de fond connexion" id="bg-login-current-img"
           style="max-height:100px;max-width:300px;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;" />
       </div>
-      <input type="file" id="bg-login-file-input" accept=".png,.jpg,.jpeg,.gif,.webp" class="settings-input" style="margin-bottom:8px;" />
+      <input type="file" id="bg-login-upload-input" accept=".png,.jpg,.jpeg,.gif,.webp" class="settings-input" style="margin-bottom:8px;" />
       <button id="bg-login-upload-btn" class="btn btn-primary">Enregistrer l'image de fond</button>
       <button id="bg-login-delete-btn" class="btn" style="margin-left:8px;color:#ef4444;border-color:#ef4444;">Supprimer</button>
       <div id="bg-login-msg" style="margin-top:8px;font-size:13px;"></div>
@@ -69,7 +69,7 @@ export async function renderSettingsLogo(panel) {
         <img src="/api/header-banner?v=${Date.now()}" alt="Image bandeau header" id="header-banner-current-img"
           style="max-height:60px;max-width:300px;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;" />
       </div>
-      <input type="file" id="header-banner-file-input" accept=".png,.jpg,.jpeg,.gif,.webp" class="settings-input" style="margin-bottom:8px;" />
+      <input type="file" id="header-banner-upload-input" accept=".png,.jpg,.jpeg,.gif,.webp" class="settings-input" style="margin-bottom:8px;" />
       <button id="header-banner-upload-btn" class="btn btn-primary">Enregistrer l'image de bandeau</button>
       <button id="header-banner-delete-btn" class="btn" style="margin-left:8px;color:#ef4444;border-color:#ef4444;">Supprimer</button>
       <div id="header-banner-msg" style="margin-top:8px;font-size:13px;"></div>

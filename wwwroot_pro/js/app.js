@@ -1173,7 +1173,18 @@ async function openMailImportModal() {
       searchBtn.textContent = "🔍 Rechercher les mails récents";
 
       if (!r.ok) {
-        resultsDiv.innerHTML = `<div style="color:#dc2626;font-size:13px;">❌ ${r.error || "Erreur de connexion"}</div>`;
+        const errMsg = r.error || "Erreur de connexion";
+        const isCredErr = errMsg.toLowerCase().includes("invalid") || errMsg.toLowerCase().includes("credentials") || errMsg.toLowerCase().includes("authentication");
+        let helpHtml = '';
+        if (isCredErr) {
+          helpHtml = `<div style="margin-top:10px;padding:10px 12px;background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;font-size:12px;color:#92400e;">
+            💡 <strong>Aide :</strong><br>
+            • <strong>Gmail :</strong> Utilisez un <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" style="color:#1d4ed8;">mot de passe d'application</a> (pas votre mot de passe habituel). Activez d'abord la validation en deux étapes.<br>
+            • <strong>Outlook/Office365 :</strong> Activez IMAP dans les paramètres de votre compte et utilisez votre mot de passe habituel ou un mot de passe d'application si l'authentification multifacteur est activée.<br>
+            • <strong>Serveur IMAP :</strong> Gmail → <code>imap.gmail.com:993</code>, Outlook → <code>outlook.office365.com:993</code>
+          </div>`;
+        }
+        resultsDiv.innerHTML = `<div style="color:#dc2626;font-size:13px;">❌ ${errMsg}</div>${helpHtml}`;
         return;
       }
 
