@@ -817,9 +817,43 @@ app.MapGet("/api/settings/passes-config", () =>
     catch { return Results.Json(new { ok = true, config = new PassesConfig() }); }
 });
 
+app.MapPost("/api/settings/passes-config", async (HttpContext ctx) =>
+    Results.Json(await SavePassesConfigAsync(ctx)));
+
+app.MapPut("/api/settings/passes-config", async (HttpContext ctx) =>
+    Results.Json(await SavePassesConfigAsync(ctx)));
+
 // ======================================================
 // SETTINGS — ICÔNES FINITIONS
 // ======================================================
+
+// ======================================================
+// SETTINGS — BAT PAPIER CONFIG
+// ======================================================
+
+app.MapGet("/api/settings/bat-papier-config", () =>
+{
+    try
+    {
+        var cfg = MongoDbHelper.GetSettings<BatPapierConfig>("batPapierConfig") ?? new BatPapierConfig();
+        return Results.Json(new { ok = true, config = cfg });
+    }
+    catch { return Results.Json(new { ok = true, config = new BatPapierConfig() }); }
+});
+
+app.MapPut("/api/settings/bat-papier-config", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var cfg = MongoDbHelper.GetSettings<BatPapierConfig>("batPapierConfig") ?? new BatPapierConfig();
+        if (json.TryGetProperty("enabled", out var en)) cfg.Enabled = en.GetBoolean();
+        if (json.TryGetProperty("hotfolder", out var hf)) cfg.Hotfolder = hf.GetString() ?? "";
+        MongoDbHelper.UpsertSettings("batPapierConfig", cfg);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
 
 app.MapGet("/api/settings/finition-icons", (HttpContext ctx) =>
 {
@@ -916,6 +950,24 @@ app.MapPut("/api/settings/imap", async (HttpContext ctx) =>
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
+    }
+
+    private static async Task<object> SavePassesConfigAsync(HttpContext ctx)
+    {
+        try
+        {
+            var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+            var cfg = new PassesConfig();
+            if (json.TryGetProperty("faconnage", out var f)) cfg.Faconnage = f.GetInt32();
+            if (json.TryGetProperty("pelliculageRecto", out var pr)) cfg.PelliculageRecto = pr.GetInt32();
+            if (json.TryGetProperty("pelliculageRectoVerso", out var prv)) cfg.PelliculageRectoVerso = prv.GetInt32();
+            if (json.TryGetProperty("rainage", out var r)) cfg.Rainage = r.GetInt32();
+            if (json.TryGetProperty("dorure", out var d)) cfg.Dorure = d.GetInt32();
+            if (json.TryGetProperty("dosCarreColle", out var dcc)) cfg.DosCarreColle = dcc.GetInt32();
+            MongoDbHelper.UpsertSettings("passesConfig", cfg);
+            return new { ok = true };
+        }
+        catch (Exception ex) { return new { ok = false, error = ex.Message }; }
     }
 }
 

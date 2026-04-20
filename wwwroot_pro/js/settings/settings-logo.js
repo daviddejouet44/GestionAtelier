@@ -74,6 +74,22 @@ export async function renderSettingsLogo(panel) {
       <button id="header-banner-delete-btn" class="btn" style="margin-left:8px;color:#ef4444;border-color:#ef4444;">Supprimer</button>
       <div id="header-banner-msg" style="margin-top:8px;font-size:13px;"></div>
     </div>
+    <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;" />
+
+    <h4 style="margin-bottom:8px;color:#374151;">Image du tableau de bord (Dashboard)</h4>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
+      Image affichée sur la page d'accueil du tableau de bord, à la place de l'iframe PrismaSync.
+    </p>
+    <div class="settings-form-group">
+      <div id="dashboard-img-preview" style="margin-bottom:12px;">
+        <img src="/api/dashboard-image?v=${Date.now()}" alt="Image dashboard" id="dashboard-current-img"
+          style="max-height:120px;max-width:400px;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;" />
+      </div>
+      <input type="file" id="dashboard-img-upload-input" accept=".png,.jpg,.jpeg,.gif,.webp" class="settings-input" style="margin-bottom:8px;" />
+      <button id="dashboard-img-upload-btn" class="btn btn-primary">Enregistrer l'image du dashboard</button>
+      <button id="dashboard-img-delete-btn" class="btn" style="margin-left:8px;color:#ef4444;border-color:#ef4444;">Supprimer</button>
+      <div id="dashboard-img-msg" style="margin-top:8px;font-size:13px;"></div>
+    </div>
   `;
 
   // Set up image error fallbacks via JS (no onerror inline attribute needed)
@@ -82,6 +98,7 @@ export async function renderSettingsLogo(panel) {
     ["#logo-login-current-img",   "Aucun logo de connexion configuré"],
     ["#bg-login-current-img",     "Aucune image de fond configurée"],
     ["#header-banner-current-img","Aucune image de bandeau configurée"],
+    ["#dashboard-current-img",    "Aucune image de dashboard configurée"],
   ];
   imgFallbacks.forEach(([sel, msg]) => {
     const img = panel.querySelector(sel);
@@ -251,4 +268,5 @@ export async function renderSettingsLogo(panel) {
       headerEl.style.backgroundPosition = "center";
     }
   });
+  makeImageHandler("dashboard-img-upload-btn", "dashboard-img-delete-btn", "dashboard-img-msg", "/api/dashboard-image", null);
 }

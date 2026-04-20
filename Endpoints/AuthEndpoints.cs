@@ -141,7 +141,7 @@ app.MapGet("/api/auth/users", (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var users = BackendUtils.LoadUsers();
-        var now = DateTime.Now;
+        var now = DateTime.UtcNow;
         var list = users.Select(u => new
         {
             id = u.Id,

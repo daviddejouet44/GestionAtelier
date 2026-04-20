@@ -218,6 +218,14 @@ public class PassesConfig
     public int DosCarreColle { get; set; } = 0;
 }
 
+public class BatPapierConfig
+{
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; } = false;
+    [JsonPropertyName("hotfolder")]
+    public string Hotfolder { get; set; } = "";
+}
+
 public class FormFieldConfig
 {
     [JsonPropertyName("id")]
