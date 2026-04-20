@@ -262,45 +262,85 @@ export async function initCalendar() {
     eventAllow: (_dropInfo, draggedEvent) => !draggedEvent.extendedProps?.locked,
     events: async (_info, success) => {
       try {
-        const list = await fetch("/api/delivery").then(r => r.json());
-        let filtered = list;
+        // Load delivery events (manual planning) + fabrication key-date events
+        const [deliveryList, fabEventsResp] = await Promise.all([
+          fetch("/api/delivery").then(r => r.json()).catch(() => []),
+          fetch("/api/fabrication/events", { headers: { 'Authorization': `Bearer ${authToken}` } })
+            .then(r => r.json()).catch(() => ({ ok: false, events: [] }))
+        ]);
 
-        // Filter by current view mode
-        if (_planningViewMode === 'machine') {
-          // Only show events for selected machine (use URL param or first machine)
-          const machineFilter = document.getElementById("planning-machine-filter")?.value || "";
-          if (machineFilter) {
-            // Load fab data for each job to filter by machine
-            const withMachine = await Promise.all(filtered.map(async x => {
-              try {
-                const fiche = await fetch('/api/fabrication?fileName=' + encodeURIComponent(fnKey(x.fullPath || '')), {
-                  headers: { 'Authorization': `Bearer ${authToken}` }
-                }).then(r => r.json());
-                return { x, machine: fiche?.moteurImpression || fiche?.machine || '' };
-              } catch(e) { return { x, machine: '' }; }
-            }));
-            filtered = withMachine.filter(wm => wm.machine === machineFilter).map(wm => wm.x);
-          }
-        } else if (_planningViewMode === 'operator') {
-          const myLogin = (() => {
+        const fabEvents = (fabEventsResp.ok && Array.isArray(fabEventsResp.events)) ? fabEventsResp.events : [];
+
+        // Get current user login for operator filter
+        const myLogin = (() => {
+          try {
+            const token = authToken;
+            if (!token) return '';
+            const decoded = atob(token);
+            return decoded.split(':')[1] || '';
+          } catch(e) { return ''; }
+        })();
+
+        // Get machine filter value
+        const machineFilter = document.getElementById("planning-machine-filter")?.value || "";
+
+        // Build events from fabrication key dates based on view mode
+        const fabCalEvents = fabEvents
+          .filter(fe => {
+            if (_planningViewMode === 'global') return fe.type === 'envoi';
+            if (_planningViewMode === 'machine') {
+              if (fe.type !== 'impression') return false;
+              if (machineFilter && fe.moteurImpression !== machineFilter) return false;
+              return true;
+            }
+            if (_planningViewMode === 'operator') {
+              if (fe.type !== 'impression') return false;
+              if (myLogin && fe.operateur && fe.operateur !== myLogin) return false;
+              return true;
+            }
+            return false;
+          })
+          .map(fe => {
+            const colorMap = {
+              envoi:      { bg: '#3b82f6', bc: '#2563eb', tc: '#ffffff' },
+              impression: { bg: '#8b5cf6', bc: '#7c3aed', tc: '#ffffff' },
+              finitions:  { bg: '#f59e0b', bc: '#d97706', tc: '#ffffff' }
+            };
+            const c = colorMap[fe.type] || { bg: '#6b7280', bc: '#4b5563', tc: '#ffffff' };
+            return {
+              title: fe.title,
+              start: fe.date,
+              allDay: true,
+              backgroundColor: c.bg,
+              borderColor: c.bc,
+              textColor: c.tc,
+              editable: false,
+              extendedProps: { fullPath: fe.fullPath, isFabEvent: true, fabType: fe.type }
+            };
+          });
+
+        // For non-global views, delivery events can still show (they are manually planned)
+        let filtered = deliveryList;
+        if (_planningViewMode === 'machine' && machineFilter) {
+          const withMachine = await Promise.all(filtered.map(async x => {
             try {
-              const token = authToken;
-              if (!token) return '';
-              const decoded = atob(token);
-              return decoded.split(':')[0] || '';
-            } catch(e) { return ''; }
-          })();
-          if (myLogin) {
-            const withOperator = await Promise.all(filtered.map(async x => {
-              try {
-                const fiche = await fetch('/api/fabrication?fileName=' + encodeURIComponent(fnKey(x.fullPath || '')), {
-                  headers: { 'Authorization': `Bearer ${authToken}` }
-                }).then(r => r.json());
-                return { x, operateur: fiche?.operateur || '' };
-              } catch(e) { return { x, operateur: '' }; }
-            }));
-            filtered = withOperator.filter(wo => !wo.operateur || wo.operateur === myLogin).map(wo => wo.x);
-          }
+              const fiche = await fetch('/api/fabrication?fileName=' + encodeURIComponent(fnKey(x.fullPath || '')), {
+                headers: { 'Authorization': `Bearer ${authToken}` }
+              }).then(r => r.json());
+              return { x, machine: fiche?.moteurImpression || fiche?.machine || '' };
+            } catch(e) { return { x, machine: '' }; }
+          }));
+          filtered = withMachine.filter(wm => wm.machine === machineFilter).map(wm => wm.x);
+        } else if (_planningViewMode === 'operator' && myLogin) {
+          const withOperator = await Promise.all(filtered.map(async x => {
+            try {
+              const fiche = await fetch('/api/fabrication?fileName=' + encodeURIComponent(fnKey(x.fullPath || '')), {
+                headers: { 'Authorization': `Bearer ${authToken}` }
+              }).then(r => r.json());
+              return { x, operateur: fiche?.operateur || '' };
+            } catch(e) { return { x, operateur: '' }; }
+          }));
+          filtered = withOperator.filter(wo => !wo.operateur || wo.operateur === myLogin).map(wo => wo.x);
         }
 
         const ev = filtered.map(x => {
@@ -328,6 +368,10 @@ export async function initCalendar() {
             extendedProps: { fullPath: full, bg, bc, tc, date: x.date, time: time, locked }
           };
         });
+
+        // Merge delivery events and fab key-date events
+        ev.push(...fabCalEvents);
+
         try {
           const schedResp = await fetch("/api/config/schedule", {
             headers: { "Authorization": `Bearer ${authToken}` }

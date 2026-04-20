@@ -51,8 +51,9 @@ export async function renderSettingsBatConfig(panel) {
   let mailTemplateStart = { to: "", subject: "Début de production — Dossier {{numeroDossier}}", body: "Bonjour,\n\nLa production de votre dossier {{numeroDossier}} vient de démarrer.\n\nCordialement," };
   let mailTemplateEnd = { to: "", subject: "Fin de production — Dossier {{numeroDossier}}", body: "Bonjour,\n\nLa production de votre dossier {{numeroDossier}} est terminée.\n\nCordialement," };
   let mailTemplateBatPapier = { to: "", subject: "BAT Papier — Dossier {{numeroDossier}}", body: "Bonjour,\n\nVeuillez trouver ci-joint le BAT papier pour le dossier {{numeroDossier}}.\n\nCordialement," };
+  let batPapierCfg = { enabled: false, hotfolder: "" };
   try {
-    const [r1, r2, r3, r4, r5, r6, r7, r8] = await Promise.all([
+    const [r1, r2, r3, r4, r5, r6, r7, r8, r9] = await Promise.all([
       fetch("/api/config/integrations", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
       fetch("/api/config/bat-command").then(r => r.json()).catch(() => ({})),
       fetch("/api/config/hotfolder-routing").then(r => r.json()).catch(() => []),
@@ -60,7 +61,8 @@ export async function renderSettingsBatConfig(panel) {
       fetch("/api/config/bat-mail-template").then(r => r.json()).catch(() => ({})),
       fetch("/api/config/mail-template-production-start").then(r => r.json()).catch(() => ({})),
       fetch("/api/config/mail-template-production-end").then(r => r.json()).catch(() => ({})),
-      fetch("/api/config/mail-template-bat-papier").then(r => r.json()).catch(() => ({}))
+      fetch("/api/config/mail-template-bat-papier").then(r => r.json()).catch(() => ({})),
+      fetch("/api/settings/bat-papier-config", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({}))
     ]);
     if (r1.ok && r1.config) intCfg = r1.config;
     if (r2.ok) { batCmd = r2.command || ""; batAlertDelayHours = r2.batAlertDelayHours ?? 48; batSimpleDropletPath = r2.batSimpleDropletPath || ""; }
@@ -70,6 +72,7 @@ export async function renderSettingsBatConfig(panel) {
     if (r6.ok && r6.template) mailTemplateStart = r6.template;
     if (r7.ok && r7.template) mailTemplateEnd = r7.template;
     if (r8.ok && r8.template) mailTemplateBatPapier = r8.template;
+    if (r9.ok && r9.config) batPapierCfg = r9.config;
   } catch(e) { /* use defaults */ }
 
   const typeOptions = types.map(t => `<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join("");
@@ -87,6 +90,21 @@ export async function renderSettingsBatConfig(panel) {
   panel.innerHTML = `
     <h3>Configuration BAT</h3>
     <p style="color:#6b7280;font-size:13px;margin-bottom:24px;">Paramétrez l'ensemble du workflow BAT : chemins de travail, routage hotfolder et commandes.</p>
+
+    <div class="settings-section-card">
+      <h4>BAT Papier</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">Activez et configurez le workflow BAT Papier (impression physique d'un justificatif).</p>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <input type="checkbox" id="bat-papier-enabled" ${batPapierCfg.enabled ? 'checked' : ''} />
+        <label for="bat-papier-enabled" style="font-size:14px;font-weight:500;color:#374151;">Activer le BAT Papier</label>
+      </div>
+      <div class="settings-form-group" style="margin-bottom:16px;">
+        <label>Hotfolder BAT Papier</label>
+        <input type="text" id="bat-papier-hotfolder" value="${esc(batPapierCfg.hotfolder || '')}" class="settings-input settings-input-wide" placeholder="Ex: C:\\FluxAtelier\\BATPapier" />
+        <p style="color:#6b7280;font-size:12px;margin-top:4px;">Dossier dans lequel le PDF est déposé pour impression BAT Papier.</p>
+      </div>
+      <button id="bat-papier-cfg-save" class="btn btn-primary">Enregistrer la configuration BAT Papier</button>
+    </div>
 
     <div class="settings-section-card">
       <h4>Workflow BAT</h4>
@@ -218,6 +236,19 @@ export async function renderSettingsBatConfig(panel) {
       </div>
     </div>
   `;
+
+  // BAT Papier config save
+  panel.querySelector("#bat-papier-cfg-save").onclick = async () => {
+    const enabled = panel.querySelector("#bat-papier-enabled").checked;
+    const hotfolder = panel.querySelector("#bat-papier-hotfolder").value.trim();
+    const r = await fetch("/api/settings/bat-papier-config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ enabled, hotfolder })
+    }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (r.ok) showNotification("✅ Configuration BAT Papier enregistrée", "success");
+    else showNotification("❌ " + (r.error || "Erreur"), "error");
+  };
 
   // Workflow BAT save
   panel.querySelector("#int-save").onclick = async () => {

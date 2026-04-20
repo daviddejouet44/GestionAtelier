@@ -1511,5 +1511,62 @@ app.MapPut("/api/fabrication/statut-production", async (HttpContext ctx) =>
     }
 });
 
+// ======================================================
+// FABRICATION — CALENDAR EVENTS (dates clés → planning)
+// ======================================================
+app.MapGet("/api/fabrication/events", () =>
+{
+    try
+    {
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+        // Get all fabrication docs that have at least one key date set
+        var filter = Builders<BsonDocument>.Filter.Or(
+            Builders<BsonDocument>.Filter.Exists("dateEnvoi"),
+            Builders<BsonDocument>.Filter.Exists("dateImpression"),
+            Builders<BsonDocument>.Filter.Exists("dateProductionFinitions")
+        );
+        var docs = fabCol.Find(filter).ToList();
+
+        var events = new List<object>();
+        foreach (var doc in docs)
+        {
+            var fileName = doc.Contains("fileName") ? doc["fileName"].AsString : "";
+            var fullPath = doc.Contains("fullPath") ? doc["fullPath"].AsString : "";
+            var numeroDossier = doc.Contains("numeroDossier") && doc["numeroDossier"] != BsonNull.Value ? doc["numeroDossier"].AsString : "";
+            var client = doc.Contains("client") && doc["client"] != BsonNull.Value ? doc["client"].AsString : "";
+            var moteurImpression = doc.Contains("moteurImpression") && doc["moteurImpression"] != BsonNull.Value ? doc["moteurImpression"].AsString : "";
+            var operateur = doc.Contains("operateur") && doc["operateur"] != BsonNull.Value ? doc["operateur"].AsString : "";
+            var title = !string.IsNullOrWhiteSpace(numeroDossier) ? $"#{numeroDossier} {client}" : fileName;
+
+            if (doc.Contains("dateEnvoi") && doc["dateEnvoi"] != BsonNull.Value)
+            {
+                try {
+                    var dt = doc["dateEnvoi"].ToUniversalTime();
+                    events.Add(new { type = "envoi", date = dt.ToString("yyyy-MM-dd"), title = $"📤 Envoi: {title}", fileName, fullPath, moteurImpression, operateur });
+                } catch { }
+            }
+            if (doc.Contains("dateImpression") && doc["dateImpression"] != BsonNull.Value)
+            {
+                try {
+                    var dt = doc["dateImpression"].ToUniversalTime();
+                    events.Add(new { type = "impression", date = dt.ToString("yyyy-MM-dd"), title = $"🖨️ Impression: {title}", fileName, fullPath, moteurImpression, operateur });
+                } catch { }
+            }
+            if (doc.Contains("dateProductionFinitions") && doc["dateProductionFinitions"] != BsonNull.Value)
+            {
+                try {
+                    var dt = doc["dateProductionFinitions"].ToUniversalTime();
+                    events.Add(new { type = "finitions", date = dt.ToString("yyyy-MM-dd"), title = $"✂️ Finitions: {title}", fileName, fullPath, moteurImpression, operateur });
+                } catch { }
+            }
+        }
+        return Results.Json(new { ok = true, events });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message, events = new object[0] });
+    }
+});
+
     }
 }
