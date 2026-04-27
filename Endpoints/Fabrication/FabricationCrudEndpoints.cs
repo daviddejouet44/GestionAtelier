@@ -1537,26 +1537,32 @@ app.MapGet("/api/fabrication/events", () =>
             var moteurImpression = doc.Contains("moteurImpression") && doc["moteurImpression"] != BsonNull.Value ? doc["moteurImpression"].AsString : "";
             var operateur = doc.Contains("operateur") && doc["operateur"] != BsonNull.Value ? doc["operateur"].AsString : "";
             var title = !string.IsNullOrWhiteSpace(numeroDossier) ? $"#{numeroDossier} {client}" : fileName;
+            int tempsProduitMinutes = 0;
+            try {
+                if (doc.Contains("tempsProduitMinutes") && doc["tempsProduitMinutes"] != BsonNull.Value)
+                    tempsProduitMinutes = doc["tempsProduitMinutes"].ToInt32();
+            } catch { }
+            if (tempsProduitMinutes <= 0) tempsProduitMinutes = 30;
 
             if (doc.Contains("dateEnvoi") && doc["dateEnvoi"] != BsonNull.Value)
             {
                 try {
                     var dt = doc["dateEnvoi"].ToUniversalTime();
-                    events.Add(new { type = "envoi", date = dt.ToString("yyyy-MM-dd"), title = $"📤 Envoi: {title}", fileName, fullPath, moteurImpression, operateur });
+                    events.Add(new { type = "envoi", date = dt.ToString("yyyy-MM-dd"), title = $"📤 Envoi: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes });
                 } catch { }
             }
             if (doc.Contains("dateImpression") && doc["dateImpression"] != BsonNull.Value)
             {
                 try {
                     var dt = doc["dateImpression"].ToUniversalTime();
-                    events.Add(new { type = "impression", date = dt.ToString("yyyy-MM-dd"), title = $"🖨️ Impression: {title}", fileName, fullPath, moteurImpression, operateur });
+                    events.Add(new { type = "impression", date = dt.ToString("yyyy-MM-dd"), title = $"🖨️ Impression: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes });
                 } catch { }
             }
             if (doc.Contains("dateProductionFinitions") && doc["dateProductionFinitions"] != BsonNull.Value)
             {
                 try {
                     var dt = doc["dateProductionFinitions"].ToUniversalTime();
-                    events.Add(new { type = "finitions", date = dt.ToString("yyyy-MM-dd"), title = $"✂️ Finitions: {title}", fileName, fullPath, moteurImpression, operateur });
+                    events.Add(new { type = "finitions", date = dt.ToString("yyyy-MM-dd"), title = $"✂️ Finitions: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes });
                 } catch { }
             }
         }
@@ -1565,6 +1571,77 @@ app.MapGet("/api/fabrication/events", () =>
     catch (Exception ex)
     {
         return Results.Json(new { ok = false, error = ex.Message, events = new object[0] });
+    }
+});
+
+// ======================================================
+// ALERTS — RETARD DE PRODUCTION (dateImpression dépassée, hors Fin de production)
+// ======================================================
+app.MapGet("/api/alerts/production-delay", () =>
+{
+    try
+    {
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+        var today = DateTime.UtcNow.Date;
+        // Jobs with dateImpression in the past and not yet in Fin de production
+        var filter = Builders<BsonDocument>.Filter.And(
+            Builders<BsonDocument>.Filter.Exists("dateImpression"),
+            Builders<BsonDocument>.Filter.Ne("dateImpression", BsonNull.Value),
+            Builders<BsonDocument>.Filter.Lt("dateImpression", new BsonDateTime(today))
+        );
+        var docs = fabCol.Find(filter).ToList();
+
+        var grouped = new Dictionary<string, List<object>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var doc in docs)
+        {
+            // Skip jobs already finished
+            var statut = doc.Contains("statutProduction") && doc["statutProduction"] != BsonNull.Value
+                ? doc["statutProduction"].AsString : "";
+            if (string.Equals(statut, "Fin de production", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var fileName = doc.Contains("fileName") ? doc["fileName"].AsString : "";
+            var numeroDossier = doc.Contains("numeroDossier") && doc["numeroDossier"] != BsonNull.Value
+                ? doc["numeroDossier"].AsString : "";
+            var nomClient = doc.Contains("nomClient") && doc["nomClient"] != BsonNull.Value
+                ? doc["nomClient"].AsString : "";
+            var moteur = doc.Contains("moteurImpression") && doc["moteurImpression"] != BsonNull.Value
+                ? doc["moteurImpression"].AsString ?? "—" : "—";
+            if (string.IsNullOrWhiteSpace(moteur)) moteur = "—";
+
+            DateTime dateImpression;
+            try { dateImpression = doc["dateImpression"].ToUniversalTime(); }
+            catch { continue; }
+
+            var retardJours = (int)(today - dateImpression.Date).TotalDays;
+
+            var entry = (object)new
+            {
+                fileName,
+                numeroDossier,
+                nomClient,
+                moteur,
+                dateImpression = dateImpression.ToString("yyyy-MM-dd"),
+                retardJours,
+                statut
+            };
+
+            if (!grouped.ContainsKey(moteur))
+                grouped[moteur] = new List<object>();
+            grouped[moteur].Add(entry);
+        }
+
+        var result = grouped
+            .OrderBy(g => g.Key == "—" ? 1 : 0)
+            .ThenBy(g => g.Key)
+            .Select(g => new { moteur = g.Key, jobs = g.Value })
+            .ToList();
+
+        return Results.Json(new { ok = true, groups = result });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message, groups = new object[0] });
     }
 });
 

@@ -53,7 +53,56 @@ window._openPlanificationCalendar = openPlanificationCalendar;
 // UTILITAIRE — ALERTE GLOBALE
 // ======================================================
 async function updateGlobalAlert() {
-  if (globalAlert) globalAlert.style.display = "none";
+  if (!globalAlert) return;
+
+  const esc = (s) => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  try {
+    const [delayResp, batResp] = await Promise.all([
+      fetch("/api/alerts/production-delay").then(r => r.json()).catch(() => ({ ok: false, groups: [] })),
+      fetch("/api/alerts/bat-pending").then(r => r.json()).catch(() => [])
+    ]);
+
+    const delayGroups = (delayResp.ok && Array.isArray(delayResp.groups)) ? delayResp.groups : [];
+    const batAlerts = Array.isArray(batResp) ? batResp : [];
+
+    let html = "";
+
+    // Production delay alerts grouped by machine
+    if (delayGroups.length > 0) {
+      const groupsHtml = delayGroups.map(g => {
+        const jobsHtml = g.jobs.map(j => {
+          const dossier = j.numeroDossier ? `#${esc(j.numeroDossier)}` : esc(j.fileName);
+          const retard = j.retardJours === 1 ? "1 jour" : `${j.retardJours} jours`;
+          const titleAttr = esc(j.fileName) + (j.nomClient ? ' — ' + esc(j.nomClient) : '');
+          return `<span style="display:inline-block;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:1px 7px;font-size:11px;margin:1px 2px;color:#b91c1c;" title="${titleAttr}">⏰ ${dossier} (${retard})</span>`;
+        }).join('');
+        return `<div style="display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap;"><span style="font-size:11px;font-weight:700;color:#7f1d1d;white-space:nowrap;padding-top:2px;">🖨️ ${esc(g.moteur)} :</span>${jobsHtml}</div>`;
+      }).join('');
+      html += `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;margin-bottom:6px;">
+        <span style="font-size:12px;font-weight:700;color:#b91c1c;margin-right:8px;">⚠️ Retard de production</span>
+        <div style="margin-top:4px;display:flex;flex-direction:column;gap:4px;">${groupsHtml}</div>
+      </div>`;
+    }
+
+    // BAT pending alerts
+    if (batAlerts.length > 0) {
+      const batHtml = batAlerts.map(a => `<span style="display:inline-block;background:#fefce8;border:1px solid #fde68a;border-radius:4px;padding:1px 7px;font-size:11px;margin:1px 2px;color:#92400e;" title="${esc(a.fileName)}">${esc(a.fileName)} (${a.ageDays >= 1 ? a.ageDays + 'j' : a.ageHours + 'h'})</span>`).join('');
+      html += `<div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;">
+        <span style="font-size:12px;font-weight:700;color:#92400e;">📋 BAT en attente de validation (${batAlerts.length})</span>
+        <div style="margin-top:4px;">${batHtml}</div>
+      </div>`;
+    }
+
+    if (html) {
+      globalAlert.innerHTML = html;
+      globalAlert.style.cssText = "display:block;padding:8px 16px;background:transparent;";
+    } else {
+      globalAlert.style.display = "none";
+    }
+  } catch(e) {
+    globalAlert.style.display = "none";
+  }
 }
 
 // ======================================================
