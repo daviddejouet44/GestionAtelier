@@ -61,12 +61,23 @@ app.MapPost("/api/recycle/restore", (string fullPath, string destinationFolder) 
 {
     try
     {
+        var recycleFullPath = Path.GetFullPath(recyclePath);
         var src = Path.GetFullPath(fullPath);
+        // Ensure source is inside the recycle folder (prevents path traversal)
+        if (!src.StartsWith(recycleFullPath + Path.DirectorySeparatorChar) && src != recycleFullPath)
+            return Results.Json(new { ok = false, error = "Chemin source non autorisé." });
         if (!File.Exists(src))
             return Results.Json(new { ok = false, error = "Fichier introuvable dans la corbeille." });
 
         var root = BackendUtils.HotfoldersRoot();
-        var destDir = Path.Combine(root, destinationFolder);
+        // Sanitize destinationFolder: reject any path traversal attempts
+        var sanitized = destinationFolder.Replace("..", "").Trim().Trim(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (string.IsNullOrWhiteSpace(sanitized))
+            return Results.Json(new { ok = false, error = "Dossier de destination invalide." });
+        var destDir = Path.GetFullPath(Path.Combine(root, sanitized));
+        // Ensure destination stays within the hotfolders root
+        if (!destDir.StartsWith(Path.GetFullPath(root) + Path.DirectorySeparatorChar) && destDir != Path.GetFullPath(root))
+            return Results.Json(new { ok = false, error = "Dossier de destination non autorisé." });
         Directory.CreateDirectory(destDir);
 
         var dest = Path.Combine(destDir, Path.GetFileName(src));

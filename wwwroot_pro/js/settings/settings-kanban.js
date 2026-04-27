@@ -187,7 +187,9 @@ export async function renderSettingsKanbanColumns(panel) {
     if (r.ok) {
       showNotification("✅ Configuration Kanban enregistrée", "success");
       // Rebuild kanban to apply new action visibility settings
-      if (window._buildKanban) await window._buildKanban();
+      if (window._buildKanban) {
+        try { await window._buildKanban(); } catch(e) { /* kanban not currently visible */ }
+      }
     } else showNotification("❌ Erreur : " + (r.error || ""), "error");
   };
 

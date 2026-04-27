@@ -1381,14 +1381,18 @@ async function restoreFromRecycle(fullPath, fileName, sourceFolder) {
   overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;";
   const modal = document.createElement("div");
   modal.style.cssText = "background:#fff;border-radius:12px;padding:28px 32px;width:440px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,0.18);";
-  const opts = folderOptions.map(f => `<option value="${f.replace(/"/g,'&quot;')}" ${f===defaultFolder?'selected':''}>${f}</option>`).join('');
+  const escHtml = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const opts = folderOptions.map(f => {
+    const escaped = escHtml(f);
+    return `<option value="${escaped}" ${f===defaultFolder?'selected':''}>${escaped}</option>`;
+  }).join('');
   modal.innerHTML = `
     <h3 style="font-size:17px;font-weight:700;color:#111827;margin:0 0 6px;">Restaurer le fichier</h3>
-    <p style="font-size:13px;color:#6b7280;margin:0 0 18px;">${fileName.replace(/</g,'&lt;')}</p>
+    <p style="font-size:13px;color:#6b7280;margin:0 0 18px;">${escHtml(fileName)}</p>
     <div style="margin-bottom:16px;">
       <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">Dossier de destination</label>
       <select id="restore-folder-sel" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;">${opts}</select>
-      ${defaultFolder ? `<p style="font-size:11px;color:#6b7280;margin-top:4px;">📁 Dossier d'origine : <strong>${defaultFolder.replace(/</g,'&lt;')}</strong></p>` : ''}
+      ${defaultFolder ? `<p style="font-size:11px;color:#6b7280;margin-top:4px;">📁 Dossier d'origine : <strong>${escHtml(defaultFolder)}</strong></p>` : ''}
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button id="restore-cancel-btn" class="btn">Annuler</button>
