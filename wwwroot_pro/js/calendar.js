@@ -1,5 +1,5 @@
 // calendar.js — Calendrier FullCalendar (planification, soumission)
-import { authToken, deliveriesByPath, fnKey, normalizePath, FIN_PROD_FOLDER, daysDiffFromToday, showNotification, currentUser } from './core.js';
+import { authToken, deliveriesByPath, fnKey, normalizePath, FIN_PROD_FOLDER, daysDiffFromToday, showNotification, currentUser, esc } from './core.js';
 
 export let calendar = null;
 export let submissionCalendar = null;
@@ -134,6 +134,7 @@ function buildPlanningViewSwitcher(calendarEl) {
 
 async function applyPlanningView(calendarEl) {
   const finitionsEl = document.getElementById("planning-finitions-view");
+  const operatorEl = document.getElementById("planning-operator-view");
 
   if (_planningViewMode === 'finitions') {
     if (calendar) {
@@ -143,11 +144,28 @@ async function applyPlanningView(calendarEl) {
       finitionsEl.style.display = '';
       await buildFinitionsView(finitionsEl);
     }
+    if (operatorEl) operatorEl.style.display = 'none';
+    return;
+  }
+
+  if (_planningViewMode === 'operator') {
+    if (calendar) calendarEl.style.display = 'none';
+    if (finitionsEl) finitionsEl.style.display = 'none';
+    let opEl = operatorEl;
+    if (!opEl) {
+      opEl = document.createElement("div");
+      opEl.id = "planning-operator-view";
+      opEl.style.cssText = "padding:8px 0;";
+      calendarEl.parentNode?.appendChild(opEl);
+    }
+    opEl.style.display = '';
+    await buildOperatorView(opEl);
     return;
   }
 
   if (calendar) calendarEl.style.display = '';
   if (finitionsEl) finitionsEl.style.display = 'none';
+  if (operatorEl) operatorEl.style.display = 'none';
   calendar?.refetchEvents();
 }
 
@@ -213,6 +231,73 @@ async function buildFinitionsView(container) {
   } catch(err) {
     container.innerHTML = '<p style="color:#ef4444;">Erreur lors du chargement des finitions.</p>';
     console.error("buildFinitionsView error:", err);
+  }
+}
+
+// ======================================================
+// OPERATOR VIEW
+// ======================================================
+
+async function buildOperatorView(container) {
+  container.innerHTML = '<p style="color:#6b7280;font-size:13px;">Chargement...</p>';
+
+  try {
+    const list = await fetch("/api/delivery").then(r => r.json()).catch(() => []);
+
+    if (list.length === 0) {
+      container.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:40px;">Aucun job planifié.</p>';
+      return;
+    }
+
+    // Fetch fabrication data for all jobs to get their operator
+    const withFab = await Promise.all(list.map(async x => {
+      try {
+        const fiche = await fetch('/api/fabrication?fileName=' + encodeURIComponent(fnKey(x.fullPath || x.fileName || '')), {
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        }).then(r => r.json()).catch(() => ({}));
+        return { x, operateur: fiche?.operateur || '', numeroDossier: fiche?.numeroDossier || '', client: fiche?.client || '', locked: !!fiche?.locked };
+      } catch(e) { return { x, operateur: '', numeroDossier: '', client: '', locked: false }; }
+    }));
+
+    // Group by operator
+    const grouped = {};
+    for (const item of withFab) {
+      const op = item.operateur || '— Non assigné —';
+      if (!grouped[op]) grouped[op] = [];
+      grouped[op].push(item);
+    }
+
+    const sortedOps = Object.keys(grouped).sort((a, b) => {
+      if (a === '— Non assigné —') return 1;
+      if (b === '— Non assigné —') return -1;
+      return a.localeCompare(b);
+    });
+
+    let html = `<h3 style="margin-bottom:16px;font-size:16px;font-weight:600;">Planning par opérateur</h3>`;
+    for (const op of sortedOps) {
+      const jobs = grouped[op];
+      html += `<div style="margin-bottom:24px;">
+        <div style="font-size:14px;font-weight:700;color:#1e3a5f;padding:8px 12px;background:#e8f0fe;border-radius:8px;margin-bottom:10px;">👤 ${esc(op)} (${jobs.length})</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;">`;
+      for (const { x, numeroDossier, client, locked } of jobs) {
+        const fn = fnKey(x.fullPath || x.fileName || '');
+        const label = numeroDossier ? `#${numeroDossier}${client ? ' — ' + client : ''}` : fn;
+        const dateStr = x.date ? new Date(x.date + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : '—';
+        const bg = locked ? '#22c55e' : '#f9fafb';
+        const border = locked ? '#16a34a' : '#e5e7eb';
+        const textColor = locked ? '#fff' : '#111827';
+        html += `<div style="background:${bg};border:1px solid ${border};border-radius:8px;padding:10px 14px;min-width:140px;max-width:220px;cursor:pointer;" 
+          onclick="if(window._openFabrication)window._openFabrication(${JSON.stringify(normalizePath(x.fullPath || ''))})">
+          <div style="font-size:13px;font-weight:600;color:${textColor};">${locked ? '🔒 ' : ''}${esc(label)}</div>
+          <div style="font-size:12px;color:${locked ? '#d1fae5' : '#6b7280'};margin-top:4px;">📅 ${dateStr}${x.time && x.time !== '09:00' ? ' ' + esc(x.time) : ''}</div>
+        </div>`;
+      }
+      html += `</div></div>`;
+    }
+
+    container.innerHTML = html;
+  } catch(err) {
+    container.innerHTML = `<div style="color:#dc2626;">Erreur : ${esc(err.message)}</div>`;
   }
 }
 

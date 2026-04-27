@@ -241,9 +241,91 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       btnDelete.textContent = "Corbeille";
       btnDelete.onclick = () => { if (window._deleteFile) window._deleteFile(full); };
 
+      // Create mail buttons (shared across tiles, appended based on isActionVisible)
+      const btnMailDebut = (() => {
+        const btn = document.createElement("button");
+        btn.className = "btn btn-sm";
+        btn.textContent = "✉️ Mail début";
+        btn.title = "Envoyer mail de début de production";
+        btn.onclick = async (e) => {
+          e.stopPropagation();
+          try {
+            const [tmplResp, fabResp] = await Promise.all([
+              fetch("/api/config/mail-template-production-start").then(r => r.json()).catch(() => ({})),
+              fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName)).then(r => r.json()).catch(() => ({}))
+            ]);
+            const tmpl = (tmplResp.ok && tmplResp.template) ? tmplResp.template : null;
+            const fab = fabResp || {};
+            if (tmpl && (tmpl.subject || tmpl.body)) {
+              const fmtDate = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '';
+              const getClient = (f) => f.nomClient || f.client || '';
+              const rv = (s) => (s || '')
+                .replace(/\{\{numeroDossier\}\}/g, fab.numeroDossier || '')
+                .replace(/\{\{nomClient\}\}/g, getClient(fab))
+                .replace(/\{\{nomFichier\}\}/g, job.name || '')
+                .replace(/\{\{typeTravail\}\}/g, fab.typeTravail || '')
+                .replace(/\{\{quantite\}\}/g, fab.quantite || '')
+                .replace(/\{\{operateur\}\}/g, fab.operateur || '')
+                .replace(/\{\{moteurImpression\}\}/g, fab.moteurImpression || '')
+                .replace(/\{\{dateReception\}\}/g, fmtDate(fab.dateReception))
+                .replace(/\{\{dateImpression\}\}/g, fmtDate(fab.dateImpression))
+                .replace(/\{\{dateEnvoi\}\}/g, fmtDate(fab.dateEnvoi))
+                .replace(/\{\{dateProductionFinitions\}\}/g, fmtDate(fab.dateProductionFinitions))
+                .replace(/\{\{dateLivraison\}\}/g, fmtDate(fab.dateLivraison))
+                .replace(/\{\{dateCreation\}\}/g, fmtDate(fab.dateCreation));
+              const to = tmpl.to || fab.mailClient || '';
+              window.open(`mailto:${to}?subject=${encodeURIComponent(rv(tmpl.subject))}&body=${encodeURIComponent(rv(tmpl.body))}`);
+            } else {
+              showNotification("⚠️ Configurez le template 'Mail début de production' dans Paramétrage > Configuration BAT", "warning");
+            }
+          } catch(err) { showNotification("❌ " + err.message, "error"); }
+        };
+        return btn;
+      })();
+
+      const btnMailFin = (() => {
+        const btn = document.createElement("button");
+        btn.className = "btn btn-sm";
+        btn.textContent = "✉️ Mail fin";
+        btn.title = "Envoyer mail de fin de production";
+        btn.onclick = async (e) => {
+          e.stopPropagation();
+          try {
+            const [tmplResp, fabResp] = await Promise.all([
+              fetch("/api/config/mail-template-production-end").then(r => r.json()).catch(() => ({})),
+              fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName)).then(r => r.json()).catch(() => ({}))
+            ]);
+            const tmpl = (tmplResp.ok && tmplResp.template) ? tmplResp.template : null;
+            const fab = fabResp || {};
+            if (tmpl && (tmpl.subject || tmpl.body)) {
+              const fmtDate = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '';
+              const getClient = (f) => f.nomClient || f.client || '';
+              const rv = (s) => (s || '')
+                .replace(/\{\{numeroDossier\}\}/g, fab.numeroDossier || '')
+                .replace(/\{\{nomClient\}\}/g, getClient(fab))
+                .replace(/\{\{nomFichier\}\}/g, job.name || '')
+                .replace(/\{\{typeTravail\}\}/g, fab.typeTravail || '')
+                .replace(/\{\{quantite\}\}/g, fab.quantite || '')
+                .replace(/\{\{operateur\}\}/g, fab.operateur || '')
+                .replace(/\{\{moteurImpression\}\}/g, fab.moteurImpression || '')
+                .replace(/\{\{dateReception\}\}/g, fmtDate(fab.dateReception))
+                .replace(/\{\{dateImpression\}\}/g, fmtDate(fab.dateImpression))
+                .replace(/\{\{dateEnvoi\}\}/g, fmtDate(fab.dateEnvoi))
+                .replace(/\{\{dateProductionFinitions\}\}/g, fmtDate(fab.dateProductionFinitions))
+                .replace(/\{\{dateLivraison\}\}/g, fmtDate(fab.dateLivraison))
+                .replace(/\{\{dateCreation\}\}/g, fmtDate(fab.dateCreation));
+              const to = tmpl.to || fab.mailClient || '';
+              window.open(`mailto:${to}?subject=${encodeURIComponent(rv(tmpl.subject))}&body=${encodeURIComponent(rv(tmpl.body))}`);
+            } else {
+              showNotification("⚠️ Configurez le template 'Mail fin de production' dans Paramétrage > Configuration BAT", "warning");
+            }
+          } catch(err) { showNotification("❌ " + err.message, "error"); }
+        };
+        return btn;
+      })();
+
       if (folderName === "Début de production") {
         if (isActionVisible(folderName, "ouvrirFichier")) actions.appendChild(btnOpen);
-        if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
         if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
         // Bouton Preflight conditionnel — visible uniquement si les tuiles Preflight sont masquées
@@ -482,84 +564,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
-          // Mail début de production
-          const btnMailDebut = document.createElement("button");
-          btnMailDebut.className = "btn btn-sm";
-          btnMailDebut.textContent = "✉️ Mail début";
-          btnMailDebut.title = "Envoyer mail de début de production";
-          btnMailDebut.onclick = async (e) => {
-            e.stopPropagation();
-            try {
-              const [tmplResp, fabResp] = await Promise.all([
-                fetch("/api/config/mail-template-production-start").then(r => r.json()).catch(() => ({})),
-                fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName)).then(r => r.json()).catch(() => ({}))
-              ]);
-              const tmpl = (tmplResp.ok && tmplResp.template) ? tmplResp.template : null;
-              const fab = fabResp || {};
-              if (tmpl && (tmpl.subject || tmpl.body)) {
-                const fmtDate = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '';
-                const getClient = (f) => f.nomClient || f.client || '';
-                const rv = (s) => (s || '')
-                  .replace(/\{\{numeroDossier\}\}/g, fab.numeroDossier || '')
-                  .replace(/\{\{nomClient\}\}/g, getClient(fab))
-                  .replace(/\{\{nomFichier\}\}/g, job.name || '')
-                  .replace(/\{\{typeTravail\}\}/g, fab.typeTravail || '')
-                  .replace(/\{\{quantite\}\}/g, fab.quantite || '')
-                  .replace(/\{\{operateur\}\}/g, fab.operateur || '')
-                  .replace(/\{\{moteurImpression\}\}/g, fab.moteurImpression || '')
-                  .replace(/\{\{dateReception\}\}/g, fmtDate(fab.dateReception))
-                  .replace(/\{\{dateImpression\}\}/g, fmtDate(fab.dateImpression))
-                  .replace(/\{\{dateEnvoi\}\}/g, fmtDate(fab.dateEnvoi))
-                  .replace(/\{\{dateProductionFinitions\}\}/g, fmtDate(fab.dateProductionFinitions))
-                  .replace(/\{\{dateLivraison\}\}/g, fmtDate(fab.dateLivraison))
-                  .replace(/\{\{dateCreation\}\}/g, fmtDate(fab.dateCreation));
-                const to = tmpl.to || fab.mailClient || '';
-                window.open(`mailto:${to}?subject=${encodeURIComponent(rv(tmpl.subject))}&body=${encodeURIComponent(rv(tmpl.body))}`);
-              } else {
-                showNotification("⚠️ Configurez le template 'Mail début de production' dans Paramétrage > Configuration BAT", "warning");
-              }
-            } catch(err) { showNotification("❌ " + err.message, "error"); }
-          };
           if (isActionVisible(folderName, "mailDebutProduction")) actions.appendChild(btnMailDebut);
-
-          // Mail fin de production
-          const btnMailFin = document.createElement("button");
-          btnMailFin.className = "btn btn-sm";
-          btnMailFin.textContent = "✉️ Mail fin";
-          btnMailFin.title = "Envoyer mail de fin de production";
-          btnMailFin.onclick = async (e) => {
-            e.stopPropagation();
-            try {
-              const [tmplResp, fabResp] = await Promise.all([
-                fetch("/api/config/mail-template-production-end").then(r => r.json()).catch(() => ({})),
-                fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName)).then(r => r.json()).catch(() => ({}))
-              ]);
-              const tmpl = (tmplResp.ok && tmplResp.template) ? tmplResp.template : null;
-              const fab = fabResp || {};
-              if (tmpl && (tmpl.subject || tmpl.body)) {
-                const fmtDate = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '';
-                const getClient = (f) => f.nomClient || f.client || '';
-                const rv = (s) => (s || '')
-                  .replace(/\{\{numeroDossier\}\}/g, fab.numeroDossier || '')
-                  .replace(/\{\{nomClient\}\}/g, getClient(fab))
-                  .replace(/\{\{nomFichier\}\}/g, job.name || '')
-                  .replace(/\{\{typeTravail\}\}/g, fab.typeTravail || '')
-                  .replace(/\{\{quantite\}\}/g, fab.quantite || '')
-                  .replace(/\{\{operateur\}\}/g, fab.operateur || '')
-                  .replace(/\{\{moteurImpression\}\}/g, fab.moteurImpression || '')
-                  .replace(/\{\{dateReception\}\}/g, fmtDate(fab.dateReception))
-                  .replace(/\{\{dateImpression\}\}/g, fmtDate(fab.dateImpression))
-                  .replace(/\{\{dateEnvoi\}\}/g, fmtDate(fab.dateEnvoi))
-                  .replace(/\{\{dateProductionFinitions\}\}/g, fmtDate(fab.dateProductionFinitions))
-                  .replace(/\{\{dateLivraison\}\}/g, fmtDate(fab.dateLivraison))
-                  .replace(/\{\{dateCreation\}\}/g, fmtDate(fab.dateCreation));
-                const to = tmpl.to || fab.mailClient || '';
-                window.open(`mailto:${to}?subject=${encodeURIComponent(rv(tmpl.subject))}&body=${encodeURIComponent(rv(tmpl.body))}`);
-              } else {
-                showNotification("⚠️ Configurez le template 'Mail fin de production' dans Paramétrage > Configuration BAT", "warning");
-              }
-            } catch(err) { showNotification("❌ " + err.message, "error"); }
-          };
           if (isActionVisible(folderName, "mailFinProduction")) actions.appendChild(btnMailFin);
 
           const btnImpTerminee = document.createElement("button");
@@ -857,11 +862,33 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           if (isActionVisible(folderName, "archiver")) actions.appendChild(btnArchiver);
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
+
+        // Async: check locked state and update card visual
+        (async () => {
+          try {
+            const fabData = await fetch('/api/fabrication?fileName=' + encodeURIComponent(jobFileName), {
+              headers: { 'Authorization': `Bearer ${authToken}` }
+            }).then(r => r.json()).catch(() => ({}));
+            if (fabData?.locked) {
+              card.draggable = false;
+              card.style.opacity = '0.6';
+              card.style.filter = 'grayscale(0.5)';
+              card.style.pointerEvents = 'none';
+              const btnT = card.querySelector('.btn-primary');
+              if (btnT && btnT.textContent.includes('Terminé')) {
+                btnT.disabled = true;
+                btnT.textContent = '🔒 Verrouillé';
+              }
+            }
+          } catch(e) { /* ignore */ }
+        })();
       } else {
         if (isActionVisible(folderName, "ouvrirFichier")) actions.appendChild(btnOpen);
         if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
         if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          if (isActionVisible(folderName, "mailDebutProduction")) actions.appendChild(btnMailDebut);
+          if (isActionVisible(folderName, "mailFinProduction")) actions.appendChild(btnMailFin);
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
       }

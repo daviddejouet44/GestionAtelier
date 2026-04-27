@@ -109,7 +109,10 @@ let _coverProducts = [];
 let _sheetCalcRules = {};
 let _deliveryDelayHours = 48;
 let _passesConfig = { faconnage:0, pelliculageRecto:0, pelliculageRectoVerso:0, rainage:0, dorure:0, dosCarreColle:0 };
-let _keyDatesConfig = { sendOffsetHours: 48, finitionsOffsetHours: 72, impressionOffsetHours: 96 };
+let _keyDatesConfig = {
+  livraison: { sendOffsetHours: 48, finitionsOffsetHours: 72, impressionOffsetHours: 96 },
+  retrait: { sendOffsetHours: 0, finitionsOffsetHours: 24, impressionOffsetHours: 48 }
+};
 let _grammageTimeRules = [];
 let _jdfEnabled = false;
 
@@ -148,9 +151,13 @@ function updateKeyDates() {
   const envEl=document.getElementById('fab-date-envoi');
   const finEl=document.getElementById('fab-date-finitions');
   const impEl=document.getElementById('fab-date-impression');
-  if(envEl) envEl.value=new Date(recTs-_keyDatesConfig.sendOffsetHours*3600000).toISOString().split('T')[0];
-  if(finEl) finEl.value=new Date(recTs-_keyDatesConfig.finitionsOffsetHours*3600000).toISOString().split('T')[0];
-  if(impEl) impEl.value=new Date(recTs-_keyDatesConfig.impressionOffsetHours*3600000).toISOString().split('T')[0];
+  // Use retrait offsets if "Retrait imprimerie" is selected, else livraison offsets
+  const rlEl=document.getElementById('fab-retrait-livraison');
+  const isRetrait=rlEl&&(rlEl.value||'').toLowerCase().includes('retrait');
+  const cfg=isRetrait?_keyDatesConfig.retrait:_keyDatesConfig.livraison;
+  if(envEl) envEl.value=new Date(recTs-cfg.sendOffsetHours*3600000).toISOString().split('T')[0];
+  if(finEl) finEl.value=new Date(recTs-cfg.finitionsOffsetHours*3600000).toISOString().split('T')[0];
+  if(impEl) impEl.value=new Date(recTs-cfg.impressionOffsetHours*3600000).toISOString().split('T')[0];
 }
 
 function updateTempsProduction() {
@@ -432,7 +439,7 @@ function attachFormHandlers(fabCurrentFileName) {
     const id=e.target.id;
     if(id===gElId('quantite'))updateNombreFeuilles();
     if(id===gElId('dateDepart'))updateDateLivraison();
-    if(id==='fab-date-reception')updateKeyDates();
+    if(id==='fab-date-reception'||id==='fab-retrait-livraison')updateKeyDates();
     if(id===gElId('nombreFeuilles')){const el=gEl('nombreFeuilles');if(el)el._manuallyEdited=true;}
     if(id==='fab-temps-produit'){const el=document.getElementById('fab-temps-produit');if(el)el.dataset.manual=el.value?'1':'';}
     if(id===gElId('moteurImpression')||id===gElId('media1'))updateTempsProduction();
@@ -525,7 +532,7 @@ export async function openFabrication(fullPath) {
     fetch('/api/settings/delivery-delay').then(r=>r.json()).catch(()=>({delayHours:48})),
     fetch('/api/settings/passes-config').then(r=>r.json()).catch(()=>({config:{}})),
     fetchFormConfig(),
-    fetch('/api/settings/key-dates').then(r=>r.json()).catch(()=>({sendOffsetHours:48,finitionsOffsetHours:72,impressionOffsetHours:96})),
+    fetch('/api/config/key-dates-offsets',{headers:{'Authorization':'Bearer '+authToken}}).then(r=>r.json()).catch(()=>({config:{livraisonEnvoiHeures:48,livraisonFinitionsHeures:72,livraisonImpressionHeures:96,retraitEnvoiHeures:0,retraitFinitionsHeures:24,retraitImpressionHeures:48}})),
     fetch('/api/settings/grammage-time-config').then(r=>r.json()).catch(()=>({rules:[]})),
     fetch('/api/settings/jdf-config').then(r=>r.json()).catch(()=>({enabled:false,fields:[]})),
     fetch('/api/settings/binding-options').then(r=>r.json()).catch(()=>({ok:false,options:[]})),
@@ -537,7 +544,11 @@ export async function openFabrication(fullPath) {
   _sheetCalcRules=(sheetCalcRulesResp&&sheetCalcRulesResp.rules)?sheetCalcRulesResp.rules:{};
   _deliveryDelayHours=(deliveryDelayResp&&deliveryDelayResp.delayHours)?deliveryDelayResp.delayHours:48;
   _passesConfig=(passesConfigResp&&passesConfigResp.config)?passesConfigResp.config:{faconnage:0,pelliculageRecto:0,pelliculageRectoVerso:0,rainage:0,dorure:0,dosCarreColle:0};
-  _keyDatesConfig={sendOffsetHours:keyDatesResp.sendOffsetHours??48,finitionsOffsetHours:keyDatesResp.finitionsOffsetHours??72,impressionOffsetHours:keyDatesResp.impressionOffsetHours??96};
+  const kdc=(keyDatesResp&&keyDatesResp.config)?keyDatesResp.config:{};
+  _keyDatesConfig={
+    livraison:{sendOffsetHours:kdc.livraisonEnvoiHeures??48,finitionsOffsetHours:kdc.livraisonFinitionsHeures??72,impressionOffsetHours:kdc.livraisonImpressionHeures??96},
+    retrait:{sendOffsetHours:kdc.retraitEnvoiHeures??0,finitionsOffsetHours:kdc.retraitFinitionsHeures??24,impressionOffsetHours:kdc.retraitImpressionHeures??48}
+  };
   _grammageTimeRules=Array.isArray(grammageTimeResp.rules)?grammageTimeResp.rules:[];
   _jdfEnabled=!!(jdfConfigResp.enabled);
   const config=formConfig||{fields:[],sections:[]};
@@ -550,11 +561,13 @@ export async function openFabrication(fullPath) {
   if(fabStageBanner&&stageData&&stageData.ok&&stageData.folder){fabStageBanner.textContent='📍 Étape actuelle : '+stageData.folder;fabStageBanner.style.display='block';if(stageData.fullPath)fabCurrentPath=normalizePath(stageData.fullPath);}
   fabRemove.onclick=async()=>{
     if(!fabCurrentFileName)return;if(!confirm('Retirer du planning ?'))return;
-    const resp=await fetch('/api/delivery?fileName='+encodeURIComponent(fabCurrentFileName),{method:'DELETE'}).then(r=>r.json()).catch(()=>({ok:false}));
-    if(!resp.ok){showNotification('Erreur','error');return;}
+    // Try to delete delivery entry (may not exist if job was not in manual planning)
+    await fetch('/api/delivery?fileName='+encodeURIComponent(fabCurrentFileName),{method:'DELETE',headers:{'Authorization':'Bearer '+authToken}}).catch(()=>{});
     delete deliveriesByPath[fabCurrentFileName];delete deliveriesByPath[fabCurrentFileName+'_time'];
-    // Also mark as excluded from fab calendar events
-    await fetch('/api/fabrication/exclude-planning',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({fileName:fabCurrentFileName,exclude:true})}).catch(()=>{});
+    // Mark as excluded from fab calendar events (removes key-date events from calendar)
+    await fetch('/api/fabrication/exclude-planning',{method:'PUT',headers:{'Content-Type':'application/json','Authorization':'Bearer '+authToken},body:JSON.stringify({fileName:fabCurrentFileName,exclude:true})}).catch(()=>{});
+    // Clear the planning date field in the form
+    const delaiEl=gEl('delai');if(delaiEl){delaiEl.value='';delete delaiEl._manuallyEdited;}
     if(calendar)calendar.refetchEvents();if(submissionCalendar)submissionCalendar.refetchEvents();
     if(window._refreshKanban)await window._refreshKanban();if(window._updateGlobalAlert)window._updateGlobalAlert();
     showNotification('✅ Retiré du planning','success');

@@ -12,7 +12,7 @@ namespace GestionAtelier.Services;
 
 public static class PdfUtils
 {
-    public static Document CreateFabricationPdf(FabricationSheet s, FabricationFormConfig? formConfig = null)
+    public static Document CreateFabricationPdf(FabricationSheet s, FabricationFormConfig? formConfig = null, string? baseUrl = null)
     {
         var config = formConfig ?? FormConfigEndpoints.DefaultConfig;
 
@@ -36,7 +36,9 @@ public static class PdfUtils
                         // QR Code pointing to finitions page
                         row.ConstantItem(80).AlignRight().Column(bc =>
                         {
-                            var qrValue = $"/pro/finitions.html?job={Uri.EscapeDataString(s.FileName ?? s.NumeroDossier ?? "")}";
+                            var jobId = Uri.EscapeDataString(s.FileName ?? s.NumeroDossier ?? "");
+                            var qrBase = !string.IsNullOrWhiteSpace(baseUrl) ? baseUrl.TrimEnd('/') : "";
+                            var qrValue = $"{qrBase}/pro/finitions.html?job={jobId}";
                             try
                             {
                                 using var qrGenerator = new QRCodeGenerator();
