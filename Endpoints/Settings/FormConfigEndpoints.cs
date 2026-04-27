@@ -39,6 +39,11 @@ public static class FormConfigEndpoints
                         saved.Sections.Add(s);
                 }
 
+                // Migration: move mailValidationDevis to "Informations générales" if still in "BAT"
+                var devisField = saved.Fields.FirstOrDefault(f => f.Id == "mailValidationDevis");
+                if (devisField != null && devisField.Section == "BAT")
+                    devisField.Section = "Informations générales";
+
                 return Results.Json(saved);
             }
             catch (Exception ex)
@@ -142,7 +147,7 @@ public static class FormConfigEndpoints
             new() { Id = "bat",               Label = "BAT",                    Type = "select",      Section = "BAT", Order = order++, Visible = true, Width = "half",
                     Options = new List<string> { "Non", "Numérique", "Papier" } },
             new() { Id = "mailValidationBat", Label = "Mail validation BAT",   Type = "file-import", Section = "BAT", Order = order++, Visible = true, Width = "half" },
-            new() { Id = "mailValidationDevis",Label = "Mail validation devis", Type = "file-import", Section = "BAT", Order = order++, Visible = true, Width = "half" },
+            new() { Id = "mailValidationDevis",Label = "Mail validation devis", Type = "file-import", Section = "Informations générales", Order = order++, Visible = true, Width = "half" },
 
             // ── Section : Finitions ───────────────────────────────────────
             new() { Id = "rainage",         Label = "Rainage",          Type = "checkbox",    Section = "Finitions", Order = order++, Visible = true, Width = "half" },

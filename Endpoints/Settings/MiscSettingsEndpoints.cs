@@ -205,6 +205,108 @@ app.MapPut("/api/settings/faconnage-options", async (HttpContext ctx) =>
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
+// ── GET /api/settings/binding-options ────────────────────────────────────
+app.MapGet("/api/settings/binding-options", () =>
+{
+    try
+    {
+        var cfg = MongoDbHelper.GetSettings<SimpleStringListSettings>("bindingOptions");
+        var list = cfg?.Items ?? new List<string> { "2 piques métal","2 piques à plat","2 piques booklet","Dos carré collé","Dos carré piqué","2 piques calendrier (à l'italienne)","Wire'O" };
+        return Results.Json(new { ok = true, options = list });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ── PUT /api/settings/binding-options ────────────────────────────────────
+app.MapPut("/api/settings/binding-options", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        if (!json.TryGetProperty("options", out var optEl) || optEl.ValueKind != JsonValueKind.Array)
+            return Results.Json(new { ok = false, error = "options[] requis" });
+
+        var items = optEl.EnumerateArray().Select(e => e.GetString()?.Trim()).Where(s => !string.IsNullOrEmpty(s)).Distinct().ToList();
+        MongoDbHelper.UpsertSettings("bindingOptions", new SimpleStringListSettings { Items = items! });
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ── GET /api/settings/folds-options ──────────────────────────────────────
+app.MapGet("/api/settings/folds-options", () =>
+{
+    try
+    {
+        var cfg = MongoDbHelper.GetSettings<SimpleStringListSettings>("foldsOptions");
+        var list = cfg?.Items ?? new List<string> { "Pli accordéon","Pli roulé","Pli fenêtre" };
+        return Results.Json(new { ok = true, options = list });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ── PUT /api/settings/folds-options ──────────────────────────────────────
+app.MapPut("/api/settings/folds-options", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        if (!json.TryGetProperty("options", out var optEl) || optEl.ValueKind != JsonValueKind.Array)
+            return Results.Json(new { ok = false, error = "options[] requis" });
+
+        var items = optEl.EnumerateArray().Select(e => e.GetString()?.Trim()).Where(s => !string.IsNullOrEmpty(s)).Distinct().ToList();
+        MongoDbHelper.UpsertSettings("foldsOptions", new SimpleStringListSettings { Items = items! });
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ── GET /api/settings/output-options ─────────────────────────────────────
+app.MapGet("/api/settings/output-options", () =>
+{
+    try
+    {
+        var cfg = MongoDbHelper.GetSettings<SimpleStringListSettings>("outputOptions");
+        var list = cfg?.Items ?? new List<string> { "À plat","Assemblée" };
+        return Results.Json(new { ok = true, options = list });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ── PUT /api/settings/output-options ─────────────────────────────────────
+app.MapPut("/api/settings/output-options", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        if (!json.TryGetProperty("options", out var optEl) || optEl.ValueKind != JsonValueKind.Array)
+            return Results.Json(new { ok = false, error = "options[] requis" });
+
+        var items = optEl.EnumerateArray().Select(e => e.GetString()?.Trim()).Where(s => !string.IsNullOrEmpty(s)).Distinct().ToList();
+        MongoDbHelper.UpsertSettings("outputOptions", new SimpleStringListSettings { Items = items! });
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
 app.MapGet("/api/config/integrations", (HttpContext ctx) =>
 {
     try

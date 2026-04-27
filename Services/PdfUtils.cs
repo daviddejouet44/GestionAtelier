@@ -4,6 +4,7 @@ using System.Linq;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
+using QRCoder;
 using GestionAtelier.Models;
 using GestionAtelier.Endpoints.Settings;
 
@@ -32,15 +33,19 @@ public static class PdfUtils
                     hdr.Item().Row(row =>
                     {
                         row.RelativeItem().AlignCenter().Text("Fiche de Fabrication").FontSize(24).SemiBold();
-                        // Barcode / identifiant visuel — always shown
-                        row.ConstantItem(120).AlignRight().Column(bc =>
+                        // QR Code pointing to finitions page
+                        row.ConstantItem(80).AlignRight().Column(bc =>
                         {
-                            if (!string.IsNullOrWhiteSpace(s.NumeroDossier))
+                            var qrValue = $"/pro/finitions.html?job={Uri.EscapeDataString(s.FileName ?? s.NumeroDossier ?? "")}";
+                            try
                             {
-                                bc.Item().Border(2).BorderColor("#1a1a2e").Padding(6).AlignCenter()
-                                    .Text(s.NumeroDossier).FontSize(10).SemiBold().FontFamily("Courier New");
-                                bc.Item().AlignCenter().Text("◼◻◼◻◼◻◼◻◼◻◼◻◼◻◼◻◼◻◼◻").FontSize(6).FontColor("#1a1a2e");
+                                using var qrGenerator = new QRCodeGenerator();
+                                var qrData = qrGenerator.CreateQrCode(qrValue, QRCodeGenerator.ECCLevel.M);
+                                using var qrCode = new PngByteQRCode(qrData);
+                                var qrBytes = qrCode.GetGraphic(4);
+                                bc.Item().Width(70).Height(70).Image(qrBytes);
                             }
+                            catch { /* QR code generation failure is non-fatal */ }
                         });
                     });
                     if (!string.IsNullOrWhiteSpace(s.NumeroDossier))

@@ -2,6 +2,12 @@ using System.Text.Json.Serialization;
 
 namespace GestionAtelier.Models;
 
+public class SimpleStringListSettings
+{
+    [JsonPropertyName("items")]
+    public List<string> Items { get; set; } = new();
+}
+
 public class ScheduleSettings
 {
     [JsonPropertyName("workStart")]

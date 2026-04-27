@@ -28,7 +28,8 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       return (j.name || '') + '|' + j.modified + '|' + j.size
         + '|' + ((assignmentsByPath[fn] || {}).operatorName || '')
         + '|' + (deliveriesByPath[fn] || '');
-    })) + '|' + state.dateFilter + '|' + (state.operatorFilter || 'all');
+    })) + '|' + state.dateFilter + '|' + (state.operatorFilter || 'all')
+      + '|vis:' + JSON.stringify(state.visibleActionsMap[folderName] ?? null);
     const cacheKey = folderName + '|' + q + '|' + sort;
     if (state.columnCache[cacheKey] === fingerprint) return;
     state.columnCache[cacheKey] = fingerprint;

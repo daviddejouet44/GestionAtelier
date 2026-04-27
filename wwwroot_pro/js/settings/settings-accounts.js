@@ -1,6 +1,6 @@
 import { authToken, showNotification, esc } from '../core.js';
 
-const PROFILE_LABELS = { 1: "Soumission", 2: "Opérateur", 3: "Admin", 4: "Façonnage" };
+const PROFILE_LABELS = { 1: "Soumission", 2: "Opérateur", 3: "Admin", 4: "Finitions" };
 
 function profileOptions(selected) {
   return [1,2,3,4].map(p => `<option value="${p}" ${selected === p ? 'selected' : ''}>${p} — ${PROFILE_LABELS[p] || p}</option>`).join("");
@@ -19,7 +19,7 @@ export async function renderSettingsAccounts(panel) {
           <option value="1">Profil 1 — Soumission</option>
           <option value="2">Profil 2 — Opérateur</option>
           <option value="3">Profil 3 — Admin</option>
-          <option value="4">Profil 4 — Façonnage (lecture seule)</option>
+          <option value="4">Profil 4 — Finitions (lecture seule)</option>
         </select>
         <button id="sa-create" class="btn btn-primary">Créer</button>
       </div>

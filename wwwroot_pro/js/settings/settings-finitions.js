@@ -12,16 +12,91 @@ const FINITION_TYPES = [
   { key: "livraison",      label: "Livraison" }
 ];
 
+/** Generic helper: renders an editable list of string options and save button */
+function buildOptionListUI(containerId, inputId, addBtnId, saveBtnId, msgId, initialOptions, saveUrl) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  let currentOptions = [...initialOptions];
+
+  function renderList() {
+    container.innerHTML = '';
+    if (currentOptions.length === 0) {
+      container.innerHTML = '<span style="color:#9ca3af;font-size:13px;">Aucune option définie</span>';
+      return;
+    }
+    currentOptions.forEach((opt, idx) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 10px;background:white;border:1px solid #e5e7eb;border-radius:6px;";
+      row.innerHTML = `<span style="flex:1;font-size:13px;color:#374151;">${esc(opt)}</span><button style="color:#ef4444;border:1px solid #ef4444;background:white;border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer;" title="Supprimer">✕</button>`;
+      row.querySelector("button").onclick = () => { currentOptions.splice(idx, 1); renderList(); };
+      container.appendChild(row);
+    });
+  }
+  renderList();
+
+  document.getElementById(addBtnId)?.addEventListener("click", () => {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const val = input.value.trim();
+    if (!val) { showNotification("⚠️ Saisissez une option", "warning"); return; }
+    if (currentOptions.includes(val)) { showNotification("⚠️ Option déjà existante", "warning"); return; }
+    currentOptions.push(val);
+    input.value = "";
+    renderList();
+  });
+
+  document.getElementById(inputId)?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById(addBtnId)?.click();
+  });
+
+  document.getElementById(saveBtnId)?.addEventListener("click", async () => {
+    const msgEl = document.getElementById(msgId);
+    try {
+      const r = await fetch(saveUrl, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+        body: JSON.stringify({ options: currentOptions })
+      }).then(r => r.json());
+      if (r.ok) {
+        if (msgEl) { msgEl.style.color = "#16a34a"; msgEl.textContent = "✅ Enregistré"; }
+        showNotification("✅ Options enregistrées", "success");
+      } else {
+        if (msgEl) { msgEl.style.color = "#ef4444"; msgEl.textContent = "❌ " + (r.error || "Erreur"); }
+      }
+    } catch(e) {
+      if (msgEl) { msgEl.style.color = "#ef4444"; msgEl.textContent = "❌ Erreur réseau"; }
+    }
+  });
+}
+
 export async function renderSettingsFinitions(panel) {
   panel.innerHTML = `<h3>Finitions</h3><p style="color:#6b7280;">Chargement...</p>`;
 
   let faconnageOptions = [];
+  let bindingOptions = [];
+  let foldsOptions = [];
+  let outputOptions = [];
   let icons = [];
 
   try {
     faconnageOptions = await fetch("/api/settings/faconnage-options", {
       headers: { "Authorization": `Bearer ${authToken}` }
     }).then(r => r.json()).catch(() => []);
+  } catch(e) { /* ignore */ }
+
+  try {
+    const br = await fetch("/api/settings/binding-options").then(r => r.json()).catch(() => ({ok:false,options:[]}));
+    if (br.ok) bindingOptions = br.options || [];
+  } catch(e) { /* ignore */ }
+
+  try {
+    const fr = await fetch("/api/settings/folds-options").then(r => r.json()).catch(() => ({ok:false,options:[]}));
+    if (fr.ok) foldsOptions = fr.options || [];
+  } catch(e) { /* ignore */ }
+
+  try {
+    const or = await fetch("/api/settings/output-options").then(r => r.json()).catch(() => ({ok:false,options:[]}));
+    if (or.ok) outputOptions = or.options || [];
   } catch(e) { /* ignore */ }
 
   try {
@@ -33,10 +108,6 @@ export async function renderSettingsFinitions(panel) {
 
   const iconsByType = {};
   icons.forEach(ic => { iconsByType[ic.type] = ic.url; });
-
-  const listHtml = faconnageOptions.length === 0
-    ? '<span style="color:#9ca3af;font-size:13px;">Aucune option définie</span>'
-    : faconnageOptions.map(o => `<span style="display:inline-block;background:#f3f4f6;color:#374151;padding:4px 10px;border-radius:6px;font-size:13px;margin:3px;">${esc(o)}</span>`).join("");
 
   const iconsHtml = FINITION_TYPES.map(ft => {
     const iconUrl = iconsByType[ft.key];
@@ -79,13 +150,58 @@ export async function renderSettingsFinitions(panel) {
       </div>
     </div>
 
-    <div id="faconnage-csv-section" style="display:none;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:16px;max-width:600px;">
-      <p style="color:#6b7280;font-size:13px;margin-bottom:8px;">Importez un fichier CSV avec une option par ligne. Les options existantes seront remplacées.</p>
+    <div id="faconnage-csv-section" style="display:none;max-width:600px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px;">
+      <p style="font-size:13px;color:#374151;margin-bottom:10px;">Importez un fichier CSV (une option par ligne) :</p>
       <div style="display:flex;gap:8px;align-items:center;">
-        <input type="file" id="faconnage-csv-input" accept=".csv,.txt" class="settings-input" />
-        <button id="faconnage-csv-import" class="btn btn-primary">Importer</button>
+        <input type="file" id="faconnage-csv-input" accept=".csv,.txt" />
+        <button id="faconnage-csv-import" class="btn btn-primary" style="font-size:12px;padding:4px 12px;">Importer</button>
+        <span id="faconnage-import-msg" style="font-size:12px;"></span>
       </div>
-      <div id="faconnage-import-msg" style="margin-top:8px;font-size:13px;"></div>
+    </div>
+
+    <!-- ── Type de reliure ─────────────────────────────────────────── -->
+    <h4 style="margin-top:24px;margin-bottom:8px;">Options — Type de reliure</h4>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Options du menu déroulant "Type de reliure" dans la fiche de production.</p>
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px;max-width:600px;">
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <input type="text" id="binding-new-option" class="settings-input" placeholder="Ex: Spirale" style="flex:1;" />
+        <button id="binding-add-option" class="btn btn-primary" style="white-space:nowrap;">+ Ajouter</button>
+      </div>
+      <div id="binding-options-list" style="display:flex;flex-direction:column;gap:6px;min-height:40px;"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;border-top:1px solid #e5e7eb;padding-top:12px;">
+        <button id="binding-save-options" class="btn btn-primary">💾 Enregistrer</button>
+        <span id="binding-save-msg" style="font-size:13px;line-height:32px;"></span>
+      </div>
+    </div>
+
+    <!-- ── Plis ──────────────────────────────────────────────────────── -->
+    <h4 style="margin-top:24px;margin-bottom:8px;">Options — Plis</h4>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Options du menu déroulant "Plis" dans la fiche de production.</p>
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px;max-width:600px;">
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <input type="text" id="folds-new-option" class="settings-input" placeholder="Ex: Pli parallèle" style="flex:1;" />
+        <button id="folds-add-option" class="btn btn-primary" style="white-space:nowrap;">+ Ajouter</button>
+      </div>
+      <div id="folds-options-list" style="display:flex;flex-direction:column;gap:6px;min-height:40px;"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;border-top:1px solid #e5e7eb;padding-top:12px;">
+        <button id="folds-save-options" class="btn btn-primary">💾 Enregistrer</button>
+        <span id="folds-save-msg" style="font-size:13px;line-height:32px;"></span>
+      </div>
+    </div>
+
+    <!-- ── Sortie ────────────────────────────────────────────────────── -->
+    <h4 style="margin-top:24px;margin-bottom:8px;">Options — Sortie</h4>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Options du menu déroulant "Sortie" dans la fiche de production.</p>
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px;max-width:600px;">
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <input type="text" id="output-new-option" class="settings-input" placeholder="Ex: Pliée" style="flex:1;" />
+        <button id="output-add-option" class="btn btn-primary" style="white-space:nowrap;">+ Ajouter</button>
+      </div>
+      <div id="output-options-list" style="display:flex;flex-direction:column;gap:6px;min-height:40px;"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;border-top:1px solid #e5e7eb;padding-top:12px;">
+        <button id="output-save-options" class="btn btn-primary">💾 Enregistrer</button>
+        <span id="output-save-msg" style="font-size:13px;line-height:32px;"></span>
+      </div>
     </div>
 
     <h4 style="margin-bottom:8px;margin-top:24px;">Icônes des étapes de finition</h4>
@@ -104,7 +220,7 @@ export async function renderSettingsFinitions(panel) {
     </table>
   `;
 
-  // Build dynamic options list
+  // ── Faconnage options (existing logic) ────────────────────────────────
   let currentOptions = [...faconnageOptions];
 
   function renderOptionsList() {
@@ -130,7 +246,6 @@ export async function renderSettingsFinitions(panel) {
   }
   renderOptionsList();
 
-  // Add option button
   panel.querySelector("#faconnage-add-option").onclick = () => {
     const input = panel.querySelector("#faconnage-new-option");
     const val = input.value.trim();
@@ -144,7 +259,6 @@ export async function renderSettingsFinitions(panel) {
     if (e.key === "Enter") panel.querySelector("#faconnage-add-option").click();
   };
 
-  // Save options button
   panel.querySelector("#faconnage-save-options").onclick = async () => {
     const msgEl = panel.querySelector("#faconnage-save-msg");
     try {
@@ -167,13 +281,11 @@ export async function renderSettingsFinitions(panel) {
     }
   };
 
-  // Toggle CSV section
   panel.querySelector("#faconnage-csv-toggle").onclick = () => {
     const csvSection = panel.querySelector("#faconnage-csv-section");
     csvSection.style.display = csvSection.style.display === "none" ? "block" : "none";
   };
 
-  // Faconnage CSV import
   panel.querySelector("#faconnage-csv-import").onclick = async () => {
     const fileInput = panel.querySelector("#faconnage-csv-input");
     const msgEl = panel.querySelector("#faconnage-import-msg");
@@ -205,7 +317,12 @@ export async function renderSettingsFinitions(panel) {
     }
   };
 
-  // Icon upload buttons
+  // ── Binding / Folds / Output option lists ─────────────────────────────
+  buildOptionListUI("binding-options-list", "binding-new-option", "binding-add-option", "binding-save-options", "binding-save-msg", bindingOptions, "/api/settings/binding-options");
+  buildOptionListUI("folds-options-list",   "folds-new-option",   "folds-add-option",   "folds-save-options",   "folds-save-msg",   foldsOptions,   "/api/settings/folds-options");
+  buildOptionListUI("output-options-list",  "output-new-option",  "output-add-option",  "output-save-options",  "output-save-msg",  outputOptions,  "/api/settings/output-options");
+
+  // ── Icon upload buttons ───────────────────────────────────────────────
   panel.querySelectorAll("[data-icon-upload]").forEach(btn => {
     const key = btn.dataset.iconUpload;
     btn.onclick = async () => {
