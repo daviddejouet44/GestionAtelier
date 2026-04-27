@@ -390,7 +390,8 @@ export async function initCalendar() {
             }
             return false;
           })
-          .map(fe => {
+          .flatMap(fe => {
+            if (!fe.date) return []; // skip entries with no date
             const colorMap = {
               envoi:      { bg: '#3b82f6', bc: '#2563eb', tc: '#ffffff' },
               impression: { bg: '#8b5cf6', bc: '#7c3aed', tc: '#ffffff' },
@@ -401,8 +402,9 @@ export async function initCalendar() {
               ? fe.tempsProduitMinutes : 30;
             const timeStr = fe.manualTime || "09:00";
             const startDt = new Date(`${fe.date}T${timeStr}:00`);
+            if (isNaN(startDt.getTime())) return []; // skip invalid dates
             const endDt = new Date(startDt.getTime() + durationMins * 60000);
-            return {
+            return [{
               title: fe.title,
               start: startDt.toISOString(),
               end: endDt.toISOString(),
@@ -414,7 +416,7 @@ export async function initCalendar() {
               startEditable: true,
               durationEditable: false,
               extendedProps: { fullPath: fe.fullPath, isFabEvent: true, fabType: fe.type, fabFileName: fe.fileName }
-            };
+            }];
           });
 
         // For non-global views, delivery events can still show (they are manually planned)
@@ -441,7 +443,8 @@ export async function initCalendar() {
           filtered = withOperator.filter(wo => !wo.operateur || wo.operateur === myLogin || wo.operateur === myName).map(wo => wo.x);
         }
 
-        const ev = filtered.map(x => {
+        const ev = filtered.flatMap(x => {
+          if (!x.date) return []; // skip entries with no date to prevent instability
           const full = normalizePath(x.fullPath);
           const inFinProd = full.toLowerCase().includes(FIN_PROD_FOLDER.toLowerCase());
           const locked = !!x.locked || inFinProd;
@@ -452,7 +455,8 @@ export async function initCalendar() {
           // Duration based on tempsProduitMinutes if available
           const durationMins = x.tempsProduitMinutes || 60;
           const startDate = new Date(`${x.date}T${time}:00`);
-          return {
+          if (isNaN(startDate.getTime())) return []; // skip invalid dates
+          return [{
             title: (locked ? "🔒 " : "") + x.fileName,
             start: startDate.toISOString(),
             end: new Date(startDate.getTime() + durationMins * 60000).toISOString(),
@@ -464,7 +468,7 @@ export async function initCalendar() {
             startEditable: !locked,
             durationEditable: false,
             extendedProps: { fullPath: full, bg, bc, tc, date: x.date, time: time, locked }
-          };
+          }];
         });
 
         // Merge delivery events and fab key-date events
@@ -627,17 +631,20 @@ export async function initSubmissionCalendar() {
     events: async (info, success) => {
       try {
         const list = await fetch("/api/delivery").then(r => r.json());
-        const ev = list.map(x => {
+        const ev = list.flatMap(x => {
+          // In submission calendar, use dateReceptionSouhaitee from the fiche when available
+          const eventDate = x.dateReceptionSouhaitee || x.date;
+          if (!eventDate) return []; // skip events with no date
           const full = normalizePath(x.fullPath);
           const inFinProd = full.toLowerCase().includes(FIN_PROD_FOLDER.toLowerCase());
           const locked = !!x.locked || inFinProd;
-          const bg = locked ? "#22c55e" : colorForEvent(full, x.date).bg;
-          const bc = locked ? "#16a34a" : colorForEvent(full, x.date).bc;
-          const tc = locked ? "#ffffff" : colorForEvent(full, x.date).tc;
+          const bg = locked ? "#22c55e" : colorForEvent(full, eventDate).bg;
+          const bc = locked ? "#16a34a" : colorForEvent(full, eventDate).bc;
+          const tc = locked ? "#ffffff" : colorForEvent(full, eventDate).tc;
           const time = x.time || "09:00";
-          return {
+          return [{
             title: (locked ? "🔒 " : "") + x.fileName,
-            start: `${x.date}T${time}:00`,
+            start: `${eventDate}T${time}:00`,
             allDay: false,
             backgroundColor: bg,
             borderColor: bc,
@@ -646,7 +653,7 @@ export async function initSubmissionCalendar() {
             startEditable: !locked,
             durationEditable: false,
             extendedProps: { fullPath: full, bg, bc, tc, date: x.date, time: time, locked }
-          };
+          }];
         });
         try {
           const schedResp = await fetch("/api/config/schedule", {

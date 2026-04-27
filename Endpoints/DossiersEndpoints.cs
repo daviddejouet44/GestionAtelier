@@ -288,6 +288,10 @@ app.MapGet("/api/production/summary", () =>
         var fabCol = MongoDbHelper.GetFabricationsCollection();
         var allFabs = fabCol.Find(new BsonDocument()).ToList();
 
+        // Load BAT tracking collection for status lookup
+        var batTrackCol = MongoDbHelper.GetCollection<BsonDocument>("batTracking");
+        var allBatTracking = batTrackCol.Find(new BsonDocument()).ToList();
+
         // Build a set of BAT_ files found in the BAT folder for quick lookup
         var batDir = Path.Combine(root, "BAT");
         var batFilesInBatFolder = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -330,6 +334,26 @@ app.MapGet("/api/production/summary", () =>
                 var client = fab != null && fab.Contains("client") && fab["client"] != BsonNull.Value ? fab["client"].AsString : "";
                 var typeTravail = fab != null && fab.Contains("typeTravail") && fab["typeTravail"] != BsonNull.Value ? fab["typeTravail"].AsString : "";
 
+                // Resolve BAT sub-status (envoyé / validé / refusé) when stage is BAT
+                string? batStatus = null;
+                if (effectiveStage == "BAT")
+                {
+                    var batDoc = allBatTracking
+                        .Where(d => d.Contains("fileName") && d["fileName"] != BsonNull.Value &&
+                                    string.Equals(d["fileName"].AsString, fName, StringComparison.OrdinalIgnoreCase))
+                        .OrderByDescending(d => d["_id"].AsObjectId.CreationTime)
+                        .FirstOrDefault();
+                    if (batDoc != null)
+                    {
+                        if (batDoc.Contains("rejectedAt") && batDoc["rejectedAt"] != BsonNull.Value)
+                            batStatus = "refuse";
+                        else if (batDoc.Contains("validatedAt") && batDoc["validatedAt"] != BsonNull.Value)
+                            batStatus = "valide";
+                        else if (batDoc.Contains("sentAt") && batDoc["sentAt"] != BsonNull.Value)
+                            batStatus = "envoye";
+                    }
+                }
+
                 entries.Add(new
                 {
                     fileName = fName,
@@ -338,7 +362,8 @@ app.MapGet("/api/production/summary", () =>
                     progress = StageConstants.GetProgress(effectiveStage),
                     numeroDossier,
                     client,
-                    typeTravail
+                    typeTravail,
+                    batStatus
                 });
             }
         }

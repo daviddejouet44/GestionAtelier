@@ -137,6 +137,23 @@ function renderGlobalProdTable(jobs, assignMap, deliveryMap, sortMode, wrap) {
     const operatorName = assignMap[fileKey] || "";
     const deliveryDate = deliveryMap[fileKey] || "";
 
+    // Build stage display label, including BAT sub-status when available
+    const baseStageLabel = getStageLabelDisplay(job.currentStage) || '—';
+    let stageBadgeStyle = "background:#dbeafe;color:#1e40af;";
+    let stageDisplay = baseStageLabel;
+    if (job.currentStage === 'BAT' && job.batStatus) {
+      if (job.batStatus === 'refuse') {
+        stageDisplay = 'BAT — ❌ Refusé';
+        stageBadgeStyle = "background:#fee2e2;color:#991b1b;";
+      } else if (job.batStatus === 'valide') {
+        stageDisplay = 'BAT — ✅ Validé';
+        stageBadgeStyle = "background:#dcfce7;color:#166534;";
+      } else if (job.batStatus === 'envoye') {
+        stageDisplay = 'BAT — 📤 Envoyé';
+        stageBadgeStyle = "background:#fef9c3;color:#92400e;";
+      }
+    }
+
     const row = document.createElement("div");
     row.style.cssText = "display:grid;grid-template-columns:1fr 1.5fr 1fr 1fr 1fr 2fr;gap:8px;padding:12px 16px;background:white;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;align-items:center;";
 
@@ -148,7 +165,7 @@ function renderGlobalProdTable(jobs, assignMap, deliveryMap, sortMode, wrap) {
       <div style="font-size:14px;font-weight:700;color:#111827;font-family:monospace;">${escapeHtml(displayNum)}</div>
       <div style="font-size:12px;color:#6b7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(job.fileName || '')}">${escapeHtml(job.fileName || '—')}</div>
       <div>
-        <span style="background:#dbeafe;color:#1e40af;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:600;white-space:nowrap;">${escapeHtml(getStageLabelDisplay(job.currentStage) || '—')}</span>
+        <span style="${stageBadgeStyle}padding:3px 8px;border-radius:12px;font-size:11px;font-weight:600;white-space:nowrap;">${escapeHtml(stageDisplay)}</span>
       </div>
       <div style="font-size:12px;${operatorName ? 'color:#111827;font-weight:500;' : 'color:#9ca3af;font-style:italic;'}">${escapeHtml(operatorName || 'Non assigné')}</div>
       <div>${deliveryDisplay}</div>

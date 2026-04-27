@@ -33,6 +33,7 @@ app.MapGet("/api/delivery", () =>
         .Select(v => {
             bool locked = false;
             int? tempsProduitMinutes = null;
+            string? dateReceptionSouhaitee = null;
             if (!string.IsNullOrEmpty(v.FileName))
             {
                 // Normalize to lowercase (fabrication records store fileName as lowercase via fnKey)
@@ -47,6 +48,18 @@ app.MapGet("/api/delivery", () =>
                         locked = fabDoc["locked"].AsBoolean;
                     if (fabDoc.Contains("tempsProduitMinutes") && fabDoc["tempsProduitMinutes"] != BsonNull.Value)
                         tempsProduitMinutes = fabDoc["tempsProduitMinutes"].AsInt32;
+                    if (fabDoc.Contains("dateReceptionSouhaitee") && fabDoc["dateReceptionSouhaitee"] != BsonNull.Value)
+                    {
+                        var drVal = fabDoc["dateReceptionSouhaitee"];
+                        if (drVal.BsonType == BsonType.DateTime)
+                            dateReceptionSouhaitee = drVal.ToUniversalTime().ToString("yyyy-MM-dd");
+                        else if (drVal.BsonType == BsonType.String)
+                        {
+                            var raw = drVal.AsString;
+                            if (!string.IsNullOrWhiteSpace(raw) && raw.Length >= 10)
+                                dateReceptionSouhaitee = raw.Substring(0, 10);
+                        }
+                    }
                 }
             }
             return new
@@ -56,7 +69,8 @@ app.MapGet("/api/delivery", () =>
                 date     = v.Date.ToString("yyyy-MM-dd"),
                 time     = v.Time,
                 locked,
-                tempsProduitMinutes
+                tempsProduitMinutes,
+                dateReceptionSouhaitee
             };
         });
     return Results.Json(data);
@@ -263,6 +277,56 @@ app.MapPut("/api/config/prismasync-url", async (HttpContext ctx) =>
             new BsonDocument { ["key"] = "prismaSyncUrl", ["value"] = url },
             new ReplaceOptions { IsUpsert = true });
         return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+// ======================================================
+// CLEANUP — suppression des livraisons orphelines
+// (fichier inexistant sur le disque)
+// ======================================================
+app.MapPost("/api/delivery/cleanup-orphans", (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var map = BackendUtils.LoadDeliveries();
+        var root = BackendUtils.HotfoldersRoot();
+        var deleted = 0;
+
+        foreach (var kv in map)
+        {
+            var item = kv.Value;
+            // Skip entries where the referenced file still exists anywhere in hotfolders
+            bool fileExists = false;
+            if (!string.IsNullOrWhiteSpace(item.FullPath) && File.Exists(item.FullPath))
+            {
+                fileExists = true;
+            }
+            else if (!string.IsNullOrWhiteSpace(item.FileName))
+            {
+                // Scan all hotfolders for the file by name
+                foreach (var folder in Directory.GetDirectories(root))
+                {
+                    if (File.Exists(Path.Combine(folder, item.FileName)))
+                    { fileExists = true; break; }
+                }
+            }
+
+            if (!fileExists)
+            {
+                BackendUtils.DeleteDeliveryByFileNameOrPath(item.FileName ?? "");
+                if (!string.IsNullOrWhiteSpace(item.FullPath))
+                    BackendUtils.DeleteDelivery(item.FullPath);
+                deleted++;
+            }
+        }
+
+        return Results.Json(new { ok = true, deleted });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
