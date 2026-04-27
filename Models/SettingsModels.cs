@@ -89,3 +89,24 @@ public class KanbanSettings
     public List<KanbanColumnConfig> Columns { get; set; } = new();
 }
 
+public class KeyDatesOffsetsSettings
+{
+    [JsonPropertyName("livraisonEnvoiHeures")]
+    public int LivraisonEnvoiHeures { get; set; } = 48;
+
+    [JsonPropertyName("livraisonFinitionsHeures")]
+    public int LivraisonFinitionsHeures { get; set; } = 72;
+
+    [JsonPropertyName("livraisonImpressionHeures")]
+    public int LivraisonImpressionHeures { get; set; } = 96;
+
+    [JsonPropertyName("retraitEnvoiHeures")]
+    public int RetraitEnvoiHeures { get; set; } = 0;
+
+    [JsonPropertyName("retraitFinitionsHeures")]
+    public int RetraitFinitionsHeures { get; set; } = 24;
+
+    [JsonPropertyName("retraitImpressionHeures")]
+    public int RetraitImpressionHeures { get; set; } = 48;
+}
+

@@ -39,6 +39,14 @@ public record FabricationSheet
     public string? Bat { get; init; }
     public string? RetraitLivraison { get; init; }
     public string? AdresseLivraison { get; init; }
+    // Dates clés planification
+    public DateTime? DateReceptionSouhaitee { get; init; }
+    public DateTime? DateEnvoi { get; init; }
+    public DateTime? DateImpression { get; init; }
+    public DateTime? DateProductionFinitions { get; init; }
+    // Production
+    public int? TempsProduitMinutes { get; init; }
+    public List<string>? FinitionsChecked { get; init; }
     public List<FabricationHistory> History { get; init; } = new();
 }
 
@@ -72,6 +80,14 @@ public class FabricationInput
     public string? Bat { get; set; }
     public string? RetraitLivraison { get; set; }
     public string? AdresseLivraison { get; set; }
+    // Dates clés planification
+    public DateTime? DateReceptionSouhaitee { get; set; }
+    public DateTime? DateEnvoi { get; set; }
+    public DateTime? DateImpression { get; set; }
+    public DateTime? DateProductionFinitions { get; set; }
+    // Production
+    public int? TempsProduitMinutes { get; set; }
+    public List<string>? FinitionsChecked { get; set; }
 }
 
 // ======================================================

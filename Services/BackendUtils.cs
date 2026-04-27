@@ -583,6 +583,18 @@ public static class BackendUtils
             Bat              = GetNullableString(d, "bat"),
             RetraitLivraison = GetNullableString(d, "retraitLivraison"),
             AdresseLivraison = GetNullableString(d, "adresseLivraison"),
+            // Dates clés planification
+            DateReceptionSouhaitee = d.Contains("dateReceptionSouhaitee") && d["dateReceptionSouhaitee"] != BsonNull.Value ? (DateTime?)d["dateReceptionSouhaitee"].ToLocalTime() : null,
+            DateEnvoi = d.Contains("dateEnvoi") && d["dateEnvoi"] != BsonNull.Value ? (DateTime?)d["dateEnvoi"].ToLocalTime() : null,
+            DateImpression = d.Contains("dateImpression") && d["dateImpression"] != BsonNull.Value ? (DateTime?)d["dateImpression"].ToLocalTime() : null,
+            DateProductionFinitions = d.Contains("dateProductionFinitions") && d["dateProductionFinitions"] != BsonNull.Value ? (DateTime?)d["dateProductionFinitions"].ToLocalTime() : null,
+            // Production
+            TempsProduitMinutes = d.Contains("tempsProduitMinutes") && d["tempsProduitMinutes"] != BsonNull.Value ? (int?)d["tempsProduitMinutes"].AsInt32 : null,
+            FinitionsChecked = d.Contains("finitionsChecked") && d["finitionsChecked"] != BsonNull.Value
+                               ? (d["finitionsChecked"].IsBsonArray
+                                  ? d["finitionsChecked"].AsBsonArray.Select(v => v.AsString).ToList()
+                                  : new List<string>())
+                               : null,
             History          = history
         };
     }
