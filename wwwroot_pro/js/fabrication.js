@@ -149,6 +149,8 @@ function updateKeyDates() {
 function updateTempsProduction() {
   const motEl=gEl('moteurImpression'); const nfEl=gEl('nombreFeuilles'); const tpEl=document.getElementById('fab-temps-produit');
   if(!tpEl) return;
+  // Don't overwrite if user manually set a value (marked by dataset.manual)
+  if(tpEl.dataset.manual==='1') return;
   const moteur=(motEl?motEl.value:'').trim();
   const nf=parseInt(nfEl?nfEl.value:'0')||0;
   if(!moteur||!nf){tpEl.value='';return;}
@@ -325,11 +327,12 @@ function renderFabForm(config, opts) {
 
   const tpWrap=document.createElement('div');
   tpWrap.className='fab-form-group';
-  tpWrap.innerHTML='<label>Temps théorique de production <small style="color:#9ca3af;font-size:10px;">(indicatif, calculé)</small></label>'
+  tpWrap.innerHTML='<label>Temps théorique de production <small style="color:#9ca3af;font-size:10px;">(calculé auto, modifiable)</small></label>'
     +'<div style="display:flex;align-items:center;gap:8px;">'
-    +'<input id="fab-temps-produit" type="number" placeholder="auto" readonly style="width:100px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#f3f4f6;color:#6b7280;" />'
+    +'<input id="fab-temps-produit" type="number" placeholder="auto" style="width:100px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" />'
     +'<span style="font-size:13px;color:#6b7280;">minutes</span>'
-    +'</div>';
+    +'</div>'
+    +'<small style="color:#9ca3af;font-size:11px;margin-top:2px;">Calculé automatiquement, ou saisissez manuellement pour forcer la valeur.</small>';
   fabDynamicForm.appendChild(tpWrap);
 
   // JDF button (will be shown/hidden based on JDF config)
@@ -420,6 +423,7 @@ function attachFormHandlers(fabCurrentFileName) {
     if(id===gElId('dateDepart'))updateDateLivraison();
     if(id==='fab-date-reception')updateKeyDates();
     if(id===gElId('nombreFeuilles')){const el=gEl('nombreFeuilles');if(el)el._manuallyEdited=true;}
+    if(id==='fab-temps-produit'){const el=document.getElementById('fab-temps-produit');if(el)el.dataset.manual=el.value?'1':'';}
     if(id===gElId('moteurImpression')||id===gElId('media1'))updateTempsProduction();
   });
   const repsAdd=document.getElementById('fab-repartitions-add'); if(repsAdd)repsAdd.onclick=()=>addRepartitionRow();

@@ -226,22 +226,27 @@ export async function renderSettingsPassesConfig(panel) {
       dorure:                 parseInt(panel.querySelector("#passes-dorure").value) || 0,
       dosCarreColle:          parseInt(panel.querySelector("#passes-dos-carre").value) || 0
     };
+    msgEl.textContent = "⏳ Enregistrement...";
+    msgEl.style.color = "#6b7280";
     try {
-      const r = await fetch("/api/settings/passes-config", {
+      const resp = await fetch("/api/settings/passes-config", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
         body: JSON.stringify(newCfg)
-      }).then(r => r.json());
+      });
+      let r;
+      try { r = await resp.json(); } catch(je) { r = { ok: resp.ok }; }
       if (r.ok) {
         msgEl.style.color = "#16a34a";
         msgEl.textContent = "✅ Configuration enregistrée";
+        showNotification("✅ Configuration des passes enregistrée", "success");
       } else {
         msgEl.style.color = "#ef4444";
-        msgEl.textContent = "❌ " + (r.error || "Erreur");
+        msgEl.textContent = "❌ " + (r.error || `HTTP ${resp.status}`);
       }
     } catch(e) {
       msgEl.style.color = "#ef4444";
-      msgEl.textContent = "❌ Erreur réseau";
+      msgEl.textContent = "❌ Erreur réseau : " + e.message;
     }
   };
 }

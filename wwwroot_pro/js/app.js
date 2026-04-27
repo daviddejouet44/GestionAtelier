@@ -39,6 +39,7 @@ let submissionJobs = [];
 // ======================================================
 window._openFabrication = openFabrication;
 window._refreshKanban = refreshKanban;
+window._buildKanban = buildKanban;
 window._refreshSubmissionView = refreshSubmissionView;
 window._loadDeliveries = loadDeliveries;
 window._loadAssignments = loadAssignments;
@@ -1109,7 +1110,13 @@ async function openMailImportModal() {
   modal.style.cssText = "background:white;border-radius:12px;padding:28px;min-width:400px;max-width:640px;width:94%;box-shadow:0 12px 50px rgba(0,0,0,.3);max-height:90vh;overflow-y:auto;";
 
   modal.innerHTML = `
-    <h3 style="margin:0 0 18px;font-size:17px;font-weight:700;color:#111827;">📧 Importer depuis un mail</h3>
+    <h3 style="margin:0 0 12px;font-size:17px;font-weight:700;color:#111827;">📧 Importer depuis un mail</h3>
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#1e40af;">
+      <strong>💡 Aide connexion :</strong><br>
+      • <strong>Gmail</strong> : utilisez un <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" style="color:#1d4ed8;font-weight:600;">mot de passe d'application</a> (pas votre mot de passe habituel). Activez d'abord la validation en 2 étapes dans votre compte Google.<br>
+      • <strong>Outlook / Office 365</strong> : serveur <code>outlook.office365.com</code>, port 993, SSL activé. Si la MFA est activée, générez un mot de passe d'application dans votre compte Microsoft.<br>
+      • Serveurs : Gmail → <code>imap.gmail.com:993</code> · Outlook → <code>outlook.office365.com:993</code>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 80px;gap:8px;margin-bottom:10px;">
       <div>
         <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">Serveur IMAP</label>
@@ -1125,14 +1132,17 @@ async function openMailImportModal() {
       <input id="imap-email" type="email" class="settings-input settings-input-wide" placeholder="votre@email.com" value="${imapCfg.email || ''}" />
     </div>
     <div style="margin-bottom:10px;">
-      <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">Mot de passe</label>
+      <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">Mot de passe (ou mot de passe d'application)</label>
       <input id="imap-password" type="password" class="settings-input settings-input-wide" />
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
       <input type="checkbox" id="imap-ssl" ${imapCfg.useSsl !== false ? 'checked' : ''} />
       <label for="imap-ssl" style="font-size:13px;color:#374151;">SSL / TLS</label>
     </div>
-    <button id="imap-search-btn" class="btn btn-primary" style="width:100%;">🔍 Rechercher les mails récents</button>
+    <div style="display:flex;gap:8px;margin-bottom:4px;">
+      <button id="imap-test-btn" class="btn" style="flex:0 0 auto;">🔌 Tester la connexion</button>
+      <button id="imap-search-btn" class="btn btn-primary" style="flex:1;">🔍 Rechercher les mails récents</button>
+    </div>
     <div id="imap-results" style="margin-top:16px;"></div>
     <div style="display:flex;justify-content:flex-end;margin-top:16px;">
       <button id="imap-close-btn" class="btn">Fermer</button>
@@ -1143,6 +1153,52 @@ async function openMailImportModal() {
   document.body.appendChild(overlay);
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
   modal.querySelector("#imap-close-btn").onclick = () => overlay.remove();
+
+  // Test connection button
+  modal.querySelector("#imap-test-btn").onclick = async () => {
+    const host = modal.querySelector("#imap-host").value.trim();
+    const port = parseInt(modal.querySelector("#imap-port").value) || 993;
+    const email = modal.querySelector("#imap-email").value.trim();
+    const password = modal.querySelector("#imap-password").value;
+    const useSsl = modal.querySelector("#imap-ssl").checked;
+    if (!host || !email || !password) {
+      showNotification("⚠️ Renseignez tous les champs IMAP", "warning");
+      return;
+    }
+    const testBtn = modal.querySelector("#imap-test-btn");
+    const resultsDiv = modal.querySelector("#imap-results");
+    testBtn.disabled = true;
+    testBtn.textContent = "⏳ Test...";
+    resultsDiv.innerHTML = '<div style="color:#6b7280;font-size:13px;">Test de connexion...</div>';
+    try {
+      const r = await fetch("/api/submission/test-imap-connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ host, port, email, password, useSsl })
+      }).then(res => res.json());
+      testBtn.disabled = false;
+      testBtn.textContent = "🔌 Tester la connexion";
+      if (r.ok) {
+        resultsDiv.innerHTML = '<div style="color:#16a34a;font-size:13px;font-weight:600;">✅ Connexion réussie ! Les identifiants sont valides.</div>';
+      } else {
+        const errMsg = r.error || "Erreur de connexion";
+        const isCredErr = errMsg.toLowerCase().includes("invalid") || errMsg.toLowerCase().includes("credentials") || errMsg.toLowerCase().includes("authentication");
+        let helpHtml = '';
+        if (isCredErr) {
+          helpHtml = `<div style="margin-top:8px;padding:10px 12px;background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;font-size:12px;color:#92400e;">
+            💡 <strong>Aide :</strong><br>
+            • <strong>Gmail</strong> : utilisez un <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" style="color:#1d4ed8;">mot de passe d'application</a>, pas votre mot de passe habituel.<br>
+            • <strong>Office 365</strong> : si MFA activée, créez un mot de passe d'application dans votre compte Microsoft.
+          </div>`;
+        }
+        resultsDiv.innerHTML = `<div style="color:#dc2626;font-size:13px;">❌ ${errMsg}</div>${helpHtml}`;
+      }
+    } catch(e) {
+      testBtn.disabled = false;
+      testBtn.textContent = "🔌 Tester la connexion";
+      resultsDiv.innerHTML = '<div style="color:#dc2626;font-size:13px;">❌ Erreur réseau</div>';
+    }
+  };
 
   modal.querySelector("#imap-search-btn").onclick = async () => {
     const host = modal.querySelector("#imap-host").value.trim();
@@ -1291,14 +1347,16 @@ async function loadRecycleList() {
     files.forEach(f => {
       const div = document.createElement("div");
       div.style.cssText = "display:flex;align-items:center;gap:10px;padding:12px 16px;border:1px solid var(--border-light);background:var(--bg-card);border-radius:var(--radius-sm);margin-bottom:6px;";
+      const sourceFolderBadge = f.sourceFolder ? `<small style="color:var(--text-tertiary);font-size:11px;">📁 ${f.sourceFolder}</small>` : '';
       div.innerHTML = `
         <div style="flex:1;">
           <strong style="font-size:13px;color:var(--text-primary);">${f.fileName}</strong>
           <small style="display:block;color:var(--text-tertiary);font-size:11px;">Supprimé le ${new Date(f.deletedAt).toLocaleDateString("fr-FR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" })}</small>
+          ${sourceFolderBadge}
         </div>
         <button class="btn btn-sm btn-primary" data-path="${f.fullPath}">↩️ Restaurer</button>
       `;
-      div.querySelector("button").onclick = () => restoreFromRecycle(f.fullPath, f.fileName);
+      div.querySelector("button").onclick = () => restoreFromRecycle(f.fullPath, f.fileName, f.sourceFolder);
       listEl.appendChild(div);
     });
   } catch (err) {
@@ -1306,20 +1364,58 @@ async function loadRecycleList() {
   }
 }
 
-async function restoreFromRecycle(fullPath, fileName) {
-  const folder = prompt(`Restaurer "${fileName}" dans quel dossier ?`, FOLDER_SOUMISSION);
-  if (!folder) return;
+async function restoreFromRecycle(fullPath, fileName, sourceFolder) {
+  const defaultFolder = sourceFolder || FOLDER_SOUMISSION;
 
-  const r = await fetch(`/api/recycle/restore?fullPath=${encodeURIComponent(fullPath)}&destinationFolder=${encodeURIComponent(folder)}`, {
-    method: "POST"
-  }).then(r => r.json()).catch(() => ({ ok: false }));
+  // Build a modal with a dropdown for available folders
+  let folderOptions = [defaultFolder];
+  try {
+    const resp = await fetch("/api/config/kanban-columns").then(r => r.json()).catch(() => null);
+    if (resp && resp.ok && Array.isArray(resp.columns)) {
+      const names = resp.columns.filter(c => c.visible !== false).map(c => c.folder);
+      folderOptions = [defaultFolder, ...names.filter(n => n !== defaultFolder)];
+    }
+  } catch(e) { /* use default */ }
 
-  if (r.ok) {
-    showNotification(`✅ Fichier restauré dans ${folder}`, "success");
-    await loadRecycleList();
-  } else {
-    showNotification("❌ Erreur : " + (r.error || ""), "error");
-  }
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;";
+  const modal = document.createElement("div");
+  modal.style.cssText = "background:#fff;border-radius:12px;padding:28px 32px;width:440px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,0.18);";
+  const opts = folderOptions.map(f => `<option value="${f.replace(/"/g,'&quot;')}" ${f===defaultFolder?'selected':''}>${f}</option>`).join('');
+  modal.innerHTML = `
+    <h3 style="font-size:17px;font-weight:700;color:#111827;margin:0 0 6px;">Restaurer le fichier</h3>
+    <p style="font-size:13px;color:#6b7280;margin:0 0 18px;">${fileName.replace(/</g,'&lt;')}</p>
+    <div style="margin-bottom:16px;">
+      <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">Dossier de destination</label>
+      <select id="restore-folder-sel" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;">${opts}</select>
+      ${defaultFolder ? `<p style="font-size:11px;color:#6b7280;margin-top:4px;">📁 Dossier d'origine : <strong>${defaultFolder.replace(/</g,'&lt;')}</strong></p>` : ''}
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button id="restore-cancel-btn" class="btn">Annuler</button>
+      <button id="restore-confirm-btn" class="btn btn-primary">Restaurer</button>
+    </div>
+  `;
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  return new Promise(resolve => {
+    modal.querySelector("#restore-cancel-btn").onclick = () => { overlay.remove(); resolve(); };
+    overlay.onclick = (e) => { if(e.target===overlay){ overlay.remove(); resolve(); } };
+    modal.querySelector("#restore-confirm-btn").onclick = async () => {
+      const folder = modal.querySelector("#restore-folder-sel").value;
+      overlay.remove();
+      const r = await fetch(`/api/recycle/restore?fullPath=${encodeURIComponent(fullPath)}&destinationFolder=${encodeURIComponent(folder)}`, {
+        method: "POST"
+      }).then(r => r.json()).catch(() => ({ ok: false }));
+      if (r.ok) {
+        showNotification(`✅ Fichier restauré dans ${folder}`, "success");
+        await loadRecycleList();
+      } else {
+        showNotification("❌ Erreur : " + (r.error || ""), "error");
+      }
+      resolve();
+    };
+  });
 }
 
 async function purgeRecycle() {

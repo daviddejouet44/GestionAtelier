@@ -325,6 +325,14 @@ app.MapPost("/api/jobs/delete", async (HttpContext ctx) =>
 
         Directory.CreateDirectory(recyclePath);
 
+        // Derive source folder from path before moving
+        var hotRoot = BackendUtils.HotfoldersRoot();
+        var sourceDir = Path.GetDirectoryName(fullPath) ?? "";
+        var sourceFolder = "";
+        try { sourceFolder = Path.GetRelativePath(hotRoot, sourceDir); } catch { }
+        // Reject path traversal attempts
+        if (sourceFolder.StartsWith("..") || sourceFolder.Contains("..")) sourceFolder = "";
+
         string fileName = Path.GetFileName(fullPath);
         string trashPath = Path.Combine(recyclePath, fileName);
 
@@ -355,6 +363,12 @@ app.MapPost("/api/jobs/delete", async (HttpContext ctx) =>
         }
         if (lastMoveEx != null)
             throw lastMoveEx;
+
+        // Save source folder as sidecar metadata
+        if (!string.IsNullOrWhiteSpace(sourceFolder))
+        {
+            try { File.WriteAllText(trashPath + ".meta", sourceFolder); } catch { }
+        }
 
         return Results.Json(new { ok = true, message = "Fichier supprimé avec succès" });
     }

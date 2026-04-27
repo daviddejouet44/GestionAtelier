@@ -184,8 +184,11 @@ export async function renderSettingsKanbanColumns(panel) {
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
       body: JSON.stringify({ columns: cols })
     }).then(r => r.json());
-    if (r.ok) showNotification("✅ Configuration Kanban enregistrée", "success");
-    else showNotification("❌ Erreur : " + (r.error || ""), "error");
+    if (r.ok) {
+      showNotification("✅ Configuration Kanban enregistrée", "success");
+      // Rebuild kanban to apply new action visibility settings
+      if (window._buildKanban) await window._buildKanban();
+    } else showNotification("❌ Erreur : " + (r.error || ""), "error");
   };
 
   panel.querySelector("#kanban-cols-reset").onclick = async () => {

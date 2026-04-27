@@ -55,7 +55,8 @@ export async function buildKanban() {
   // Build visible actions map: folder → string[] | null
   state.visibleActionsMap = {};
   for (const c of allColumns) {
-    if (Array.isArray(c.visibleActions) && c.visibleActions.length > 0) {
+    if (Array.isArray(c.visibleActions)) {
+      // null means "show all" (retrocompat) — an array (even empty) restricts to listed actions
       state.visibleActionsMap[c.folder] = c.visibleActions;
     } else {
       state.visibleActionsMap[c.folder] = null; // null = show all (retrocompat)
