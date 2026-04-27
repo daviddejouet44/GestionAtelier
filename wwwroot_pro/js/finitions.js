@@ -28,11 +28,14 @@ function getTokenFromStorage() {
 }
 
 async function parseToken(token) {
+  if (!token || typeof token !== 'string') return null;
   try {
     const decoded = atob(token);
     const parts = decoded.split(':');
-    if (parts.length < 3) return null;
-    return { id: parts[0], login: parts[1], profile: parseInt(parts[2]) };
+    if (parts.length < 3 || !parts[0] || !parts[1] || !parts[2]) return null;
+    const profile = parseInt(parts[2]);
+    if (isNaN(profile)) return null;
+    return { id: parts[0], login: parts[1], profile };
   } catch { return null; }
 }
 

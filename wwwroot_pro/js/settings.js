@@ -155,7 +155,7 @@ async function renderSettingsImapConfig(panel) {
       <ul style='font-size:12px;color:#713f12;margin:0;padding-left:18px;'>
         <li>Serveur : <code>imap.gmail.com</code>, Port : <code>993</code>, SSL activé</li>
         <li>Activer la vérification en 2 étapes sur votre compte Google, puis générer un <strong>mot de passe d'application</strong> dans <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:#1d4ed8;">myaccount.google.com/apppasswords</a></li>
-        <li>Utiliser le mot de passe d'application à 16 caractères comme mot de passe ici</li>
+        <li>Utiliser le mot de passe d'application à 16 caractères comme mot de passe ici (saisissez-le <strong>sans espaces</strong>)</li>
         <li>Si cela ne fonctionne pas, Google peut bloquer l'accès IMAP — une intégration OAuth2 sera nécessaire dans une prochaine version.</li>
       </ul>
     </div>
