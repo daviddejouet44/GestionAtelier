@@ -1,0 +1,143 @@
+/* =========================================================
+   BOUTONS
+========================================================= */
+.btn {
+  padding: 6px 14px; font-size: 12px; font-weight: 500; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--bg-card); color: var(--text-primary);
+  cursor: pointer; transition: var(--transition-fast); display: inline-flex;
+  align-items: center; gap: 5px; white-space: nowrap; letter-spacing: -0.01em;
+}
+.btn:hover { background: var(--bg-hover); }
+.btn-sm { padding: 4px 10px; font-size: 11px; }
+.btn-primary { background: var(--primary); border-color: var(--primary); color: white; }
+.btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+.btn-acrobat { background: #FF3B30; border-color: #FF3B30; color: white; font-weight: 600; }
+.btn-acrobat:hover { background: #D32F2F; border-color: #D32F2F; }
+.btn-danger { color: var(--danger); border-color: #FECACA; background: white; }
+.btn-danger:hover { background: #FEF2F2; border-color: var(--danger); }
+.btn-assign { background: var(--bg-subtle); border-color: var(--border); color: var(--text-secondary); }
+.btn-assign:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* =========================================================
+   MODAL FICHE DE FABRICATION
+========================================================= */
+.modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center; z-index: 20000; padding: 20px;
+}
+.fab-modal-content {
+  background: var(--bg-card); border-radius: var(--radius-xl); padding: 28px;
+  max-width: 720px; width: 100%; max-height: 88vh; overflow-y: auto;
+  box-shadow: var(--shadow-lg); border: 1px solid var(--border-light);
+}
+.fab-modal-content h2 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin: 0 0 20px 0; }
+.fab-modal-content h3 {
+  font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;
+  letter-spacing: 0.06em; margin: 20px 0 10px 0;
+}
+.fab-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fab-form-group { display: flex; flex-direction: column; gap: 3px; }
+.fab-full-width { grid-column: 1 / -1; }
+.fab-form-group label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); }
+.required-star { color: #ef4444; font-weight: 700; margin-left: 2px; }
+.fab-form-group input, .fab-form-group select, .fab-form-group textarea {
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 13px; background: var(--bg-subtle); color: var(--text-primary); outline: none; transition: var(--transition-fast);
+}
+.fab-form-group input:focus, .fab-form-group select:focus, .fab-form-group textarea:focus {
+  border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); background: var(--bg-card);
+}
+#fab-history {
+  font-size: 11px; color: var(--text-secondary); background: var(--bg-subtle);
+  border-radius: var(--radius-sm); padding: 10px; max-height: 100px; overflow-y: auto; line-height: 1.8;
+}
+.fab-modal-buttons { display: flex; gap: 6px; margin-top: 16px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* =========================================================
+   TOAST NOTIFICATIONS
+========================================================= */
+.toast-notification {
+  position: fixed; top: 68px; right: 24px; padding: 12px 20px; border-radius: var(--radius-md);
+  font-size: 13px; font-weight: 500; z-index: 10000; box-shadow: var(--shadow-lg);
+  animation: toastSlideIn 0.3s ease, toastFadeOut 0.5s ease 3s forwards;
+}
+.toast-success { background: rgba(220,252,231,0.97); color: #166534; border: 1px solid #86EFAC; }
+.toast-error   { background: rgba(254,226,226,0.97); color: #991B1B; border: 1px solid #FCA5A5; }
+.toast-info    { background: rgba(219,234,254,0.97); color: #1E40AF; border: 1px solid #93C5FD; }
+@keyframes toastSlideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes toastFadeOut { to { opacity: 0; transform: translateY(-8px); } }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes slideOut { to { opacity: 0; transform: translateY(-8px); } }
+
+/* =========================================================
+   NOTIFICATION POPUP
+========================================================= */
+.notification-popup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notification-popup {
+  position: relative;
+  z-index: 10000;
+  background: white;
+  border: 2px solid #D50000;
+  border-radius: 12px;
+  padding: 30px 40px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  text-align: center;
+  font-size: 16px;
+  font-weight: 600;
+  max-width: 380px;
+  width: 90%;
+}
+
+.notification-popup p {
+  margin: 0 0 20px;
+  color: var(--text-primary);
+}
+
+.notification-popup button {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 32px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notification-popup button:hover {
+  background: var(--primary-hover);
+}
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+@media (max-width: 740px) {
+  .fab-form-grid { grid-template-columns: 1fr; }
+}
+
+/* Section headers inside fab form */
+.fab-section-header {
+  grid-column: 1 / -1;
+  background: #f0f4f8;
+  border-left: 3px solid var(--primary, #1a1a2e);
+  padding: 6px 12px;
+  border-radius: 4px;
+  margin-top: 8px;
+}
+.fab-section-header span {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--primary, #1a1a2e);
+}

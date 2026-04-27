@@ -1,0 +1,121 @@
+/* =========================================================
+   SOUMISSION (Profil 1)
+========================================================= */
+.submission-container { display: flex; flex-direction: column; gap: 20px; }
+.submission-split { display: grid; grid-template-columns: 280px 1fr; gap: 20px; align-items: start; }
+.submission-upload-section, .submission-files-section, .submission-section {
+  background: var(--bg-card); border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow-sm);
+}
+.submission-upload-section h3, .submission-files-section h3, .submission-section h3 {
+  margin: 0 0 14px 0; font-size: 14px; font-weight: 600; color: var(--text-primary); letter-spacing: -0.01em;
+}
+.upload-zone {
+  border: 2px dashed var(--border); border-radius: var(--radius-md); padding: 28px 16px;
+  text-align: center; cursor: pointer; transition: var(--transition-fast); background: var(--bg-subtle);
+}
+.upload-zone:hover, .upload-zone.drag-over {
+  border-color: var(--primary); background: var(--primary-light);
+}
+.upload-icon { font-size: 28px; margin-bottom: 6px; }
+.upload-text { font-size: 13px; font-weight: 500; color: var(--text-primary); margin: 0 0 3px 0; }
+.upload-subtext { font-size: 11px; color: var(--text-tertiary); margin: 0; }
+.upload-progress { margin-top: 10px; }
+.progress-bar { height: 4px; background: var(--border-light); border-radius: 2px; overflow: hidden; margin-bottom: 5px; }
+.progress-fill { height: 100%; background: var(--primary); border-radius: 2px; transition: width 0.3s ease; width: 0%; }
+
+.submission-kanban { display: flex; flex-direction: column; gap: 7px; max-height: 380px; overflow-y: auto; }
+.submission-kanban::-webkit-scrollbar { width: 4px; }
+.submission-kanban::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.submission-card {
+  background: var(--bg-card); border: 1px solid var(--border-light); border-radius: var(--radius-md);
+  padding: 9px 10px; display: flex; align-items: flex-start; gap: 8px;
+  cursor: pointer; transition: var(--transition-fast);
+}
+.submission-card:hover { border-color: var(--border); box-shadow: var(--shadow-sm); }
+.submission-card.selected { border-color: var(--primary); background: var(--primary-light); }
+.submission-card-checkbox { margin-top: 2px; width: 13px; height: 13px; accent-color: var(--primary); cursor: pointer; flex-shrink: 0; }
+.submission-card-preview {
+  width: 42px; height: 54px; background: var(--bg-subtle); border: 1px solid var(--border-light);
+  border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; font-size: 9px; font-weight: 700; color: var(--primary);
+}
+.submission-card-preview img, .submission-card-preview canvas { width: 100%; height: 100%; object-fit: cover; }
+.submission-card-preview-text { font-size: 18px; }
+.submission-card-body { flex: 1; min-width: 0; }
+.submission-card-title { font-weight: 600; font-size: 11px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.submission-card-info { font-size: 10px; color: var(--text-tertiary); }
+.submission-card-status {
+  font-size: 10px; font-weight: 600; padding: 2px 5px; border-radius: 4px;
+  display: inline-block; margin: 2px 0 3px 0;
+}
+.submission-card-status.done { background: #DCFCE7; color: #166534; }
+.submission-card-status.scheduled { background: #DBEAFE; color: #1E40AF; }
+.submission-card-status.pending { background: var(--bg-subtle); color: var(--text-tertiary); }
+.submission-card-actions { display: flex; gap: 3px; flex-wrap: wrap; }
+.submission-calendar { min-height: 500px; flex: 1; }
+
+/* =========================================================
+   VUE PRODUCTION (Profil 1 — lecture seule)
+========================================================= */
+.production-view {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 0;
+}
+
+/* =========================================================
+   VUE PRODUCTION GLOBALE
+========================================================= */
+.global-prod-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  padding: 20px;
+}
+.global-prod-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.global-prod-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 6px;
+}
+.global-prod-stage {
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 10px;
+}
+.global-prod-progress {
+  background: #e5e7eb;
+  border-radius: 10px;
+  height: 12px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+.global-prod-progress .progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #22c55e);
+  border-radius: 10px;
+  transition: width 0.5s;
+}
+.global-prod-percent {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+@media (max-width: 1100px) {
+  .production-view { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 740px) {
+  .production-view { grid-template-columns: 1fr; }
+  .submission-split { grid-template-columns: 1fr; }
+}

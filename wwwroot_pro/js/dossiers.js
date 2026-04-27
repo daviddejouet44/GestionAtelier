@@ -1,17 +1,7 @@
 // dossiers.js — Dossiers de production
 import { authToken, showNotification, fnKey, fmtBytes } from './core.js';
 import { openFabrication } from './fabrication.js';
-
-const STAGE_DISPLAY_LABELS = {
-  "Début de production": "Jobs à traiter",
-  "Corrections": "Preflight",
-  "Corrections et fond perdu": "Preflight avec fond perdu",
-  "Prêt pour impression": "En attente"
-};
-
-function getStageLabelDisplay(stage) {
-  return STAGE_DISPLAY_LABELS[stage] || stage;
-}
+import { STAGE_DISPLAY_LABELS, getStageLabelDisplay, STAGE_ORDER } from './constants.js';
 
 export function showDossiers() {
   // Navigation handled by app.js
@@ -99,12 +89,7 @@ export async function loadDossiersList() {
       } catch { return null; }
     }));
 
-    // STAGE ordering for "least advanced" logic
-    const STAGE_ORDER = [
-      "Début de production", "Corrections", "Corrections et fond perdu",
-      "Prêt pour impression", "BAT", "PrismaPrepare", "Fiery",
-      "Impression en cours", "Façonnage", "Fin de production"
-    ];
+    // STAGE ordering for "least advanced" logic (imported from constants.js)
     function stageIndex(s) {
       if (!s) return 0;
       const lower = s.toLowerCase();

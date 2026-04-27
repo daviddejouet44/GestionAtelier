@@ -17,7 +17,7 @@
   <!-- LOGIN -->
   <div id="login-container" class="login-container">
     <div class="login-panel">
-      <img src="/api/logo" alt="Logo" style="max-height:80px;max-width:200px;margin:0 auto 16px;display:block;" onerror="this.style.display='none'" />
+      <img src="/api/logo-login" alt="Logo" style="max-height:80px;max-width:200px;margin:0 auto 16px;display:block;" onerror="this.style.display='none'" />
       <h1>Gestion d'Atelier</h1>
       <form id="login-form">
         <div class="form-group">
@@ -71,7 +71,7 @@
       <div class="tab-buttons">
         <button id="btnViewSubmission" class="tab-btn" style="display:none;">Soumission</button>
         <button id="btnViewKanban" class="tab-btn active">Production</button>
-        <button id="btnViewCalendar" class="tab-btn">Calendrier</button>
+        <button id="btnViewCalendar" class="tab-btn">Planning</button>
         <button id="btnViewBat" class="tab-btn" style="display:none;">BAT</button>
         <button id="btnViewRapport" class="tab-btn" style="display:none;">Rapport</button>
         <button id="btnViewDossiers" class="tab-btn" style="display:none;">Dossiers</button>
@@ -113,49 +113,12 @@
       <div class="fab-modal-content">
         <h2>Fiche de fabrication</h2>
         <div id="fab-stage-banner" style="display:none;margin-bottom:12px;padding:8px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:13px;color:#0369a1;font-weight:500;"></div>
-        <div class="fab-form-grid">
-          <div class="fab-form-group"><label>Délai</label><input id="fab-delai" type="date" readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;" /></div>
-          <div class="fab-form-group"><label>Numéro de dossier <span class="required-star">*</span></label><input id="fab-numero-dossier" type="text" /></div>
-          <div class="fab-form-group"><label>Client</label><input id="fab-client" type="text" /></div>
-          <div class="fab-form-group"><label>Opérateur</label><input id="fab-operateur" type="text" readonly style="background:#f3f4f6;cursor:not-allowed;" /></div>
-          
-          <!-- DATES CLÉS PLANIFICATION -->
-          <div class="fab-form-group fab-full-width" style="grid-column: 1/-1; background:#f9fafb; padding:12px; border-radius:8px; margin-top:8px;">
-            <h4 style="margin:0 0 12px 0; font-size:14px; color:#374151;">📅 Dates clés de planification</h4>
-            <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:12px;">
-              <div><label style="display:block;font-size:12px;margin-bottom:4px;"><strong>Date de réception souhaitée</strong></label><input id="fab-date-reception" type="datetime-local" style="width:100%;padding:6px;border:1px solid #d1d5db;border-radius:4px;" /></div>
-              <div><label style="display:block;font-size:12px;margin-bottom:4px;">Date d'envoi</label><input id="fab-date-envoi" type="datetime-local" readonly style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:4px;background:#f9fafb;color:#6b7280;" /></div>
-              <div><label style="display:block;font-size:12px;margin-bottom:4px;">Date impression</label><input id="fab-date-impression" type="datetime-local" readonly style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:4px;background:#f9fafb;color:#6b7280;" /></div>
-              <div><label style="display:block;font-size:12px;margin-bottom:4px;">Date prod. finitions</label><input id="fab-date-finitions" type="datetime-local" readonly style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:4px;background:#f9fafb;color:#6b7280;" /></div>
-            </div>
-          </div>
-
-          <div class="fab-form-group">
-            <label>Type de travail <span class="required-star">*</span></label>
-            <select id="fab-type"><option value="">— Sélectionner —</option></select>
-          </div>
-          <div class="fab-form-group"><label>Format fini</label><input id="fab-format" type="text" /></div>
-          <div class="fab-form-group"><label>Quantité</label><input id="fab-quantite" type="number" /></div>
-          <div class="fab-form-group"><label>Moteur d'impression</label><select id="fab-moteur"><option value="">— Sélectionner —</option></select></div>
-          
-          <!-- PRODUCTION & TEMPS (REGROUPÉS) -->
-          <div class="fab-form-group">
-            <label>Temps de production (minutes)</label>
-            <input id="fab-temps-produit" type="number" placeholder="Durée en minutes" style="width:100%;" />
-          </div>
-
-          <div class="fab-form-group"><label>Recto/Verso</label><select id="fab-recto-verso"><option value="">— Sélectionner —</option><option value="Oui">Oui</option><option value="Non">Non</option></select></div>
-          <div class="fab-form-group"><label>Forme de découpe</label><input id="fab-forme-decoupe" type="text" /></div>
-          <div class="fab-form-group"><label>Media 1</label><select id="fab-media1"><option value="">— Sélectionner —</option></select></div>
-          <div class="fab-form-group"><label>Media 2</label><select id="fab-media2"><option value="">— Sélectionner —</option></select></div>
-          <div class="fab-form-group"><label>Media 3</label><select id="fab-media3"><option value="">— Sélectionner —</option></select></div>
-          <div class="fab-form-group"><label>Media 4</label><select id="fab-media4"><option value="">— Sélectionner —</option></select></div>
-          <div class="fab-form-group fab-full-width"><label>BAT</label><select id="fab-bat"><option value="">— Sélectionner —</option><option value="Non">Non</option><option value="Numérique">Numérique</option><option value="Papier">Papier</option></select></div>
-          <div class="fab-form-group fab-full-width"><label>Façonnage</label><div id="fab-faconnage-container" style="display:flex;flex-wrap:wrap;gap:8px;padding:6px 0;"></div></div>
-          <div class="fab-form-group"><label>Retrait imprimerie ou livraison</label><select id="fab-retrait-livraison"><option value="">— Sélectionner —</option><option value="Retrait imprimerie">Retrait imprimerie</option><option value="Livraison">Livraison</option></select></div>
-          <div class="fab-form-group"><label>Adresse de livraison</label><input id="fab-adresse-livraison" type="text" /></div>
-          <div class="fab-form-group fab-full-width"><label>Note</label><textarea id="fab-notes" rows="3"></textarea></div>
-          <div class="fab-form-group fab-full-width"><label>Historique</label><div id="fab-history" style="max-height:120px;overflow-y:auto;font-size:12px;color:#6b7280;"></div></div>
+        <!-- Dynamic form injected here by fabrication.js -->
+        <div id="fab-dynamic-form" class="fab-form-grid"></div>
+        <!-- History always shown below the dynamic form -->
+        <div class="fab-form-group fab-full-width" style="margin-top:8px;">
+          <label>Historique</label>
+          <div id="fab-history" style="max-height:120px;overflow-y:auto;font-size:12px;color:#6b7280;"></div>
         </div>
         <div class="fab-modal-buttons">
           <button id="fab-close">Fermer</button>
@@ -170,7 +133,7 @@
 
   </div>
 
-  <script type="module" src="js/app.js?v=28"></script>
+  <script type="module" src="js/app.js?v=30"></script>
 
 </body>
 </html>

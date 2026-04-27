@@ -66,7 +66,9 @@ public static class BackendUtils
                     Login    = d.Contains("login")    ? d["login"].AsString    : "",
                     Password = d.Contains("password") ? d["password"].AsString : "",
                     Profile  = d.Contains("profile")  ? d["profile"].AsInt32   : 1,
-                    Name     = d.Contains("name")     ? d["name"].AsString     : ""
+                    Name     = d.Contains("name")     ? d["name"].AsString     : "",
+                    LastActivityAt = d.Contains("lastActivityAt") && !d["lastActivityAt"].IsBsonNull
+                        ? (DateTime?)d["lastActivityAt"].ToUniversalTime() : null
                 }).ToList();
         }
         catch (Exception ex)
@@ -88,6 +90,30 @@ public static class BackendUtils
             ["name"]     = user.Name
         };
         col.InsertOne(doc);
+    }
+
+    public static void UpdateUser(UserItem user)
+    {
+        var col = MongoDbHelper.GetUsersCollection();
+        var filter = Builders<BsonDocument>.Filter.Eq("id", user.Id);
+        var update = Builders<BsonDocument>.Update
+            .Set("login", user.Login)
+            .Set("name", user.Name)
+            .Set("profile", user.Profile)
+            .Set("password", user.Password);
+        col.UpdateOne(filter, update);
+    }
+
+    public static void UpdateUserActivity(string login)
+    {
+        try
+        {
+            var col = MongoDbHelper.GetUsersCollection();
+            var filter = Builders<BsonDocument>.Filter.Eq("login", login);
+            var update = Builders<BsonDocument>.Update.Set("lastActivityAt", DateTime.UtcNow);
+            col.UpdateOne(filter, update);
+        }
+        catch { /* ignore */ }
     }
 
     public static bool DeleteUser(string userId)
@@ -512,8 +538,50 @@ public static class BackendUtils
             ["bat"]               = sheet.Bat               == null ? BsonNull.Value : (BsonValue)sheet.Bat,
             ["retraitLivraison"]  = sheet.RetraitLivraison  == null ? BsonNull.Value : (BsonValue)sheet.RetraitLivraison,
             ["adresseLivraison"]  = sheet.AdresseLivraison  == null ? BsonNull.Value : (BsonValue)sheet.AdresseLivraison,
-            ["history"]           = historyArray
+            ["history"]           = historyArray,
+
+            ["donneurOrdreNom"]       = sheet.DonneurOrdreNom       == null ? BsonNull.Value : (BsonValue)sheet.DonneurOrdreNom,
+            ["donneurOrdrePrenom"]    = sheet.DonneurOrdrePrenom    == null ? BsonNull.Value : (BsonValue)sheet.DonneurOrdrePrenom,
+            ["donneurOrdreTelephone"] = sheet.DonneurOrdreTelephone == null ? BsonNull.Value : (BsonValue)sheet.DonneurOrdreTelephone,
+            ["donneurOrdreEmail"]     = sheet.DonneurOrdreEmail     == null ? BsonNull.Value : (BsonValue)sheet.DonneurOrdreEmail,
+            ["pagination"]            = sheet.Pagination            == null ? BsonNull.Value : (BsonValue)sheet.Pagination,
+            ["formatFeuille"]         = sheet.FormatFeuille         == null ? BsonNull.Value : (BsonValue)sheet.FormatFeuille,
+            ["media1Fabricant"]       = sheet.Media1Fabricant       == null ? BsonNull.Value : (BsonValue)sheet.Media1Fabricant,
+            ["media2Fabricant"]       = sheet.Media2Fabricant       == null ? BsonNull.Value : (BsonValue)sheet.Media2Fabricant,
+            ["media3Fabricant"]       = sheet.Media3Fabricant       == null ? BsonNull.Value : (BsonValue)sheet.Media3Fabricant,
+            ["media4Fabricant"]       = sheet.Media4Fabricant       == null ? BsonNull.Value : (BsonValue)sheet.Media4Fabricant,
+            ["mediaCouverture"]         = sheet.MediaCouverture         == null ? BsonNull.Value : (BsonValue)sheet.MediaCouverture,
+            ["mediaCouvertureFabricant"] = sheet.MediaCouvertureFabricant == null ? BsonNull.Value : (BsonValue)sheet.MediaCouvertureFabricant,
+            ["rainage"]        = sheet.Rainage        == null ? BsonNull.Value : (BsonValue)sheet.Rainage.Value,
+            ["ennoblissement"] = sheet.Ennoblissement == null ? BsonNull.Value : (BsonValue)new BsonArray(sheet.Ennoblissement),
+            ["faconnageBinding"] = sheet.FaconnageBinding == null ? BsonNull.Value : (BsonValue)sheet.FaconnageBinding,
+            ["plis"]             = sheet.Plis             == null ? BsonNull.Value : (BsonValue)sheet.Plis,
+            ["sortie"]           = sheet.Sortie           == null ? BsonNull.Value : (BsonValue)sheet.Sortie,
+            ["mailDevisFileName"] = sheet.MailDevisFileName == null ? BsonNull.Value : (BsonValue)sheet.MailDevisFileName,
+            ["mailBatFileName"]   = sheet.MailBatFileName   == null ? BsonNull.Value : (BsonValue)sheet.MailBatFileName,
+            ["dateDepart"]      = sheet.DateDepart      == null ? BsonNull.Value : (BsonValue)sheet.DateDepart.Value,
+            ["dateLivraison"]   = sheet.DateLivraison   == null ? BsonNull.Value : (BsonValue)sheet.DateLivraison.Value,
+            ["planningMachine"] = sheet.PlanningMachine == null ? BsonNull.Value : (BsonValue)sheet.PlanningMachine.Value,
+            ["dateReception"]         = sheet.DateReception         == null ? BsonNull.Value : (BsonValue)sheet.DateReception.Value,
+            ["dateEnvoi"]             = sheet.DateEnvoi             == null ? BsonNull.Value : (BsonValue)sheet.DateEnvoi.Value,
+            ["dateProductionFinitions"] = sheet.DateProductionFinitions == null ? BsonNull.Value : (BsonValue)sheet.DateProductionFinitions.Value,
+            ["dateImpression"]        = sheet.DateImpression        == null ? BsonNull.Value : (BsonValue)sheet.DateImpression.Value,
+            ["tempsProduitMinutes"]   = sheet.TempsProduitMinutes   == null ? BsonNull.Value : (BsonValue)(int)sheet.TempsProduitMinutes,
+            ["justifsClientsQuantite"] = sheet.JustifsClientsQuantite == null ? BsonNull.Value : (BsonValue)(int)sheet.JustifsClientsQuantite,
+            ["justifsClientsAdresse"]  = sheet.JustifsClientsAdresse  == null ? BsonNull.Value : (BsonValue)sheet.JustifsClientsAdresse,
+            ["repartitions"] = sheet.Repartitions == null
+                ? BsonNull.Value
+                : (BsonValue)new BsonArray(sheet.Repartitions.Select(r => new BsonDocument
+                {
+                    ["quantite"] = r.Quantite == null ? BsonNull.Value : (BsonValue)(int)r.Quantite,
+                    ["adresse"]  = r.Adresse  == null ? BsonNull.Value : (BsonValue)r.Adresse
+                }))
         };
+
+        // Preserve finitionSteps if they exist on the existing document (they are managed separately)
+        if (existing != null && existing.Contains("finitionSteps") && existing["finitionSteps"] != BsonNull.Value)
+            doc["finitionSteps"] = existing["finitionSteps"];
+
         if (existing != null)
         {
             // Preserve the locked field if it was set on the existing document
@@ -583,20 +651,119 @@ public static class BackendUtils
             Bat              = GetNullableString(d, "bat"),
             RetraitLivraison = GetNullableString(d, "retraitLivraison"),
             AdresseLivraison = GetNullableString(d, "adresseLivraison"),
-            // Dates clés planification
+            History          = history,
+
+            DonneurOrdreNom       = GetNullableString(d, "donneurOrdreNom"),
+            DonneurOrdrePrenom    = GetNullableString(d, "donneurOrdrePrenom"),
+            DonneurOrdreTelephone = GetNullableString(d, "donneurOrdreTelephone"),
+            DonneurOrdreEmail     = GetNullableString(d, "donneurOrdreEmail"),
+            Pagination            = GetNullableString(d, "pagination"),
+            FormatFeuille         = GetNullableString(d, "formatFeuille"),
+            Media1Fabricant       = GetNullableString(d, "media1Fabricant"),
+            Media2Fabricant       = GetNullableString(d, "media2Fabricant"),
+            Media3Fabricant       = GetNullableString(d, "media3Fabricant"),
+            Media4Fabricant       = GetNullableString(d, "media4Fabricant"),
+            MediaCouverture         = GetNullableString(d, "mediaCouverture"),
+            MediaCouvertureFabricant = GetNullableString(d, "mediaCouvertureFabricant"),
+            Rainage        = d.Contains("rainage") && d["rainage"] != BsonNull.Value && d["rainage"].BsonType == BsonType.Boolean ? (bool?)d["rainage"].AsBoolean : null,
+            Ennoblissement = d.Contains("ennoblissement") && d["ennoblissement"] != BsonNull.Value && d["ennoblissement"].IsBsonArray
+                             ? d["ennoblissement"].AsBsonArray.Select(v => v.AsString).ToList()
+                             : null,
+            FaconnageBinding = GetNullableString(d, "faconnageBinding"),
+            Plis             = GetNullableString(d, "plis"),
+            Sortie           = GetNullableString(d, "sortie"),
+            MailDevisFileName = GetNullableString(d, "mailDevisFileName"),
+            MailBatFileName   = GetNullableString(d, "mailBatFileName"),
+            DateDepart      = d.Contains("dateDepart")      && d["dateDepart"]      != BsonNull.Value ? (DateTime?)d["dateDepart"].ToLocalTime()      : null,
+            DateLivraison   = d.Contains("dateLivraison")   && d["dateLivraison"]   != BsonNull.Value ? (DateTime?)d["dateLivraison"].ToLocalTime()   : null,
+            PlanningMachine = d.Contains("planningMachine") && d["planningMachine"] != BsonNull.Value ? (DateTime?)d["planningMachine"].ToLocalTime() : null,
+            DateReception         = d.Contains("dateReception")         && d["dateReception"]         != BsonNull.Value ? (DateTime?)d["dateReception"].ToLocalTime()         : null,
             DateReceptionSouhaitee = d.Contains("dateReceptionSouhaitee") && d["dateReceptionSouhaitee"] != BsonNull.Value ? (DateTime?)d["dateReceptionSouhaitee"].ToLocalTime() : null,
-            DateEnvoi = d.Contains("dateEnvoi") && d["dateEnvoi"] != BsonNull.Value ? (DateTime?)d["dateEnvoi"].ToLocalTime() : null,
-            DateImpression = d.Contains("dateImpression") && d["dateImpression"] != BsonNull.Value ? (DateTime?)d["dateImpression"].ToLocalTime() : null,
+            DateEnvoi             = d.Contains("dateEnvoi")             && d["dateEnvoi"]             != BsonNull.Value ? (DateTime?)d["dateEnvoi"].ToLocalTime()             : null,
             DateProductionFinitions = d.Contains("dateProductionFinitions") && d["dateProductionFinitions"] != BsonNull.Value ? (DateTime?)d["dateProductionFinitions"].ToLocalTime() : null,
-            // Production
-            TempsProduitMinutes = d.Contains("tempsProduitMinutes") && d["tempsProduitMinutes"] != BsonNull.Value ? (int?)d["tempsProduitMinutes"].AsInt32 : null,
+            DateImpression        = d.Contains("dateImpression")        && d["dateImpression"]        != BsonNull.Value ? (DateTime?)d["dateImpression"].ToLocalTime()        : null,
+            TempsProduitMinutes   = d.Contains("tempsProduitMinutes")   && d["tempsProduitMinutes"]   != BsonNull.Value ? (int?)d["tempsProduitMinutes"].AsInt32             : null,
+            JustifsClientsQuantite = d.Contains("justifsClientsQuantite") && d["justifsClientsQuantite"] != BsonNull.Value ? (int?)d["justifsClientsQuantite"].AsInt32 : null,
+            JustifsClientsAdresse  = GetNullableString(d, "justifsClientsAdresse"),
+            Repartitions = d.Contains("repartitions") && d["repartitions"] != BsonNull.Value && d["repartitions"].IsBsonArray
+                ? d["repartitions"].AsBsonArray.Select(v =>
+                {
+                    var r = v.AsBsonDocument;
+                    return new GestionAtelier.Models.RepartitionItem
+                    {
+                        Quantite = r.Contains("quantite") && r["quantite"] != BsonNull.Value ? (int?)r["quantite"].AsInt32 : null,
+                        Adresse  = r.Contains("adresse")  && r["adresse"]  != BsonNull.Value ? r["adresse"].AsString : null
+                    };
+                }).ToList()
+                : null,
             FinitionsChecked = d.Contains("finitionsChecked") && d["finitionsChecked"] != BsonNull.Value
                                ? (d["finitionsChecked"].IsBsonArray
                                   ? d["finitionsChecked"].AsBsonArray.Select(v => v.AsString).ToList()
                                   : new List<string>())
                                : null,
-            History          = history
+            FinitionSteps = BsonDocToFinitionSteps(d),
+            StatutProduction = GetNullableString(d, "statutProduction")
         };
+    }
+
+    public static FinitionSteps BsonDocToFinitionSteps(BsonDocument d)
+    {
+        var fs = new FinitionSteps();
+        if (!d.Contains("finitionSteps") || d["finitionSteps"] == BsonNull.Value || !d["finitionSteps"].IsBsonDocument)
+            return fs;
+        var doc = d["finitionSteps"].AsBsonDocument;
+        fs.Embellissement = BsonDocToFinitionStep(doc, "embellissement");
+        fs.Rainage        = BsonDocToFinitionStep(doc, "rainage");
+        fs.Pliage         = BsonDocToFinitionStep(doc, "pliage");
+        fs.Faconnage      = BsonDocToFinitionStep(doc, "faconnage");
+        fs.Coupe          = BsonDocToFinitionStep(doc, "coupe");
+        fs.Emballage      = BsonDocToFinitionStep(doc, "emballage");
+        fs.Depart         = BsonDocToFinitionStep(doc, "depart");
+        fs.Livraison      = BsonDocToFinitionStep(doc, "livraison");
+        return fs;
+    }
+
+    private static FinitionStep BsonDocToFinitionStep(BsonDocument doc, string key)
+    {
+        if (!doc.Contains(key) || doc[key] == BsonNull.Value || !doc[key].IsBsonDocument)
+            return new FinitionStep();
+        var s = doc[key].AsBsonDocument;
+        return new FinitionStep
+        {
+            Done            = s.Contains("done") && s["done"] != BsonNull.Value && s["done"].AsBoolean,
+            DoneAt          = s.Contains("doneAt") && s["doneAt"] != BsonNull.Value ? (DateTime?)s["doneAt"].ToUniversalTime() : null,
+            DoneBy          = s.Contains("doneBy") && s["doneBy"] != BsonNull.Value ? s["doneBy"].AsString : null,
+            Conditionnement = s.Contains("conditionnement") && s["conditionnement"] != BsonNull.Value ? s["conditionnement"].AsString : null,
+            Tracking        = s.Contains("tracking") && s["tracking"] != BsonNull.Value ? s["tracking"].AsString : null
+        };
+    }
+
+    public static BsonDocument FinitionStepsToBsonDoc(FinitionSteps fs)
+    {
+        return new BsonDocument
+        {
+            ["embellissement"] = FinitionStepToBsonDoc(fs.Embellissement),
+            ["rainage"]        = FinitionStepToBsonDoc(fs.Rainage),
+            ["pliage"]         = FinitionStepToBsonDoc(fs.Pliage),
+            ["faconnage"]      = FinitionStepToBsonDoc(fs.Faconnage),
+            ["coupe"]          = FinitionStepToBsonDoc(fs.Coupe),
+            ["emballage"]      = FinitionStepToBsonDoc(fs.Emballage),
+            ["depart"]         = FinitionStepToBsonDoc(fs.Depart),
+            ["livraison"]      = FinitionStepToBsonDoc(fs.Livraison)
+        };
+    }
+
+    private static BsonDocument FinitionStepToBsonDoc(FinitionStep s)
+    {
+        var doc = new BsonDocument
+        {
+            ["done"]  = s.Done,
+            ["doneAt"] = s.DoneAt == null ? BsonNull.Value : (BsonValue)s.DoneAt.Value,
+            ["doneBy"] = s.DoneBy == null ? BsonNull.Value : (BsonValue)s.DoneBy
+        };
+        if (s.Conditionnement != null) doc["conditionnement"] = s.Conditionnement;
+        if (s.Tracking != null) doc["tracking"] = s.Tracking;
+        return doc;
     }
 
     private static string? GetNullableString(BsonDocument d, string key)

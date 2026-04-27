@@ -117,6 +117,20 @@ public static class MongoDbHelper
         }
     }
 
+    public static void DeleteSettings(string settingsId)
+    {
+        try
+        {
+            var col = GetSettingsCollection();
+            var filter = Builders<BsonDocument>.Filter.Eq("_id", settingsId);
+            col.DeleteOne(filter);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] DeleteSettings({settingsId}) error: {ex.Message}");
+        }
+    }
+
     public static IMongoCollection<BsonDocument> GetActivityLogsCollection()
         => GetDatabase().GetCollection<BsonDocument>("activity_logs");
 

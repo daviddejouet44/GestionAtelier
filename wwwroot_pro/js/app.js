@@ -18,6 +18,10 @@ import { initDossiersView, loadDossiersList, openDossierDetail } from './dossier
 import { initSettingsView } from './settings.js';
 import { pollNotifications, initNotificationBell } from './notifications.js';
 import { initGlobalProductionView, refreshProductionViewKanban, buildProductionView } from './production-view.js';
+import { STAGE_PROGRESS, STAGE_DISPLAY_LABELS } from './constants.js';
+
+import { hideAllViews, showDossiers, showSettings, showGlobalProduction } from './app/navigation.js';
+import { initDashboardView } from './app/dashboard.js';
 
 // ======================================================
 // DOM REFS
@@ -35,6 +39,7 @@ let submissionJobs = [];
 // ======================================================
 window._openFabrication = openFabrication;
 window._refreshKanban = refreshKanban;
+window._buildKanban = buildKanban;
 window._refreshSubmissionView = refreshSubmissionView;
 window._loadDeliveries = loadDeliveries;
 window._loadAssignments = loadAssignments;
@@ -129,27 +134,8 @@ async function handleDesktopDrop(e, destFolder) {
 }
 
 // ======================================================
-// NAVIGATION — MASQUER TOUTES LES VUES
+// NAVIGATION
 // ======================================================
-function hideAllViews() {
-  document.getElementById("kanban-layout").classList.add("hidden");
-  document.getElementById("calendar").classList.add("hidden");
-  document.getElementById("submission").classList.add("hidden");
-  document.getElementById("production").classList.add("hidden");
-  document.getElementById("recycle").classList.add("hidden");
-  document.getElementById("dashboard").classList.add("hidden");
-  document.getElementById("dossiers").classList.add("hidden");
-  document.getElementById("settings-view").classList.add("hidden");
-  document.getElementById("bat-view").classList.add("hidden");
-  document.getElementById("rapport-view").classList.add("hidden");
-  const globalProdEl = document.getElementById("global-production");
-  if (globalProdEl) globalProdEl.classList.add("hidden");
-  // Hide kanban-specific controls
-  const filterBarEl = document.getElementById("kanban-filter-bar");
-  if (filterBarEl) filterBarEl.style.display = "none";
-  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-}
-
 function showKanban() {
   hideAllViews();
   document.getElementById("kanban-layout").classList.remove("hidden");
@@ -157,7 +143,7 @@ function showKanban() {
   // Show kanban-specific filter bar
   const filterBarEl = document.getElementById("kanban-filter-bar");
   if (filterBarEl) filterBarEl.style.display = "";
-  refreshKanban();
+  buildKanban();
   buildKanbanSidebar();
 }
 
@@ -166,6 +152,9 @@ async function showCalendar() {
   document.getElementById("calendar").classList.remove("hidden");
   document.getElementById("btnViewCalendar").classList.add("active");
   await ensureCalendar();
+  // Restore planning view switcher visibility
+  const planSwitcher = document.getElementById("planning-view-switcher");
+  if (planSwitcher) planSwitcher.style.display = "";
   // Update calendar refs for settings.js
   window._calendar = calendar;
   calendar?.refetchEvents();
@@ -197,28 +186,6 @@ function showDashboard() {
   document.getElementById("dashboard").classList.remove("hidden");
   document.getElementById("btnViewDashboard").classList.add("active");
   initDashboardView();
-}
-
-function showDossiers() {
-  hideAllViews();
-  document.getElementById("dossiers").classList.remove("hidden");
-  document.getElementById("btnViewDossiers").classList.add("active");
-  initDossiersView();
-}
-
-function showSettings() {
-  hideAllViews();
-  document.getElementById("settings-view").classList.remove("hidden");
-  initSettingsView();
-}
-
-function showGlobalProduction() {
-  hideAllViews();
-  const el = document.getElementById("global-production");
-  if (el) el.classList.remove("hidden");
-  const btn = document.getElementById("btnViewGlobalProd");
-  if (btn) btn.classList.add("active");
-  initGlobalProductionView();
 }
 
 // ======================================================
@@ -275,7 +242,15 @@ async function buildBatView() {
       const card = document.createElement("div");
       card.className = "bat-card-modern";
 
-      // --- Thumbnail ---
+      // Status bar (updated after loading status)
+      const statusBar = document.createElement("div");
+      statusBar.className = "bat-card-status-bar";
+      card.appendChild(statusBar);
+
+      // Inner layout wrapper
+      const innerDiv = document.createElement("div");
+      innerDiv.className = "bat-card-inner";
+
       const thumbDiv = document.createElement("div");
       thumbDiv.className = "bat-card-thumb";
       thumbDiv.textContent = "PDF";
@@ -365,9 +340,10 @@ async function buildBatView() {
       actionsDiv.appendChild(btnArchiver);
       actionsDiv.appendChild(btnDelete);
 
-      card.appendChild(thumbDiv);
-      card.appendChild(bodyDiv);
-      card.appendChild(actionsDiv);
+      innerDiv.appendChild(thumbDiv);
+      innerDiv.appendChild(bodyDiv);
+      innerDiv.appendChild(actionsDiv);
+      card.appendChild(innerDiv);
       listEl.appendChild(card);
 
       // Load dossier number async — strip BAT_ prefix before lookup (MongoDB stores without it)
@@ -375,11 +351,17 @@ async function buildBatView() {
       if (lookupFn.toLowerCase().startsWith("bat_")) lookupFn = lookupFn.substring(4);
       fetch("/api/fabrication?fileName=" + encodeURIComponent(lookupFn))
         .then(r => r.json()).then(d => {
-          if (d && d.numeroDossier) dossierEl.textContent = d.numeroDossier;
+          if (d && d.numeroDossier) dossierEl.textContent = "N° " + d.numeroDossier;
         }).catch(() => {});
 
       try {
         const status = await fetch(`/api/bat/status?path=${encodeURIComponent(full)}`).then(r => r.json()).catch(() => ({}));
+
+        // Update status bar color
+        if (status.rejectedAt) statusBar.className = "bat-card-status-bar bat-status-rejected";
+        else if (status.validatedAt) statusBar.className = "bat-card-status-bar bat-status-validated";
+        else if (status.sentAt) statusBar.className = "bat-card-status-bar bat-status-sent";
+        else statusBar.className = "bat-card-status-bar bat-status-new";
 
         const btnSent = document.createElement("button");
         btnSent.className = "bat-status-badge bat-sent" + (status.sentAt ? " active" : "");
@@ -387,7 +369,42 @@ async function buildBatView() {
         btnSent.innerHTML = status.sentAt
           ? `✉️ Envoyé<span style="font-size:9px;font-weight:400;margin-left:4px;">${sentTs}</span>`
           : "✉️ Marquer envoyé";
-        btnSent.onclick = () => fetch("/api/bat/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(buildBatView);
+        btnSent.onclick = async () => {
+          // Load mail template
+          let tmpl = null;
+          try {
+            const tr = await fetch("/api/config/bat-mail-template").then(r => r.json()).catch(() => null);
+            if (tr && tr.ok && tr.template) tmpl = tr.template;
+          } catch(e) { /* ignore */ }
+
+          // If a template is configured, open the mail client
+          if (tmpl && (tmpl.subject || tmpl.body)) {
+            // Load fabrication data for variable substitution
+            let fab = {};
+            try {
+              fab = await fetch("/api/fabrication?fileName=" + encodeURIComponent(lookupFn)).then(r => r.json()).catch(() => ({}));
+            } catch(e) { /* ignore */ }
+
+            const replaceVars = (str) => (str || '')
+              .replace(/\{\{numeroDossier\}\}/g, fab.numeroDossier || '')
+              .replace(/\{\{nomClient\}\}/g, fab.nomClient || '')
+              .replace(/\{\{nomFichier\}\}/g, job.name || '')
+              .replace(/\{\{dateCreation\}\}/g, fab.dateCreation ? new Date(fab.dateCreation).toLocaleDateString('fr-FR') : '')
+              .replace(/\{\{typeTravail\}\}/g, fab.typeTravail || '')
+              .replace(/\{\{quantite\}\}/g, fab.quantite || '')
+              .replace(/\{\{operateur\}\}/g, fab.operateur || '')
+              .replace(/\{\{dateLivraison\}\}/g, fab.dateLivraison ? new Date(fab.dateLivraison).toLocaleDateString('fr-FR') : '');
+
+            const to = tmpl.to || fab.mailClient || '';
+            const subject = replaceVars(tmpl.subject);
+            const body = replaceVars(tmpl.body);
+            const mailto = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            window.open(mailto);
+          }
+
+          // Mark as sent in DB
+          fetch("/api/bat/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(buildBatView);
+        };
 
         const sep1 = document.createElement("span");
         sep1.className = "bat-tracking-sep";
@@ -602,21 +619,11 @@ async function buildKanbanSidebar() {
         headers: { "Authorization": `Bearer ${authToken}` }
       }).then(r => r.json()).catch(() => []);
 
-      const STAGE_PROGRESS = {
-        "Début de production": 0, "Corrections": 25, "Corrections et fond perdu": 25,
-        "Prêt pour impression": 50, "BAT": 65, "PrismaPrepare": 75, "Fiery": 75,
-        "Impression en cours": 75, "Façonnage": 90, "Fin de production": 100
-      };
-      const STAGE_LABELS = {
-        "Début de production": "Jobs à traiter", "Corrections": "Preflight",
-        "Corrections et fond perdu": "Preflight fp", "Prêt pour impression": "En attente"
-      };
-
       if (Array.isArray(prodJobs) && prodJobs.length > 0) {
         prodRows = prodJobs.slice(0, 8).map(job => {
-          const stageLabel = STAGE_LABELS[job.currentStage] || job.currentStage || "—";
+          const stageLabel = STAGE_DISPLAY_LABELS[job.currentStage] || job.currentStage || "—";
           const progress = Object.entries(STAGE_PROGRESS).find(([k]) => (job.currentStage || "").includes(k))?.[1] ?? 0;
-          const color = progress === 100 ? "#22c55e" : progress >= 75 ? "#f97316" : progress >= 50 ? "#3b82f6" : "#f59e0b";
+          const color = progress === 100 ? "#22c55e" : progress >= 65 ? "#f97316" : progress >= 35 ? "#3b82f6" : "#f59e0b";
           return `
             <div style="padding:6px 0;border-bottom:1px solid #f0f0f0;">
               <div style="font-size:11px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${job.numeroDossier || job.fileName || '—'}</div>
@@ -715,7 +722,7 @@ function setupProfileUI() {
   const btnRapport = document.getElementById("btnViewRapport");
   const userInfo = document.getElementById("user-info");
 
-  const profileLabel = currentUser.profile === 4 ? "Façonnage" : `Profil ${currentUser.profile}`;
+  const profileLabel = currentUser.profile === 4 ? "Finitions" : `Profil ${currentUser.profile}`;
   userInfo.textContent = `${currentUser.name} (${profileLabel})`;
 
   // Profile 4 (Façonnage): read-only access, only sees kanban (not submission/settings)
@@ -809,6 +816,7 @@ async function initSubmissionView() {
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <h3 style="margin: 0;">Fichiers soumis</h3>
             <div style="display: flex; gap: 8px;">
+              <button id="btnImportFromMail" class="btn btn-sm">📧 Importer depuis un mail</button>
               <button id="btnSelectAll" class="btn btn-sm">Sélectionner tout</button>
               <button id="btnSendAnalysis" class="btn btn-primary btn-sm">Envoyer en production</button>
             </div>
@@ -847,6 +855,7 @@ async function initSubmissionView() {
 
   await refreshSubmissionView();
   setupSubmissionButtons();
+  setupMailImportButton();
 }
 
 async function handleSubmissionFiles(files) {
@@ -868,12 +877,6 @@ async function handleSubmissionFiles(files) {
 
     if (!file.name.toLowerCase().endsWith(".pdf")) {
       uploadStatus.textContent = `❌ ${file.name} : seuls les PDF`;
-      errorCount++;
-      continue;
-    }
-
-    if (file.size > 100 * 1024 * 1024) {
-      uploadStatus.textContent = `❌ ${file.name} : > 100 Mo`;
       errorCount++;
       continue;
     }
@@ -997,12 +1000,6 @@ async function refreshSubmissionView() {
       btnAssignSub.onclick = (e) => { e.stopPropagation(); openAssignDropdown(btnAssignSub, full); };
       actions.appendChild(btnAssignSub);
 
-      const btnPlan = document.createElement("button");
-      btnPlan.className = "btn btn-primary";
-      btnPlan.textContent = "Planifier";
-      btnPlan.onclick = () => openPlanificationCalendar(full);
-      actions.appendChild(btnPlan);
-
       const btnDelete = document.createElement("button");
       btnDelete.className = "btn";
       btnDelete.textContent = "Supprimer";
@@ -1089,6 +1086,223 @@ function setupSubmissionButtons() {
 }
 
 // ======================================================
+// IMPORT DEPUIS UN MAIL (ITEM 19)
+// ======================================================
+function setupMailImportButton() {
+  const btn = document.getElementById("btnImportFromMail");
+  if (!btn) return;
+
+  btn.onclick = () => openMailImportModal();
+}
+
+async function openMailImportModal() {
+  // Load IMAP settings if configured
+  let imapCfg = {};
+  try {
+    const r = await fetch("/api/settings/imap").then(res => res.json()).catch(() => ({}));
+    if (r.ok && r.settings) imapCfg = r.settings;
+  } catch(e) {}
+
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:10000;";
+
+  const modal = document.createElement("div");
+  modal.style.cssText = "background:white;border-radius:12px;padding:28px;min-width:400px;max-width:640px;width:94%;box-shadow:0 12px 50px rgba(0,0,0,.3);max-height:90vh;overflow-y:auto;";
+
+  modal.innerHTML = `
+    <h3 style="margin:0 0 12px;font-size:17px;font-weight:700;color:#111827;">📧 Importer depuis un mail</h3>
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#1e40af;">
+      <strong>💡 Aide connexion :</strong><br>
+      • <strong>Gmail</strong> : utilisez un <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" style="color:#1d4ed8;font-weight:600;">mot de passe d'application</a> (pas votre mot de passe habituel). Activez d'abord la validation en 2 étapes dans votre compte Google.<br>
+      • <strong>Outlook / Office 365</strong> : serveur <code>outlook.office365.com</code>, port 993, SSL activé. Si la MFA est activée, générez un mot de passe d'application dans votre compte Microsoft.<br>
+      • Serveurs : Gmail → <code>imap.gmail.com:993</code> · Outlook → <code>outlook.office365.com:993</code>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 80px;gap:8px;margin-bottom:10px;">
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">Serveur IMAP</label>
+        <input id="imap-host" type="text" class="settings-input settings-input-wide" placeholder="imap.gmail.com" value="${imapCfg.host || ''}" />
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">Port</label>
+        <input id="imap-port" type="number" class="settings-input" value="${imapCfg.port || 993}" style="width:70px;" />
+      </div>
+    </div>
+    <div style="margin-bottom:10px;">
+      <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">Email</label>
+      <input id="imap-email" type="email" class="settings-input settings-input-wide" placeholder="votre@email.com" value="${imapCfg.email || ''}" />
+    </div>
+    <div style="margin-bottom:10px;">
+      <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">Mot de passe (ou mot de passe d'application)</label>
+      <input id="imap-password" type="password" class="settings-input settings-input-wide" />
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+      <input type="checkbox" id="imap-ssl" ${imapCfg.useSsl !== false ? 'checked' : ''} />
+      <label for="imap-ssl" style="font-size:13px;color:#374151;">SSL / TLS</label>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:4px;">
+      <button id="imap-test-btn" class="btn" style="flex:0 0 auto;">🔌 Tester la connexion</button>
+      <button id="imap-search-btn" class="btn btn-primary" style="flex:1;">🔍 Rechercher les mails récents</button>
+    </div>
+    <div id="imap-results" style="margin-top:16px;"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:16px;">
+      <button id="imap-close-btn" class="btn">Fermer</button>
+    </div>
+  `;
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  modal.querySelector("#imap-close-btn").onclick = () => overlay.remove();
+
+  // Test connection button
+  modal.querySelector("#imap-test-btn").onclick = async () => {
+    const host = modal.querySelector("#imap-host").value.trim();
+    const port = parseInt(modal.querySelector("#imap-port").value) || 993;
+    const email = modal.querySelector("#imap-email").value.trim();
+    const password = modal.querySelector("#imap-password").value;
+    const useSsl = modal.querySelector("#imap-ssl").checked;
+    if (!host || !email || !password) {
+      showNotification("⚠️ Renseignez tous les champs IMAP", "warning");
+      return;
+    }
+    const testBtn = modal.querySelector("#imap-test-btn");
+    const resultsDiv = modal.querySelector("#imap-results");
+    testBtn.disabled = true;
+    testBtn.textContent = "⏳ Test...";
+    resultsDiv.innerHTML = '<div style="color:#6b7280;font-size:13px;">Test de connexion...</div>';
+    try {
+      const r = await fetch("/api/submission/test-imap-connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ host, port, email, password, useSsl })
+      }).then(res => res.json());
+      testBtn.disabled = false;
+      testBtn.textContent = "🔌 Tester la connexion";
+      if (r.ok) {
+        resultsDiv.innerHTML = '<div style="color:#16a34a;font-size:13px;font-weight:600;">✅ Connexion réussie ! Les identifiants sont valides.</div>';
+      } else {
+        const errMsg = r.error || "Erreur de connexion";
+        const isCredErr = errMsg.toLowerCase().includes("invalid") || errMsg.toLowerCase().includes("credentials") || errMsg.toLowerCase().includes("authentication");
+        let helpHtml = '';
+        if (isCredErr) {
+          helpHtml = `<div style="margin-top:8px;padding:10px 12px;background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;font-size:12px;color:#92400e;">
+            💡 <strong>Aide :</strong><br>
+            • <strong>Gmail</strong> : utilisez un <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" style="color:#1d4ed8;">mot de passe d'application</a>, pas votre mot de passe habituel.<br>
+            • <strong>Office 365</strong> : si MFA activée, créez un mot de passe d'application dans votre compte Microsoft.
+          </div>`;
+        }
+        resultsDiv.innerHTML = `<div style="color:#dc2626;font-size:13px;">❌ ${errMsg}</div>${helpHtml}`;
+      }
+    } catch(e) {
+      testBtn.disabled = false;
+      testBtn.textContent = "🔌 Tester la connexion";
+      resultsDiv.innerHTML = '<div style="color:#dc2626;font-size:13px;">❌ Erreur réseau</div>';
+    }
+  };
+
+  modal.querySelector("#imap-search-btn").onclick = async () => {
+    const host = modal.querySelector("#imap-host").value.trim();
+    const port = parseInt(modal.querySelector("#imap-port").value) || 993;
+    const email = modal.querySelector("#imap-email").value.trim();
+    const password = modal.querySelector("#imap-password").value;
+    const useSsl = modal.querySelector("#imap-ssl").checked;
+
+    if (!host || !email || !password) {
+      showNotification("⚠️ Renseignez tous les champs IMAP", "warning");
+      return;
+    }
+
+    const resultsDiv = modal.querySelector("#imap-results");
+    const searchBtn = modal.querySelector("#imap-search-btn");
+    searchBtn.disabled = true;
+    searchBtn.textContent = "⏳ Recherche en cours...";
+    resultsDiv.innerHTML = '<div style="color:#6b7280;font-size:13px;">Connexion au serveur IMAP...</div>';
+
+    try {
+      const r = await fetch("/api/submission/list-mail-attachments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ host, port, email, password, useSsl })
+      }).then(res => res.json());
+
+      searchBtn.disabled = false;
+      searchBtn.textContent = "🔍 Rechercher les mails récents";
+
+      if (!r.ok) {
+        const errMsg = r.error || "Erreur de connexion";
+        const isCredErr = errMsg.toLowerCase().includes("invalid") || errMsg.toLowerCase().includes("credentials") || errMsg.toLowerCase().includes("authentication");
+        let helpHtml = '';
+        if (isCredErr) {
+          helpHtml = `<div style="margin-top:10px;padding:10px 12px;background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;font-size:12px;color:#92400e;">
+            💡 <strong>Aide :</strong><br>
+            • <strong>Gmail :</strong> Utilisez un <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" style="color:#1d4ed8;">mot de passe d'application</a> (pas votre mot de passe habituel). Activez d'abord la validation en deux étapes.<br>
+            • <strong>Outlook/Office365 :</strong> Activez IMAP dans les paramètres de votre compte et utilisez votre mot de passe habituel ou un mot de passe d'application si l'authentification multifacteur est activée.<br>
+            • <strong>Serveur IMAP :</strong> Gmail → <code>imap.gmail.com:993</code>, Outlook → <code>outlook.office365.com:993</code>
+          </div>`;
+        }
+        resultsDiv.innerHTML = `<div style="color:#dc2626;font-size:13px;">❌ ${errMsg}</div>${helpHtml}`;
+        return;
+      }
+
+      const attachments = r.attachments || [];
+      if (attachments.length === 0) {
+        resultsDiv.innerHTML = '<div style="color:#6b7280;font-size:13px;">Aucune pièce jointe PDF trouvée dans les 48 dernières heures.</div>';
+        return;
+      }
+
+      resultsDiv.innerHTML = `<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:10px;">${attachments.length} pièce(s) jointe(s) PDF trouvée(s) :</div>`;
+
+      for (const att of attachments) {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:6px;gap:8px;";
+        const info = document.createElement("div");
+        info.style.cssText = "flex:1;min-width:0;";
+        info.innerHTML = `
+          <div style="font-size:13px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${att.attachmentName}">${att.attachmentName}</div>
+          <div style="font-size:11px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${att.subject} — ${att.from}</div>
+          <div style="font-size:10px;color:#9ca3af;">${new Date(att.date).toLocaleString('fr-FR')}</div>
+        `;
+        const btnImport = document.createElement("button");
+        btnImport.className = "btn btn-sm btn-primary";
+        btnImport.textContent = "📥 Importer";
+        btnImport.style.flexShrink = "0";
+        btnImport.onclick = async () => {
+          btnImport.disabled = true;
+          btnImport.textContent = "⏳ Import...";
+          try {
+            const ir = await fetch("/api/submission/import-mail-attachment", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ host, port, email, password, useSsl, messageId: att.messageId, attachmentName: att.attachmentName, destinationFolder: FOLDER_SOUMISSION })
+            }).then(res => res.json());
+            if (ir.ok) {
+              btnImport.textContent = "✅ Importé";
+              showNotification(`✅ ${ir.fileName} importé dans Soumission`, "success");
+              await refreshSubmissionView();
+            } else {
+              btnImport.disabled = false;
+              btnImport.textContent = "📥 Importer";
+              showNotification("❌ " + (ir.error || "Erreur"), "error");
+            }
+          } catch(err) {
+            btnImport.disabled = false;
+            btnImport.textContent = "📥 Importer";
+            showNotification("❌ " + err.message, "error");
+          }
+        };
+        row.appendChild(info);
+        row.appendChild(btnImport);
+        resultsDiv.appendChild(row);
+      }
+    } catch(err) {
+      searchBtn.disabled = false;
+      searchBtn.textContent = "🔍 Rechercher les mails récents";
+      resultsDiv.innerHTML = `<div style="color:#dc2626;font-size:13px;">❌ ${err.message}</div>`;
+    }
+  };
+}
+
+// ======================================================
 // CORBEILLE
 // ======================================================
 async function initRecycleView() {
@@ -1133,14 +1347,16 @@ async function loadRecycleList() {
     files.forEach(f => {
       const div = document.createElement("div");
       div.style.cssText = "display:flex;align-items:center;gap:10px;padding:12px 16px;border:1px solid var(--border-light);background:var(--bg-card);border-radius:var(--radius-sm);margin-bottom:6px;";
+      const sourceFolderBadge = f.sourceFolder ? `<small style="color:var(--text-tertiary);font-size:11px;">📁 ${f.sourceFolder}</small>` : '';
       div.innerHTML = `
         <div style="flex:1;">
           <strong style="font-size:13px;color:var(--text-primary);">${f.fileName}</strong>
           <small style="display:block;color:var(--text-tertiary);font-size:11px;">Supprimé le ${new Date(f.deletedAt).toLocaleDateString("fr-FR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" })}</small>
+          ${sourceFolderBadge}
         </div>
         <button class="btn btn-sm btn-primary" data-path="${f.fullPath}">↩️ Restaurer</button>
       `;
-      div.querySelector("button").onclick = () => restoreFromRecycle(f.fullPath, f.fileName);
+      div.querySelector("button").onclick = () => restoreFromRecycle(f.fullPath, f.fileName, f.sourceFolder);
       listEl.appendChild(div);
     });
   } catch (err) {
@@ -1148,20 +1364,62 @@ async function loadRecycleList() {
   }
 }
 
-async function restoreFromRecycle(fullPath, fileName) {
-  const folder = prompt(`Restaurer "${fileName}" dans quel dossier ?`, FOLDER_SOUMISSION);
-  if (!folder) return;
+async function restoreFromRecycle(fullPath, fileName, sourceFolder) {
+  const defaultFolder = sourceFolder || FOLDER_SOUMISSION;
 
-  const r = await fetch(`/api/recycle/restore?fullPath=${encodeURIComponent(fullPath)}&destinationFolder=${encodeURIComponent(folder)}`, {
-    method: "POST"
-  }).then(r => r.json()).catch(() => ({ ok: false }));
+  // Build a modal with a dropdown for available folders
+  let folderOptions = [defaultFolder];
+  try {
+    const resp = await fetch("/api/config/kanban-columns").then(r => r.json()).catch(() => null);
+    if (resp && resp.ok && Array.isArray(resp.columns)) {
+      const names = resp.columns.filter(c => c.visible !== false).map(c => c.folder);
+      folderOptions = [defaultFolder, ...names.filter(n => n !== defaultFolder)];
+    }
+  } catch(e) { /* use default */ }
 
-  if (r.ok) {
-    showNotification(`✅ Fichier restauré dans ${folder}`, "success");
-    await loadRecycleList();
-  } else {
-    showNotification("❌ Erreur : " + (r.error || ""), "error");
-  }
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;";
+  const modal = document.createElement("div");
+  modal.style.cssText = "background:#fff;border-radius:12px;padding:28px 32px;width:440px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,0.18);";
+  const escHtml = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const opts = folderOptions.map(f => {
+    const escaped = escHtml(f);
+    return `<option value="${escaped}" ${f===defaultFolder?'selected':''}>${escaped}</option>`;
+  }).join('');
+  modal.innerHTML = `
+    <h3 style="font-size:17px;font-weight:700;color:#111827;margin:0 0 6px;">Restaurer le fichier</h3>
+    <p style="font-size:13px;color:#6b7280;margin:0 0 18px;">${escHtml(fileName)}</p>
+    <div style="margin-bottom:16px;">
+      <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">Dossier de destination</label>
+      <select id="restore-folder-sel" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;">${opts}</select>
+      ${defaultFolder ? `<p style="font-size:11px;color:#6b7280;margin-top:4px;">📁 Dossier d'origine : <strong>${escHtml(defaultFolder)}</strong></p>` : ''}
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button id="restore-cancel-btn" class="btn">Annuler</button>
+      <button id="restore-confirm-btn" class="btn btn-primary">Restaurer</button>
+    </div>
+  `;
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  return new Promise(resolve => {
+    modal.querySelector("#restore-cancel-btn").onclick = () => { overlay.remove(); resolve(); };
+    overlay.onclick = (e) => { if(e.target===overlay){ overlay.remove(); resolve(); } };
+    modal.querySelector("#restore-confirm-btn").onclick = async () => {
+      const folder = modal.querySelector("#restore-folder-sel").value;
+      overlay.remove();
+      const r = await fetch(`/api/recycle/restore?fullPath=${encodeURIComponent(fullPath)}&destinationFolder=${encodeURIComponent(folder)}`, {
+        method: "POST"
+      }).then(r => r.json()).catch(() => ({ ok: false }));
+      if (r.ok) {
+        showNotification(`✅ Fichier restauré dans ${folder}`, "success");
+        await loadRecycleList();
+      } else {
+        showNotification("❌ Erreur : " + (r.error || ""), "error");
+      }
+      resolve();
+    };
+  });
 }
 
 async function purgeRecycle() {
@@ -1178,74 +1436,32 @@ async function purgeRecycle() {
 }
 
 // ======================================================
-// DASHBOARD
+// BACKGROUND LOGIN + HEADER BANNER (ITEMS 13 & 14)
 // ======================================================
-async function initDashboardView() {
-  const dashEl = document.getElementById("dashboard");
-  dashEl.innerHTML = `
-    <div class="settings-container">
-      <h2>Dashboard — Vue d'ensemble de l'atelier</h2>
-      <div id="dashboard-content"><p style="color:#6b7280;">Chargement...</p></div>
-    </div>
-  `;
-  await loadDashboardData();
+function applyLoginBackground() {
+  const loginContainer = document.getElementById("login-container");
+  if (!loginContainer) return;
+  const img = new Image();
+  img.onload = () => {
+    loginContainer.style.backgroundImage = `url('/api/background-login?v=${Date.now()}')`;
+    loginContainer.style.backgroundSize = "cover";
+    loginContainer.style.backgroundPosition = "center";
+  };
+  img.onerror = () => { /* No background configured — keep default */ };
+  img.src = `/api/background-login?v=${Date.now()}`;
 }
 
-async function loadDashboardData() {
-  const contentEl = document.getElementById("dashboard-content");
-  if (!contentEl) return;
-
-  if (currentUser && currentUser.profile === 3) {
-    // Admin: show Prismalytics direct access links (iframes blocked by CSP frame-ancestors)
-    contentEl.innerHTML = `
-      <div style="margin-bottom:20px;">
-        <p style="color:var(--text-secondary);font-size:13px;margin:0 0 20px 0;">
-          Accédez directement aux outils Prismalytics Canon dans un nouvel onglet.
-        </p>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;">
-          <a href="https://prismalytics-eu.cpp.canon/accounting#" target="_blank" rel="noopener"
-             style="display:flex;flex-direction:column;gap:10px;background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius-lg);padding:24px;text-decoration:none;color:inherit;box-shadow:var(--shadow-md);transition:box-shadow 0.2s,transform 0.18s;"
-             onmouseover="this.style.boxShadow='var(--shadow-hover)';this.style.transform='translateY(-2px)';"
-             onmouseout="this.style.boxShadow='var(--shadow-md)';this.style.transform='';">
-            <span style="font-size:36px;">📊</span>
-            <strong style="font-size:16px;font-weight:700;color:var(--text-primary);">Accounting</strong>
-            <span style="font-size:12px;color:var(--text-secondary);">Suivi des impressions et facturation Canon Prismalytics</span>
-            <span style="font-size:12px;color:var(--primary);font-weight:600;margin-top:4px;">Ouvrir ↗</span>
-          </a>
-          <a href="https://prismalytics-eu.cpp.canon/dashboard#" target="_blank" rel="noopener"
-             style="display:flex;flex-direction:column;gap:10px;background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius-lg);padding:24px;text-decoration:none;color:inherit;box-shadow:var(--shadow-md);transition:box-shadow 0.2s,transform 0.18s;"
-             onmouseover="this.style.boxShadow='var(--shadow-hover)';this.style.transform='translateY(-2px)';"
-             onmouseout="this.style.boxShadow='var(--shadow-md)';this.style.transform='';">
-            <span style="font-size:36px;">📈</span>
-            <strong style="font-size:16px;font-weight:700;color:var(--text-primary);">Dashboard</strong>
-            <span style="font-size:12px;color:var(--text-secondary);">Vue d'ensemble et statistiques de production Prismalytics</span>
-            <span style="font-size:12px;color:var(--primary);font-weight:600;margin-top:4px;">Ouvrir ↗</span>
-          </a>
-        </div>
-      </div>
-    `;
-  } else {
-    contentEl.innerHTML = `
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-        <div style="background: #fef9c3; border: 1px solid #fbbf24; border-radius: 12px; padding: 30px;">
-          <h3 style="margin: 0 0 12px 0; font-size: 20px;">Reporting</h3>
-          <p style="color: #92400e; margin: 0 0 8px 0;">À venir</p>
-          <p style="color: #6b7280; margin: 0; font-size: 13px;">
-            Cette section contiendra les rapports de production, les temps de traitement,
-            les statistiques par opérateur et les analyses de performance.
-          </p>
-        </div>
-        <div style="background: #fef9c3; border: 1px solid #fbbf24; border-radius: 12px; padding: 30px;">
-          <h3 style="margin: 0 0 12px 0; font-size: 20px;">Presses numériques</h3>
-          <p style="color: #92400e; margin: 0 0 8px 0;">À venir</p>
-          <p style="color: #6b7280; margin: 0; font-size: 13px;">
-            Connexion aux presses numériques pour le suivi en temps réel :
-            état des machines, files d'attente, consommation d'encre et alertes.
-          </p>
-        </div>
-      </div>
-    `;
-  }
+function applyHeaderBanner() {
+  const headerEl = document.querySelector("header");
+  if (!headerEl) return;
+  const img = new Image();
+  img.onload = () => {
+    headerEl.style.backgroundImage = `url('/api/header-banner?v=${Date.now()}')`;
+    headerEl.style.backgroundSize = "cover";
+    headerEl.style.backgroundPosition = "center";
+  };
+  img.onerror = () => { /* No banner configured — keep default */ };
+  img.src = `/api/header-banner?v=${Date.now()}`;
 }
 
 // ======================================================
@@ -1255,6 +1471,11 @@ async function initApp() {
   // Expose calendar refs to settings.js via globals
   window._calendar = calendar;
   window._submissionCalendar = submissionCalendar;
+
+  // Apply login page background image (ITEM 13)
+  applyLoginBackground();
+  // Apply header banner (ITEM 14)
+  applyHeaderBanner();
 
   setupProfileUI();
   initNotificationBell();
@@ -1282,6 +1503,17 @@ async function initApp() {
 
   pollNotifications();
   setInterval(pollNotifications, 30000);
+
+  // Heartbeat for connected-user indicator (every 60s)
+  const sendHeartbeat = () => {
+    if (!authToken) return;
+    fetch("/api/auth/heartbeat", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).catch(() => {});
+  };
+  sendHeartbeat();
+  setInterval(sendHeartbeat, 60000);
 }
 
 // ======================================================
@@ -1340,5 +1572,6 @@ setInterval(async () => {
 // DOMContentLoaded — POINT D'ENTRÉE
 // ======================================================
 document.addEventListener("DOMContentLoaded", () => {
+  applyLoginBackground();
   initLogin(initApp);
 });

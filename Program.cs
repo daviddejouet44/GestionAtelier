@@ -29,6 +29,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseKestrel(k =>
 {
     k.ListenAnyIP(5080, o => o.Protocols = HttpProtocols.Http1AndHttp2);
+    k.Limits.MaxRequestBodySize = null; // No size limit for large PDF uploads
 });
 
 var recycleEnabled = builder.Configuration["RecycleBin:Enabled"] == "true";
@@ -36,6 +37,8 @@ var hotfoldersRootForRecycle = Environment.GetEnvironmentVariable("GA_HOTFOLDERS
 var recyclePath    = builder.Configuration["RecycleBin:Path"] ?? Path.Combine(hotfoldersRootForRecycle, "Corbeille");
 var recycleDays    = int.TryParse(builder.Configuration["RecycleBin:DaysToKeep"], out var d) ? d : 7;
 Directory.CreateDirectory(recyclePath);
+
+builder.Services.AddHostedService<GestionAtelier.Services.DailyReportService>();
 
 var app = builder.Build();
 
@@ -120,6 +123,8 @@ app.MapFabricationEndpoints();
 app.MapNotificationEndpoints();
 app.MapDossiersEndpoints();
 app.MapSettingsEndpoints(recyclePath);
+app.MapReportsEndpoints();
+app.MapMailImportEndpoints();
 
 // 5. Routes /pro
 app.MapGet("/pro", (HttpContext ctx) =>

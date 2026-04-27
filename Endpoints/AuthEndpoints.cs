@@ -22,6 +22,9 @@ namespace GestionAtelier.Endpoints;
 
 public static class AuthEndpointsExtensions
 {
+    // A user is considered "online" if they sent a heartbeat within this window
+    private const int OnlineThresholdMinutes = 5;
+
     public static void MapAuthEndpoints(this WebApplication app)
     {
 app.MapPost("/api/auth/login", async (HttpContext ctx) =>
@@ -138,12 +141,15 @@ app.MapGet("/api/auth/users", (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var users = BackendUtils.LoadUsers();
+        var now = DateTime.UtcNow;
         var list = users.Select(u => new
         {
             id = u.Id,
             login = u.Login,
             profile = u.Profile,
-            name = u.Name
+            name = u.Name,
+            lastActivityAt = u.LastActivityAt,
+            online = u.LastActivityAt.HasValue && (now - u.LastActivityAt.Value).TotalMinutes < OnlineThresholdMinutes
         });
 
         return Results.Json(new { ok = true, users = list });
@@ -153,6 +159,61 @@ app.MapGet("/api/auth/users", (HttpContext ctx) =>
         return Results.Json(new { ok = false, error = ex.Message });
     }
 });
+
+app.MapPost("/api/auth/heartbeat", (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (string.IsNullOrWhiteSpace(token)) return Results.Json(new { ok = false });
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 2) return Results.Json(new { ok = false });
+        BackendUtils.UpdateUserActivity(parts[1]);
+        return Results.Json(new { ok = true });
+    }
+    catch { return Results.Json(new { ok = false }); }
+});
+
+app.MapPut("/api/auth/users/{userId}", async (HttpContext ctx, string userId) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var users = BackendUtils.LoadUsers();
+        var user = users.FirstOrDefault(u => u.Id == userId);
+        if (user == null)
+            return Results.Json(new { ok = false, error = "Utilisateur non trouvé" });
+
+        if (json.TryGetProperty("login", out var loginEl) && !string.IsNullOrWhiteSpace(loginEl.GetString()))
+        {
+            var newLogin = loginEl.GetString()!;
+            if (users.Any(u => u.Login == newLogin && u.Id != userId))
+                return Results.Json(new { ok = false, error = "Login déjà utilisé" });
+            user.Login = newLogin;
+        }
+        if (json.TryGetProperty("name", out var nameEl)) user.Name = nameEl.GetString() ?? user.Name;
+        if (json.TryGetProperty("profile", out var profileEl)) user.Profile = profileEl.GetInt32();
+        if (json.TryGetProperty("password", out var pwdEl) && !string.IsNullOrWhiteSpace(pwdEl.GetString()))
+            user.Password = pwdEl.GetString()!;
+
+        BackendUtils.UpdateUser(user);
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
 
 app.MapPost("/api/auth/register", async (HttpContext ctx) =>
 {

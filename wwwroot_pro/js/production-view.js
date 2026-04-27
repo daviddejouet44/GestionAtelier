@@ -1,5 +1,6 @@
 // production-view.js — Vue production globale (lecture seule, tous profils)
 import { authToken, isLight, darkenColor, fnKey, normalizePath, deliveriesByPath, assignmentsByPath, daysDiffFromToday, fmtBytes, showNotification } from './core.js';
+import { STAGE_PROGRESS, getStageProgress, STAGE_DISPLAY_LABELS, getStageLabelDisplay, getStageColor } from './constants.js';
 
 // ======================================================
 // VUE PRODUCTION GLOBALE (profils 1, 2 et 3)
@@ -9,35 +10,6 @@ import { authToken, isLight, darkenColor, fnKey, normalizePath, deliveriesByPath
 export function showGlobalProduction() {
   // Navigation handled by app.js
   initGlobalProductionView();
-}
-
-const STAGE_PROGRESS = {
-  "Début de production": 0,
-  "Corrections": 15,
-  "Corrections et fond perdu": 15,
-  "Prêt pour impression": 25,
-  "BAT": 35,
-  "PrismaPrepare": 50,
-  "Fiery": 50,
-  "Impression en cours": 65,
-  "Façonnage": 80,
-  "Fin de production": 100
-};
-
-function getStageProgress(stage) {
-  if (!stage) return 0;
-  const key = Object.keys(STAGE_PROGRESS).find(k => stage.toLowerCase().includes(k.toLowerCase()));
-  return key !== undefined ? STAGE_PROGRESS[key] : 0;
-}
-
-function getStageColor(progress) {
-  if (progress === 0) return "#6b7280";
-  if (progress <= 25) return "#f59e0b";
-  if (progress <= 35) return "#8b5cf6";
-  if (progress <= 50) return "#3b82f6";
-  if (progress <= 65) return "#f97316";
-  if (progress <= 80) return "#06b6d4";
-  return "#22c55e";
 }
 
 export async function initGlobalProductionView() {
@@ -198,16 +170,6 @@ function escapeHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-const STAGE_DISPLAY_LABELS = {
-  "Début de production": "Jobs à traiter",
-  "Corrections": "Preflight",
-  "Corrections et fond perdu": "Preflight avec fond perdu",
-  "Prêt pour impression": "En attente"
-};
-
-function getStageLabelDisplay(stage) {
-  return STAGE_DISPLAY_LABELS[stage] || stage;
-}
 
 // ======================================================
 // VUE PRODUCTION KANBAN (profil 2/3 — tuiles opérateur)
@@ -222,7 +184,7 @@ const PRODUCTION_FOLDER_CONFIG = [
   { folder: "PrismaPrepare", label: "PrismaPrepare", color: "#8f8f8f" },
   { folder: "Fiery", label: "Fiery", color: "#8f8f8f" },
   { folder: "Impression en cours", label: "Impression en cours", color: "#7a7a7a" },
-  { folder: "Façonnage", label: "Façonnage", color: "#666666" },
+  { folder: "Façonnage", label: "Finitions", color: "#666666" },
   { folder: "Fin de production", label: "Fin de production", color: "#22c55e" }
 ];
 
@@ -234,7 +196,77 @@ export function showProduction() {
 export function buildProductionView() {
   const productionEl = document.getElementById("production");
   productionEl.innerHTML = "";
-  productionEl.style.cssText = "display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px; width: 100%;";
+  productionEl.style.cssText = "padding: 20px; width: 100%; box-sizing: border-box; overflow-y: auto;";
+
+  // Filter bar (ITEM 20)
+  const filterBar = document.createElement("div");
+  filterBar.style.cssText = "display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:16px;padding:12px 16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;";
+
+  const machineLabel = document.createElement("label");
+  machineLabel.style.cssText = "font-size:13px;font-weight:600;color:#374151;white-space:nowrap;";
+  machineLabel.textContent = "Machine :";
+  filterBar.appendChild(machineLabel);
+
+  const machineSelect = document.createElement("select");
+  machineSelect.id = "prod-machine-filter";
+  machineSelect.className = "settings-input";
+  machineSelect.style.cssText = "padding:5px 10px;font-size:13px;min-width:150px;";
+  machineSelect.innerHTML = '<option value="">Toutes</option>';
+  filterBar.appendChild(machineSelect);
+
+  const opLabel = document.createElement("label");
+  opLabel.style.cssText = "font-size:13px;font-weight:600;color:#374151;white-space:nowrap;margin-left:8px;";
+  opLabel.textContent = "Opérateur :";
+  filterBar.appendChild(opLabel);
+
+  const opSelect = document.createElement("select");
+  opSelect.id = "prod-operator-filter";
+  opSelect.className = "settings-input";
+  opSelect.style.cssText = "padding:5px 10px;font-size:13px;min-width:150px;";
+  opSelect.innerHTML = '<option value="">Tous</option>';
+  filterBar.appendChild(opSelect);
+
+  const btnReset = document.createElement("button");
+  btnReset.className = "btn btn-sm";
+  btnReset.textContent = "Réinitialiser";
+  btnReset.onclick = () => {
+    machineSelect.value = "";
+    opSelect.value = "";
+    applyProductionFilters();
+  };
+  filterBar.appendChild(btnReset);
+
+  productionEl.appendChild(filterBar);
+
+  // Load filter options async
+  fetch("/api/config/print-engines").then(r => r.json()).then(data => {
+    const engines = Array.isArray(data) ? data : (Array.isArray(data.engines) ? data.engines : []);
+    engines.forEach(e => {
+      const opt = document.createElement("option");
+      opt.value = e.name || e;
+      opt.textContent = e.name || e;
+      machineSelect.appendChild(opt);
+    });
+  }).catch(() => {});
+
+  fetch("/api/settings/users").then(r => r.json()).then(data => {
+    const users = Array.isArray(data) ? data : (Array.isArray(data.users) ? data.users : []);
+    users.forEach(u => {
+      const opt = document.createElement("option");
+      opt.value = u.name || u.login || u;
+      opt.textContent = u.name || u.login || u;
+      opSelect.appendChild(opt);
+    });
+  }).catch(() => {});
+
+  machineSelect.onchange = applyProductionFilters;
+  opSelect.onchange = applyProductionFilters;
+
+  // Kanban grid
+  const kanbanGrid = document.createElement("div");
+  kanbanGrid.id = "prod-kanban-grid";
+  kanbanGrid.style.cssText = "display:grid;grid-template-columns:repeat(3,1fr);gap:20px;";
+  productionEl.appendChild(kanbanGrid);
 
   for (const cfg of PRODUCTION_FOLDER_CONFIG) {
     const col = document.createElement("div");
@@ -256,10 +288,24 @@ export function buildProductionView() {
     drop.dataset.folder = cfg.folder;
     col.appendChild(drop);
 
-    productionEl.appendChild(col);
+    kanbanGrid.appendChild(col);
   }
 
   refreshProductionViewKanban().catch(err => console.error("Erreur production kanban:", err));
+}
+
+function applyProductionFilters() {
+  const machineVal = (document.getElementById("prod-machine-filter")?.value || "").toLowerCase();
+  const opVal = (document.getElementById("prod-operator-filter")?.value || "").toLowerCase();
+  const grid = document.getElementById("prod-kanban-grid");
+  if (!grid) return;
+  grid.querySelectorAll(".kanban-card-operator").forEach(card => {
+    const cardMachine = (card.dataset.machine || "").toLowerCase();
+    const cardOp = (card.dataset.operator || "").toLowerCase();
+    const matchMachine = !machineVal || cardMachine === machineVal;
+    const matchOp = !opVal || cardOp === opVal;
+    card.style.display = (matchMachine && matchOp) ? "" : "none";
+  });
 }
 
 export async function refreshProductionViewKanban() {
@@ -363,6 +409,11 @@ export async function refreshKanbanColumnReadOnly(folderName, col) {
         card.appendChild(status);
       }
 
+      // ITEM 16 — Status badge container (loaded async)
+      const statusBadgeEl = document.createElement("div");
+      statusBadgeEl.style.cssText = "margin-top:4px;min-height:20px;";
+      card.appendChild(statusBadgeEl);
+
       const actions = document.createElement("div");
       actions.className = "kanban-card-operator-actions";
 
@@ -378,7 +429,59 @@ export async function refreshKanbanColumnReadOnly(folderName, col) {
       btnFiche.onclick = () => { if (window._openFabrication) window._openFabrication(full); };
       actions.appendChild(btnFiche);
 
+      // ITEM 16 — Validate / Refuse buttons
+      const btnValider = document.createElement("button");
+      btnValider.className = "btn btn-sm";
+      btnValider.style.cssText = "background:#dcfce7;color:#166534;border-color:#86efac;";
+      btnValider.textContent = "✅ Validé";
+      btnValider.onclick = async (e) => {
+        e.stopPropagation();
+        const r = await fetch("/api/fabrication/statut-production", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (authToken || "") },
+          body: JSON.stringify({ fileName: jobFileName, statut: "valide" })
+        }).then(res => res.json()).catch(() => ({ ok: false }));
+        if (r.ok) {
+          renderProductionStatusBadge(statusBadgeEl, "valide");
+          showNotification("✅ Statut enregistré", "success");
+        } else {
+          showNotification("❌ Erreur : " + (r.error || ""), "error");
+        }
+      };
+      actions.appendChild(btnValider);
+
+      const btnRefuser = document.createElement("button");
+      btnRefuser.className = "btn btn-sm";
+      btnRefuser.style.cssText = "background:#fee2e2;color:#991b1b;border-color:#fca5a5;";
+      btnRefuser.textContent = "❌ Refusé";
+      btnRefuser.onclick = async (e) => {
+        e.stopPropagation();
+        const r = await fetch("/api/fabrication/statut-production", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (authToken || "") },
+          body: JSON.stringify({ fileName: jobFileName, statut: "refuse" })
+        }).then(res => res.json()).catch(() => ({ ok: false }));
+        if (r.ok) {
+          renderProductionStatusBadge(statusBadgeEl, "refuse");
+          showNotification("✅ Statut enregistré", "success");
+        } else {
+          showNotification("❌ Erreur : " + (r.error || ""), "error");
+        }
+      };
+      actions.appendChild(btnRefuser);
+
       card.appendChild(actions);
+
+      // Load fab data async to populate machine/operator for filters + show status badge
+      fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName))
+        .then(r => r.json())
+        .then(fab => {
+          if (!fab) return;
+          if (fab.moteurImpression) card.dataset.machine = fab.moteurImpression;
+          if (fab.operateur) card.dataset.operator = fab.operateur;
+          if (fab.statutProduction) renderProductionStatusBadge(statusBadgeEl, fab.statutProduction);
+        }).catch(() => {});
+
       drop.appendChild(card);
     }
 
@@ -386,6 +489,15 @@ export async function refreshKanbanColumnReadOnly(folderName, col) {
     if (counterEl) counterEl.textContent = jobs.length;
   } catch (err) {
     console.error("Erreur refresh kanban read-only:", err);
+  }
+}
+
+function renderProductionStatusBadge(container, statut) {
+  container.innerHTML = "";
+  if (statut === "valide") {
+    container.innerHTML = '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">✅ VALIDÉ</span>';
+  } else if (statut === "refuse") {
+    container.innerHTML = '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">❌ REFUSÉ</span>';
   }
 }
 
