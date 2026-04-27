@@ -148,6 +148,29 @@ async function renderSettingsImapConfig(panel) {
   panel.innerHTML = `
     <h3>Import email (IMAP)</h3>
     <p style='color:#6b7280;font-size:13px;margin-bottom:20px;'>Configurez les paramètres IMAP pour pré-remplir le formulaire d'import depuis un mail dans la vue Soumission.</p>
+
+    <div class='settings-section-card' style='background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px 16px;margin-bottom:16px;'>
+      <h4 style='margin:0 0 8px;font-size:13px;color:#854d0e;'>⚠️ Gmail — Mot de passe d'application</h4>
+      <p style='font-size:12px;color:#713f12;margin:0 0 6px;'>Google a progressivement désactivé l'accès IMAP par mot de passe d'application pour les nouveaux comptes. Si la connexion échoue, essayez :</p>
+      <ul style='font-size:12px;color:#713f12;margin:0;padding-left:18px;'>
+        <li>Serveur : <code>imap.gmail.com</code>, Port : <code>993</code>, SSL activé</li>
+        <li>Activer la vérification en 2 étapes sur votre compte Google, puis générer un <strong>mot de passe d'application</strong> dans <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:#1d4ed8;">myaccount.google.com/apppasswords</a></li>
+        <li>Utiliser le mot de passe d'application à 16 caractères comme mot de passe ici</li>
+        <li>Si cela ne fonctionne pas, Google peut bloquer l'accès IMAP — une intégration OAuth2 sera nécessaire dans une prochaine version.</li>
+      </ul>
+    </div>
+
+    <div class='settings-section-card' style='background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:12px 16px;margin-bottom:16px;'>
+      <h4 style='margin:0 0 8px;font-size:13px;color:#1e3a8a;'>ℹ️ Office 365 / Outlook</h4>
+      <p style='font-size:12px;color:#1e40af;margin:0 0 6px;'>Pour tester avec Office 365 :</p>
+      <ul style='font-size:12px;color:#1e40af;margin:0;padding-left:18px;'>
+        <li>Serveur : <code>outlook.office365.com</code>, Port : <code>993</code>, SSL activé</li>
+        <li>Un compte <strong>Microsoft 365 Developer</strong> (programme développeur Microsoft, gratuit) permet de tester avec IMAP</li>
+        <li>Un compte <strong>Outlook.com gratuit</strong> peut ne pas autoriser l'accès IMAP/mot de passe d'application — vérifiez dans les paramètres du compte Outlook</li>
+        <li>Si votre organisation utilise l'authentification moderne (OAuth2), le mot de passe classique ne fonctionnera pas</li>
+      </ul>
+    </div>
+
     <div class='settings-section-card'>
       <h4>Configuration serveur IMAP</h4>
       <div style='display:grid;grid-template-columns:1fr 100px;gap:12px;margin-bottom:12px;'>

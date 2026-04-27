@@ -226,7 +226,7 @@ const ENNOBLISSEMENT_OPTIONS=[
 function renderFabForm(config, opts) {
   if(!fabDynamicForm) return;
   fabDynamicForm.innerHTML='';
-  const {engines=[],types=[],papers=[],sheetFormats=[],faconnageOptions=[]}=opts;
+  const {engines=[],types=[],papers=[],sheetFormats=[],faconnageOptions=[],bindingOptions=[],foldsOptions=[],outputOptions=[]}=opts;
   const paperHtml='<option value="">— Sélectionner —</option>'+papers.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
   const fields=(config.fields||[]).filter(f=>f.visible).sort((a,b)=>a.order-b.order);
   const sections=config.sections||[];
@@ -265,6 +265,9 @@ function renderFabForm(config, opts) {
         else if(field.id==='typeTravail') optHtml+=types.map(t=>'<option value="'+t+'">'+t+'</option>').join('');
         else if(['media1','media2','media3','media4','couvertureMedia'].includes(field.id)) optHtml=paperHtml;
         else if(field.id==='formatFeuilleMachine') optHtml+=sheetFormats.map(f2=>'<option value="'+f2+'">'+f2+'</option>').join('');
+        else if(field.id==='faconnageBinding') optHtml+=(bindingOptions.length?bindingOptions:field.options||[]).map(o=>'<option value="'+o+'">'+o+'</option>').join('');
+        else if(field.id==='plis') optHtml+=(foldsOptions.length?foldsOptions:field.options||[]).map(o=>'<option value="'+o+'">'+o+'</option>').join('');
+        else if(field.id==='sortie') optHtml+=(outputOptions.length?outputOptions:field.options||[]).map(o=>'<option value="'+o+'">'+o+'</option>').join('');
         else if(Array.isArray(field.options)) optHtml+=field.options.map(o=>'<option value="'+o+'">'+o+'</option>').join('');
         wrap.innerHTML='<label>'+field.label+reqStar+'</label><select id="'+elId+'"'+roSel+'>'+optHtml+'</select>';
       } else if(field.type==='multiselect'){
@@ -292,48 +295,49 @@ function renderFabForm(config, opts) {
     });
 
     if(section==='Finitions'){
-      const fw=document.createElement('div');
-      fw.className='fab-form-group fab-full-width';
-      fw.innerHTML='<label>Façonnage (finitions)</label><div id="fab-faconnage-container" style="display:flex;flex-wrap:wrap;gap:8px;padding:6px 0;"></div>';
-      fabDynamicForm.appendChild(fw);
+      // Note: Façonnage (finitions) checkboxes section removed per UX decision
     }
   });
 
-  // Always append Dates clés section
-  const kdHdr=document.createElement('div');
-  kdHdr.className='fab-form-group fab-full-width fab-section-header';
-  kdHdr.innerHTML='<span>Dates clés</span>';
-  fabDynamicForm.appendChild(kdHdr);
+  // Only append Dates clés section if not already rendered via form-config
+  if(!fabDynamicForm.querySelector('#fab-date-reception')){
+    const kdHdr=document.createElement('div');
+    kdHdr.className='fab-form-group fab-full-width fab-section-header';
+    kdHdr.innerHTML='<span>Dates clés</span>';
+    fabDynamicForm.appendChild(kdHdr);
 
-  const kdGrid=document.createElement('div');
-  kdGrid.className='fab-form-group fab-full-width';
-  kdGrid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;';
-  kdGrid.innerHTML=''
-    +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date de réception souhaitée</label>'
-    +'<input id="fab-date-reception" type="date" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" /></div>'
-    +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date d\'envoi <small style="color:#9ca3af;font-weight:normal;">(indicatif)</small></label>'
-    +'<input id="fab-date-envoi" type="date" readonly style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#f3f4f6;color:#6b7280;" /></div>'
-    +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date production Finitions <small style="color:#9ca3af;font-weight:normal;">(indicatif)</small></label>'
-    +'<input id="fab-date-finitions" type="date" readonly style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#f3f4f6;color:#6b7280;" /></div>'
-    +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date d\'impression <small style="color:#9ca3af;font-weight:normal;">(indicatif)</small></label>'
-    +'<input id="fab-date-impression" type="date" readonly style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#f3f4f6;color:#6b7280;" /></div>';
-  fabDynamicForm.appendChild(kdGrid);
+    const kdGrid=document.createElement('div');
+    kdGrid.className='fab-form-group fab-full-width';
+    kdGrid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;';
+    kdGrid.innerHTML=''
+      +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date de réception souhaitée</label>'
+      +'<input id="fab-date-reception" type="date" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" /></div>'
+      +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date d\'envoi <small style="color:#9ca3af;font-weight:normal;">(indicatif)</small></label>'
+      +'<input id="fab-date-envoi" type="date" readonly style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#f3f4f6;color:#6b7280;" /></div>'
+      +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date production Finitions <small style="color:#9ca3af;font-weight:normal;">(indicatif)</small></label>'
+      +'<input id="fab-date-finitions" type="date" readonly style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#f3f4f6;color:#6b7280;" /></div>'
+      +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date d\'impression <small style="color:#9ca3af;font-weight:normal;">(indicatif)</small></label>'
+      +'<input id="fab-date-impression" type="date" readonly style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#f3f4f6;color:#6b7280;" /></div>';
+    fabDynamicForm.appendChild(kdGrid);
+  }
 
-  // Temps théorique de production
-  const tpHdr=document.createElement('div');
-  tpHdr.className='fab-form-group fab-full-width fab-section-header';
-  tpHdr.innerHTML='<span>Temps de production</span>';
-  fabDynamicForm.appendChild(tpHdr);
+  // Only append Temps de production section if not already rendered via form-config
+  if(!fabDynamicForm.querySelector('#fab-temps-produit')){
+    const tpHdr=document.createElement('div');
+    tpHdr.className='fab-form-group fab-full-width fab-section-header';
+    tpHdr.innerHTML='<span>Temps de production</span>';
+    fabDynamicForm.appendChild(tpHdr);
 
-  const tpWrap=document.createElement('div');
-  tpWrap.className='fab-form-group';
-  tpWrap.innerHTML='<label>Temps théorique de production <small style="color:#9ca3af;font-size:10px;">(calculé auto, modifiable)</small></label>'
-    +'<div style="display:flex;align-items:center;gap:8px;">'
-    +'<input id="fab-temps-produit" type="number" placeholder="auto" style="width:100px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" />'
-    +'<span style="font-size:13px;color:#6b7280;">minutes</span>'
-    +'</div>'
-    +'<small style="color:#9ca3af;font-size:11px;margin-top:2px;">Calculé automatiquement, ou saisissez manuellement pour forcer la valeur.</small>';
-  fabDynamicForm.appendChild(tpWrap);
+    const tpWrap=document.createElement('div');
+    tpWrap.className='fab-form-group';
+    tpWrap.innerHTML='<label>Temps théorique de production <small style="color:#9ca3af;font-size:10px;">(calculé auto, modifiable)</small></label>'
+      +'<div style="display:flex;align-items:center;gap:8px;">'
+      +'<input id="fab-temps-produit" type="number" placeholder="auto" style="width:100px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" />'
+      +'<span style="font-size:13px;color:#6b7280;">minutes</span>'
+      +'</div>'
+      +'<small style="color:#9ca3af;font-size:11px;margin-top:2px;">Calculé automatiquement, ou saisissez manuellement pour forcer la valeur.</small>';
+    fabDynamicForm.appendChild(tpWrap);
+  }
 
   // JDF button (will be shown/hidden based on JDF config)
   const jdfWrap=document.createElement('div');
@@ -501,7 +505,7 @@ export async function openFabrication(fullPath) {
   if(fabDynamicForm){fabDynamicForm.style.opacity='0.5';fabDynamicForm.style.pointerEvents='none';}
   if(fabStageBanner)fabStageBanner.style.display='none';
   fabModal.classList.remove('hidden');
-  const [j,engines,types,papers,faconnageOptions,stageData,sheetFormats,coverProducts,sheetCalcRulesResp,deliveryDelayResp,passesConfigResp,formConfig,keyDatesResp,grammageTimeResp,jdfConfigResp]=await Promise.all([
+  const [j,engines,types,papers,faconnageOptions,stageData,sheetFormats,coverProducts,sheetCalcRulesResp,deliveryDelayResp,passesConfigResp,formConfig,keyDatesResp,grammageTimeResp,jdfConfigResp,bindingOptionsResp,foldsOptionsResp,outputOptionsResp]=await Promise.all([
     fetch('/api/fabrication?fileName='+encodeURIComponent(fabCurrentFileName),{headers:{'Authorization':'Bearer '+authToken}}).then(r=>r.json()).catch(()=>({})),
     fetchCached('/api/config/print-engines'),
     fetchCached('/api/config/work-types'),
@@ -516,7 +520,10 @@ export async function openFabrication(fullPath) {
     fetchFormConfig(),
     fetch('/api/settings/key-dates').then(r=>r.json()).catch(()=>({sendOffsetHours:48,finitionsOffsetHours:72,impressionOffsetHours:96})),
     fetch('/api/settings/grammage-time-config').then(r=>r.json()).catch(()=>({rules:[]})),
-    fetch('/api/settings/jdf-config').then(r=>r.json()).catch(()=>({enabled:false,fields:[]}))
+    fetch('/api/settings/jdf-config').then(r=>r.json()).catch(()=>({enabled:false,fields:[]})),
+    fetch('/api/settings/binding-options').then(r=>r.json()).catch(()=>({ok:false,options:[]})),
+    fetch('/api/settings/folds-options').then(r=>r.json()).catch(()=>({ok:false,options:[]})),
+    fetch('/api/settings/output-options').then(r=>r.json()).catch(()=>({ok:false,options:[]}))
   ]);
   const d=(j&&j.ok===false)?{}:(j||{});
   _coverProducts=Array.isArray(coverProducts)?coverProducts:[];
@@ -527,7 +534,7 @@ export async function openFabrication(fullPath) {
   _grammageTimeRules=Array.isArray(grammageTimeResp.rules)?grammageTimeResp.rules:[];
   _jdfEnabled=!!(jdfConfigResp.enabled);
   const config=formConfig||{fields:[],sections:[]};
-  renderFabForm(config,{engines:Array.isArray(engines)?engines:[],types:Array.isArray(types)?types:[],papers:Array.isArray(papers)?papers:[],sheetFormats:Array.isArray(sheetFormats)?sheetFormats:[],faconnageOptions:Array.isArray(faconnageOptions)?faconnageOptions:[]});
+  renderFabForm(config,{engines:Array.isArray(engines)?engines:[],types:Array.isArray(types)?types:[],papers:Array.isArray(papers)?papers:[],sheetFormats:Array.isArray(sheetFormats)?sheetFormats:[],faconnageOptions:Array.isArray(faconnageOptions)?faconnageOptions:[],bindingOptions:Array.isArray(bindingOptionsResp?.options)?bindingOptionsResp.options:[],foldsOptions:Array.isArray(foldsOptionsResp?.options)?foldsOptionsResp.options:[],outputOptions:Array.isArray(outputOptionsResp?.options)?outputOptionsResp.options:[]});
   populateFabForm(d,Array.isArray(faconnageOptions)?faconnageOptions:[]);
   attachFormHandlers(fabCurrentFileName);
   const delaiEl=gEl('delai');
