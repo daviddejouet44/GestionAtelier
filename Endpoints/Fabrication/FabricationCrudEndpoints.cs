@@ -1685,22 +1685,18 @@ app.MapPut("/api/fabrication/event-time", async (HttpContext ctx) =>
         if (string.IsNullOrWhiteSpace(fileName))
             return Results.Json(new { ok = false, error = "fileName vide" });
 
-        // Map viewType to field name
-        string? fieldKey = viewType switch {
-            "global" => "globalTime",
-            "machine" => "machineTime",
-            "operator" => "operatorTime",
-            _ => null
+        // Map viewType to time and date field names in manualPlanningTimes
+        var fieldNames = viewType switch {
+            "global"   => (timeField: "globalTime",   dateField: "globalDate"),
+            "machine"  => (timeField: "machineTime",  dateField: "machineDate"),
+            "operator" => (timeField: "operatorTime", dateField: "operatorDate"),
+            _ => default
         };
-        if (fieldKey == null)
+        if (fieldNames == default)
             return Results.Json(new { ok = false, error = $"viewType inconnu: {viewType}" });
 
         var fabCol = MongoDbHelper.GetFabricationsCollection();
-        var filter = Builders<BsonDocument>.Filter.Or(
-            Builders<BsonDocument>.Filter.Eq("fileName", fileName.ToLowerInvariant()),
-            Builders<BsonDocument>.Filter.Eq("fileName", fileName),
-            Builders<BsonDocument>.Filter.Eq("fullPath", fileName)
-        );
+        var filter = BuildFileNameFilter(fileName);
         var doc = fabCol.Find(filter).SortByDescending(x => x["_id"]).FirstOrDefault();
 
         if (doc == null)
@@ -1712,8 +1708,8 @@ app.MapPut("/api/fabrication/event-time", async (HttpContext ctx) =>
             ? doc["manualPlanningTimes"].AsBsonDocument.DeepClone().AsBsonDocument
             : new BsonDocument();
 
-        mpt[fieldKey] = newTime;
-        mpt[fieldKey.Replace("Time", "Date")] = newDate;
+        mpt[fieldNames.timeField] = newTime;
+        mpt[fieldNames.dateField] = newDate;
 
         var update = Builders<BsonDocument>.Update.Set("manualPlanningTimes", mpt);
         fabCol.UpdateOne(Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]), update);
@@ -1743,11 +1739,7 @@ app.MapPut("/api/fabrication/exclude-planning", async (HttpContext ctx) =>
         var exclude = json.TryGetProperty("exclude", out var exProp) ? exProp.GetBoolean() : true;
 
         var fabCol = MongoDbHelper.GetFabricationsCollection();
-        var filter = Builders<BsonDocument>.Filter.Or(
-            Builders<BsonDocument>.Filter.Eq("fileName", fileName.ToLowerInvariant()),
-            Builders<BsonDocument>.Filter.Eq("fileName", fileName),
-            Builders<BsonDocument>.Filter.Eq("fullPath", fileName)
-        );
+        var filter = BuildFileNameFilter(fileName);
         var update = Builders<BsonDocument>.Update.Set("excludeFromPlanning", exclude);
         var result = fabCol.UpdateMany(filter, update);
 
@@ -1760,4 +1752,12 @@ app.MapPut("/api/fabrication/exclude-planning", async (HttpContext ctx) =>
 });
 
     }
+
+    // Helper: build a MongoDB filter to match a fabrication record by fileName or fullPath
+    static FilterDefinition<BsonDocument> BuildFileNameFilter(string fileName) =>
+        Builders<BsonDocument>.Filter.Or(
+            Builders<BsonDocument>.Filter.Eq("fileName", fileName.ToLowerInvariant()),
+            Builders<BsonDocument>.Filter.Eq("fileName", fileName),
+            Builders<BsonDocument>.Filter.Eq("fullPath", fileName)
+        );
 }

@@ -424,7 +424,9 @@ export async function initCalendar() {
         if (info.event.extendedProps.isFabEvent) {
           // Save manual time for fabrication key-date event
           const fabType = info.event.extendedProps.fabType;
-          const viewType = fabType === 'envoi' ? 'global' : fabType === 'impression' ? 'machine' : 'operator';
+          const viewTypeMap = { envoi: 'global', impression: 'machine', finitions: 'operator' };
+          const viewType = viewTypeMap[fabType];
+          if (!viewType) { info.revert(); return; }
           const fileName = info.event.extendedProps.fabFileName || fk;
           const r = await fetch("/api/fabrication/event-time", {
             method: "PUT",
