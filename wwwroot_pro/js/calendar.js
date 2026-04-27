@@ -258,6 +258,7 @@ export async function initCalendar() {
       right: "dayGridMonth,timeGridWeek"
     },
     editable: true,
+    weekends: true,
     eventDurationEditable: false,
     eventAllow: (_dropInfo, draggedEvent) => !draggedEvent.extendedProps?.locked,
     events: async (_info, success) => {
@@ -271,7 +272,7 @@ export async function initCalendar() {
 
         const fabEvents = (fabEventsResp.ok && Array.isArray(fabEventsResp.events)) ? fabEventsResp.events : [];
 
-        // Get current user login for operator filter
+        // Get current user login AND name for operator filter
         const myLogin = (() => {
           try {
             const token = authToken;
@@ -280,6 +281,7 @@ export async function initCalendar() {
             return decoded.split(':')[1] || '';
           } catch(e) { return ''; }
         })();
+        const myName = currentUser?.name || '';
 
         // Get machine filter value
         const machineFilter = document.getElementById("planning-machine-filter")?.value || "";
@@ -295,7 +297,10 @@ export async function initCalendar() {
             }
             if (_planningViewMode === 'operator') {
               if (fe.type !== 'impression') return false;
-              if (myLogin && fe.operateur && fe.operateur !== myLogin) return false;
+              if ((myLogin || myName) && fe.operateur) {
+                const opMatch = fe.operateur === myLogin || fe.operateur === myName;
+                if (!opMatch) return false;
+              }
               return true;
             }
             return false;
@@ -309,7 +314,8 @@ export async function initCalendar() {
             const c = colorMap[fe.type] || { bg: '#6b7280', bc: '#4b5563', tc: '#ffffff' };
             const durationMins = (fe.tempsProduitMinutes && fe.tempsProduitMinutes > 0)
               ? fe.tempsProduitMinutes : 30;
-            const startDt = new Date(`${fe.date}T09:00:00`);
+            const timeStr = fe.manualTime || "09:00";
+            const startDt = new Date(`${fe.date}T${timeStr}:00`);
             const endDt = new Date(startDt.getTime() + durationMins * 60000);
             return {
               title: fe.title,
@@ -319,8 +325,10 @@ export async function initCalendar() {
               backgroundColor: c.bg,
               borderColor: c.bc,
               textColor: c.tc,
-              editable: false,
-              extendedProps: { fullPath: fe.fullPath, isFabEvent: true, fabType: fe.type }
+              editable: true,
+              startEditable: true,
+              durationEditable: false,
+              extendedProps: { fullPath: fe.fullPath, isFabEvent: true, fabType: fe.type, fabFileName: fe.fileName }
             };
           });
 
@@ -336,7 +344,7 @@ export async function initCalendar() {
             } catch(e) { return { x, machine: '' }; }
           }));
           filtered = withMachine.filter(wm => wm.machine === machineFilter).map(wm => wm.x);
-        } else if (_planningViewMode === 'operator' && myLogin) {
+        } else if (_planningViewMode === 'operator' && (myLogin || myName)) {
           const withOperator = await Promise.all(filtered.map(async x => {
             try {
               const fiche = await fetch('/api/fabrication?fileName=' + encodeURIComponent(fnKey(x.fullPath || '')), {
@@ -345,7 +353,7 @@ export async function initCalendar() {
               return { x, operateur: fiche?.operateur || '' };
             } catch(e) { return { x, operateur: '' }; }
           }));
-          filtered = withOperator.filter(wo => !wo.operateur || wo.operateur === myLogin).map(wo => wo.x);
+          filtered = withOperator.filter(wo => !wo.operateur || wo.operateur === myLogin || wo.operateur === myName).map(wo => wo.x);
         }
 
         const ev = filtered.map(x => {
@@ -413,23 +421,37 @@ export async function initCalendar() {
         const newDate = info.event.startStr.split('T')[0];
         const newTime = info.event.startStr.split('T')[1]?.substring(0, 5) || "09:00";
 
-        const r = await fetch("/api/delivery", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fullPath, fileName: fk, date: newDate, time: newTime })
-        }).then(r => r.json());
+        if (info.event.extendedProps.isFabEvent) {
+          // Save manual time for fabrication key-date event
+          const fabType = info.event.extendedProps.fabType;
+          const viewType = fabType === 'envoi' ? 'global' : fabType === 'impression' ? 'machine' : 'operator';
+          const fileName = info.event.extendedProps.fabFileName || fk;
+          const r = await fetch("/api/fabrication/event-time", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fileName, viewType, newDate, newTime })
+          }).then(r => r.json());
+          if (!r.ok) throw new Error(r.error || "Erreur");
+          showNotification(`✅ Planning mis à jour : ${newTime}`, "success");
+        } else {
+          const r = await fetch("/api/delivery", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fullPath, fileName: fk, date: newDate, time: newTime })
+          }).then(r => r.json());
 
-        if (!r.ok) throw new Error(r.error || "Erreur");
+          if (!r.ok) throw new Error(r.error || "Erreur");
 
-        deliveriesByPath[fk] = newDate;
-        deliveriesByPath[fk + "_time"] = newTime;
+          deliveriesByPath[fk] = newDate;
+          deliveriesByPath[fk + "_time"] = newTime;
 
-        const { bg, bc, tc } = colorForEvent(fullPath, newDate);
-        info.event.setProp("backgroundColor", bg);
-        info.event.setProp("borderColor", bc);
-        info.event.setProp("textColor", tc);
+          const { bg, bc, tc } = colorForEvent(fullPath, newDate);
+          info.event.setProp("backgroundColor", bg);
+          info.event.setProp("borderColor", bc);
+          info.event.setProp("textColor", tc);
 
-        showNotification(`✅ Planning mis à jour pour le ${newDate}`, "success");
+          showNotification(`✅ Planning mis à jour pour le ${newDate}`, "success");
+        }
       } catch (err) {
         alert(err.message || "Impossible de déplacer");
         info.revert();

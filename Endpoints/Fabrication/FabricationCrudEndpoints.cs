@@ -1530,6 +1530,11 @@ app.MapGet("/api/fabrication/events", () =>
         var events = new List<object>();
         foreach (var doc in docs)
         {
+            // Skip jobs explicitly excluded from planning
+            if (doc.Contains("excludeFromPlanning") && doc["excludeFromPlanning"] != BsonNull.Value
+                && doc["excludeFromPlanning"].BsonType == BsonType.Boolean && doc["excludeFromPlanning"].AsBoolean)
+                continue;
+
             var fileName = doc.Contains("fileName") ? doc["fileName"].AsString : "";
             var fullPath = doc.Contains("fullPath") ? doc["fullPath"].AsString : "";
             var numeroDossier = doc.Contains("numeroDossier") && doc["numeroDossier"] != BsonNull.Value ? doc["numeroDossier"].AsString : "";
@@ -1544,25 +1549,36 @@ app.MapGet("/api/fabrication/events", () =>
             } catch { }
             if (tempsProduitMinutes <= 0) tempsProduitMinutes = 30;
 
+            // Read manual planning time overrides (set by drag & drop in the calendar)
+            string? manualTimeGlobal = null, manualTimeMachine = null, manualTimeOperator = null;
+            if (doc.Contains("manualPlanningTimes") && doc["manualPlanningTimes"] != BsonNull.Value
+                && doc["manualPlanningTimes"].IsBsonDocument)
+            {
+                var mpt = doc["manualPlanningTimes"].AsBsonDocument;
+                if (mpt.Contains("globalTime") && mpt["globalTime"] != BsonNull.Value) manualTimeGlobal = mpt["globalTime"].AsString;
+                if (mpt.Contains("machineTime") && mpt["machineTime"] != BsonNull.Value) manualTimeMachine = mpt["machineTime"].AsString;
+                if (mpt.Contains("operatorTime") && mpt["operatorTime"] != BsonNull.Value) manualTimeOperator = mpt["operatorTime"].AsString;
+            }
+
             if (doc.Contains("dateEnvoi") && doc["dateEnvoi"] != BsonNull.Value)
             {
                 try {
                     var dt = doc["dateEnvoi"].ToUniversalTime();
-                    events.Add(new { type = "envoi", date = dt.ToString("yyyy-MM-dd"), title = $"📤 Envoi: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes });
+                    events.Add(new { type = "envoi", date = dt.ToString("yyyy-MM-dd"), title = $"📤 Envoi: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeGlobal });
                 } catch { }
             }
             if (doc.Contains("dateImpression") && doc["dateImpression"] != BsonNull.Value)
             {
                 try {
                     var dt = doc["dateImpression"].ToUniversalTime();
-                    events.Add(new { type = "impression", date = dt.ToString("yyyy-MM-dd"), title = $"🖨️ Impression: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes });
+                    events.Add(new { type = "impression", date = dt.ToString("yyyy-MM-dd"), title = $"🖨️ Impression: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeMachine });
                 } catch { }
             }
             if (doc.Contains("dateProductionFinitions") && doc["dateProductionFinitions"] != BsonNull.Value)
             {
                 try {
                     var dt = doc["dateProductionFinitions"].ToUniversalTime();
-                    events.Add(new { type = "finitions", date = dt.ToString("yyyy-MM-dd"), title = $"✂️ Finitions: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes });
+                    events.Add(new { type = "finitions", date = dt.ToString("yyyy-MM-dd"), title = $"✂️ Finitions: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeOperator });
                 } catch { }
             }
         }
@@ -1642,6 +1658,104 @@ app.MapGet("/api/alerts/production-delay", () =>
     catch (Exception ex)
     {
         return Results.Json(new { ok = false, error = ex.Message, groups = new object[0] });
+    }
+});
+
+// ======================================================
+// FABRICATION — MANUAL PLANNING TIME (drag & drop override)
+// PUT /api/fabrication/event-time
+// Body: { fileName, viewType ("global"|"machine"|"operator"), newDate, newTime }
+// ======================================================
+app.MapPut("/api/fabrication/event-time", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        if (!json.TryGetProperty("fileName", out var fileNameEl) ||
+            !json.TryGetProperty("viewType", out var viewTypeEl) ||
+            !json.TryGetProperty("newDate", out var newDateEl) ||
+            !json.TryGetProperty("newTime", out var newTimeEl))
+            return Results.Json(new { ok = false, error = "fileName, viewType, newDate, newTime requis" });
+
+        var fileName = fileNameEl.GetString() ?? "";
+        var viewType = viewTypeEl.GetString() ?? "";
+        var newDate = newDateEl.GetString() ?? "";
+        var newTime = newTimeEl.GetString() ?? "";
+
+        if (string.IsNullOrWhiteSpace(fileName))
+            return Results.Json(new { ok = false, error = "fileName vide" });
+
+        // Map viewType to field name
+        string? fieldKey = viewType switch {
+            "global" => "globalTime",
+            "machine" => "machineTime",
+            "operator" => "operatorTime",
+            _ => null
+        };
+        if (fieldKey == null)
+            return Results.Json(new { ok = false, error = $"viewType inconnu: {viewType}" });
+
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+        var filter = Builders<BsonDocument>.Filter.Or(
+            Builders<BsonDocument>.Filter.Eq("fileName", fileName.ToLowerInvariant()),
+            Builders<BsonDocument>.Filter.Eq("fileName", fileName),
+            Builders<BsonDocument>.Filter.Eq("fullPath", fileName)
+        );
+        var doc = fabCol.Find(filter).SortByDescending(x => x["_id"]).FirstOrDefault();
+
+        if (doc == null)
+            return Results.Json(new { ok = false, error = "Fiche introuvable" });
+
+        // Update or create manualPlanningTimes subdocument
+        BsonDocument mpt = doc.Contains("manualPlanningTimes") && doc["manualPlanningTimes"] != BsonNull.Value
+            && doc["manualPlanningTimes"].IsBsonDocument
+            ? doc["manualPlanningTimes"].AsBsonDocument.DeepClone().AsBsonDocument
+            : new BsonDocument();
+
+        mpt[fieldKey] = newTime;
+        mpt[fieldKey.Replace("Time", "Date")] = newDate;
+
+        var update = Builders<BsonDocument>.Update.Set("manualPlanningTimes", mpt);
+        fabCol.UpdateOne(Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]), update);
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// FABRICATION — EXCLUDE FROM PLANNING
+// PUT /api/fabrication/exclude-planning
+// Body: { fileName, exclude: true|false }
+// ======================================================
+app.MapPut("/api/fabrication/exclude-planning", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        if (!json.TryGetProperty("fileName", out var fileNameEl))
+            return Results.Json(new { ok = false, error = "fileName requis" });
+
+        var fileName = fileNameEl.GetString() ?? "";
+        var exclude = json.TryGetProperty("exclude", out var exProp) ? exProp.GetBoolean() : true;
+
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+        var filter = Builders<BsonDocument>.Filter.Or(
+            Builders<BsonDocument>.Filter.Eq("fileName", fileName.ToLowerInvariant()),
+            Builders<BsonDocument>.Filter.Eq("fileName", fileName),
+            Builders<BsonDocument>.Filter.Eq("fullPath", fileName)
+        );
+        var update = Builders<BsonDocument>.Update.Set("excludeFromPlanning", exclude);
+        var result = fabCol.UpdateMany(filter, update);
+
+        return Results.Json(new { ok = true, modified = result.ModifiedCount });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
     }
 });
 

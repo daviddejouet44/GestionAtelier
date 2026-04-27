@@ -5,10 +5,47 @@ import { state, refreshKanban } from './kanban-core.js';
 import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js';
 
 // Returns true if the action should be visible for the given folder
+// Action IDs introduced after initial release — show by default even when not in saved config
+const LEGACY_DEFAULT_VISIBLE = new Set(['mailDebutProduction', 'mailFinProduction']);
+
 function isActionVisible(folderName, actionId) {
   const allowed = state.visibleActionsMap[folderName];
   if (!allowed) return true; // null = show all (retrocompat)
-  return allowed.includes(actionId);
+  if (allowed.includes(actionId)) return true;
+  // New actions not present in old saved configs default to visible
+  if (LEGACY_DEFAULT_VISIBLE.has(actionId)) return true;
+  return false;
+}
+
+// Show a preflight progress modal; returns a close function
+function showPreflightProgressModal(fileName) {
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:10000;";
+  const modal = document.createElement("div");
+  modal.style.cssText = "background:white;border-radius:12px;padding:24px 28px;min-width:320px;max-width:480px;box-shadow:0 10px 40px rgba(0,0,0,.3);text-align:center;";
+  modal.innerHTML = `
+    <div id="preflight-modal-icon" style="font-size:32px;margin-bottom:10px;">⏳</div>
+    <div id="preflight-modal-title" style="font-size:15px;font-weight:700;color:#111827;margin-bottom:6px;">Preflight en cours…</div>
+    <div id="preflight-modal-file" style="font-size:12px;color:#6b7280;margin-bottom:14px;word-break:break-all;">${fileName}</div>
+    <div id="preflight-modal-status" style="font-size:13px;color:#374151;min-height:20px;"></div>
+    <div id="preflight-modal-close-wrap" style="display:none;margin-top:16px;">
+      <button id="preflight-modal-close-btn" class="btn btn-sm" style="min-width:100px;">Fermer</button>
+    </div>
+  `;
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  const setResult = (ok, message) => {
+    modal.querySelector("#preflight-modal-icon").textContent = ok ? "✅" : "❌";
+    modal.querySelector("#preflight-modal-title").textContent = ok ? "Preflight terminé" : "Erreur Preflight";
+    modal.querySelector("#preflight-modal-title").style.color = ok ? "#16a34a" : "#dc2626";
+    modal.querySelector("#preflight-modal-status").textContent = message || "";
+    const closeWrap = modal.querySelector("#preflight-modal-close-wrap");
+    closeWrap.style.display = "block";
+    modal.querySelector("#preflight-modal-close-btn").onclick = () => overlay.remove();
+  };
+
+  return { setResult, close: () => overlay.remove() };
 }
 
 // ======================================================
@@ -246,7 +283,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
                 const fileName = full.split(/[\\/]/).pop();
                 btnPreflightDirect.disabled = true;
                 btnPreflightDirect.textContent = "⏳ Preflight...";
-                showNotification(`⏳ Preflight en cours pour ${fileName}...`, "info");
+                const pm = showPreflightProgressModal(fileName);
                 try {
                   const r = await fetch("/api/acrobat/preflight", {
                     method: "POST",
@@ -254,15 +291,15 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
                     body: JSON.stringify({ fullPath: full, dropletPath: dp.path })
                   }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
                   if (r.ok) {
-                    showNotification(`✅ Preflight terminé — ${fileName} déplacé vers Prêt pour impression`, "success");
+                    pm.setResult(true, `${fileName} déplacé vers Prêt pour impression`);
                     await refreshKanban();
                   } else {
-                    showNotification("❌ Preflight : " + (r.error || "Erreur inconnue"), "error");
+                    pm.setResult(false, r.error || "Erreur inconnue");
                     btnPreflightDirect.disabled = false;
                     btnPreflightDirect.textContent = "▶ Preflight ▾";
                   }
                 } catch (err) {
-                  showNotification("❌ Preflight : " + err.message, "error");
+                  pm.setResult(false, err.message);
                   btnPreflightDirect.disabled = false;
                   btnPreflightDirect.textContent = "▶ Preflight ▾";
                 }
@@ -333,7 +370,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           const fileName = full.split(/[\\/]/).pop();
           btnPreflight.disabled = true;
           btnPreflight.textContent = "⏳ Preflight...";
-          showNotification(`⏳ Preflight en cours pour ${fileName}...`, "info");
+          const pm = showPreflightProgressModal(fileName);
           try {
             const r = await fetch("/api/acrobat/preflight", {
               method: "POST",
@@ -341,15 +378,15 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
               body: JSON.stringify({ fullPath: full, folder: folderName })
             }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
             if (r.ok) {
-              showNotification(`✅ Preflight terminé — ${fileName} déplacé vers Prêt pour impression`, "success");
+              pm.setResult(true, `${fileName} déplacé vers Prêt pour impression`);
               await refreshKanban();
             } else {
-              showNotification("❌ Preflight : " + (r.error || "Erreur inconnue"), "error");
+              pm.setResult(false, r.error || "Erreur inconnue");
               btnPreflight.disabled = false;
               btnPreflight.textContent = "▶ Preflight";
             }
           } catch (err) {
-            showNotification("❌ Preflight : " + err.message, "error");
+            pm.setResult(false, err.message);
             btnPreflight.disabled = false;
             btnPreflight.textContent = "▶ Preflight";
           }
@@ -577,10 +614,11 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           const hasPlis   = fabData.plis && fabData.plis.trim() !== "";
           const hasFaconnage = (fabData.faconnageBinding && fabData.faconnageBinding.trim() !== "") ||
                                (Array.isArray(fabData.faconnage) && fabData.faconnage.length > 0);
+          const hasCoupe = Array.isArray(fabData.faconnage) && fabData.faconnage.includes('Coupe');
           // Only show steps that are actually selected in the production form
           const applicable = {
             embellissement: hasEnnob, rainage: hasRainage, pliage: hasPlis,
-            faconnage: hasFaconnage, coupe: false, emballage: true, depart: true, livraison: true
+            faconnage: hasFaconnage, coupe: hasCoupe, emballage: true, depart: true, livraison: true
           };
           const totalApplicable = STEP_ORDER.filter(k => applicable[k]).length;
           const doneApplicable  = STEP_ORDER.filter(k => applicable[k] && steps[k]?.done).length;
@@ -608,10 +646,11 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           const hasPlis   = fabData.plis && fabData.plis.trim() !== "";
           const hasFaconnage = (fabData.faconnageBinding && fabData.faconnageBinding.trim() !== "") ||
                                (Array.isArray(fabData.faconnage) && fabData.faconnage.length > 0);
+          const hasCoupe = Array.isArray(fabData.faconnage) && fabData.faconnage.includes('Coupe');
           // Only show steps that are applicable based on form selections
           const applicable = {
             embellissement: hasEnnob, rainage: hasRainage, pliage: hasPlis,
-            faconnage: hasFaconnage, coupe: false, emballage: true, depart: true, livraison: true
+            faconnage: hasFaconnage, coupe: hasCoupe, emballage: true, depart: true, livraison: true
           };
 
           const overlay = document.createElement("div");

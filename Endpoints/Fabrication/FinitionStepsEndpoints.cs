@@ -191,7 +191,13 @@ app.MapPut("/api/fabrication/{id}/finition-step", async (string id, HttpContext 
         if (!hasPlis) required.Remove("pliage");
         if (!hasFaconnageBinding && !hasFaconnage) required.Remove("faconnage");
 
-        // coupe, emballage, depart, livraison are always required
+        // coupe is only required if "Coupe" is explicitly in the faconnage array
+        bool hasCoupe = fabDoc.Contains("faconnage") && fabDoc["faconnage"] != BsonNull.Value
+            && fabDoc["faconnage"].IsBsonArray
+            && fabDoc["faconnage"].AsBsonArray.Any(x => x.IsString && x.AsString == "Coupe");
+        if (!hasCoupe) required.Remove("coupe");
+
+        // emballage, depart, livraison are always required
         return required;
     }
 
