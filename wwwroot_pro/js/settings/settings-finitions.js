@@ -61,20 +61,34 @@ export async function renderSettingsFinitions(panel) {
 
     <h4 style="margin-bottom:8px;">Options de façonnage</h4>
     <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">
-      Importez un fichier CSV avec une option par ligne. Les options existantes seront remplacées.
+      Gérez les options de façonnage disponibles dans la fiche de production. L'administrateur décide des options et sous-options.
     </p>
-    <div class="settings-form-group">
-      <label>Importer un CSV</label>
-      <input type="file" id="faconnage-csv-input" accept=".csv,.txt" class="settings-input" />
-      <button id="faconnage-csv-import" class="btn btn-primary" style="margin-top:8px;">Importer</button>
-      <div id="faconnage-import-msg" style="margin-top:8px;font-size:13px;"></div>
-    </div>
-    <div style="margin-top:16px;margin-bottom:28px;">
-      <h5 style="margin-bottom:8px;">Options actuelles (${faconnageOptions.length})</h5>
-      <div>${listHtml}</div>
+
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:16px;max-width:600px;">
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <input type="text" id="faconnage-new-option" class="settings-input" placeholder="Nouvelle option (ex: Pelliculage mat)" style="flex:1;" />
+        <button id="faconnage-add-option" class="btn btn-primary" style="white-space:nowrap;">+ Ajouter</button>
+      </div>
+      <div id="faconnage-options-list" style="display:flex;flex-direction:column;gap:6px;min-height:40px;">
+        ${faconnageOptions.length === 0 ? '<span style="color:#9ca3af;font-size:13px;">Aucune option définie</span>' : ''}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;border-top:1px solid #e5e7eb;padding-top:12px;">
+        <button id="faconnage-save-options" class="btn btn-primary">💾 Enregistrer</button>
+        <button id="faconnage-csv-toggle" class="btn btn-sm" style="font-size:12px;">📥 Importer depuis CSV</button>
+        <span id="faconnage-save-msg" style="font-size:13px;line-height:32px;"></span>
+      </div>
     </div>
 
-    <h4 style="margin-bottom:8px;">Icônes des étapes de finition</h4>
+    <div id="faconnage-csv-section" style="display:none;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:16px;max-width:600px;">
+      <p style="color:#6b7280;font-size:13px;margin-bottom:8px;">Importez un fichier CSV avec une option par ligne. Les options existantes seront remplacées.</p>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="file" id="faconnage-csv-input" accept=".csv,.txt" class="settings-input" />
+        <button id="faconnage-csv-import" class="btn btn-primary">Importer</button>
+      </div>
+      <div id="faconnage-import-msg" style="margin-top:8px;font-size:13px;"></div>
+    </div>
+
+    <h4 style="margin-bottom:8px;margin-top:24px;">Icônes des étapes de finition</h4>
     <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">
       Uploadez une icône pour chaque type de finition (PNG, JPG, SVG…).
     </p>
@@ -89,6 +103,75 @@ export async function renderSettingsFinitions(panel) {
       <tbody>${iconsHtml}</tbody>
     </table>
   `;
+
+  // Build dynamic options list
+  let currentOptions = [...faconnageOptions];
+
+  function renderOptionsList() {
+    const listEl = panel.querySelector("#faconnage-options-list");
+    if (currentOptions.length === 0) {
+      listEl.innerHTML = '<span style="color:#9ca3af;font-size:13px;">Aucune option définie</span>';
+      return;
+    }
+    listEl.innerHTML = '';
+    currentOptions.forEach((opt, idx) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 10px;background:white;border:1px solid #e5e7eb;border-radius:6px;";
+      row.innerHTML = `
+        <span style="flex:1;font-size:13px;color:#374151;">${esc(opt)}</span>
+        <button class="btn btn-sm" data-remove-idx="${idx}" style="color:#ef4444;border-color:#ef4444;padding:2px 8px;font-size:12px;" title="Supprimer">✕</button>
+      `;
+      row.querySelector("[data-remove-idx]").onclick = () => {
+        currentOptions.splice(idx, 1);
+        renderOptionsList();
+      };
+      listEl.appendChild(row);
+    });
+  }
+  renderOptionsList();
+
+  // Add option button
+  panel.querySelector("#faconnage-add-option").onclick = () => {
+    const input = panel.querySelector("#faconnage-new-option");
+    const val = input.value.trim();
+    if (!val) { showNotification("⚠️ Saisissez une option", "warning"); return; }
+    if (currentOptions.includes(val)) { showNotification("⚠️ Option déjà existante", "warning"); return; }
+    currentOptions.push(val);
+    input.value = "";
+    renderOptionsList();
+  };
+  panel.querySelector("#faconnage-new-option").onkeydown = (e) => {
+    if (e.key === "Enter") panel.querySelector("#faconnage-add-option").click();
+  };
+
+  // Save options button
+  panel.querySelector("#faconnage-save-options").onclick = async () => {
+    const msgEl = panel.querySelector("#faconnage-save-msg");
+    try {
+      const r = await fetch("/api/settings/faconnage-options", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+        body: JSON.stringify({ options: currentOptions })
+      }).then(r => r.json());
+      if (r.ok) {
+        msgEl.style.color = "#16a34a";
+        msgEl.textContent = `✅ ${r.count} option(s) enregistrée(s)`;
+        showNotification("✅ Options de façonnage enregistrées", "success");
+      } else {
+        msgEl.style.color = "#ef4444";
+        msgEl.textContent = "❌ " + (r.error || "Erreur");
+      }
+    } catch(e) {
+      msgEl.style.color = "#ef4444";
+      msgEl.textContent = "❌ Erreur réseau";
+    }
+  };
+
+  // Toggle CSV section
+  panel.querySelector("#faconnage-csv-toggle").onclick = () => {
+    const csvSection = panel.querySelector("#faconnage-csv-section");
+    csvSection.style.display = csvSection.style.display === "none" ? "block" : "none";
+  };
 
   // Faconnage CSV import
   panel.querySelector("#faconnage-csv-import").onclick = async () => {

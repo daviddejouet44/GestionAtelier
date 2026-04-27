@@ -171,6 +171,40 @@ app.MapPost("/api/settings/faconnage-import", async (HttpContext ctx) =>
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
+// PUT /api/settings/faconnage-options — save option list directly (admin only)
+app.MapPut("/api/settings/faconnage-options", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        if (!json.TryGetProperty("options", out var optEl) || optEl.ValueKind != JsonValueKind.Array)
+            return Results.Json(new { ok = false, error = "options[] requis" });
+
+        var labels = optEl.EnumerateArray()
+            .Select(e => e.GetString()?.Trim())
+            .Where(l => !string.IsNullOrEmpty(l))
+            .Distinct()
+            .ToList();
+
+        var col = MongoDbHelper.GetCollection<BsonDocument>("faconnageOptions");
+        col.DeleteMany(new BsonDocument());
+        if (labels.Count > 0)
+        {
+            var docs = labels.Select(l => new BsonDocument { ["label"] = l! }).ToList();
+            col.InsertMany(docs);
+        }
+
+        return Results.Json(new { ok = true, count = labels.Count });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
 app.MapGet("/api/config/integrations", (HttpContext ctx) =>
 {
     try
@@ -818,10 +852,40 @@ app.MapGet("/api/settings/passes-config", () =>
 });
 
 app.MapPost("/api/settings/passes-config", async (HttpContext ctx) =>
-    Results.Json(await SavePassesConfigAsync(ctx)));
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var cfg = new PassesConfig();
+        if (json.TryGetProperty("faconnage", out var f)) cfg.Faconnage = f.GetInt32();
+        if (json.TryGetProperty("pelliculageRecto", out var pr)) cfg.PelliculageRecto = pr.GetInt32();
+        if (json.TryGetProperty("pelliculageRectoVerso", out var prv)) cfg.PelliculageRectoVerso = prv.GetInt32();
+        if (json.TryGetProperty("rainage", out var r)) cfg.Rainage = r.GetInt32();
+        if (json.TryGetProperty("dorure", out var dv)) cfg.Dorure = dv.GetInt32();
+        if (json.TryGetProperty("dosCarreColle", out var dcc)) cfg.DosCarreColle = dcc.GetInt32();
+        MongoDbHelper.UpsertSettings("passesConfig", cfg);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
 
 app.MapPut("/api/settings/passes-config", async (HttpContext ctx) =>
-    Results.Json(await SavePassesConfigAsync(ctx)));
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var cfg = new PassesConfig();
+        if (json.TryGetProperty("faconnage", out var f)) cfg.Faconnage = f.GetInt32();
+        if (json.TryGetProperty("pelliculageRecto", out var pr)) cfg.PelliculageRecto = pr.GetInt32();
+        if (json.TryGetProperty("pelliculageRectoVerso", out var prv)) cfg.PelliculageRectoVerso = prv.GetInt32();
+        if (json.TryGetProperty("rainage", out var r)) cfg.Rainage = r.GetInt32();
+        if (json.TryGetProperty("dorure", out var dv)) cfg.Dorure = dv.GetInt32();
+        if (json.TryGetProperty("dosCarreColle", out var dcc)) cfg.DosCarreColle = dcc.GetInt32();
+        MongoDbHelper.UpsertSettings("passesConfig", cfg);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
 
 // ======================================================
 // SETTINGS — ICÔNES FINITIONS

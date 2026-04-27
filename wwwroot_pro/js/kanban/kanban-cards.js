@@ -91,19 +91,32 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       const assignment = assignmentsByPath[jobFileName];
       const iso = deliveriesByPath[jobFileName];
 
-      // Top row: dossier N° + presse (loaded async below)
+      // Top row: dossier N° + presse + operator (loaded async below)
       const topRow = document.createElement("div");
       topRow.className = "kanban-card-top-row";
+      topRow.style.cssText = "flex-direction:column;align-items:flex-start;gap:2px;";
+
+      const topRowMain = document.createElement("div");
+      topRowMain.style.cssText = "display:flex;justify-content:space-between;align-items:center;width:100%;gap:4px;";
 
       const dossierEl = document.createElement("div");
       dossierEl.className = "kanban-card-dossier";
       dossierEl.textContent = "—";
-      topRow.appendChild(dossierEl);
+      topRowMain.appendChild(dossierEl);
 
       const presseEl = document.createElement("div");
       presseEl.className = "kanban-card-presse";
       presseEl.textContent = "";
-      topRow.appendChild(presseEl);
+      topRowMain.appendChild(presseEl);
+
+      topRow.appendChild(topRowMain);
+
+      // Operator shown under press name
+      const operatorTopEl = document.createElement("div");
+      operatorTopEl.className = "kanban-card-operator-name";
+      operatorTopEl.style.cssText = "font-size:13px;font-weight:700;color:#1d4ed8;padding-left:2px;";
+      operatorTopEl.textContent = "";
+      topRow.appendChild(operatorTopEl);
 
       card.appendChild(topRow);
 
@@ -128,11 +141,8 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       title.textContent = job.name || "Sans nom";
       infoStack.appendChild(title);
 
-      // Operator row (filled async or from assignment)
-      const operatorEl = document.createElement("p");
-      operatorEl.className = "kanban-card-operator-info";
-      operatorEl.textContent = assignment ? assignment.operatorName : "";
-      infoStack.appendChild(operatorEl);
+      // Initialize top operator row from assignment (async fab fetch will update it)
+      if (assignment && assignment.operatorName) operatorTopEl.textContent = "👤 " + assignment.operatorName;
 
       // "Sur machine le" row (from fabrication.planningMachine, loaded async)
       const machineEl = document.createElement("p");
@@ -158,13 +168,15 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName))
         .then(r => r.json()).then(d => {
           if (d && d.numeroDossier) dossierEl.textContent = "N° " + d.numeroDossier;
-          if (d && d.moteurImpression) presseEl.textContent = d.moteurImpression;
+          if (d && d.moteurImpression) {
+            presseEl.textContent = d.moteurImpression;
+          }
+          // Show operator under press name (in top row)
+          const opName = (d && d.operateur) ? d.operateur : (assignment ? assignment.operatorName : "");
+          if (opName) operatorTopEl.textContent = "👤 " + opName;
           if (d && d.planningMachine) {
             const dt = new Date(d.planningMachine);
             machineEl.textContent = "Machine: " + dt.toLocaleDateString("fr-FR");
-          }
-          if (d && d.operateur && !assignment) {
-            operatorEl.textContent = d.operateur;
           }
         }).catch(() => {});
 
@@ -564,9 +576,10 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           const hasPlis   = fabData.plis && fabData.plis.trim() !== "";
           const hasFaconnage = (fabData.faconnageBinding && fabData.faconnageBinding.trim() !== "") ||
                                (Array.isArray(fabData.faconnage) && fabData.faconnage.length > 0);
+          // Only show steps that are actually selected in the production form
           const applicable = {
             embellissement: hasEnnob, rainage: hasRainage, pliage: hasPlis,
-            faconnage: hasFaconnage, coupe: true, emballage: true, depart: true, livraison: true
+            faconnage: hasFaconnage, coupe: false, emballage: true, depart: true, livraison: true
           };
           const totalApplicable = STEP_ORDER.filter(k => applicable[k]).length;
           const doneApplicable  = STEP_ORDER.filter(k => applicable[k] && steps[k]?.done).length;
@@ -594,9 +607,10 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           const hasPlis   = fabData.plis && fabData.plis.trim() !== "";
           const hasFaconnage = (fabData.faconnageBinding && fabData.faconnageBinding.trim() !== "") ||
                                (Array.isArray(fabData.faconnage) && fabData.faconnage.length > 0);
+          // Only show steps that are applicable based on form selections
           const applicable = {
             embellissement: hasEnnob, rainage: hasRainage, pliage: hasPlis,
-            faconnage: hasFaconnage, coupe: true, emballage: true, depart: true, livraison: true
+            faconnage: hasFaconnage, coupe: false, emballage: true, depart: true, livraison: true
           };
 
           const overlay = document.createElement("div");
@@ -641,6 +655,23 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             nameSpan.textContent = STEP_LABELS[key];
             if (!previousStepDone) nameSpan.title = "Validez l'étape précédente d'abord";
             labelDiv.appendChild(nameSpan);
+
+            // Show faconnage sub-options selected in the production form
+            if (key === "faconnage") {
+              const subOptions = [];
+              if (Array.isArray(fabData.faconnage) && fabData.faconnage.length > 0) {
+                subOptions.push(...fabData.faconnage);
+              }
+              if (fabData.faconnageBinding && fabData.faconnageBinding.trim()) {
+                subOptions.push(fabData.faconnageBinding.trim());
+              }
+              if (subOptions.length > 0) {
+                const subEl = document.createElement("div");
+                subEl.style.cssText = "color:#4b5563;font-size:11px;margin-top:2px;";
+                subEl.textContent = "Options : " + subOptions.join(", ");
+                labelDiv.appendChild(subEl);
+              }
+            }
 
             if (isDone && stepData.doneAt) {
               const ts = document.createElement("div");

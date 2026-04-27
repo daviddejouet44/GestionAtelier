@@ -18,6 +18,30 @@ public static class MailImportEndpoints
 {
     public static void MapMailImportEndpoints(this WebApplication app)
     {
+        // POST /api/submission/test-imap-connection
+        // Body: { host, port, email, password, useSsl }
+        app.MapPost("/api/submission/test-imap-connection", async (HttpContext ctx) =>
+        {
+            try
+            {
+                var body = await ctx.Request.ReadFromJsonAsync<MailSearchRequest>();
+                if (body == null || string.IsNullOrWhiteSpace(body.Host) || string.IsNullOrWhiteSpace(body.Email) || string.IsNullOrWhiteSpace(body.Password))
+                    return Results.Json(new { ok = false, error = "Paramètres IMAP incomplets" });
+
+                using var client = new ImapClient();
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                await client.ConnectAsync(body.Host, body.Port > 0 ? body.Port : (body.UseSsl ? 993 : 143), body.UseSsl, cts.Token);
+                await client.AuthenticateAsync(body.Email, body.Password, cts.Token);
+                await client.DisconnectAsync(true, cts.Token);
+
+                return Results.Json(new { ok = true });
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { ok = false, error = ex.Message });
+            }
+        });
+
         // POST /api/submission/list-mail-attachments
         // Body: { host, port, email, password, useSsl }
         app.MapPost("/api/submission/list-mail-attachments", async (HttpContext ctx) =>

@@ -94,8 +94,11 @@ export async function loadDashboardData() {
       const input = document.createElement("input");
       input.type = "file";
       input.accept = ".png,.jpg,.jpeg,.gif,.webp";
+      input.style.cssText = "position:fixed;left:-9999px;top:-9999px;opacity:0;width:1px;height:1px;";
+      document.body.appendChild(input);
       input.onchange = async () => {
         const file = input.files[0];
+        document.body.removeChild(input);
         if (!file) return;
         const formData = new FormData();
         formData.append("file", file);
@@ -106,7 +109,7 @@ export async function loadDashboardData() {
             method: "POST",
             headers: { "Authorization": `Bearer ${authToken}` },
             body: formData
-          }).then(res => res.ok ? res.json() : res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` })));
+          }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
           const originalText = dashboardImageExists ? "🖼️ Modifier l'image" : "🖼️ Ajouter une image";
           if (r.ok) {
             await loadDashboardData();

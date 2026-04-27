@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -24,8 +25,21 @@ public static class FormConfigEndpoints
             try
             {
                 var saved = MongoDbHelper.GetSettings<FabricationFormConfig>(SettingsKey);
-                var config = saved ?? DefaultConfig;
-                return Results.Json(config);
+                if (saved == null) return Results.Json(DefaultConfig);
+
+                // Merge: add any default fields that are missing from the saved config
+                var savedIds = new HashSet<string>(saved.Fields.Select(f => f.Id));
+                var missing = DefaultConfig.Fields.Where(f => !savedIds.Contains(f.Id)).ToList();
+                if (missing.Count > 0)
+                {
+                    saved.Fields.AddRange(missing);
+                    // Also add missing sections to the saved config
+                    var savedSections = new HashSet<string>(saved.Sections);
+                    foreach (var s in DefaultConfig.Sections.Where(s => !savedSections.Contains(s)))
+                        saved.Sections.Add(s);
+                }
+
+                return Results.Json(saved);
             }
             catch (Exception ex)
             {
@@ -157,6 +171,15 @@ public static class FormConfigEndpoints
 
             // ── Section : Notes ───────────────────────────────────────────
             new() { Id = "notes", Label = "Notes / Observations", Type = "textarea", Section = "Notes", Order = order++, Visible = true, Width = "full" },
+
+            // ── Section : Dates clés ──────────────────────────────────────
+            new() { Id = "dateReception",           Label = "Date de réception souhaitée",  Type = "date",     Section = "Dates clés", Order = order++, Visible = true, Width = "half" },
+            new() { Id = "dateEnvoi",               Label = "Date d'envoi (indicatif)",     Type = "date",     Section = "Dates clés", Order = order++, Visible = true, ReadOnly = true, Width = "half" },
+            new() { Id = "dateProductionFinitions", Label = "Date production Finitions",    Type = "date",     Section = "Dates clés", Order = order++, Visible = true, ReadOnly = true, Width = "half" },
+            new() { Id = "dateImpression",          Label = "Date d'impression (indicatif)",Type = "date",     Section = "Dates clés", Order = order++, Visible = true, ReadOnly = true, Width = "half" },
+
+            // ── Section : Temps de production ────────────────────────────
+            new() { Id = "tempsProduitMinutes", Label = "Temps théorique de production (minutes)", Type = "number", Section = "Temps de production", Order = order++, Visible = true, Width = "half" },
         };
 
         var sections = new List<string>
@@ -169,7 +192,9 @@ public static class FormConfigEndpoints
             "Finitions",
             "Production",
             "Livraison",
-            "Notes"
+            "Notes",
+            "Dates clés",
+            "Temps de production"
         };
 
         return new FabricationFormConfig { Fields = fields, Sections = sections };
