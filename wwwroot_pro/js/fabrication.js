@@ -35,7 +35,17 @@ const fabHistory = document.getElementById("fab-history");
 const fabRemove = document.getElementById("fab-delivery-remove");
 const fabStageBanner = document.getElementById("fab-stage-banner");
 
+// Nouveaux champs dates clés et production
+const fabDateReception = document.getElementById("fab-date-reception");
+const fabDateEnvoi = document.getElementById("fab-date-envoi");
+const fabDateImpression = document.getElementById("fab-date-impression");
+const fabDateFinitions = document.getElementById("fab-date-finitions");
+const fabTempsProduit = document.getElementById("fab-temps-produit");
+
 export let fabCurrentPath = null;
+
+// Offsets (chargés au démarrage)
+let keyDatesOffsets = null;
 
 // ======================================================
 // CLIENT-SIDE CACHE (TTL: 5 minutes)
@@ -54,9 +64,104 @@ async function fetchCached(url) {
 }
 
 // ======================================================
+// CALCUL AUTOMATIQUE DES DATES CLÉS
+// ======================================================
+
+async function loadKeyDatesOffsets() {
+  if (keyDatesOffsets) return keyDatesOffsets;
+  try {
+    const resp = await fetch("/api/config/key-dates-offsets", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json());
+    if (resp.ok && resp.config) {
+      keyDatesOffsets = resp.config;
+    } else {
+      // Valeurs par défaut si endpoint échoue
+      keyDatesOffsets = {
+        livraisonEnvoiHeures: 48,
+        livraisonFinitionsHeures: 72,
+        livraisonImpressionHeures: 96,
+        retraitEnvoiHeures: 0,
+        retraitFinitionsHeures: 24,
+        retraitImpressionHeures: 48
+      };
+    }
+  } catch (e) {
+    console.warn("[fabrication] Échec chargement offsets, utilisation valeurs par défaut", e);
+    keyDatesOffsets = {
+      livraisonEnvoiHeures: 48,
+      livraisonFinitionsHeures: 72,
+      livraisonImpressionHeures: 96,
+      retraitEnvoiHeures: 0,
+      retraitFinitionsHeures: 24,
+      retraitImpressionHeures: 48
+    };
+  }
+  return keyDatesOffsets;
+}
+
+function updateKeyDates() {
+  if (!fabDateReception || !fabDateReception.value) {
+    // Si pas de date de réception, vider les autres dates
+    if (fabDateEnvoi) fabDateEnvoi.value = "";
+    if (fabDateImpression) fabDateImpression.value = "";
+    if (fabDateFinitions) fabDateFinitions.value = "";
+    return;
+  }
+
+  const receptionDate = new Date(fabDateReception.value);
+  if (isNaN(receptionDate.getTime())) return;
+
+  const mode = fabRetraitLivraison ? fabRetraitLivraison.value : "";
+  
+  // Déterminer les offsets selon le mode
+  let offsetEnvoi, offsetFinitions, offsetImpression;
+  if (mode === "Livraison") {
+    offsetEnvoi = keyDatesOffsets?.livraisonEnvoiHeures || 48;
+    offsetFinitions = keyDatesOffsets?.livraisonFinitionsHeures || 72;
+    offsetImpression = keyDatesOffsets?.livraisonImpressionHeures || 96;
+  } else {
+    // Par défaut: Retrait imprimerie (ou mode vide)
+    offsetEnvoi = keyDatesOffsets?.retraitEnvoiHeures || 0;
+    offsetFinitions = keyDatesOffsets?.retraitFinitionsHeures || 24;
+    offsetImpression = keyDatesOffsets?.retraitImpressionHeures || 48;
+  }
+
+  // Calculer les dates
+  const dateEnvoi = new Date(receptionDate.getTime() - (offsetEnvoi * 60 * 60 * 1000));
+  const dateFinitions = new Date(receptionDate.getTime() - (offsetFinitions * 60 * 60 * 1000));
+  const dateImpression = new Date(receptionDate.getTime() - (offsetImpression * 60 * 60 * 1000));
+
+  // Formatter en datetime-local (YYYY-MM-DDTHH:MM)
+  function toDateTimeLocal(d) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }
+
+  if (fabDateEnvoi) fabDateEnvoi.value = toDateTimeLocal(dateEnvoi);
+  if (fabDateFinitions) fabDateFinitions.value = toDateTimeLocal(dateFinitions);
+  if (fabDateImpression) fabDateImpression.value = toDateTimeLocal(dateImpression);
+}
+
+// ======================================================
 // INIT ÉVÉNEMENTS
 // ======================================================
 export function initFabrication() {
+  // Charger les offsets au démarrage
+  loadKeyDatesOffsets();
+
+  // Event listeners pour recalcul automatique des dates
+  if (fabDateReception) {
+    fabDateReception.addEventListener('change', updateKeyDates);
+  }
+  if (fabRetraitLivraison) {
+    fabRetraitLivraison.addEventListener('change', updateKeyDates);
+  }
+
   fabClose.onclick = () => fabModal.classList.add("hidden");
   document.addEventListener("keydown", e => { if (e.key === "Escape") fabModal.classList.add("hidden"); });
 
@@ -235,6 +340,27 @@ export async function openFabrication(fullPath) {
   if (fabMedia3) fabMedia3.value = d.media3 || "";
   if (fabMedia4) fabMedia4.value = d.media4 || "";
 
+  // Dates clés planification
+  function toDateTimeLocal(isoStr) {
+    if (!isoStr) return "";
+    const dt = new Date(isoStr);
+    if (isNaN(dt.getTime())) return "";
+    const year = dt.getFullYear();
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    const hours = String(dt.getHours()).padStart(2, '0');
+    const minutes = String(dt.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }
+  
+  if (fabDateReception) fabDateReception.value = toDateTimeLocal(d.dateReceptionSouhaitee);
+  if (fabDateEnvoi) fabDateEnvoi.value = toDateTimeLocal(d.dateEnvoi);
+  if (fabDateImpression) fabDateImpression.value = toDateTimeLocal(d.dateImpression);
+  if (fabDateFinitions) fabDateFinitions.value = toDateTimeLocal(d.dateProductionFinitions);
+  
+  // Production
+  if (fabTempsProduit) fabTempsProduit.value = d.tempsProduitMinutes || "";
+
   // Façonnage checkboxes
   if (fabFaconnageContainer) {
     let checked = [];
@@ -316,6 +442,13 @@ export async function saveFabrication() {
   if (!fabCurrentPath) return false;
   const fileName = fnKey(fabCurrentPath);
 
+  // Convertir datetime-local vers ISO
+  function fromDateTimeLocal(val) {
+    if (!val) return null;
+    const dt = new Date(val);
+    return isNaN(dt.getTime()) ? null : dt.toISOString();
+  }
+
   const payload = {
     fullPath: fabCurrentPath,
     fileName: fileName,
@@ -340,7 +473,14 @@ export async function saveFabrication() {
     media1: fabMedia1 ? fabMedia1.value || null : null,
     media2: fabMedia2 ? fabMedia2.value || null : null,
     media3: fabMedia3 ? fabMedia3.value || null : null,
-    media4: fabMedia4 ? fabMedia4.value || null : null
+    media4: fabMedia4 ? fabMedia4.value || null : null,
+    // Dates clés planification
+    dateReceptionSouhaitee: fromDateTimeLocal(fabDateReception?.value),
+    dateEnvoi: fromDateTimeLocal(fabDateEnvoi?.value),
+    dateImpression: fromDateTimeLocal(fabDateImpression?.value),
+    dateProductionFinitions: fromDateTimeLocal(fabDateFinitions?.value),
+    // Production
+    tempsProduitMinutes: fabTempsProduit ? (parseInt(fabTempsProduit.value) || null) : null
   };
 
   const r = await fetch("/api/fabrication", {

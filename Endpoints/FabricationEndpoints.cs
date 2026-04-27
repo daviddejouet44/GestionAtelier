@@ -168,6 +168,16 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             TypeDocument  = isAdmin ? input.TypeDocument  : old?.TypeDocument,
             NombreFeuilles = isAdmin ? input.NombreFeuilles : old?.NombreFeuilles,
 
+            // Dates clés planification
+            DateReceptionSouhaitee = input.DateReceptionSouhaitee,
+            DateEnvoi = input.DateEnvoi,
+            DateImpression = input.DateImpression,
+            DateProductionFinitions = input.DateProductionFinitions,
+            
+            // Production
+            TempsProduitMinutes = input.TempsProduitMinutes,
+            FinitionsChecked = input.FinitionsChecked ?? old?.FinitionsChecked,
+
             History = old?.History ?? new List<FabricationHistory>()
         };
 
