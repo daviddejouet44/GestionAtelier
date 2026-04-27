@@ -326,6 +326,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
 
       if (folderName === "Début de production") {
         if (isActionVisible(folderName, "ouvrirFichier")) actions.appendChild(btnOpen);
+        if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
         if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
         // Bouton Preflight conditionnel — visible uniquement si les tuiles Preflight sont masquées
