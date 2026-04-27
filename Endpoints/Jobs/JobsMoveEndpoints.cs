@@ -370,7 +370,10 @@ app.MapPost("/api/jobs/delete", async (HttpContext ctx) =>
             try { File.WriteAllText(trashPath + ".meta", sourceFolder); } catch { }
         }
 
-        // Cascade: remove delivery (planning) entry for this file
+        // Cascade: remove delivery (planning) entry for this file so it no longer appears
+        // in the calendar after deletion. Two calls are needed because:
+        // - DeleteDeliveryByFileNameOrPath covers filename-keyed records (current format)
+        // - DeleteDelivery covers path-keyed records (legacy format)
         try
         {
             var fnKey = fileName.ToLowerInvariant();

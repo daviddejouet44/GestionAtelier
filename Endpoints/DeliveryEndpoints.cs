@@ -296,30 +296,30 @@ app.MapPost("/api/delivery/cleanup-orphans", (HttpContext ctx) =>
 
         var map = BackendUtils.LoadDeliveries();
         var root = BackendUtils.HotfoldersRoot();
-        var deleted = 0;
 
+        // Build a single set of all filenames present in hotfolders (one scan pass)
+        var knownFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (Directory.Exists(root))
+        {
+            foreach (var folder in Directory.GetDirectories(root))
+                foreach (var file in Directory.EnumerateFiles(folder))
+                    knownFiles.Add(Path.GetFileName(file));
+        }
+
+        var deleted = 0;
         foreach (var kv in map)
         {
             var item = kv.Value;
-            // Skip entries where the referenced file still exists anywhere in hotfolders
-            bool fileExists = false;
-            if (!string.IsNullOrWhiteSpace(item.FullPath) && File.Exists(item.FullPath))
-            {
-                fileExists = true;
-            }
-            else if (!string.IsNullOrWhiteSpace(item.FileName))
-            {
-                // Scan all hotfolders for the file by name
-                foreach (var folder in Directory.GetDirectories(root))
-                {
-                    if (File.Exists(Path.Combine(folder, item.FileName)))
-                    { fileExists = true; break; }
-                }
-            }
+            // A delivery is not orphaned if the file still exists at its known path or anywhere in hotfolders
+            bool fileExists =
+                (!string.IsNullOrWhiteSpace(item.FullPath) && File.Exists(item.FullPath)) ||
+                (!string.IsNullOrWhiteSpace(item.FileName) && knownFiles.Contains(item.FileName));
 
             if (!fileExists)
             {
+                // DeleteDeliveryByFileNameOrPath handles filename-keyed lookup
                 BackendUtils.DeleteDeliveryByFileNameOrPath(item.FileName ?? "");
+                // DeleteDelivery handles path-keyed lookup (legacy records)
                 if (!string.IsNullOrWhiteSpace(item.FullPath))
                     BackendUtils.DeleteDelivery(item.FullPath);
                 deleted++;

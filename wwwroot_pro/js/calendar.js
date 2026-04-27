@@ -632,7 +632,8 @@ export async function initSubmissionCalendar() {
       try {
         const list = await fetch("/api/delivery").then(r => r.json());
         const ev = list.flatMap(x => {
-          // In submission calendar, use dateReceptionSouhaitee from the fiche when available
+          // In submission calendar, prefer dateReceptionSouhaitee (desired client reception date from the
+          // production fiche) over the manually planned delivery date, so events appear at the correct date.
           const eventDate = x.dateReceptionSouhaitee || x.date;
           if (!eventDate) return []; // skip events with no date
           const full = normalizePath(x.fullPath);

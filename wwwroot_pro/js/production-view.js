@@ -139,9 +139,9 @@ function renderGlobalProdTable(jobs, assignMap, deliveryMap, sortMode, wrap) {
 
     // Build stage display label, including BAT sub-status when available
     const baseStageLabel = getStageLabelDisplay(job.currentStage) || '—';
-    let stageBadgeStyle = "background:#dbeafe;color:#1e40af;";
     let stageDisplay = baseStageLabel;
-    if (job.currentStage === 'BAT' && job.batStatus) {
+    let stageBadgeStyle = "background:#dbeafe;color:#1e40af;"; // default blue
+    if (job.currentStage === 'BAT') {
       if (job.batStatus === 'refuse') {
         stageDisplay = 'BAT — ❌ Refusé';
         stageBadgeStyle = "background:#fee2e2;color:#991b1b;";
