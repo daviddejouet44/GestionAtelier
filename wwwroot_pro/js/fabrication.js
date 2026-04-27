@@ -553,6 +553,8 @@ export async function openFabrication(fullPath) {
     const resp=await fetch('/api/delivery?fileName='+encodeURIComponent(fabCurrentFileName),{method:'DELETE'}).then(r=>r.json()).catch(()=>({ok:false}));
     if(!resp.ok){showNotification('Erreur','error');return;}
     delete deliveriesByPath[fabCurrentFileName];delete deliveriesByPath[fabCurrentFileName+'_time'];
+    // Also mark as excluded from fab calendar events
+    await fetch('/api/fabrication/exclude-planning',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({fileName:fabCurrentFileName,exclude:true})}).catch(()=>{});
     if(calendar)calendar.refetchEvents();if(submissionCalendar)submissionCalendar.refetchEvents();
     if(window._refreshKanban)await window._refreshKanban();if(window._updateGlobalAlert)window._updateGlobalAlert();
     showNotification('✅ Retiré du planning','success');
