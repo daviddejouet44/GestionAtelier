@@ -95,6 +95,7 @@ public record FabricationSheet
 
     // ── Dates clés (calculées depuis DateReception) ──────
     public DateTime? DateReception { get; init; }
+    public DateTime? DateReceptionSouhaitee { get; init; }
     public DateTime? DateEnvoi { get; init; }
     public DateTime? DateProductionFinitions { get; init; }
     public DateTime? DateImpression { get; init; }
@@ -111,6 +112,9 @@ public record FabricationSheet
 
     // ── Étapes finitions ─────────────────────────────────
     public FinitionSteps? FinitionSteps { get; init; }
+    
+    // ── Finitions (liste cochée) ─────────────────────────
+    public List<string>? FinitionsChecked { get; init; }
 
     // ── Statut de production (validé/refusé par opérateur) ──
     public string? StatutProduction { get; init; }
@@ -195,6 +199,7 @@ public class FabricationInput
 
     // ── Dates clés (calculées depuis DateReception) ──────
     public DateTime? DateReception { get; set; }
+    public DateTime? DateReceptionSouhaitee { get; set; }
     public DateTime? DateEnvoi { get; set; }
     public DateTime? DateProductionFinitions { get; set; }
     public DateTime? DateImpression { get; set; }
@@ -208,6 +213,9 @@ public class FabricationInput
 
     // ── Répartitions ─────────────────────────────────────
     public List<RepartitionItem>? Repartitions { get; set; }
+    
+    // ── Finitions (liste cochée) ─────────────────────────
+    public List<string>? FinitionsChecked { get; set; }
 }
 
 // ======================================================

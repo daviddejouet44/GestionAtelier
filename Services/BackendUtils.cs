@@ -678,6 +678,7 @@ public static class BackendUtils
             DateLivraison   = d.Contains("dateLivraison")   && d["dateLivraison"]   != BsonNull.Value ? (DateTime?)d["dateLivraison"].ToLocalTime()   : null,
             PlanningMachine = d.Contains("planningMachine") && d["planningMachine"] != BsonNull.Value ? (DateTime?)d["planningMachine"].ToLocalTime() : null,
             DateReception         = d.Contains("dateReception")         && d["dateReception"]         != BsonNull.Value ? (DateTime?)d["dateReception"].ToLocalTime()         : null,
+            DateReceptionSouhaitee = d.Contains("dateReceptionSouhaitee") && d["dateReceptionSouhaitee"] != BsonNull.Value ? (DateTime?)d["dateReceptionSouhaitee"].ToLocalTime() : null,
             DateEnvoi             = d.Contains("dateEnvoi")             && d["dateEnvoi"]             != BsonNull.Value ? (DateTime?)d["dateEnvoi"].ToLocalTime()             : null,
             DateProductionFinitions = d.Contains("dateProductionFinitions") && d["dateProductionFinitions"] != BsonNull.Value ? (DateTime?)d["dateProductionFinitions"].ToLocalTime() : null,
             DateImpression        = d.Contains("dateImpression")        && d["dateImpression"]        != BsonNull.Value ? (DateTime?)d["dateImpression"].ToLocalTime()        : null,
@@ -695,6 +696,11 @@ public static class BackendUtils
                     };
                 }).ToList()
                 : null,
+            FinitionsChecked = d.Contains("finitionsChecked") && d["finitionsChecked"] != BsonNull.Value
+                               ? (d["finitionsChecked"].IsBsonArray
+                                  ? d["finitionsChecked"].AsBsonArray.Select(v => v.AsString).ToList()
+                                  : new List<string>())
+                               : null,
             FinitionSteps = BsonDocToFinitionSteps(d),
             StatutProduction = GetNullableString(d, "statutProduction")
         };

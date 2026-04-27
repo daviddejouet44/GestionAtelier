@@ -113,5 +113,41 @@ app.MapDelete("/api/config/schedule/holidays", (HttpContext ctx, string date) =>
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
+// ======================================================
+// KEY DATES OFFSETS — Offsets pour calcul automatique des dates clés
+// ======================================================
+
+app.MapGet("/api/config/key-dates-offsets", () =>
+{
+    try
+    {
+        var config = MongoDbHelper.GetSettings<KeyDatesOffsetsSettings>("keyDatesOffsets");
+        if (config == null)
+        {
+            config = new KeyDatesOffsetsSettings(); // valeurs par défaut
+        }
+        return Results.Json(new { ok = true, config });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapPut("/api/config/key-dates-offsets", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var settings = await ctx.Request.ReadFromJsonAsync<KeyDatesOffsetsSettings>();
+        if (settings == null) return Results.BadRequest(new { ok = false, error = "Settings invalid." });
+        MongoDbHelper.UpsertSettings("keyDatesOffsets", settings);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
     }
 }

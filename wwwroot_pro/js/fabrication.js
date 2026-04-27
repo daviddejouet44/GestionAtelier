@@ -14,6 +14,13 @@ const fabHistory = document.getElementById("fab-history");
 const fabRemove = document.getElementById("fab-delivery-remove");
 const fabDynamicForm = document.getElementById("fab-dynamic-form");
 
+// Nouveaux champs dates clés et production
+const fabDateReception = document.getElementById("fab-date-reception");
+const fabDateEnvoi = document.getElementById("fab-date-envoi");
+const fabDateImpression = document.getElementById("fab-date-impression");
+const fabDateFinitions = document.getElementById("fab-date-finitions");
+const fabTempsProduit = document.getElementById("fab-temps-produit");
+
 export let fabCurrentPath = null;
 
 // Cache
@@ -589,10 +596,12 @@ export async function saveFabrication() {
     nombreFeuilles:getN('nombreFeuilles'),dateDepart:get('dateDepart')||null,
     dateLivraison:get('dateLivraison')||null,planningMachine:get('planningMachine')||null,
     dateReception:(()=>{const el=document.getElementById('fab-date-reception');return el&&el.value?el.value:null;})(),
+    dateReceptionSouhaitee:(()=>{const el=document.getElementById('fab-date-reception-souhaitee');return el&&el.value?el.value:null;})(),
     dateEnvoi:(()=>{const el=document.getElementById('fab-date-envoi');return el&&el.value?el.value:null;})(),
     dateProductionFinitions:(()=>{const el=document.getElementById('fab-date-finitions');return el&&el.value?el.value:null;})(),
     dateImpression:(()=>{const el=document.getElementById('fab-date-impression');return el&&el.value?el.value:null;})(),
     tempsProduitMinutes:(()=>{const el=document.getElementById('fab-temps-produit');return el&&el.value?parseInt(el.value)||null:null;})(),
+    finitionsChecked:(()=>{const cont=document.getElementById('fab-finitions-checked-container');return cont?Array.from(cont.querySelectorAll('.fab-finitions-cb:checked')).map(cb=>cb.value):null;})(),
     justifsClientsQuantite:getN('justifsQuantite'),justifsClientsAdresse:get('justifsAdresse')||null,
     repartitions:getRepartitions()
   };
