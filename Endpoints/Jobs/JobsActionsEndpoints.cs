@@ -526,23 +526,29 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
         }
         else if (action == "prisma-prepare")
         {
-            // Routage PrismaPrepare: typeTravail → hotfolder PrismaPrepare (dedicated collection)
-            // NOTE: The file is NOT moved to the PrismaPrepare tile — PrismaPrepare handles its own workflow.
-            //       We only copy the file to the hotfolder and open it in PrismaPrepare.
+            // Routage PrismaPrepare: 1) déplacer dans la tuile PrismaPrepare, 2) copier vers hotfolder
             var ppCol = MongoDbHelper.GetCollection<BsonDocument>("prismaPrepareRouting");
             var ppDoc = ppCol.Find(Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail)).FirstOrDefault();
             if (ppDoc == null || !ppDoc.Contains("hotfolderPath") || string.IsNullOrEmpty(ppDoc["hotfolderPath"].AsString))
                 return Results.Json(new { ok = false, error = $"Aucun hotfolder PrismaPrepare configuré pour le type de travail \"{typeTravail}\". Configurez-le dans Paramétrage > Routage Impression (section 2)." });
             var ppHotfolder = ppDoc["hotfolderPath"].AsString;
 
-            // Copy to hotfolder only — do NOT move original
+            // Step 1: Move original file to PrismaPrepare tile
+            var hotRoot3 = BackendUtils.HotfoldersRoot();
+            var ppTileDir = Path.Combine(hotRoot3, "PrismaPrepare");
+            Directory.CreateDirectory(ppTileDir);
+            var ppTileDest = Path.Combine(ppTileDir, Path.GetFileName(fullPath));
+            File.Move(fullPath, ppTileDest, overwrite: true);
+            Console.WriteLine($"[ACTION] prisma-prepare: déplacé vers tuile {ppTileDest}");
+
+            // Step 2: Copy from tile to hotfolder
             if (!Directory.Exists(ppHotfolder))
                 Directory.CreateDirectory(ppHotfolder);
-            var ppCopyDest = Path.Combine(ppHotfolder, Path.GetFileName(fullPath));
-            File.Copy(fullPath, ppCopyDest, overwrite: true);
-            Console.WriteLine($"[ACTION] prisma-prepare: copié vers hotfolder {ppCopyDest} (fichier original conservé en place)");
+            var ppCopyDest = Path.Combine(ppHotfolder, Path.GetFileName(ppTileDest));
+            File.Copy(ppTileDest, ppCopyDest, overwrite: true);
+            Console.WriteLine($"[ACTION] prisma-prepare: copié vers hotfolder {ppCopyDest}");
 
-            // Also try to open in PrismaPrepare directly
+            // Step 3: Try to open in PrismaPrepare
             var integCfg2 = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations") ?? new IntegrationsSettings();
             var prismaPrepPath2 = integCfg2.PrismaPrepareExePath ?? "";
             if (!string.IsNullOrWhiteSpace(prismaPrepPath2))
@@ -559,7 +565,7 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
                 catch (Exception exPp) { Console.WriteLine($"[WARN] Impossible d'ouvrir PrismaPrepare: {exPp.Message}"); }
             }
 
-            return Results.Json(new { ok = true, message = "Fichier envoyé vers PrismaPrepare (fichier original conservé dans sa tuile)" });
+            return Results.Json(new { ok = true, message = $"Fichier déplacé dans la tuile PrismaPrepare et envoyé vers le hotfolder", destination = ppTileDest });
         }
         else if (action == "direct-print")
         {

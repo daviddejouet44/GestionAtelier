@@ -111,7 +111,7 @@ function buildPlanningViewSwitcher(calendarEl) {
   switcher.id = "planning-view-switcher";
   switcher.style.cssText = "display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center;";
   const views = [
-    { id: 'global', label: '🌐 Global' },
+    { id: 'global', label: '🌐 Fin de production' },
     { id: 'machine', label: '🖨️ Par machine' },
     { id: 'operator', label: '👤 Par opérateur' },
     { id: 'finitions', label: '✂️ Finitions du jour' },
@@ -307,10 +307,15 @@ export async function initCalendar() {
               finitions:  { bg: '#f59e0b', bc: '#d97706', tc: '#ffffff' }
             };
             const c = colorMap[fe.type] || { bg: '#6b7280', bc: '#4b5563', tc: '#ffffff' };
+            const durationMins = (fe.tempsProduitMinutes && fe.tempsProduitMinutes > 0)
+              ? fe.tempsProduitMinutes : 30;
+            const startDt = new Date(`${fe.date}T09:00:00`);
+            const endDt = new Date(startDt.getTime() + durationMins * 60000);
             return {
               title: fe.title,
-              start: fe.date,
-              allDay: true,
+              start: startDt.toISOString(),
+              end: endDt.toISOString(),
+              allDay: false,
               backgroundColor: c.bg,
               borderColor: c.bc,
               textColor: c.tc,
