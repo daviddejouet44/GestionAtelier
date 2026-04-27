@@ -27,7 +27,7 @@ public static class FabricationPdfEndpoints
 {
     public static void MapFabricationPdfEndpoints(this WebApplication app)
     {
-app.MapGet("/api/fabrication/pdf", (string? fullPath, string? fileName, bool? save) =>
+app.MapGet("/api/fabrication/pdf", (string? fullPath, string? fileName, bool? save, HttpContext ctx) =>
 {
     try
     {
@@ -39,7 +39,8 @@ app.MapGet("/api/fabrication/pdf", (string? fullPath, string? fileName, bool? sa
         if (sheet == null)
             return Results.Json(new { ok = false, error = "Fiche introuvable" });
 
-        var doc = PdfUtils.CreateFabricationPdf(sheet, MongoDbHelper.GetSettings<FabricationFormConfig>("formConfig"));
+        var baseUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+        var doc = PdfUtils.CreateFabricationPdf(sheet, MongoDbHelper.GetSettings<FabricationFormConfig>("formConfig"), baseUrl);
         using var ms = new MemoryStream();
         doc.GeneratePdf(ms);
         ms.Position = 0;

@@ -132,34 +132,58 @@ export async function renderSettingsSheetCalcRules(panel) {
 export async function renderSettingsDeliveryDelay(panel) {
   panel.innerHTML = `<h3>Dates clés</h3><p style="color:#6b7280;">Chargement...</p>`;
 
-  let cfg = { sendOffsetHours: 48, finitionsOffsetHours: 72, impressionOffsetHours: 96 };
+  let cfg = {
+    livraisonEnvoiHeures: 48, livraisonFinitionsHeures: 72, livraisonImpressionHeures: 96,
+    retraitEnvoiHeures: 0, retraitFinitionsHeures: 24, retraitImpressionHeures: 48
+  };
   try {
-    const r = await fetch("/api/settings/key-dates", {
+    const r = await fetch("/api/config/key-dates-offsets", {
       headers: { "Authorization": `Bearer ${authToken}` }
-    }).then(r => r.json()).catch(() => cfg);
-    if (r.ok) cfg = { sendOffsetHours: r.sendOffsetHours ?? 48, finitionsOffsetHours: r.finitionsOffsetHours ?? 72, impressionOffsetHours: r.impressionOffsetHours ?? 96 };
+    }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (r.ok && r.config) cfg = { ...cfg, ...r.config };
   } catch(e) { /* ignore */ }
 
   panel.innerHTML = `
     <h3>Dates clés</h3>
     <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
-      À partir de la date de réception souhaitée, les dates clés sont calculées automatiquement en remontant dans le temps.
+      À partir de la date de réception souhaitée, les dates clés sont calculées automatiquement en remontant dans le temps.<br>
+      Configurez les décalages selon le mode de livraison choisi dans la fiche.
     </p>
+
+    <h4 style="margin-bottom:10px;color:#1e3a5f;">Mode Livraison</h4>
     <div class="settings-form-group">
       <label>Décalage "Date d'envoi" (heures avant réception)</label>
-      <input type="number" id="kd-send-offset" class="settings-input" value="${cfg.sendOffsetHours}" min="0" style="width:120px;" />
+      <input type="number" id="kd-liv-send" class="settings-input" value="${cfg.livraisonEnvoiHeures}" min="0" style="width:120px;" />
       <small style="color:#6b7280;margin-left:8px;">par défaut 48h</small>
     </div>
     <div class="settings-form-group">
       <label>Décalage "Date production Finitions" (heures avant réception)</label>
-      <input type="number" id="kd-finitions-offset" class="settings-input" value="${cfg.finitionsOffsetHours}" min="0" style="width:120px;" />
+      <input type="number" id="kd-liv-finitions" class="settings-input" value="${cfg.livraisonFinitionsHeures}" min="0" style="width:120px;" />
       <small style="color:#6b7280;margin-left:8px;">par défaut 72h</small>
     </div>
     <div class="settings-form-group">
       <label>Décalage "Date d'impression" (heures avant réception)</label>
-      <input type="number" id="kd-impression-offset" class="settings-input" value="${cfg.impressionOffsetHours}" min="0" style="width:120px;" />
+      <input type="number" id="kd-liv-impression" class="settings-input" value="${cfg.livraisonImpressionHeures}" min="0" style="width:120px;" />
       <small style="color:#6b7280;margin-left:8px;">par défaut 96h</small>
     </div>
+
+    <h4 style="margin-top:24px;margin-bottom:10px;color:#1e3a5f;">Mode Retrait imprimerie</h4>
+    <div class="settings-form-group">
+      <label>Décalage "Date d'envoi" (heures avant réception)</label>
+      <input type="number" id="kd-ret-send" class="settings-input" value="${cfg.retraitEnvoiHeures}" min="0" style="width:120px;" />
+      <small style="color:#6b7280;margin-left:8px;">par défaut 0h</small>
+    </div>
+    <div class="settings-form-group">
+      <label>Décalage "Date production Finitions" (heures avant réception)</label>
+      <input type="number" id="kd-ret-finitions" class="settings-input" value="${cfg.retraitFinitionsHeures}" min="0" style="width:120px;" />
+      <small style="color:#6b7280;margin-left:8px;">par défaut 24h</small>
+    </div>
+    <div class="settings-form-group">
+      <label>Décalage "Date d'impression" (heures avant réception)</label>
+      <input type="number" id="kd-ret-impression" class="settings-input" value="${cfg.retraitImpressionHeures}" min="0" style="width:120px;" />
+      <small style="color:#6b7280;margin-left:8px;">par défaut 48h</small>
+    </div>
+
     <p style="color:#9ca3af;font-size:12px;margin-top:4px;">Les heures sont données à titre indicatif.</p>
     <button id="kd-save" class="btn btn-primary" style="margin-top:10px;">Enregistrer</button>
     <div id="kd-msg" style="margin-top:8px;font-size:13px;"></div>
@@ -167,14 +191,19 @@ export async function renderSettingsDeliveryDelay(panel) {
 
   panel.querySelector("#kd-save").onclick = async () => {
     const msgEl = panel.querySelector("#kd-msg");
-    const sendOffsetHours = parseInt(panel.querySelector("#kd-send-offset").value) || 48;
-    const finitionsOffsetHours = parseInt(panel.querySelector("#kd-finitions-offset").value) || 72;
-    const impressionOffsetHours = parseInt(panel.querySelector("#kd-impression-offset").value) || 96;
+    const newCfg = {
+      livraisonEnvoiHeures: parseInt(panel.querySelector("#kd-liv-send").value) || 48,
+      livraisonFinitionsHeures: parseInt(panel.querySelector("#kd-liv-finitions").value) || 72,
+      livraisonImpressionHeures: parseInt(panel.querySelector("#kd-liv-impression").value) || 96,
+      retraitEnvoiHeures: parseInt(panel.querySelector("#kd-ret-send").value) || 0,
+      retraitFinitionsHeures: parseInt(panel.querySelector("#kd-ret-finitions").value) || 24,
+      retraitImpressionHeures: parseInt(panel.querySelector("#kd-ret-impression").value) || 48
+    };
     try {
-      const r = await fetch("/api/settings/key-dates", {
+      const r = await fetch("/api/config/key-dates-offsets", {
         method: "PUT",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-        body: JSON.stringify({ sendOffsetHours, finitionsOffsetHours, impressionOffsetHours })
+        body: JSON.stringify(newCfg)
       }).then(r => r.json());
       if (r.ok) {
         msgEl.style.color = "#16a34a";
