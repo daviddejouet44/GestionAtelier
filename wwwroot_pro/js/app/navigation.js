@@ -25,6 +25,8 @@ export function hideAllViews() {
   if (planSwitcher) planSwitcher.style.display = "none";
   const planFinitions = document.getElementById("planning-finitions-view");
   if (planFinitions) planFinitions.style.display = "none";
+  const planOperator = document.getElementById("planning-operator-view");
+  if (planOperator) planOperator.style.display = "none";
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
 }
 

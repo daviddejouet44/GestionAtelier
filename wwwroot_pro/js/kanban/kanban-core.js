@@ -182,6 +182,7 @@ export async function buildKanban() {
       if (window._refreshSubmissionView) await window._refreshSubmissionView();
       if (window._calendar) window._calendar.refetchEvents();
       if (window._submissionCalendar) window._submissionCalendar.refetchEvents();
+      if (window._refreshOperatorView) window._refreshOperatorView();
     });
 
     kanbanDiv.appendChild(col);

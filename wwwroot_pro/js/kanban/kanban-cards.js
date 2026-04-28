@@ -195,6 +195,8 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
 
       layout.appendChild(infoStack);
       card.appendChild(layout);
+      // Actions are appended to infoStack (inside the layout) at the end of folder-specific logic below,
+      // so they appear directly under the PDF name (next to the thumbnail) instead of at card bottom.
 
       // Load dossier number, presse and planningMachine asynchronously
       fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName))
@@ -812,7 +814,13 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ source: full, destination: "Fin de production", overwrite: true })
             }).then(res => res.json()).catch(() => ({ ok: false }));
-            if (r.ok) { showNotification("✅ Déplacé vers Fin de production", "success"); await refreshKanban(); }
+            if (r.ok) {
+              showNotification("✅ Déplacé vers Fin de production", "success");
+              await refreshKanban();
+              if (window._calendar) window._calendar.refetchEvents();
+              if (window._submissionCalendar) window._submissionCalendar.refetchEvents();
+              if (window._refreshOperatorView) window._refreshOperatorView();
+            }
             else showNotification("❌ " + (r.error || "Étapes de finition non validées"), "error");
           };
           if (isActionVisible(folderName, "faconnageTermine")) actions.appendChild(btnTerminee);
@@ -847,6 +855,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
               btnTermine.textContent = "🔒 Verrouillé";
               if (window._calendar) window._calendar.refetchEvents();
               if (window._submissionCalendar) window._submissionCalendar.refetchEvents();
+              if (window._refreshOperatorView) window._refreshOperatorView();
             } else {
               showNotification("❌ " + (r.error || "Erreur"), "error");
             }
@@ -903,7 +912,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         }
       }
 
-      card.appendChild(actions);
+      infoStack.appendChild(actions);
 
       if (!readOnly) {
         card.addEventListener("dragstart", (e) => {
