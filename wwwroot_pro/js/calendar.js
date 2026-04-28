@@ -4,7 +4,7 @@ import { authToken, deliveriesByPath, fnKey, normalizePath, FIN_PROD_FOLDER, day
 export let calendar = null;
 export let submissionCalendar = null;
 
-// Current planning view mode: 'global' | 'machine' | 'operator' | 'finitions'
+// Current planning view mode: 'global' | 'machine' | 'finitions'
 let _planningViewMode = 'global';
 
 // ======================================================
@@ -93,27 +93,12 @@ function buildPlanningViewSwitcher(calendarEl) {
   const existing = document.getElementById("planning-view-switcher");
   if (existing) existing.remove();
 
-  // Default view depends on user profile
-  const userProfile = (() => {
-    try {
-      const token = authToken;
-      if (!token) return 0;
-      const decoded = atob(token);
-      const parts = decoded.split(':');
-      return parseInt(parts[2] || '0');
-    } catch(e) { return 0; }
-  })();
-  if (_planningViewMode === 'global' && userProfile !== 3) {
-    _planningViewMode = 'operator';
-  }
-
   const switcher = document.createElement("div");
   switcher.id = "planning-view-switcher";
   switcher.style.cssText = "display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center;";
   const views = [
     { id: 'global', label: '🌐 Fin de production' },
     { id: 'machine', label: '🖨️ Par machine' },
-    { id: 'operator', label: '👤 Par opérateur' },
     { id: 'finitions', label: '✂️ Finitions du jour' },
   ];
   views.forEach(v => {
@@ -136,37 +121,17 @@ async function applyPlanningView(calendarEl) {
   const finitionsEl = document.getElementById("planning-finitions-view");
   const operatorEl = document.getElementById("planning-operator-view");
 
-  if (_planningViewMode === 'finitions') {
-    if (calendar) {
-      calendarEl.style.display = 'none';
-    }
-    if (finitionsEl) {
-      finitionsEl.style.display = '';
-      await buildFinitionsView(finitionsEl);
-    }
-    if (operatorEl) operatorEl.style.display = 'none';
-    return;
-  }
-
-  if (_planningViewMode === 'operator') {
-    if (calendar) calendarEl.style.display = 'none';
-    if (finitionsEl) finitionsEl.style.display = 'none';
-    let opEl = operatorEl;
-    if (!opEl) {
-      opEl = document.createElement("div");
-      opEl.id = "planning-operator-view";
-      opEl.style.cssText = "padding:8px 0;";
-      calendarEl.parentNode?.appendChild(opEl);
-    }
-    opEl.style.display = '';
-    await buildOperatorView(opEl);
-    return;
-  }
-
-  if (calendar) calendarEl.style.display = '';
+  // Always hide the flat finitions list and legacy operator view
   if (finitionsEl) finitionsEl.style.display = 'none';
   if (operatorEl) operatorEl.style.display = 'none';
+
+  // All three modes now use the main FullCalendar
+  if (calendar) calendarEl.style.display = '';
   calendar?.refetchEvents();
+
+  // Show/hide filter bars
+  const machineWrap = document.getElementById("planning-machine-filter-wrap");
+  if (machineWrap) machineWrap.style.display = _planningViewMode === 'machine' ? 'flex' : 'none';
 }
 
 // ======================================================
@@ -375,8 +340,9 @@ export async function initCalendar() {
         })();
         const myName = currentUser?.name || '';
 
-        // Get machine filter value
+        // Get machine and operator filter values
         const machineFilter = document.getElementById("planning-machine-filter")?.value || "";
+        const operatorFilter = document.getElementById("planning-operator-filter")?.value || "";
 
         // Build events from fabrication key dates based on view mode
         const fabCalEvents = fabEvents
@@ -385,26 +351,22 @@ export async function initCalendar() {
             if (_planningViewMode === 'machine') {
               if (fe.type !== 'impression') return false;
               if (machineFilter && fe.moteurImpression !== machineFilter) return false;
+              if (operatorFilter && fe.operateur !== operatorFilter) return false;
               return true;
             }
-            if (_planningViewMode === 'operator') {
-              if (fe.type !== 'impression') return false;
-              if ((myLogin || myName) && fe.operateur) {
-                const opMatch = fe.operateur === myLogin || fe.operateur === myName;
-                if (!opMatch) return false;
-              }
-              return true;
-            }
+            if (_planningViewMode === 'finitions') return fe.type === 'finitions';
             return false;
           })
           .flatMap(fe => {
             if (!fe.date) return []; // skip entries with no date
+            const isLocked = !!fe.locked;
             const colorMap = {
               envoi:      { bg: '#3b82f6', bc: '#2563eb', tc: '#ffffff' },
               impression: { bg: '#8b5cf6', bc: '#7c3aed', tc: '#ffffff' },
               finitions:  { bg: '#f59e0b', bc: '#d97706', tc: '#ffffff' }
             };
-            const c = colorMap[fe.type] || { bg: '#6b7280', bc: '#4b5563', tc: '#ffffff' };
+            const baseColor = colorMap[fe.type] || { bg: '#6b7280', bc: '#4b5563', tc: '#ffffff' };
+            const c = isLocked ? { bg: '#22c55e', bc: '#16a34a', tc: '#ffffff' } : baseColor;
             const durationMins = (fe.tempsProduitMinutes && fe.tempsProduitMinutes > 0)
               ? fe.tempsProduitMinutes : 30;
             const timeStr = fe.manualTime || "09:00";
@@ -412,42 +374,35 @@ export async function initCalendar() {
             if (isNaN(startDt.getTime())) return []; // skip invalid dates
             const endDt = new Date(startDt.getTime() + durationMins * 60000);
             return [{
-              title: fe.title,
+              title: (isLocked ? '🔒 ' : '') + fe.title,
               start: startDt.toISOString(),
               end: endDt.toISOString(),
               allDay: false,
               backgroundColor: c.bg,
               borderColor: c.bc,
               textColor: c.tc,
-              editable: true,
-              startEditable: true,
+              editable: !isLocked,
+              startEditable: !isLocked,
               durationEditable: false,
-              extendedProps: { fullPath: fe.fullPath, isFabEvent: true, fabType: fe.type, fabFileName: fe.fileName }
+              extendedProps: { fullPath: fe.fullPath, isFabEvent: true, fabType: fe.type, fabFileName: fe.fileName, locked: isLocked, bg: c.bg, bc: c.bc, tc: c.tc }
             }];
           });
 
-        // For non-global views, delivery events can still show (they are manually planned)
-        let filtered = deliveryList;
-        if (_planningViewMode === 'machine' && machineFilter) {
-          const withMachine = await Promise.all(filtered.map(async x => {
+        // For machine view, filter delivery events by machine and/or operator
+        // For finitions view, delivery events are not relevant (use fab finitions events instead)
+        let filtered = _planningViewMode === 'finitions' ? [] : deliveryList;
+        if (_planningViewMode === 'machine' && (machineFilter || operatorFilter)) {
+          const withFiche = await Promise.all(filtered.map(async x => {
             try {
               const fiche = await fetch('/api/fabrication?fileName=' + encodeURIComponent(fnKey(x.fullPath || '')), {
                 headers: { 'Authorization': `Bearer ${authToken}` }
               }).then(r => r.json());
-              return { x, machine: fiche?.moteurImpression || fiche?.machine || '' };
-            } catch(e) { return { x, machine: '' }; }
+              return { x, machine: fiche?.moteurImpression || '', operateur: fiche?.operateur || '' };
+            } catch(e) { return { x, machine: '', operateur: '' }; }
           }));
-          filtered = withMachine.filter(wm => wm.machine === machineFilter).map(wm => wm.x);
-        } else if (_planningViewMode === 'operator' && (myLogin || myName)) {
-          const withOperator = await Promise.all(filtered.map(async x => {
-            try {
-              const fiche = await fetch('/api/fabrication?fileName=' + encodeURIComponent(fnKey(x.fullPath || '')), {
-                headers: { 'Authorization': `Bearer ${authToken}` }
-              }).then(r => r.json());
-              return { x, operateur: fiche?.operateur || '' };
-            } catch(e) { return { x, operateur: '' }; }
-          }));
-          filtered = withOperator.filter(wo => !wo.operateur || wo.operateur === myLogin || wo.operateur === myName).map(wo => wo.x);
+          filtered = withFiche
+            .filter(wm => (!machineFilter || wm.machine === machineFilter) && (!operatorFilter || wm.operateur === operatorFilter))
+            .map(wm => wm.x);
         }
 
         const ev = filtered.flatMap(x => {
@@ -520,7 +475,7 @@ export async function initCalendar() {
         if (info.event.extendedProps.isFabEvent) {
           // Save manual time for fabrication key-date event
           const fabType = info.event.extendedProps.fabType;
-          const viewTypeMap = { envoi: 'global', impression: 'machine', finitions: 'operator' };
+          const viewTypeMap = { envoi: 'global', impression: 'machine', finitions: 'finitions' };
           const viewType = viewTypeMap[fabType];
           if (!viewType) { info.revert(); return; }
           const fileName = info.event.extendedProps.fabFileName || fk;
@@ -575,19 +530,37 @@ async function addMachineFilter(calendarEl) {
 
   const wrap = document.createElement("div");
   wrap.id = "planning-machine-filter-wrap";
-  wrap.style.cssText = "margin-bottom:8px;display:none;align-items:center;gap:8px;";
-  wrap.innerHTML = `<label style="font-size:13px;font-weight:500;">Moteur :</label>
-    <select id="planning-machine-filter" class="settings-input" style="font-size:13px;padding:4px 8px;min-width:160px;"></select>`;
+  wrap.style.cssText = "margin-bottom:8px;display:none;align-items:center;gap:16px;flex-wrap:wrap;";
+  wrap.innerHTML = `
+    <div style="display:flex;align-items:center;gap:6px;">
+      <label style="font-size:13px;font-weight:500;">Moteur :</label>
+      <select id="planning-machine-filter" class="settings-input" style="font-size:13px;padding:4px 8px;min-width:160px;"></select>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <label style="font-size:13px;font-weight:500;">Opérateur :</label>
+      <select id="planning-operator-filter" class="settings-input" style="font-size:13px;padding:4px 8px;min-width:160px;"></select>
+    </div>`;
   calendarEl.parentNode?.insertBefore(wrap, calendarEl);
 
   try {
-    const engines = await fetch("/api/config/print-engines").then(r => r.json()).catch(() => []);
+    const [engines, usersResp] = await Promise.all([
+      fetch("/api/config/print-engines").then(r => r.json()).catch(() => []),
+      fetch("/api/auth/users", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, users: [] }))
+    ]);
     const sel = wrap.querySelector("#planning-machine-filter");
-    sel.innerHTML = '<option value="">Toutes</option>' + (Array.isArray(engines) ? engines.map(e => {
+    sel.innerHTML = '<option value="">Tous</option>' + (Array.isArray(engines) ? engines.map(e => {
       const n = typeof e === 'object' ? (e.name || '') : String(e || '');
       return `<option value="${n}">${n}</option>`;
     }).join('') : '');
     sel.onchange = () => calendar?.refetchEvents();
+
+    const opSel = wrap.querySelector("#planning-operator-filter");
+    const userList = (usersResp.ok && Array.isArray(usersResp.users)) ? usersResp.users : [];
+    opSel.innerHTML = '<option value="">Tous</option>' + userList.map(u => {
+      const name = u.name || u.login || '';
+      return `<option value="${name}">${name}</option>`;
+    }).join('');
+    opSel.onchange = () => calendar?.refetchEvents();
   } catch(e) { /* ignore */ }
 
   // Show filter only in machine view
@@ -637,12 +610,48 @@ export async function initSubmissionCalendar() {
     eventAllow: (_dropInfo, draggedEvent) => !draggedEvent.extendedProps?.locked,
     events: async (info, success) => {
       try {
-        const list = await fetch("/api/delivery").then(r => r.json());
-        const ev = list.flatMap(x => {
-          // In submission calendar, prefer dateReceptionSouhaitee (desired client reception date from the
-          // production fiche) over the manually planned delivery date, so events appear at the correct date.
+        // Load fabrication events of type "reception" (dateReceptionSouhaitee)
+        const fabEventsResp = await fetch("/api/fabrication/events", { headers: { 'Authorization': `Bearer ${authToken}` } })
+          .then(r => r.json()).catch(() => ({ ok: false, events: [] }));
+        const fabEvents = (fabEventsResp.ok && Array.isArray(fabEventsResp.events)) ? fabEventsResp.events : [];
+        const receptionEvents = fabEvents.filter(fe => fe.type === 'reception');
+
+        // Track which files are covered by reception fab events
+        const fabFileNames = new Set(receptionEvents.map(fe => fnKey(fe.fileName || '')));
+
+        // Also load delivery list for jobs that don't have dateReceptionSouhaitee
+        const list = await fetch("/api/delivery").then(r => r.json()).catch(() => []);
+
+        const ev = [];
+
+        // First, add fabrication reception events
+        for (const fe of receptionEvents) {
+          if (!fe.date) continue;
+          const isLocked = !!fe.locked;
+          const bg = isLocked ? '#22c55e' : '#3b82f6';
+          const bc = isLocked ? '#16a34a' : '#2563eb';
+          const tc = '#ffffff';
+          const timeStr = fe.manualTime || "09:00";
+          ev.push({
+            title: (isLocked ? '🔒 ' : '') + fe.title,
+            start: `${fe.date}T${timeStr}:00`,
+            allDay: false,
+            backgroundColor: bg,
+            borderColor: bc,
+            textColor: tc,
+            editable: !isLocked,
+            startEditable: !isLocked,
+            durationEditable: false,
+            extendedProps: { fullPath: fe.fullPath, isFabEvent: true, fabType: 'reception', fabFileName: fe.fileName, locked: isLocked, bg, bc, tc }
+          });
+        }
+
+        // Add delivery events that aren't covered by fab reception events
+        for (const x of list) {
+          const fk = fnKey(x.fullPath || x.fileName || '');
+          if (fabFileNames.has(fk)) continue; // already covered by fab reception event
           const eventDate = x.dateReceptionSouhaitee || x.date;
-          if (!eventDate) return []; // skip events with no date
+          if (!eventDate) continue;
           const full = normalizePath(x.fullPath);
           const inFinProd = full.toLowerCase().includes(FIN_PROD_FOLDER.toLowerCase());
           const locked = !!x.locked || inFinProd;
@@ -650,7 +659,7 @@ export async function initSubmissionCalendar() {
           const bc = locked ? "#16a34a" : colorForEvent(full, eventDate).bc;
           const tc = locked ? "#ffffff" : colorForEvent(full, eventDate).tc;
           const time = x.time || "09:00";
-          return [{
+          ev.push({
             title: (locked ? "🔒 " : "") + x.fileName,
             start: `${eventDate}T${time}:00`,
             allDay: false,
@@ -661,8 +670,9 @@ export async function initSubmissionCalendar() {
             startEditable: !locked,
             durationEditable: false,
             extendedProps: { fullPath: full, bg, bc, tc, date: x.date, time: time, locked }
-          }];
-        });
+          });
+        }
+
         try {
           const schedResp = await fetch("/api/config/schedule", {
             headers: { "Authorization": `Bearer ${authToken}` }
@@ -699,16 +709,34 @@ export async function initSubmissionCalendar() {
         const newDate = info.event.startStr.split('T')[0];
         const newTime = info.event.startStr.split('T')[1]?.substring(0, 5) || "09:00";
 
-        const r = await fetch("/api/delivery", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fullPath, fileName: fk, date: newDate, time: newTime })
-        }).then(r => r.json());
+        if (info.event.extendedProps.isFabEvent) {
+          // Update dateReceptionSouhaitee in the fabrication record
+          const fileName = info.event.extendedProps.fabFileName || fk;
+          const r = await fetch("/api/fabrication/key-date", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fileName, field: "dateReceptionSouhaitee", date: newDate, time: newTime })
+          }).then(r => r.json());
+          if (!r.ok) throw new Error(r.error || "Erreur");
+        } else {
+          // Update delivery date AND dateReceptionSouhaitee
+          const r = await fetch("/api/delivery", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fullPath, fileName: fk, date: newDate, time: newTime })
+          }).then(r => r.json());
+          if (!r.ok) throw new Error(r.error || "Erreur");
 
-        if (!r.ok) throw new Error(r.error || "Erreur");
+          // Also update dateReceptionSouhaitee in fabrication
+          await fetch("/api/fabrication/key-date", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fileName: fk, field: "dateReceptionSouhaitee", date: newDate, time: newTime })
+          }).catch(() => {});
 
-        deliveriesByPath[fk] = newDate;
-        deliveriesByPath[fk + "_time"] = newTime;
+          deliveriesByPath[fk] = newDate;
+          deliveriesByPath[fk + "_time"] = newTime;
+        }
 
         const { bg, bc, tc } = colorForEvent(fullPath, newDate);
         info.event.setProp("backgroundColor", bg);
