@@ -185,13 +185,26 @@ app.MapGet("/api/alerts/faconnage", () =>
                 && fabDoc["faconnage"].IsBsonArray)
                 faconnage = fabDoc["faconnage"].AsBsonArray.Select(v => v.AsString).ToList();
 
+            var ennoblissement = new List<string>();
+            if (fabDoc != null && fabDoc.Contains("ennoblissement") && fabDoc["ennoblissement"] != BsonNull.Value
+                && fabDoc["ennoblissement"].IsBsonArray)
+                ennoblissement = fabDoc["ennoblissement"].AsBsonArray.Select(v => v.AsString).ToList();
+
+            bool rainage = fabDoc != null && fabDoc.Contains("rainage") && fabDoc["rainage"] != BsonNull.Value
+                && fabDoc["rainage"].BsonType == BsonType.Boolean && fabDoc["rainage"].AsBoolean;
+
+            var finitionsChecked = new List<string>();
+            if (fabDoc != null && fabDoc.Contains("finitionsChecked") && fabDoc["finitionsChecked"] != BsonNull.Value
+                && fabDoc["finitionsChecked"].IsBsonArray)
+                finitionsChecked = fabDoc["finitionsChecked"].AsBsonArray.Select(v => v.AsString).ToList();
+
             var numeroDossier = fabDoc != null && fabDoc.Contains("numeroDossier") && fabDoc["numeroDossier"] != BsonNull.Value
                 ? fabDoc["numeroDossier"].AsString : "";
             int? quantite = fabDoc != null && fabDoc.Contains("quantite") && fabDoc["quantite"] != BsonNull.Value
                 && fabDoc["quantite"].BsonType == BsonType.Int32 ? fabDoc["quantite"].AsInt32
                 : fabDoc != null && fabDoc.Contains("quantite") && fabDoc["quantite"] != BsonNull.Value
                 && fabDoc["quantite"].IsNumeric ? (int?)fabDoc["quantite"].ToDouble() : null;
-            alerts.Add(new { fileName = f.name, fullPath = f.path, faconnage, numeroDossier, quantite });
+            alerts.Add(new { fileName = f.name, fullPath = f.path, faconnage, ennoblissement, rainage, finitionsChecked, numeroDossier, quantite });
         }
 
         // Get last generated time from MongoDB

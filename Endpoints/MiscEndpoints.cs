@@ -42,7 +42,26 @@ app.MapGet("/api/file-stage", (string fileName) =>
         // Sanitize: only allow the base filename, no path traversal
         var safeFileName = Path.GetFileName(fileName);
         if (string.IsNullOrWhiteSpace(safeFileName))
-            return Results.Json(new { ok = false, folder = (string?)null, fullPath = (string?)null });
+            return Results.Json(new { ok = false, folder = (string?)null, fullPath = (string?)null, batStatus = (string?)null });
+
+        // Helper: resolve BAT sub-status from batTracking collection
+        string? ResolveBatStatus(string fn)
+        {
+            try
+            {
+                var batTrackCol = MongoDbHelper.GetCollection<BsonDocument>("batTracking");
+                var batDoc = batTrackCol.Find(
+                    Builders<BsonDocument>.Filter.Regex("fileName",
+                        new BsonRegularExpression("^" + System.Text.RegularExpressions.Regex.Escape(fn) + "$", "i"))
+                ).SortByDescending(x => x["_id"]).FirstOrDefault();
+                if (batDoc == null) return null;
+                if (batDoc.Contains("rejectedAt") && batDoc["rejectedAt"] != BsonNull.Value) return "refuse";
+                if (batDoc.Contains("validatedAt") && batDoc["validatedAt"] != BsonNull.Value) return "valide";
+                if (batDoc.Contains("sentAt") && batDoc["sentAt"] != BsonNull.Value) return "envoye";
+            }
+            catch { /* ignore */ }
+            return null;
+        }
 
         // Priority 1: look up currentStage from productionFolders MongoDB (set on every file move)
         try
@@ -59,7 +78,8 @@ app.MapGet("/api/file-stage", (string fileName) =>
                 var stage = pfDoc["currentStage"].AsString;
                 var currentPath = pfDoc.Contains("currentFilePath") && pfDoc["currentFilePath"] != BsonNull.Value
                     ? pfDoc["currentFilePath"].AsString : (string?)null;
-                return Results.Json(new { ok = true, folder = stage, fullPath = currentPath });
+                var batStatus = (stage == "BAT") ? ResolveBatStatus(safeFileName) : null;
+                return Results.Json(new { ok = true, folder = stage, fullPath = currentPath, batStatus });
             }
         }
         catch (Exception exPf) { Console.WriteLine($"[WARN] file-stage productionFolders lookup: {exPf.Message}"); }
@@ -82,10 +102,13 @@ app.MapGet("/api/file-stage", (string fileName) =>
         {
             var path = Path.Combine(root, folder, safeFileName);
             if (File.Exists(path))
-                return Results.Json(new { ok = true, folder, fullPath = path });
+            {
+                var batStatus = (folder == "BAT") ? ResolveBatStatus(safeFileName) : null;
+                return Results.Json(new { ok = true, folder, fullPath = path, batStatus });
+            }
         }
 
-        return Results.Json(new { ok = false, folder = (string?)null, fullPath = (string?)null });
+        return Results.Json(new { ok = false, folder = (string?)null, fullPath = (string?)null, batStatus = (string?)null });
     }
     catch (Exception ex)
     {

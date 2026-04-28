@@ -4,8 +4,8 @@ import { authToken, deliveriesByPath, fnKey, normalizePath, FIN_PROD_FOLDER, day
 export let calendar = null;
 export let submissionCalendar = null;
 
-// Current planning view mode: 'global' | 'machine' | 'finitions'
-let _planningViewMode = 'global';
+// Current planning view mode: 'machine' | 'finitions' | 'global' | 'livraison'
+let _planningViewMode = 'machine';
 
 // ======================================================
 // CALENDRIER PRINCIPAL
@@ -97,9 +97,10 @@ function buildPlanningViewSwitcher(calendarEl) {
   switcher.id = "planning-view-switcher";
   switcher.style.cssText = "display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center;";
   const views = [
+    { id: 'machine', label: '🖨️ Machine' },
+    { id: 'finitions', label: '✂️ Finitions' },
     { id: 'global', label: '🌐 Fin de production' },
-    { id: 'machine', label: '🖨️ Par machine' },
-    { id: 'finitions', label: '✂️ Finitions du jour' },
+    { id: 'livraison', label: '📥 Livraison' },
   ];
   views.forEach(v => {
     const btn = document.createElement("button");
@@ -355,6 +356,7 @@ export async function initCalendar() {
               return true;
             }
             if (_planningViewMode === 'finitions') return fe.type === 'finitions';
+            if (_planningViewMode === 'livraison') return fe.type === 'reception';
             return false;
           })
           .flatMap(fe => {
@@ -363,7 +365,8 @@ export async function initCalendar() {
             const colorMap = {
               envoi:      { bg: '#3b82f6', bc: '#2563eb', tc: '#ffffff' },
               impression: { bg: '#8b5cf6', bc: '#7c3aed', tc: '#ffffff' },
-              finitions:  { bg: '#f59e0b', bc: '#d97706', tc: '#ffffff' }
+              finitions:  { bg: '#f59e0b', bc: '#d97706', tc: '#ffffff' },
+              reception:  { bg: '#06b6d4', bc: '#0891b2', tc: '#ffffff' }
             };
             const baseColor = colorMap[fe.type] || { bg: '#6b7280', bc: '#4b5563', tc: '#ffffff' };
             const c = isLocked ? { bg: '#22c55e', bc: '#16a34a', tc: '#ffffff' } : baseColor;
@@ -389,8 +392,8 @@ export async function initCalendar() {
           });
 
         // For machine view, filter delivery events by machine and/or operator
-        // For finitions view, delivery events are not relevant (use fab finitions events instead)
-        let filtered = _planningViewMode === 'finitions' ? [] : deliveryList;
+        // For finitions and livraison views, delivery events are not relevant (use fab events instead)
+        let filtered = (_planningViewMode === 'finitions' || _planningViewMode === 'livraison') ? [] : deliveryList;
         if (_planningViewMode === 'machine' && (machineFilter || operatorFilter)) {
           const withFiche = await Promise.all(filtered.map(async x => {
             try {

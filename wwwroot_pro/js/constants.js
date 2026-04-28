@@ -29,7 +29,12 @@ export const STAGE_DISPLAY_LABELS = {
   "Façonnage": "Finitions"
 };
 
-export function getStageLabelDisplay(stage) {
+export function getStageLabelDisplay(stage, batStatus) {
+  if (stage === 'BAT') {
+    if (batStatus === 'refuse') return 'BAT — ❌ Refusé';
+    if (batStatus === 'valide') return 'BAT — ✅ Validé';
+    if (batStatus === 'envoye') return 'BAT — 📤 Envoyé';
+  }
   return STAGE_DISPLAY_LABELS[stage] || stage;
 }
 

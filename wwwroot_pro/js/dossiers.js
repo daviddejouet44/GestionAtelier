@@ -85,7 +85,8 @@ export async function loadDossiersList() {
         const res = await fetch("/api/file-stage?fileName=" + encodeURIComponent(fn), {
           headers: { "Authorization": `Bearer ${authToken}` }
         }).then(r => r.json()).catch(() => null);
-        return (res && res.ok && res.folder) ? res.folder : null;
+        if (res && res.ok && res.folder) return { stage: res.folder, batStatus: res.batStatus || null };
+        return null;
       } catch { return null; }
     }));
 
@@ -103,13 +104,15 @@ export async function loadDossiersList() {
     const ungrouped = [];
 
     folders.forEach((folder, idx) => {
-      const realStage = stageResults[idx] || folder.currentStage || 'Début de production';
+      const stageResult = stageResults[idx];
+      const realStage = (stageResult && stageResult.stage) ? stageResult.stage : (folder.currentStage || 'Début de production');
+      const batStatus = (stageResult && stageResult.batStatus) ? stageResult.batStatus : null;
       const num = (folder.numeroDossier || '').trim();
       if (num) {
         if (!grouped[num]) grouped[num] = [];
-        grouped[num].push({ folder, realStage });
+        grouped[num].push({ folder, realStage, batStatus });
       } else {
-        ungrouped.push({ folder, realStage });
+        ungrouped.push({ folder, realStage, batStatus });
       }
     });
 
@@ -123,10 +126,11 @@ export async function loadDossiersList() {
         date: Math.max(...items.map(i => new Date(i.folder.updatedAt || i.folder.createdAt || 0).getTime())),
         size: items.reduce((acc, i) => acc + (i.folder.fileSize || 0), 0)
       })),
-      ...ungrouped.map(({ folder, realStage }) => ({
+      ...ungrouped.map(({ folder, realStage, batStatus }) => ({
         type: "single",
         folder,
         realStage,
+        batStatus,
         name: folder.fileName || folder.numeroDossier || '',
         date: new Date(folder.updatedAt || folder.createdAt || 0).getTime(),
         size: folder.fileSize || 0
@@ -186,14 +190,16 @@ export async function loadDossiersList() {
         row.onmouseleave = () => { row.style.background = "white"; };
 
         if (item.type === "grouped") {
-          const globalStage = item.items.reduce((worst, { realStage }) => {
-            return stageIndex(realStage) < stageIndex(worst) ? realStage : worst;
-          }, item.items[0].realStage);
+          const worstItem = item.items.reduce((worst, curr) => {
+            return stageIndex(curr.realStage) < stageIndex(worst.realStage) ? curr : worst;
+          }, item.items[0]);
+          const globalStage = worstItem.realStage;
+          const globalBatStatus = worstItem.batStatus;
           row.innerHTML = `
             <span style="font-size:13px;font-weight:600;color:#111827;font-family:monospace;">${item.numeroDossier} <span style="color:#9ca3af;font-weight:400;font-size:11px;">(${item.items.length} fichier(s))</span></span>
             <span style="font-size:12px;color:#6b7280;">${item.date ? new Date(item.date).toLocaleDateString("fr-FR") : '—'}</span>
             <span style="font-size:12px;color:#6b7280;">${item.size ? fmtBytes(item.size) : '—'}</span>
-            <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;">${getStageLabelDisplay(globalStage)}</span>
+            <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;">${getStageLabelDisplay(globalStage, globalBatStatus)}</span>
           `;
           row.onclick = () => openGroupedDossierDetail(item.numeroDossier, item.items);
         } else {
@@ -201,7 +207,7 @@ export async function loadDossiersList() {
             <span style="font-size:13px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.folder.fileName || '—'}</span>
             <span style="font-size:12px;color:#6b7280;">${item.date ? new Date(item.date).toLocaleDateString("fr-FR") : '—'}</span>
             <span style="font-size:12px;color:#6b7280;">${item.size ? fmtBytes(item.size) : '—'}</span>
-            <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;">${getStageLabelDisplay(item.realStage)}</span>
+            <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;">${getStageLabelDisplay(item.realStage, item.batStatus)}</span>
           `;
           row.onclick = (e) => { if (e.target.closest(".btn-danger")) return; openDossierDetail(item.folder._id || item.folder.id); };
         }
@@ -215,9 +221,11 @@ export async function loadDossiersList() {
 
       for (const item of allItems) {
         if (item.type === "grouped") {
-          const globalStage = item.items.reduce((worst, { realStage }) => {
-            return stageIndex(realStage) < stageIndex(worst) ? realStage : worst;
-          }, item.items[0].realStage);
+          const worstItem = item.items.reduce((worst, curr) => {
+            return stageIndex(curr.realStage) < stageIndex(worst.realStage) ? curr : worst;
+          }, item.items[0]);
+          const globalStage = worstItem.realStage;
+          const globalBatStatus = worstItem.batStatus;
 
           const card = document.createElement("div");
           card.className = "dossier-card";
@@ -225,10 +233,10 @@ export async function loadDossiersList() {
           card.onmouseenter = () => { card.style.boxShadow = "0 4px 20px rgba(0,0,0,0.13)"; card.style.transform = "translateY(-2px)"; };
           card.onmouseleave = () => { card.style.boxShadow = "0 2px 12px rgba(0,0,0,0.07)"; card.style.transform = ""; };
 
-          const filesHtml = item.items.map(({ folder, realStage }) => `
+          const filesHtml = item.items.map(({ folder, realStage, batStatus }) => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid #f3f4f6;margin-top:4px;">
               <span style="font-size:11px;color:#374151;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;" title="${folder.fileName || ''}">${folder.fileName || '—'}</span>
-              <span style="background:#f3f4f6;color:#6b7280;padding:2px 6px;border-radius:8px;font-size:10px;white-space:nowrap;margin-left:4px;">${getStageLabelDisplay(realStage)}</span>
+              <span style="background:#f3f4f6;color:#6b7280;padding:2px 6px;border-radius:8px;font-size:10px;white-space:nowrap;margin-left:4px;">${getStageLabelDisplay(realStage, batStatus)}</span>
             </div>
           `).join('');
 
@@ -242,14 +250,14 @@ export async function loadDossiersList() {
             </div>
             <div style="margin-bottom:10px;">${filesHtml}</div>
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;">${getStageLabelDisplay(globalStage)}</span>
+              <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;">${getStageLabelDisplay(globalStage, globalBatStatus)}</span>
               <span style="color:#6b7280;font-size:11px;">étape globale</span>
             </div>
           `;
           card.onclick = (e) => { if (e.target.closest(".btn-danger")) return; openGroupedDossierDetail(item.numeroDossier, item.items); };
           grid.appendChild(card);
         } else {
-          const { folder, realStage } = item;
+          const { folder, realStage, batStatus } = item;
           const folderName = folder.fileName || '';
           const card = document.createElement("div");
           card.className = "dossier-card";
@@ -265,7 +273,7 @@ export async function loadDossiersList() {
               </div>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;">${getStageLabelDisplay(realStage)}</span>
+              <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500;">${getStageLabelDisplay(realStage, batStatus)}</span>
               <span style="color:#6b7280;font-size:12px;">${typeof folder.files === 'number' ? folder.files : 0} fichier(s)</span>
             </div>
           `;
@@ -317,7 +325,7 @@ export async function openGroupedDossierDetail(numeroDossier, items) {
 
   const itemsEl = modal.querySelector("#grp-dossier-items");
 
-  for (const { folder, realStage } of items) {
+  for (const { folder, realStage, batStatus } of items) {
     const fn = folder.fileName || "";
     const folderId = folder._id || folder.id || "";
     const folderPath = folder.folderPath || "";
@@ -337,7 +345,7 @@ export async function openGroupedDossierDetail(numeroDossier, items) {
 
     const stageSpan = document.createElement("span");
     stageSpan.style.cssText = "background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap;flex-shrink:0;";
-    stageSpan.textContent = getStageLabelDisplay(realStage);
+    stageSpan.textContent = getStageLabelDisplay(realStage, batStatus);
 
     const deleteBtn = document.createElement("button");
     deleteBtn.className = "btn btn-danger btn-sm";
@@ -438,12 +446,14 @@ async function loadPdfDetails(fileName, folder, container) {
 
     // Get real-time stage (also captures fullPath for thumbnail)
     let stage = folder.currentStage || "Début de production";
+    let stageBatStatus = null;
     let pdfFullPath = folder.originalFilePath || folder.currentFilePath || "";
     if (fileName) {
       const stageRes = await fetch("/api/file-stage?fileName=" + encodeURIComponent(fileName), {
         headers: { "Authorization": `Bearer ${authToken}` }
       }).then(r => r.json()).catch(() => null);
       if (stageRes && stageRes.ok && stageRes.folder) stage = stageRes.folder;
+      if (stageRes && stageRes.batStatus) stageBatStatus = stageRes.batStatus;
       if (stageRes && stageRes.fullPath) pdfFullPath = stageRes.fullPath;
     }
 
@@ -466,7 +476,7 @@ async function loadPdfDetails(fileName, folder, container) {
       <div style="display:flex;gap:16px;margin-bottom:16px;align-items:flex-start;">
         <canvas id="thumb-${safeId}" style="border:1px solid #e5e7eb;border-radius:8px;max-width:120px;flex-shrink:0;display:none;"></canvas>
         <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          ${fld("Étape actuelle", `<span style="background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:12px;">${getStageLabelDisplay(stage)}</span>`)}
+          ${fld("Étape actuelle", `<span style="background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:12px;">${getStageLabelDisplay(stage, stageBatStatus)}</span>`)}
           ${fld("Numéro de dossier", fab.numeroDossier)}
           ${fld("Client", fab.client)}
           ${fld("Opérateur", fab.operateur)}
@@ -562,12 +572,14 @@ export async function openDossierDetail(dossierId) {
 
     // Get real-time stage from physical scan (handles Acrobat moves and BAT_ prefix)
     let realTimeStage = folder.currentStage || 'Début de production';
+    let realTimeBatStatus = null;
     if (fabFileName) {
       try {
         const stageRes = await fetch("/api/file-stage?fileName=" + encodeURIComponent(fabFileName), {
           headers: { "Authorization": `Bearer ${authToken}` }
         }).then(r => r.json()).catch(() => null);
         if (stageRes && stageRes.ok && stageRes.folder) realTimeStage = stageRes.folder;
+        if (stageRes && stageRes.batStatus) realTimeBatStatus = stageRes.batStatus;
       } catch(e) { /* use stored stage */ }
     }
 
@@ -586,7 +598,7 @@ export async function openDossierDetail(dossierId) {
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
         <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">ÉTAPE ACTUELLE</label>
-          <span style="background:#dbeafe;color:#1e40af;padding:6px 12px;border-radius:20px;font-size:13px;font-weight:500;">${getStageLabelDisplay(realTimeStage)}</span>
+          <span style="background:#dbeafe;color:#1e40af;padding:6px 12px;border-radius:20px;font-size:13px;font-weight:500;">${getStageLabelDisplay(realTimeStage, realTimeBatStatus)}</span>
         </div>
         <div><label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-bottom:4px;">DATE DE CRÉATION</label>
           <span style="font-size:14px;color:#111827;">${folder.createdAt ? new Date(folder.createdAt).toLocaleDateString("fr-FR") : '—'}</span>
