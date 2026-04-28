@@ -855,7 +855,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
               btnTermine.textContent = "🔒 Verrouillé";
               btnTermine.style.pointerEvents = "none";
               // Make Archiver button more prominent (next logical step after Terminé)
-              const btnArch = Array.from(card.querySelectorAll('.btn')).find(b => b.textContent.includes('Archiver'));
+              const btnArch = card.querySelector('[data-action="archiver"]');
               if (btnArch) {
                 btnArch.style.fontWeight = '700';
                 btnArch.style.background = '#fef9c3';
@@ -872,6 +872,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
 
           const btnArchiver = document.createElement("button");
           btnArchiver.className = "btn btn-sm";
+          btnArchiver.dataset.action = "archiver";
           btnArchiver.textContent = "📦 Archiver";
           btnArchiver.onclick = async (e) => {
             e.stopPropagation();
@@ -909,7 +910,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
                 btnT.style.pointerEvents = 'none';
               }
               // Make Archiver button more prominent when job is locked (next logical step)
-              const btnArch = Array.from(card.querySelectorAll('.btn')).find(b => b.textContent.includes('Archiver'));
+              const btnArch = card.querySelector('[data-action="archiver"]');
               if (btnArch) {
                 btnArch.style.fontWeight = '700';
                 btnArch.style.background = '#fef9c3';
