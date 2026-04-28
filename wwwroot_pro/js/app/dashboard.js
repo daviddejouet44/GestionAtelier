@@ -94,9 +94,9 @@ export async function loadDashboardData() {
       const input = document.createElement("input");
       input.type = "file";
       input.accept = ".png,.jpg,.jpeg,.gif,.webp";
-      input.style.cssText = "position:fixed;left:-9999px;top:-9999px;opacity:0;width:1px;height:1px;";
+      input.style.display = "none";
       document.body.appendChild(input);
-      input.onchange = async () => {
+      input.addEventListener("change", async () => {
         const file = input.files[0];
         document.body.removeChild(input);
         if (!file) return;
@@ -124,7 +124,7 @@ export async function loadDashboardData() {
           uploadBtn.disabled = false;
           uploadBtn.textContent = originalText;
         }
-      };
+      });
       input.click();
     };
   }

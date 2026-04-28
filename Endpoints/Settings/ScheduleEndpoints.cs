@@ -28,12 +28,6 @@ app.MapGet("/api/config/schedule", (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
-            return Results.Json(new { ok = false, error = "Admin only" });
-
         var cfg = MongoDbHelper.GetSettings<ScheduleSettings>("schedule")
             ?? new ScheduleSettings { WorkStart = "08:00", WorkEnd = "18:00", Holidays = new List<string>() };
         return Results.Json(new { ok = true, config = new { workStart = cfg.WorkStart, workEnd = cfg.WorkEnd, holidays = cfg.Holidays } });

@@ -184,6 +184,16 @@ app.MapGet("/api/urgences", () =>
         var today = DateTime.Today;
         var fabCol = MongoDbHelper.GetFabricationsCollection();
 
+        // Build a set of all known files in hotfolders (one scan pass) for orphan detection
+        var root = BackendUtils.HotfoldersRoot();
+        var knownFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (Directory.Exists(root))
+        {
+            foreach (var folder in Directory.GetDirectories(root))
+                foreach (var file in Directory.EnumerateFiles(folder))
+                    knownFiles.Add(Path.GetFileName(file));
+        }
+
         // Group urgent entries (livraison dans 0..3 jours) by moteurImpression
         var grouped = new Dictionary<string, List<object>>(StringComparer.OrdinalIgnoreCase);
 
@@ -193,6 +203,12 @@ app.MapGet("/api/urgences", () =>
             var delivDate = kv.Date.Date;
             var diff = (delivDate - today).Days;
             if (diff < 0 || diff > 3) continue;
+
+            // Garbage-collect: skip orphaned deliveries (file no longer exists)
+            bool fileExists =
+                (!string.IsNullOrWhiteSpace(kv.FullPath) && File.Exists(kv.FullPath)) ||
+                (!string.IsNullOrWhiteSpace(kv.FileName) && knownFiles.Contains(kv.FileName));
+            if (!fileExists) continue;
 
             // Look up fabrication for this entry
             BsonDocument? fabDoc = null;

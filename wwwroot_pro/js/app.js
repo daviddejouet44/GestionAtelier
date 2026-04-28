@@ -13,7 +13,7 @@ import {
 
 import { buildKanban, refreshKanban, openAssignDropdown } from './kanban.js';
 import { openFabrication, initFabrication } from './fabrication.js';
-import { initCalendar, ensureCalendar, calendar, submissionCalendar, initSubmissionCalendar, colorForEvent, openPlanificationCalendar } from './calendar.js';
+import { initCalendar, ensureCalendar, calendar, submissionCalendar, initSubmissionCalendar, colorForEvent, openPlanificationCalendar, refreshOperatorView } from './calendar.js';
 import { initDossiersView, loadDossiersList, openDossierDetail } from './dossiers.js';
 import { initSettingsView } from './settings.js';
 import { pollNotifications, initNotificationBell } from './notifications.js';
@@ -48,6 +48,7 @@ window._renderPdfThumbnail = renderPdfThumbnail;
 window._deleteFile = deleteFile;
 window._handleDesktopDrop = handleDesktopDrop;
 window._openPlanificationCalendar = openPlanificationCalendar;
+window._refreshOperatorView = () => refreshOperatorView().catch(() => {});
 
 // ======================================================
 // UTILITAIRE — ALERTE GLOBALE
@@ -1622,6 +1623,19 @@ setInterval(async () => {
   updateGlobalAlert();
   await refreshKanban();
   buildKanbanSidebar();
+}, 30000);
+
+// ======================================================
+// AUTO-REFRESH PLANNING PAR OPÉRATEUR (toutes les 30s)
+// ======================================================
+setInterval(async () => {
+  const calEl = document.getElementById("calendar");
+  if (!calEl || calEl.classList.contains("hidden")) return;
+  const opEl = document.getElementById("planning-operator-view");
+  if (!opEl || opEl.style.display === 'none') return;
+  await loadDeliveries();
+  await loadAssignments();
+  refreshOperatorView().catch(() => {});
 }, 30000);
 
 // ======================================================

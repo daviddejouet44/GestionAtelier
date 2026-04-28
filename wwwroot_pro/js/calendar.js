@@ -238,6 +238,13 @@ async function buildFinitionsView(container) {
 // OPERATOR VIEW
 // ======================================================
 
+// Exported: refresh the operator view if currently visible
+export async function refreshOperatorView() {
+  const operatorEl = document.getElementById("planning-operator-view");
+  if (!operatorEl || operatorEl.style.display === 'none') return;
+  await buildOperatorView(operatorEl);
+}
+
 async function buildOperatorView(container) {
   container.innerHTML = '<p style="color:#6b7280;font-size:13px;">Chargement...</p>';
 
