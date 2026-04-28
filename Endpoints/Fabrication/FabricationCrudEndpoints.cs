@@ -1607,9 +1607,31 @@ app.MapGet("/api/alerts/production-delay", () =>
         );
         var docs = fabCol.Find(filter).ToList();
 
+        // Build a set of files that actually exist in active kanban folders (for orphan detection)
+        var hotRoot = BackendUtils.HotfoldersRoot();
+        var activeFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (Directory.Exists(hotRoot))
+        {
+            foreach (var dir in Directory.GetDirectories(hotRoot))
+            {
+                try
+                {
+                    foreach (var file in Directory.GetFiles(dir, "*.pdf", SearchOption.TopDirectoryOnly))
+                        activeFileNames.Add(Path.GetFileName(file));
+                }
+                catch { }
+            }
+        }
+
         var grouped = new Dictionary<string, List<object>>(StringComparer.OrdinalIgnoreCase);
         foreach (var doc in docs)
         {
+            // Skip jobs explicitly excluded from planning (deleted or archived)
+            if (doc.Contains("excludeFromPlanning")
+                && doc["excludeFromPlanning"].BsonType == BsonType.Boolean
+                && doc["excludeFromPlanning"].AsBoolean)
+                continue;
+
             // Skip jobs already finished
             var statut = doc.Contains("statutProduction") && doc["statutProduction"] != BsonNull.Value
                 ? doc["statutProduction"].AsString : "";
@@ -1617,6 +1639,22 @@ app.MapGet("/api/alerts/production-delay", () =>
                 continue;
 
             var fileName = doc.Contains("fileName") ? doc["fileName"].AsString : "";
+
+            // Skip orphan records: file no longer present in any active kanban folder
+            // This catches jobs deleted before the cascade-cleanup was introduced.
+            if (!string.IsNullOrWhiteSpace(fileName) && !activeFileNames.Contains(fileName)
+                && !activeFileNames.Contains(fileName.ToLowerInvariant()))
+            {
+                // Opportunistically mark this record to avoid rescanning next time
+                try
+                {
+                    var cleanFilter = Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]);
+                    fabCol.UpdateOne(cleanFilter, Builders<BsonDocument>.Update.Set("excludeFromPlanning", true));
+                }
+                catch { }
+                continue;
+            }
+
             var numeroDossier = doc.Contains("numeroDossier") && doc["numeroDossier"] != BsonNull.Value
                 ? doc["numeroDossier"].AsString : "";
             var nomClient = doc.Contains("nomClient") && doc["nomClient"] != BsonNull.Value

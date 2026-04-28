@@ -848,11 +848,19 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             if (r.ok) {
               showNotification("✅ Fichier verrouillé — tâche terminée", "success");
               card.draggable = false;
-              card.style.opacity = "0.6";
-              card.style.filter = "grayscale(0.5)";
-              card.style.pointerEvents = "none";
+              card.style.opacity = "0.7";
+              card.style.border = "2px solid #22c55e";
+              // Do NOT disable pointer-events on the whole card so that Archiver remains accessible.
               btnTermine.disabled = true;
               btnTermine.textContent = "🔒 Verrouillé";
+              btnTermine.style.pointerEvents = "none";
+              // Make Archiver button more prominent (next logical step after Terminé)
+              const btnArch = Array.from(card.querySelectorAll('.btn')).find(b => b.textContent.includes('Archiver'));
+              if (btnArch) {
+                btnArch.style.fontWeight = '700';
+                btnArch.style.background = '#fef9c3';
+                btnArch.style.borderColor = '#fbbf24';
+              }
               if (window._calendar) window._calendar.refetchEvents();
               if (window._submissionCalendar) window._submissionCalendar.refetchEvents();
               if (window._refreshOperatorView) window._refreshOperatorView();
@@ -890,13 +898,22 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             }).then(r => r.json()).catch(() => ({}));
             if (fabData?.locked) {
               card.draggable = false;
-              card.style.opacity = '0.6';
-              card.style.filter = 'grayscale(0.5)';
-              card.style.pointerEvents = 'none';
+              card.style.opacity = '0.7';
+              card.style.border = '2px solid #22c55e';
+              // Do NOT disable pointer-events on the whole card: Archiver button must remain accessible.
+              // Only disable the Terminé button itself.
               const btnT = card.querySelector('.btn-primary');
               if (btnT && btnT.textContent.includes('Terminé')) {
                 btnT.disabled = true;
                 btnT.textContent = '🔒 Verrouillé';
+                btnT.style.pointerEvents = 'none';
+              }
+              // Make Archiver button more prominent when job is locked (next logical step)
+              const btnArch = Array.from(card.querySelectorAll('.btn')).find(b => b.textContent.includes('Archiver'));
+              if (btnArch) {
+                btnArch.style.fontWeight = '700';
+                btnArch.style.background = '#fef9c3';
+                btnArch.style.borderColor = '#fbbf24';
               }
             }
           } catch(e) { /* ignore */ }
