@@ -216,7 +216,7 @@ export async function showFaconnageAlerts() {
       const jobRows = jobs.map(j => {
         const dossier = j.numeroDossier || '—';
         const pdfName = j.fileName || '—';
-        const finStr = Array.isArray(j.allFinitions) && j.allFinitions.length > 1 ? ` — [${j.allFinitions.join(', ')}]` : '';
+        const finStr = Array.isArray(j.allFinitions) && j.allFinitions.length > 0 ? ` — [${j.allFinitions.join(', ')}]` : '';
         const qty = j.quantite != null ? ` (${j.quantite.toLocaleString("fr-FR")} ex.)` : "";
         return `<div style="font-size:12px;color:#374151;padding:3px 0 3px 12px;border-left:3px solid #fde68a;"><strong>${dossier}</strong> — ${pdfName}${finStr}${qty}</div>`;
       }).join("");
