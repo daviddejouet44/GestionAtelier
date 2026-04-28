@@ -41,11 +41,7 @@ export async function loadDashboardData() {
   }
   if (currentUser && currentUser.profile === 3) {
     html += `<button id="prismasync-settings-btn" class="btn btn-sm" style="font-size:12px;">⚙️ Modifier l'URL PrismaSync</button>`;
-    html += `<button id="dashboard-image-upload-btn" class="btn btn-sm" style="font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">🖼️ ${dashboardImageExists ? 'Modifier l\'image' : 'Ajouter une image'}</button>`;
-    html += `<input type="file" id="dashboard-file-input" accept="image/*,.png,.jpg,.jpeg,.gif,.webp" style="display:none;" />`;
-    if (dashboardImageExists) {
-      html += `<button id="dashboard-image-delete-btn" class="btn btn-sm" style="font-size:12px;color:#ef4444;border-color:#ef4444;">🗑 Supprimer l\'image</button>`;
-    }
+    html += `<span style="font-size:12px;color:#6b7280;">Pour gérer les images du dashboard : <a href="#" id="goto-settings-logo" style="color:#2563eb;">Paramétrages → Logos / Images</a></span>`;
   }
   html += `</div>`;
 
@@ -58,7 +54,7 @@ export async function loadDashboardData() {
     // Admin placeholder with Prismalytics links
     html += `<div style="background:#f9fafb;border:2px dashed #e5e7eb;border-radius:12px;padding:40px;text-align:center;color:#9ca3af;">
       <p style="font-size:16px;font-weight:600;margin:0 0 8px;">Image du dashboard non configurée</p>
-      <p style="font-size:13px;margin:0;">Cliquez sur "Ajouter une image" pour uploader une image à afficher ici.</p>
+      <p style="font-size:13px;margin:0;">Rendez-vous dans <strong>Paramétrages → Logos / Images</strong> pour uploader une image à afficher ici.</p>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;">
       <a href="https://prismalytics-eu.cpp.canon/accounting#" target="_blank" rel="noopener"
@@ -89,56 +85,17 @@ export async function loadDashboardData() {
   const settingsBtn = contentEl.querySelector("#prismasync-settings-btn");
   if (settingsBtn) settingsBtn.onclick = () => _showPrismaSyncUrlEditor(contentEl);
 
-  // File input change handler — triggers when user selects a file via the button
-  const uploadBtn = contentEl.querySelector("#dashboard-image-upload-btn");
-  const fileInput = contentEl.querySelector("#dashboard-file-input");
-  if (uploadBtn && fileInput) {
-    // Explicit programmatic click — more reliable than label[for] across all browsers
-    uploadBtn.onclick = () => fileInput.click();
-  }
-  if (fileInput) {
-    fileInput.onchange = async () => {
-      const file = fileInput.files && fileInput.files[0];
-      if (!file) return;
-      const uploadLabel = contentEl.querySelector("#dashboard-image-upload-btn");
-      const originalText = uploadLabel ? uploadLabel.textContent : '';
-      if (uploadLabel) { uploadLabel.style.opacity = '0.6'; uploadLabel.style.pointerEvents = 'none'; uploadLabel.textContent = '⏳ Upload...'; }
-      try {
-        const formData = new FormData();
-        formData.append("file", file);
-        const r = await fetch("/api/dashboard-image", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${authToken}` },
-          body: formData
-        }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
-        if (r.ok) {
-          await loadDashboardData();
-        } else {
-          alert("Erreur upload : " + (r.error || "Inconnu"));
-          if (uploadLabel) { uploadLabel.style.opacity = ''; uploadLabel.style.pointerEvents = ''; uploadLabel.textContent = originalText; }
-        }
-      } catch(e) {
-        alert("Erreur réseau lors de l'upload");
-        if (uploadLabel) { uploadLabel.style.opacity = ''; uploadLabel.style.pointerEvents = ''; uploadLabel.textContent = originalText; }
-      }
-      // Reset so the same file can be selected again
-      fileInput.value = '';
-    };
-  }
-
-  const deleteBtn = contentEl.querySelector("#dashboard-image-delete-btn");
-  if (deleteBtn) {
-    deleteBtn.onclick = async () => {
-      if (!confirm("Supprimer l'image du dashboard ?")) return;
-      const r = await fetch("/api/dashboard-image", {
-        method: "DELETE",
-        headers: { "Authorization": `Bearer ${authToken}` }
-      }).then(res => res.json()).catch(() => ({ ok: false }));
-      if (r.ok) {
-        await loadDashboardData();
-      } else {
-        alert("Erreur : " + (r.error || ""));
-      }
+  const gotoSettings = contentEl.querySelector("#goto-settings-logo");
+  if (gotoSettings) {
+    gotoSettings.onclick = (e) => {
+      e.preventDefault();
+      // Navigate to Settings tab, then to logos/images panel
+      const btnSettings = document.getElementById("btnViewSettings");
+      if (btnSettings) btnSettings.click();
+      setTimeout(() => {
+        const logoTab = document.querySelector('.settings-tab[data-tab="logo"]');
+        if (logoTab) logoTab.click();
+      }, 300);
     };
   }
 }

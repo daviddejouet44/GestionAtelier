@@ -847,20 +847,18 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             }).then(res => res.json()).catch(() => ({ ok: false }));
             if (r.ok) {
               showNotification("✅ Fichier verrouillé — tâche terminée", "success");
+              // After locking, hide ALL action buttons except Archiver
+              actions.querySelectorAll("button").forEach(btn => {
+                if (btn.dataset.action === "archiver") {
+                  btn.style.fontWeight = '700';
+                  btn.style.background = '#fef9c3';
+                  btn.style.borderColor = '#fbbf24';
+                } else {
+                  btn.style.display = 'none';
+                }
+              });
               card.draggable = false;
-              card.style.opacity = "0.7";
               card.style.border = "2px solid #22c55e";
-              // Do NOT disable pointer-events on the whole card so that Archiver remains accessible.
-              btnTermine.disabled = true;
-              btnTermine.textContent = "🔒 Verrouillé";
-              btnTermine.style.pointerEvents = "none";
-              // Make Archiver button more prominent (next logical step after Terminé)
-              const btnArch = card.querySelector('[data-action="archiver"]');
-              if (btnArch) {
-                btnArch.style.fontWeight = '700';
-                btnArch.style.background = '#fef9c3';
-                btnArch.style.borderColor = '#fbbf24';
-              }
               if (window._calendar) window._calendar.refetchEvents();
               if (window._submissionCalendar) window._submissionCalendar.refetchEvents();
               if (window._refreshOperatorView) window._refreshOperatorView();
@@ -899,23 +897,17 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             }).then(r => r.json()).catch(() => ({}));
             if (fabData?.locked) {
               card.draggable = false;
-              card.style.opacity = '0.7';
               card.style.border = '2px solid #22c55e';
-              // Do NOT disable pointer-events on the whole card: Archiver button must remain accessible.
-              // Only disable the Terminé button itself.
-              const btnT = card.querySelector('.btn-primary');
-              if (btnT && btnT.textContent.includes('Terminé')) {
-                btnT.disabled = true;
-                btnT.textContent = '🔒 Verrouillé';
-                btnT.style.pointerEvents = 'none';
-              }
-              // Make Archiver button more prominent when job is locked (next logical step)
-              const btnArch = card.querySelector('[data-action="archiver"]');
-              if (btnArch) {
-                btnArch.style.fontWeight = '700';
-                btnArch.style.background = '#fef9c3';
-                btnArch.style.borderColor = '#fbbf24';
-              }
+              // Hide ALL action buttons except Archiver
+              actions.querySelectorAll("button").forEach(btn => {
+                if (btn.dataset.action === "archiver") {
+                  btn.style.fontWeight = '700';
+                  btn.style.background = '#fef9c3';
+                  btn.style.borderColor = '#fbbf24';
+                } else {
+                  btn.style.display = 'none';
+                }
+              });
             }
           } catch(e) { /* ignore */ }
         })();

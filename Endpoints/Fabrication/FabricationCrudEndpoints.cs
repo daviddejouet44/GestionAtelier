@@ -1533,7 +1533,8 @@ app.MapGet("/api/fabrication/events", () =>
         var filter = Builders<BsonDocument>.Filter.Or(
             Builders<BsonDocument>.Filter.Exists("dateEnvoi"),
             Builders<BsonDocument>.Filter.Exists("dateImpression"),
-            Builders<BsonDocument>.Filter.Exists("dateProductionFinitions")
+            Builders<BsonDocument>.Filter.Exists("dateProductionFinitions"),
+            Builders<BsonDocument>.Filter.Exists("dateReceptionSouhaitee")
         );
         var docs = fabCol.Find(filter).ToList();
 
@@ -1559,36 +1560,46 @@ app.MapGet("/api/fabrication/events", () =>
             } catch { }
             if (tempsProduitMinutes <= 0) tempsProduitMinutes = 30;
 
+            bool locked = doc.Contains("locked") && doc["locked"] != BsonNull.Value
+                && doc["locked"].BsonType == BsonType.Boolean && doc["locked"].AsBoolean;
+
             // Read manual planning time overrides (set by drag & drop in the calendar)
-            string? manualTimeGlobal = null, manualTimeMachine = null, manualTimeOperator = null;
+            string? manualTimeGlobal = null, manualTimeMachine = null, manualTimeFinitions = null;
             if (doc.Contains("manualPlanningTimes") && doc["manualPlanningTimes"] != BsonNull.Value
                 && doc["manualPlanningTimes"].IsBsonDocument)
             {
                 var mpt = doc["manualPlanningTimes"].AsBsonDocument;
                 if (mpt.Contains("globalTime") && mpt["globalTime"] != BsonNull.Value) manualTimeGlobal = mpt["globalTime"].AsString;
                 if (mpt.Contains("machineTime") && mpt["machineTime"] != BsonNull.Value) manualTimeMachine = mpt["machineTime"].AsString;
-                if (mpt.Contains("operatorTime") && mpt["operatorTime"] != BsonNull.Value) manualTimeOperator = mpt["operatorTime"].AsString;
+                if (mpt.Contains("finitionsTime") && mpt["finitionsTime"] != BsonNull.Value) manualTimeFinitions = mpt["finitionsTime"].AsString;
             }
 
             if (doc.Contains("dateEnvoi") && doc["dateEnvoi"] != BsonNull.Value)
             {
                 try {
                     var dt = doc["dateEnvoi"].ToUniversalTime();
-                    events.Add(new { type = "envoi", date = dt.ToString("yyyy-MM-dd"), title = $"📤 Envoi: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeGlobal });
+                    events.Add(new { type = "envoi", date = dt.ToString("yyyy-MM-dd"), title = $"📤 Envoi: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeGlobal, locked });
                 } catch { }
             }
             if (doc.Contains("dateImpression") && doc["dateImpression"] != BsonNull.Value)
             {
                 try {
                     var dt = doc["dateImpression"].ToUniversalTime();
-                    events.Add(new { type = "impression", date = dt.ToString("yyyy-MM-dd"), title = $"🖨️ Impression: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeMachine });
+                    events.Add(new { type = "impression", date = dt.ToString("yyyy-MM-dd"), title = $"🖨️ Impression: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeMachine, locked });
                 } catch { }
             }
             if (doc.Contains("dateProductionFinitions") && doc["dateProductionFinitions"] != BsonNull.Value)
             {
                 try {
                     var dt = doc["dateProductionFinitions"].ToUniversalTime();
-                    events.Add(new { type = "finitions", date = dt.ToString("yyyy-MM-dd"), title = $"✂️ Finitions: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeOperator });
+                    events.Add(new { type = "finitions", date = dt.ToString("yyyy-MM-dd"), title = $"✂️ Finitions: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeFinitions, locked });
+                } catch { }
+            }
+            if (doc.Contains("dateReceptionSouhaitee") && doc["dateReceptionSouhaitee"] != BsonNull.Value)
+            {
+                try {
+                    var dt = doc["dateReceptionSouhaitee"].ToUniversalTime();
+                    events.Add(new { type = "reception", date = dt.ToString("yyyy-MM-dd"), title = $"📥 Réception: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = (string?)null, locked });
                 } catch { }
             }
         }
@@ -1646,6 +1657,11 @@ app.MapGet("/api/alerts/production-delay", () =>
             var statut = doc.Contains("statutProduction") && doc["statutProduction"] != BsonNull.Value
                 ? doc["statutProduction"].AsString : "";
             if (string.Equals(statut, "Fin de production", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Skip locked jobs (verrouillés via le bouton "Terminé" dans la tuile Fin de production)
+            if (doc.Contains("locked") && doc["locked"] != BsonNull.Value
+                && doc["locked"].BsonType == BsonType.Boolean && doc["locked"].AsBoolean)
                 continue;
 
             var fileName = doc.Contains("fileName") ? doc["fileName"].AsString : "";
@@ -1823,10 +1839,11 @@ app.MapPut("/api/fabrication/event-time", async (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = "fileName vide" });
 
         // Map viewType to time and date field names in manualPlanningTimes
+        // Also map to the actual date field to persist as source of truth
         var fieldNames = viewType switch {
-            "global"   => (timeField: "globalTime",   dateField: "globalDate"),
-            "machine"  => (timeField: "machineTime",  dateField: "machineDate"),
-            "operator" => (timeField: "operatorTime", dateField: "operatorDate"),
+            "global"    => (timeField: "globalTime",    dateField: "globalDate",    actualDateField: "dateEnvoi"),
+            "machine"   => (timeField: "machineTime",   dateField: "machineDate",   actualDateField: "dateImpression"),
+            "finitions" => (timeField: "finitionsTime", dateField: "finitionsDate", actualDateField: "dateProductionFinitions"),
             _ => default
         };
         if (fieldNames == default)
@@ -1839,7 +1856,7 @@ app.MapPut("/api/fabrication/event-time", async (HttpContext ctx) =>
         if (doc == null)
             return Results.Json(new { ok = false, error = "Fiche introuvable" });
 
-        // Update or create manualPlanningTimes subdocument
+        // Update or create manualPlanningTimes subdocument (stores time override)
         BsonDocument mpt = doc.Contains("manualPlanningTimes") && doc["manualPlanningTimes"] != BsonNull.Value
             && doc["manualPlanningTimes"].IsBsonDocument
             ? doc["manualPlanningTimes"].AsBsonDocument.DeepClone().AsBsonDocument
@@ -1848,8 +1865,16 @@ app.MapPut("/api/fabrication/event-time", async (HttpContext ctx) =>
         mpt[fieldNames.timeField] = newTime;
         mpt[fieldNames.dateField] = newDate;
 
-        var update = Builders<BsonDocument>.Update.Set("manualPlanningTimes", mpt);
-        fabCol.UpdateOne(Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]), update);
+        // Also update the actual date field (source of truth) so that on reload the event stays at the new date
+        DateTime? parsedDate = null;
+        if (DateTime.TryParse(newDate, out var pd))
+            parsedDate = pd.Date.ToUniversalTime();
+
+        var updateDef = Builders<BsonDocument>.Update.Set("manualPlanningTimes", mpt);
+        if (parsedDate.HasValue)
+            updateDef = updateDef.Set(fieldNames.actualDateField, new BsonDateTime(parsedDate.Value));
+
+        fabCol.UpdateOne(Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]), updateDef);
 
         return Results.Json(new { ok = true });
     }
@@ -1881,6 +1906,46 @@ app.MapPut("/api/fabrication/exclude-planning", async (HttpContext ctx) =>
         var result = fabCol.UpdateMany(filter, update);
 
         return Results.Json(new { ok = true, modified = result.ModifiedCount });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// FABRICATION — UPDATE SINGLE KEY DATE
+// PUT /api/fabrication/key-date
+// Body: { fileName, field ("dateReceptionSouhaitee"|"dateEnvoi"|"dateImpression"|"dateProductionFinitions"), date "YYYY-MM-DD", time "HH:MM" }
+// Used by submission calendar drag & drop to persist dateReceptionSouhaitee
+// ======================================================
+app.MapPut("/api/fabrication/key-date", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        if (!json.TryGetProperty("fileName", out var fileNameEl) ||
+            !json.TryGetProperty("field", out var fieldEl) ||
+            !json.TryGetProperty("date", out var dateEl))
+            return Results.Json(new { ok = false, error = "fileName, field, date requis" });
+
+        var fileName = fileNameEl.GetString() ?? "";
+        var field = fieldEl.GetString() ?? "";
+        var dateStr = dateEl.GetString() ?? "";
+
+        var allowedFields = new HashSet<string> { "dateReceptionSouhaitee", "dateEnvoi", "dateImpression", "dateProductionFinitions" };
+        if (!allowedFields.Contains(field))
+            return Results.Json(new { ok = false, error = $"Champ non autorisé: {field}" });
+
+        if (!DateTime.TryParse(dateStr, out var parsedDate))
+            return Results.Json(new { ok = false, error = "Format date invalide" });
+
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+        var filter = BuildFileNameFilter(fileName);
+        var update = Builders<BsonDocument>.Update.Set(field, new BsonDateTime(parsedDate.Date.ToUniversalTime()));
+        fabCol.UpdateMany(filter, update);
+
+        return Results.Json(new { ok = true });
     }
     catch (Exception ex)
     {
