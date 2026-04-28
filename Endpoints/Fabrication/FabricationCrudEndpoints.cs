@@ -197,10 +197,10 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             DateReception         = ToUtcDateOnly(input.DateReception),
             // dateReceptionSouhaitee = same as dateReception (field labeled "Date de réception souhaitée")
             // fallback to DateReception so the submission calendar can always find it
-            DateReceptionSouhaitee = ToUtcDateOnly(input.DateReceptionSouhaitee ?? input.DateReception),
-            DateEnvoi             = ToUtcDateOnly(input.DateEnvoi),
-            DateProductionFinitions = ToUtcDateOnly(input.DateProductionFinitions),
-            DateImpression        = ToUtcDateOnly(input.DateImpression),
+            DateReceptionSouhaitee = ToUtcDateOnly(input.DateReceptionSouhaitee ?? input.DateReception) ?? old?.DateReceptionSouhaitee,
+            DateEnvoi             = ToUtcDateOnly(input.DateEnvoi) ?? old?.DateEnvoi,
+            DateProductionFinitions = ToUtcDateOnly(input.DateProductionFinitions) ?? old?.DateProductionFinitions,
+            DateImpression        = ToUtcDateOnly(input.DateImpression) ?? old?.DateImpression,
             TempsProduitMinutes   = input.TempsProduitMinutes ?? old?.TempsProduitMinutes,
             JustifsClientsQuantite = input.JustifsClientsQuantite,
             JustifsClientsAdresse  = input.JustifsClientsAdresse,
