@@ -85,8 +85,14 @@ async function updateGlobalAlert() {
         }).join('');
         return `<div style="display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap;"><span style="font-size:11px;font-weight:700;color:#7f1d1d;white-space:nowrap;padding-top:2px;">🖨️ ${esc(g.moteur)} :</span>${jobsHtml}</div>`;
       }).join('');
+      // Admin purge button — cleans up orphan records in one click
+      const purgeBtn = (currentUser?.profile === 3)
+        ? `<button id="alert-purge-orphans-btn" style="font-size:11px;padding:2px 8px;margin-left:8px;cursor:pointer;background:#b91c1c;color:#fff;border:none;border-radius:4px;" title="Supprimer les alertes fantômes (admin)">🗑 Purger</button>`
+        : '';
       html += `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;margin-bottom:6px;">
-        <span style="font-size:12px;font-weight:700;color:#b91c1c;margin-right:8px;">⚠️ Retard de production</span>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
+          <span style="font-size:12px;font-weight:700;color:#b91c1c;">⚠️ Retard de production</span>${purgeBtn}
+        </div>
         <div style="margin-top:4px;display:flex;flex-direction:column;gap:4px;">${groupsHtml}</div>
       </div>`;
     }
@@ -103,6 +109,29 @@ async function updateGlobalAlert() {
     if (html) {
       globalAlert.innerHTML = html;
       globalAlert.style.cssText = "display:block;padding:8px 16px;background:transparent;";
+      // Wire up admin purge button if present
+      const purgeBtn = globalAlert.querySelector("#alert-purge-orphans-btn");
+      if (purgeBtn) {
+        purgeBtn.onclick = async () => {
+          purgeBtn.disabled = true;
+          purgeBtn.textContent = '⏳ Purge...';
+          try {
+            const r = await fetch("/api/alerts/purge-orphans", {
+              method: "DELETE",
+              headers: { "Authorization": `Bearer ${authToken}` }
+            }).then(res => res.json()).catch(() => ({ ok: false }));
+            if (r.ok) {
+              await updateGlobalAlert();
+            } else {
+              purgeBtn.textContent = '🗑 Purger';
+              purgeBtn.disabled = false;
+            }
+          } catch(e) {
+            purgeBtn.textContent = '🗑 Purger';
+            purgeBtn.disabled = false;
+          }
+        };
+      }
     } else {
       globalAlert.style.display = "none";
     }

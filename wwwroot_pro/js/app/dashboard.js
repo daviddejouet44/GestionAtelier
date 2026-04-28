@@ -41,8 +41,7 @@ export async function loadDashboardData() {
   }
   if (currentUser && currentUser.profile === 3) {
     html += `<button id="prismasync-settings-btn" class="btn btn-sm" style="font-size:12px;">⚙️ Modifier l'URL PrismaSync</button>`;
-    // Use a label wrapping a hidden file input for maximum browser compatibility
-    html += `<label id="dashboard-image-upload-btn" class="btn btn-sm" style="font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;" for="dashboard-file-input">🖼️ ${dashboardImageExists ? 'Modifier l\'image' : 'Ajouter une image'}</label>`;
+    html += `<button id="dashboard-image-upload-btn" class="btn btn-sm" style="font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">🖼️ ${dashboardImageExists ? 'Modifier l\'image' : 'Ajouter une image'}</button>`;
     html += `<input type="file" id="dashboard-file-input" accept="image/*,.png,.jpg,.jpeg,.gif,.webp" style="display:none;" />`;
     if (dashboardImageExists) {
       html += `<button id="dashboard-image-delete-btn" class="btn btn-sm" style="font-size:12px;color:#ef4444;border-color:#ef4444;">🗑 Supprimer l\'image</button>`;
@@ -90,8 +89,13 @@ export async function loadDashboardData() {
   const settingsBtn = contentEl.querySelector("#prismasync-settings-btn");
   if (settingsBtn) settingsBtn.onclick = () => _showPrismaSyncUrlEditor(contentEl);
 
-  // File input change handler — triggers when user selects a file via the label/input
+  // File input change handler — triggers when user selects a file via the button
+  const uploadBtn = contentEl.querySelector("#dashboard-image-upload-btn");
   const fileInput = contentEl.querySelector("#dashboard-file-input");
+  if (uploadBtn && fileInput) {
+    // Explicit programmatic click — more reliable than label[for] across all browsers
+    uploadBtn.onclick = () => fileInput.click();
+  }
   if (fileInput) {
     fileInput.onchange = async () => {
       const file = fileInput.files && fileInput.files[0];

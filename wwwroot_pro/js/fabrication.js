@@ -102,7 +102,16 @@ const FIELD_HTML_IDS = {
 };
 function gElId(id) { return FIELD_HTML_IDS[id] || ('fab-' + id); }
 function gEl(id) { return document.getElementById(gElId(id)); }
-function fmtDate2(v) { try { return new Date(v).toISOString().split('T')[0]; } catch(e) { return ''; } }
+function fmtDate2(v) {
+  try {
+    if (!v) return '';
+    const s = String(v);
+    // Extract the date part directly from ISO strings to avoid timezone conversion:
+    // "2026-01-15T00:00:00Z", "2026-01-15T02:00:00+02:00", "2026-01-15" → "2026-01-15"
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    return new Date(v).toISOString().split('T')[0];
+  } catch(e) { return ''; }
+}
 
 // Settings vars
 let _coverProducts = [];
@@ -155,11 +164,16 @@ function updateKeyDates() {
   const rlEl=document.getElementById('fab-retrait-livraison');
   const isRetrait=rlEl&&(rlEl.value||'').toLowerCase().includes('retrait');
   const cfg=isRetrait?_keyDatesConfig.retrait:_keyDatesConfig.livraison;
+  // Helper: convert epoch ms to local YYYY-MM-DD (avoids UTC day-shift at DST boundaries)
+  function _localDate(ts) {
+    const d = new Date(ts);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
   // Only fill a date field if it is empty OR not protected (not loaded from DB / not manually set).
   // This prevents overwriting dates entered by the user when another field (e.g. temps de production) changes.
-  if(envEl&&!envEl.dataset.protected) envEl.value=new Date(recTs-cfg.sendOffsetHours*3600000).toISOString().split('T')[0];
-  if(finEl&&!finEl.dataset.protected) finEl.value=new Date(recTs-cfg.finitionsOffsetHours*3600000).toISOString().split('T')[0];
-  if(impEl&&!impEl.dataset.protected) impEl.value=new Date(recTs-cfg.impressionOffsetHours*3600000).toISOString().split('T')[0];
+  if(envEl&&!envEl.dataset.protected) envEl.value=_localDate(recTs-cfg.sendOffsetHours*3600000);
+  if(finEl&&!finEl.dataset.protected) finEl.value=_localDate(recTs-cfg.finitionsOffsetHours*3600000);
+  if(impEl&&!impEl.dataset.protected) impEl.value=_localDate(recTs-cfg.impressionOffsetHours*3600000);
 }
 
 function updateTempsProduction() {
@@ -620,7 +634,7 @@ export async function saveFabrication() {
     nombreFeuilles:getN('nombreFeuilles'),dateDepart:get('dateDepart')||null,
     dateLivraison:get('dateLivraison')||null,planningMachine:get('planningMachine')||null,
     dateReception:(()=>{const el=document.getElementById('fab-date-reception');return el&&el.value?el.value:null;})(),
-    dateReceptionSouhaitee:(()=>{const el=document.getElementById('fab-date-reception-souhaitee');return el&&el.value?el.value:null;})(),
+    dateReceptionSouhaitee:(()=>{const el=document.getElementById('fab-date-reception-souhaitee')||document.getElementById('fab-date-reception');return el&&el.value?el.value:null;})(),
     dateEnvoi:(()=>{const el=document.getElementById('fab-date-envoi');return el&&el.value?el.value:null;})(),
     dateProductionFinitions:(()=>{const el=document.getElementById('fab-date-finitions');return el&&el.value?el.value:null;})(),
     dateImpression:(()=>{const el=document.getElementById('fab-date-impression');return el&&el.value?el.value:null;})(),
