@@ -5,16 +5,10 @@ import { state, refreshKanban } from './kanban-core.js';
 import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js';
 
 // Returns true if the action should be visible for the given folder
-// Action IDs introduced after initial release — show by default even when not in saved config
-const LEGACY_DEFAULT_VISIBLE = new Set(['mailDebutProduction', 'mailFinProduction']);
-
 function isActionVisible(folderName, actionId) {
   const allowed = state.visibleActionsMap[folderName];
   if (!allowed) return true; // null = show all (retrocompat)
-  if (allowed.includes(actionId)) return true;
-  // New actions not present in old saved configs default to visible
-  if (LEGACY_DEFAULT_VISIBLE.has(actionId)) return true;
-  return false;
+  return allowed.includes(actionId);
 }
 
 // Show a preflight progress modal; returns a close function
@@ -411,6 +405,8 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         }
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          if (isActionVisible(folderName, "mailDebutProduction")) actions.appendChild(btnMailDebut);
+          if (isActionVisible(folderName, "mailFinProduction")) actions.appendChild(btnMailFin);
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
       } else if (folderName === "Prêt pour impression") {
@@ -436,6 +432,8 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         if (isActionVisible(folderName, "actions")) actions.appendChild(btnPrint);
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          if (isActionVisible(folderName, "mailDebutProduction")) actions.appendChild(btnMailDebut);
+          if (isActionVisible(folderName, "mailFinProduction")) actions.appendChild(btnMailFin);
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
       } else if (folderName === "Corrections" || folderName === "Corrections et fond perdu") {
@@ -477,6 +475,8 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         if (isActionVisible(folderName, "preflight")) actions.appendChild(btnPreflight);
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          if (isActionVisible(folderName, "mailDebutProduction")) actions.appendChild(btnMailDebut);
+          if (isActionVisible(folderName, "mailFinProduction")) actions.appendChild(btnMailFin);
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
       } else if (folderName === "PrismaPrepare") {
@@ -522,6 +522,8 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             if (r.ok) { showNotification("✅ Déplacé vers Impression en cours", "success"); await refreshKanban(); }
             else showNotification("❌ " + (r.error || "Erreur"), "error");
           };
+          if (isActionVisible(folderName, "mailDebutProduction")) actions.appendChild(btnMailDebut);
+          if (isActionVisible(folderName, "mailFinProduction")) actions.appendChild(btnMailFin);
           if (isActionVisible(folderName, "impressionLancee")) actions.appendChild(btnImpressionLancee);
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
@@ -557,6 +559,8 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             if (r.ok) { showNotification("✅ Impression lancée", "success"); await refreshKanban(); }
             else showNotification("❌ " + (r.error || "Erreur"), "error");
           };
+          if (isActionVisible(folderName, "mailDebutProduction")) actions.appendChild(btnMailDebut);
+          if (isActionVisible(folderName, "mailFinProduction")) actions.appendChild(btnMailFin);
           if (isActionVisible(folderName, "impressionLancee")) actions.appendChild(btnLancerImpression);
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
@@ -814,6 +818,8 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           if (isActionVisible(folderName, "faconnageTermine")) actions.appendChild(btnTerminee);
         }
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          if (isActionVisible(folderName, "mailDebutProduction")) actions.appendChild(btnMailDebut);
+          if (isActionVisible(folderName, "mailFinProduction")) actions.appendChild(btnMailFin);
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
       } else if (folderName === "Fin de production") {
@@ -840,6 +846,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
               btnTermine.disabled = true;
               btnTermine.textContent = "🔒 Verrouillé";
               if (window._calendar) window._calendar.refetchEvents();
+              if (window._submissionCalendar) window._submissionCalendar.refetchEvents();
             } else {
               showNotification("❌ " + (r.error || "Erreur"), "error");
             }
@@ -861,6 +868,8 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             else showNotification("❌ " + (r.error || "Erreur"), "error");
           };
           if (isActionVisible(folderName, "archiver")) actions.appendChild(btnArchiver);
+          if (isActionVisible(folderName, "mailDebutProduction")) actions.appendChild(btnMailDebut);
+          if (isActionVisible(folderName, "mailFinProduction")) actions.appendChild(btnMailFin);
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
 

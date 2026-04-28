@@ -370,6 +370,18 @@ app.MapPost("/api/jobs/delete", async (HttpContext ctx) =>
             try { File.WriteAllText(trashPath + ".meta", sourceFolder); } catch { }
         }
 
+        // Cascade: remove delivery (planning) entry for this file so it no longer appears
+        // in the calendar after deletion. Two calls are needed because:
+        // - DeleteDeliveryByFileNameOrPath covers filename-keyed records (current format)
+        // - DeleteDelivery covers path-keyed records (legacy format)
+        try
+        {
+            var fnKey = fileName.ToLowerInvariant();
+            BackendUtils.DeleteDeliveryByFileNameOrPath(fnKey);
+            BackendUtils.DeleteDelivery(fullPath);
+        }
+        catch (Exception exDel) { Console.WriteLine($"[WARN] Could not cascade-delete delivery for {fileName}: {exDel.Message}"); }
+
         return Results.Json(new { ok = true, message = "Fichier supprimé avec succès" });
     }
     catch (Exception ex)
@@ -532,10 +544,13 @@ app.MapPost("/api/jobs/lock", async (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = "fullPath manquant" });
 
         var fileName = Path.GetFileName(fullPath);
+        // Fabrication documents store fileName in lowercase via fnKey
+        var fileNameLower = fileName.ToLowerInvariant();
 
-        // Mark as locked in fabrication sheet
+        // Mark as locked in fabrication sheet (search by lowercase fileName or by fullPath)
         var fabCol = MongoDbHelper.GetFabricationsCollection();
         var fabFilter = Builders<BsonDocument>.Filter.Or(
+            Builders<BsonDocument>.Filter.Eq("fileName", fileNameLower),
             Builders<BsonDocument>.Filter.Eq("fileName", fileName),
             Builders<BsonDocument>.Filter.Eq("fullPath", fullPath)
         );
@@ -547,9 +562,12 @@ app.MapPost("/api/jobs/lock", async (HttpContext ctx) =>
         // Mark calendar delivery as completed (green)
         var deliveryCol = MongoDbHelper.GetCollection<BsonDocument>("deliveries");
         var fnNoExt = System.IO.Path.GetFileNameWithoutExtension(fileName);
+        var fnNoExtLower = fnNoExt.ToLowerInvariant();
         var deliveryFilter = Builders<BsonDocument>.Filter.Or(
+            Builders<BsonDocument>.Filter.Eq("fileName", fileNameLower),
             Builders<BsonDocument>.Filter.Eq("fileName", fileName),
-            Builders<BsonDocument>.Filter.Eq("fileName", fnNoExt)
+            Builders<BsonDocument>.Filter.Eq("fileName", fnNoExt),
+            Builders<BsonDocument>.Filter.Eq("fileName", fnNoExtLower)
         );
         var deliveryUpdate = Builders<BsonDocument>.Update.Set("completed", true).Set("color", "#22c55e");
         await deliveryCol.UpdateManyAsync(deliveryFilter, deliveryUpdate);

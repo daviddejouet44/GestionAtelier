@@ -57,9 +57,14 @@ async function updateGlobalAlert() {
 
   const esc = (s) => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
+  // Production delay alerts are only relevant when on the Production (kanban) tab
+  const isProductionTabActive = !document.getElementById("kanban-layout")?.classList.contains("hidden");
+
   try {
     const [delayResp, batResp] = await Promise.all([
-      fetch("/api/alerts/production-delay").then(r => r.json()).catch(() => ({ ok: false, groups: [] })),
+      isProductionTabActive
+        ? fetch("/api/alerts/production-delay").then(r => r.json()).catch(() => ({ ok: false, groups: [] }))
+        : Promise.resolve({ ok: false, groups: [] }),
       fetch("/api/alerts/bat-pending").then(r => r.json()).catch(() => [])
     ]);
 
@@ -207,6 +212,7 @@ async function showCalendar() {
   // Update calendar refs for settings.js
   window._calendar = calendar;
   calendar?.refetchEvents();
+  updateGlobalAlert();
 }
 
 function showSubmission() {
@@ -214,6 +220,7 @@ function showSubmission() {
   document.getElementById("submission").classList.remove("hidden");
   document.getElementById("btnViewSubmission").classList.add("active");
   initSubmissionView();
+  updateGlobalAlert();
 }
 
 function showProduction() {
