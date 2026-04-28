@@ -127,6 +127,13 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
         // Admin-only fields: only profile 3 can update TypeDocument, NombreFeuilles
         var isAdmin = (userProfile == 3);
 
+        // Normalize date-only fields to UTC midnight to prevent timezone day-shift on round-trip.
+        // JS date inputs always send YYYY-MM-DD strings; System.Text.Json parses them as
+        // DateTimeKind.Unspecified which the MongoDB C# driver treats as local time, causing a
+        // day offset on servers in non-UTC timezones. Forcing UTC midnight ensures stable storage.
+        static DateTime? ToUtcDateOnly(DateTime? d) =>
+            d.HasValue ? (DateTime?)DateTime.SpecifyKind(d.Value.Date, DateTimeKind.Utc) : null;
+
         var sheet = new FabricationSheet
         {
             FullPath = input.FullPath,
@@ -184,13 +191,16 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             Sortie           = input.Sortie,
             MailDevisFileName = input.MailDevisFileName ?? old?.MailDevisFileName,
             MailBatFileName   = input.MailBatFileName   ?? old?.MailBatFileName,
-            DateDepart      = input.DateDepart,
-            DateLivraison   = input.DateLivraison,
-            PlanningMachine = input.PlanningMachine,
-            DateReception         = input.DateReception,
-            DateEnvoi             = input.DateEnvoi,
-            DateProductionFinitions = input.DateProductionFinitions,
-            DateImpression        = input.DateImpression,
+            DateDepart      = ToUtcDateOnly(input.DateDepart),
+            DateLivraison   = ToUtcDateOnly(input.DateLivraison),
+            PlanningMachine = ToUtcDateOnly(input.PlanningMachine),
+            DateReception         = ToUtcDateOnly(input.DateReception),
+            // dateReceptionSouhaitee = same as dateReception (field labeled "Date de réception souhaitée")
+            // fallback to DateReception so the submission calendar can always find it
+            DateReceptionSouhaitee = ToUtcDateOnly(input.DateReceptionSouhaitee ?? input.DateReception),
+            DateEnvoi             = ToUtcDateOnly(input.DateEnvoi),
+            DateProductionFinitions = ToUtcDateOnly(input.DateProductionFinitions),
+            DateImpression        = ToUtcDateOnly(input.DateImpression),
             TempsProduitMinutes   = input.TempsProduitMinutes ?? old?.TempsProduitMinutes,
             JustifsClientsQuantite = input.JustifsClientsQuantite,
             JustifsClientsAdresse  = input.JustifsClientsAdresse,
@@ -1640,6 +1650,18 @@ app.MapGet("/api/alerts/production-delay", () =>
 
             var fileName = doc.Contains("fileName") ? doc["fileName"].AsString : "";
 
+            // Skip orphan records with no fileName — they can never map to an active file
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                try
+                {
+                    var cleanFilter = Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]);
+                    fabCol.UpdateOne(cleanFilter, Builders<BsonDocument>.Update.Set("excludeFromPlanning", true));
+                }
+                catch { }
+                continue;
+            }
+
             // Skip orphan records: file no longer present in any active kanban folder
             // This catches jobs deleted before the cascade-cleanup was introduced.
             if (!string.IsNullOrWhiteSpace(fileName) && !activeFileNames.Contains(fileName)
@@ -1696,6 +1718,83 @@ app.MapGet("/api/alerts/production-delay", () =>
     catch (Exception ex)
     {
         return Results.Json(new { ok = false, error = ex.Message, groups = new object[0] });
+    }
+});
+
+// ======================================================
+// ALERTS — PURGE ORPHANS (admin endpoint)
+// DELETE /api/alerts/purge-orphans
+// Marks all fabrication records that have no corresponding active file as excludeFromPlanning.
+// ======================================================
+app.MapDelete("/api/alerts/purge-orphans", (HttpContext ctx) =>
+{
+    try
+    {
+        // Admin-only
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            try
+            {
+                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+                var parts = decoded.Split(':');
+                if (parts.Length >= 3 && parts[2] != "3")
+                    return Results.Json(new { ok = false, error = "Admin only" });
+            }
+            catch { }
+        }
+
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+        var hotRoot = BackendUtils.HotfoldersRoot();
+        var activeFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (Directory.Exists(hotRoot))
+        {
+            foreach (var dir in Directory.GetDirectories(hotRoot))
+            {
+                try
+                {
+                    foreach (var file in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+                        activeFileNames.Add(Path.GetFileName(file));
+                }
+                catch { }
+            }
+        }
+
+        // Find all records not already excluded
+        var allDocs = fabCol.Find(
+            Builders<BsonDocument>.Filter.Or(
+                Builders<BsonDocument>.Filter.Exists("excludeFromPlanning", false),
+                Builders<BsonDocument>.Filter.Eq("excludeFromPlanning", false)
+            )
+        ).ToList();
+
+        int purgedCount = 0;
+        foreach (var doc in allDocs)
+        {
+            var fileName = doc.Contains("fileName") && doc["fileName"] != BsonNull.Value
+                ? doc["fileName"].AsString : "";
+
+            bool isOrphan = string.IsNullOrWhiteSpace(fileName)
+                || !activeFileNames.Contains(fileName);
+
+            if (isOrphan)
+            {
+                try
+                {
+                    fabCol.UpdateOne(
+                        Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]),
+                        Builders<BsonDocument>.Update.Set("excludeFromPlanning", true));
+                    purgedCount++;
+                }
+                catch { }
+            }
+        }
+
+        return Results.Json(new { ok = true, purgedCount });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
     }
 });
 
