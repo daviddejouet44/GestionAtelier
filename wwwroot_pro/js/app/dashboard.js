@@ -41,7 +41,9 @@ export async function loadDashboardData() {
   }
   if (currentUser && currentUser.profile === 3) {
     html += `<button id="prismasync-settings-btn" class="btn btn-sm" style="font-size:12px;">⚙️ Modifier l'URL PrismaSync</button>`;
-    html += `<button id="dashboard-image-upload-btn" class="btn btn-sm" style="font-size:12px;">🖼️ ${dashboardImageExists ? 'Modifier l\'image' : 'Ajouter une image'}</button>`;
+    // Use a label wrapping a hidden file input for maximum browser compatibility
+    html += `<label id="dashboard-image-upload-btn" class="btn btn-sm" style="font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;" for="dashboard-file-input">🖼️ ${dashboardImageExists ? 'Modifier l\'image' : 'Ajouter une image'}</label>`;
+    html += `<input type="file" id="dashboard-file-input" accept="image/*,.png,.jpg,.jpeg,.gif,.webp" style="display:none;" />`;
     if (dashboardImageExists) {
       html += `<button id="dashboard-image-delete-btn" class="btn btn-sm" style="font-size:12px;color:#ef4444;border-color:#ef4444;">🗑 Supprimer l\'image</button>`;
     }
@@ -88,44 +90,35 @@ export async function loadDashboardData() {
   const settingsBtn = contentEl.querySelector("#prismasync-settings-btn");
   if (settingsBtn) settingsBtn.onclick = () => _showPrismaSyncUrlEditor(contentEl);
 
-  const uploadBtn = contentEl.querySelector("#dashboard-image-upload-btn");
-  if (uploadBtn) {
-    uploadBtn.onclick = () => {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = ".png,.jpg,.jpeg,.gif,.webp";
-      input.style.display = "none";
-      document.body.appendChild(input);
-      input.addEventListener("change", async () => {
-        const file = input.files[0];
-        document.body.removeChild(input);
-        if (!file) return;
+  // File input change handler — triggers when user selects a file via the label/input
+  const fileInput = contentEl.querySelector("#dashboard-file-input");
+  if (fileInput) {
+    fileInput.onchange = async () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      const uploadLabel = contentEl.querySelector("#dashboard-image-upload-btn");
+      const originalText = uploadLabel ? uploadLabel.textContent : '';
+      if (uploadLabel) { uploadLabel.style.opacity = '0.6'; uploadLabel.style.pointerEvents = 'none'; uploadLabel.textContent = '⏳ Upload...'; }
+      try {
         const formData = new FormData();
         formData.append("file", file);
-        uploadBtn.disabled = true;
-        uploadBtn.textContent = "⏳ Upload...";
-        try {
-          const r = await fetch("/api/dashboard-image", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${authToken}` },
-            body: formData
-          }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
-          const originalText = dashboardImageExists ? "🖼️ Modifier l'image" : "🖼️ Ajouter une image";
-          if (r.ok) {
-            await loadDashboardData();
-          } else {
-            alert("Erreur : " + (r.error || ""));
-            uploadBtn.disabled = false;
-            uploadBtn.textContent = originalText;
-          }
-        } catch(e) {
-          const originalText = dashboardImageExists ? "🖼️ Modifier l'image" : "🖼️ Ajouter une image";
-          alert("Erreur réseau");
-          uploadBtn.disabled = false;
-          uploadBtn.textContent = originalText;
+        const r = await fetch("/api/dashboard-image", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${authToken}` },
+          body: formData
+        }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+        if (r.ok) {
+          await loadDashboardData();
+        } else {
+          alert("Erreur upload : " + (r.error || "Inconnu"));
+          if (uploadLabel) { uploadLabel.style.opacity = ''; uploadLabel.style.pointerEvents = ''; uploadLabel.textContent = originalText; }
         }
-      });
-      input.click();
+      } catch(e) {
+        alert("Erreur réseau lors de l'upload");
+        if (uploadLabel) { uploadLabel.style.opacity = ''; uploadLabel.style.pointerEvents = ''; uploadLabel.textContent = originalText; }
+      }
+      // Reset so the same file can be selected again
+      fileInput.value = '';
     };
   }
 

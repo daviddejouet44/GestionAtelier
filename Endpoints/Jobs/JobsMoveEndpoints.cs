@@ -382,6 +382,21 @@ app.MapPost("/api/jobs/delete", async (HttpContext ctx) =>
         }
         catch (Exception exDel) { Console.WriteLine($"[WARN] Could not cascade-delete delivery for {fileName}: {exDel.Message}"); }
 
+        // Cascade: mark fabrication record as excluded from planning so it no longer appears
+        // in production-delay or calendar alerts even if the MongoDB record still exists.
+        try
+        {
+            var fabCol = MongoDbHelper.GetFabricationsCollection();
+            var fabFilter = Builders<BsonDocument>.Filter.Or(
+                Builders<BsonDocument>.Filter.Eq("fileName", fileName.ToLowerInvariant()),
+                Builders<BsonDocument>.Filter.Eq("fileName", fileName),
+                Builders<BsonDocument>.Filter.Eq("fullPath", fullPath)
+            );
+            var fabUpdate = Builders<BsonDocument>.Update.Set("excludeFromPlanning", true);
+            fabCol.UpdateMany(fabFilter, fabUpdate);
+        }
+        catch (Exception exFab) { Console.WriteLine($"[WARN] Could not cascade-exclude fabrication for {fileName}: {exFab.Message}"); }
+
         return Results.Json(new { ok = true, message = "Fichier supprimé avec succès" });
     }
     catch (Exception ex)
@@ -524,6 +539,29 @@ app.MapPost("/api/jobs/archive", async (HttpContext ctx) =>
         }
         if (lastArchiveEx != null)
             throw lastArchiveEx;
+
+        // Cascade: mark fabrication record as excluded from planning so it no longer
+        // appears in production-delay alerts after the file has been archived.
+        try
+        {
+            var fabCol = MongoDbHelper.GetFabricationsCollection();
+            var fabFilter = Builders<BsonDocument>.Filter.Or(
+                Builders<BsonDocument>.Filter.Eq("fileName", fileName.ToLowerInvariant()),
+                Builders<BsonDocument>.Filter.Eq("fileName", fileName),
+                Builders<BsonDocument>.Filter.Eq("fullPath", fullPath)
+            );
+            var fabUpdate = Builders<BsonDocument>.Update.Set("excludeFromPlanning", true);
+            fabCol.UpdateMany(fabFilter, fabUpdate);
+        }
+        catch (Exception exFab) { Console.WriteLine($"[WARN] Could not cascade-exclude fabrication on archive for {fileName}: {exFab.Message}"); }
+
+        // Cascade: also remove delivery entry so the job no longer appears in planning calendars.
+        try
+        {
+            BackendUtils.DeleteDeliveryByFileNameOrPath(fileName.ToLowerInvariant());
+            BackendUtils.DeleteDelivery(fullPath);
+        }
+        catch (Exception exDel) { Console.WriteLine($"[WARN] Could not cascade-delete delivery on archive for {fileName}: {exDel.Message}"); }
 
         return Results.Json(new { ok = true });
     }

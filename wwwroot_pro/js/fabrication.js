@@ -155,9 +155,11 @@ function updateKeyDates() {
   const rlEl=document.getElementById('fab-retrait-livraison');
   const isRetrait=rlEl&&(rlEl.value||'').toLowerCase().includes('retrait');
   const cfg=isRetrait?_keyDatesConfig.retrait:_keyDatesConfig.livraison;
-  if(envEl) envEl.value=new Date(recTs-cfg.sendOffsetHours*3600000).toISOString().split('T')[0];
-  if(finEl) finEl.value=new Date(recTs-cfg.finitionsOffsetHours*3600000).toISOString().split('T')[0];
-  if(impEl) impEl.value=new Date(recTs-cfg.impressionOffsetHours*3600000).toISOString().split('T')[0];
+  // Only fill a date field if it is empty OR not protected (not loaded from DB / not manually set).
+  // This prevents overwriting dates entered by the user when another field (e.g. temps de production) changes.
+  if(envEl&&!envEl.dataset.protected) envEl.value=new Date(recTs-cfg.sendOffsetHours*3600000).toISOString().split('T')[0];
+  if(finEl&&!finEl.dataset.protected) finEl.value=new Date(recTs-cfg.finitionsOffsetHours*3600000).toISOString().split('T')[0];
+  if(impEl&&!impEl.dataset.protected) impEl.value=new Date(recTs-cfg.impressionOffsetHours*3600000).toISOString().split('T')[0];
 }
 
 function updateTempsProduction() {
@@ -415,9 +417,9 @@ function populateFabForm(d, faconnageOptions) {
   const finEl=document.getElementById('fab-date-finitions');
   const impEl=document.getElementById('fab-date-impression');
   if(recEl) recEl.value=d.dateReception?fmtDate(d.dateReception):'';
-  if(envEl) envEl.value=d.dateEnvoi?fmtDate(d.dateEnvoi):'';
-  if(finEl) finEl.value=d.dateProductionFinitions?fmtDate(d.dateProductionFinitions):'';
-  if(impEl) impEl.value=d.dateImpression?fmtDate(d.dateImpression):'';
+  if(envEl) { envEl.value=d.dateEnvoi?fmtDate(d.dateEnvoi):''; if(envEl.value) envEl.dataset.protected='1'; else delete envEl.dataset.protected; }
+  if(finEl) { finEl.value=d.dateProductionFinitions?fmtDate(d.dateProductionFinitions):''; if(finEl.value) finEl.dataset.protected='1'; else delete finEl.dataset.protected; }
+  if(impEl) { impEl.value=d.dateImpression?fmtDate(d.dateImpression):''; if(impEl.value) impEl.dataset.protected='1'; else delete impEl.dataset.protected; }
   const tpEl=document.getElementById('fab-temps-produit');
   if(tpEl) tpEl.value=d.tempsProduitMinutes!=null?d.tempsProduitMinutes:'';
   // If dateReception is set but calculated dates are missing, recalculate
@@ -439,7 +441,14 @@ function attachFormHandlers(fabCurrentFileName) {
     const id=e.target.id;
     if(id===gElId('quantite'))updateNombreFeuilles();
     if(id===gElId('dateDepart'))updateDateLivraison();
-    if(id==='fab-date-reception'||id==='fab-retrait-livraison')updateKeyDates();
+    if(id==='fab-date-reception'||id==='fab-retrait-livraison'){
+      // When the user explicitly changes the reception date or delivery type, remove protection
+      // from the calculated date fields so they are recalculated from the new anchor.
+      ['fab-date-envoi','fab-date-finitions','fab-date-impression'].forEach(fid=>{
+        const el=document.getElementById(fid);if(el)delete el.dataset.protected;
+      });
+      updateKeyDates();
+    }
     if(id===gElId('nombreFeuilles')){const el=gEl('nombreFeuilles');if(el)el._manuallyEdited=true;}
     if(id==='fab-temps-produit'){const el=document.getElementById('fab-temps-produit');if(el)el.dataset.manual=el.value?'1':'';}
     if(id===gElId('moteurImpression')||id===gElId('media1'))updateTempsProduction();
