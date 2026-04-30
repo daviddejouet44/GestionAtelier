@@ -22,9 +22,11 @@
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Dropbox.Api" Version="7.0.0" />
     <PackageReference Include="MongoDB.Driver" Version="3.7.1" />
     <PackageReference Include="QRCoder" Version="1.6.0" />
     <PackageReference Include="QuestPDF" Version="2024.3.1" />
     <PackageReference Include="MailKit" Version="4.3.0" />
+    <PackageReference Include="SSH.NET" Version="2024.2.0" />
   </ItemGroup>
 </Project>

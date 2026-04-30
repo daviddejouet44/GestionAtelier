@@ -39,6 +39,8 @@ var recycleDays    = int.TryParse(builder.Configuration["RecycleBin:DaysToKeep"]
 Directory.CreateDirectory(recyclePath);
 
 builder.Services.AddHostedService<GestionAtelier.Services.DailyReportService>();
+builder.Services.AddSingleton<GestionAtelier.Services.OrderSourcePollingService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<GestionAtelier.Services.OrderSourcePollingService>());
 
 var app = builder.Build();
 

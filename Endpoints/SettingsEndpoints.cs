@@ -33,5 +33,6 @@ public static class SettingsEndpointsExtensions
         app.MapAccountsEndpoints(recyclePath);
         app.MapFormConfigEndpoints();
         app.MapIntegrationsEndpoints();
+        app.MapOrderSourcesEndpoints();
     }
 }
