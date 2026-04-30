@@ -53,6 +53,9 @@ public static class SubmissionXmlEndpoints
                 if (pdfFiles.Count == 0 && xmlFiles.Count == 0)
                     return Results.Json(new { ok = false, error = "Aucun fichier PDF ou XML reçu" });
 
+                // Use a typed record for saved jobs to avoid dynamic
+                var savedJobs = new List<(string FileName, string FullPath)>();
+
                 // Load XML coupling + mapping config
                 var intCfg = MongoDbHelper.GetSettings<IntegrationsFullConfig>("integrations_full_config")
                              ?? new IntegrationsFullConfig();
@@ -106,7 +109,6 @@ public static class SubmissionXmlEndpoints
                 }
 
                 // --- Save PDF files to Soumission folder ---
-                var savedJobs = new List<object>();
 
                 if (pdfFiles.Count == 0 && xmlFiles.Count > 0)
                 {
@@ -153,7 +155,7 @@ public static class SubmissionXmlEndpoints
                     await using (var fs = new FileStream(destPath, FileMode.Create, FileAccess.Write))
                         await pdf.CopyToAsync(fs);
 
-                    savedJobs.Add(new { fileName = destFileName, fullPath = destPath });
+                    savedJobs.Add((destFileName, destPath));
                 }
 
                 // If mode is "create" and XML data available, auto-create fiche records
@@ -167,8 +169,7 @@ public static class SubmissionXmlEndpoints
                     fiche["importSource"] = "submission-xml";
 
                     // Attach PDF paths
-                    var pdfPaths = savedJobs.Select(j => ((dynamic)j).fullPath).ToList();
-                    if (pdfPaths.Count == 1) fiche["pdfPath"] = pdfPaths[0];
+                    if (savedJobs.Count == 1) fiche["pdfPath"] = savedJobs[0].FullPath;
 
                     var dedupValue = fichePrefill.ContainsKey(dedupKey) ? fichePrefill[dedupKey] : null;
                     bool isUpdate  = false;
@@ -205,7 +206,7 @@ public static class SubmissionXmlEndpoints
                 {
                     ok          = true,
                     fichePrefill,
-                    jobIds      = savedJobs,
+                    jobIds      = savedJobs.Select(j => new { fileName = j.FileName, fullPath = j.FullPath }).ToList(),
                     mode        = fichePrefill.Count > 0 ? xmlCouplingCfg.Mode : "upload-only",
                     xmlFileName
                 });
@@ -296,6 +297,8 @@ public static class SubmissionXmlEndpoints
 
                 if (body.TryGetProperty("erpSources", out var sourcesEl) && sourcesEl.ValueKind == JsonValueKind.Array)
                 {
+                    // Keep existing sources for credential preservation before resetting the list
+                    var existingSources = cfg.ErpSources ?? new List<ErpSourceConfig>();
                     cfg.ErpSources = new List<ErpSourceConfig>();
                     foreach (var s in sourcesEl.EnumerateArray())
                     {
@@ -317,8 +320,8 @@ public static class SubmissionXmlEndpoints
                             foreach (var prop in mapEl.EnumerateObject())
                                 src.Mapping[prop.Name] = prop.Value.GetString() ?? "";
                         }
-                        // Preserve existing password/token if not provided
-                        var existing = cfg.ErpSources.FirstOrDefault(x => x.Id == src.Id);
+                        // Preserve existing credentials if not provided in this request
+                        var existing = existingSources.FirstOrDefault(x => x.Id == src.Id);
                         if (existing != null)
                         {
                             if (string.IsNullOrEmpty(src.AuthPassword)) src.AuthPassword = existing.AuthPassword;

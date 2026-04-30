@@ -325,13 +325,17 @@ public static class ExternalLookupEndpoints
                 }
                 break;
             case "bearer":
-                if (!string.IsNullOrEmpty(src.AuthToken))
-                    http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", src.AuthToken);
+                // Use AuthToken if set, otherwise fall back to AuthPassword (UI stores it in authPassword field)
+                var bearerToken = !string.IsNullOrEmpty(src.AuthToken) ? src.AuthToken : src.AuthPassword;
+                if (!string.IsNullOrEmpty(bearerToken))
+                    http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
                 break;
             case "apikey":
                 var headerName = string.IsNullOrEmpty(src.AuthHeader) ? "X-Api-Key" : src.AuthHeader;
-                if (!string.IsNullOrEmpty(src.AuthToken))
-                    http.DefaultRequestHeaders.TryAddWithoutValidation(headerName, src.AuthToken);
+                // Use AuthToken if set, otherwise fall back to AuthPassword (UI stores it in authPassword field)
+                var apiKeyValue = !string.IsNullOrEmpty(src.AuthToken) ? src.AuthToken : src.AuthPassword;
+                if (!string.IsNullOrEmpty(apiKeyValue))
+                    http.DefaultRequestHeaders.TryAddWithoutValidation(headerName, apiKeyValue);
                 break;
         }
     }
