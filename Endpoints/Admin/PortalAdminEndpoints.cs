@@ -644,6 +644,7 @@ public static class PortalAdminEndpoints
                 label        = string.IsNullOrWhiteSpace(f.CustomLabel) ? f.Label : f.CustomLabel,
                 placeholder  = f.Placeholder,
                 type         = f.Type,
+                visible      = true, // always true here (we already filtered to Visible:true above)
                 required     = f.Required,
                 critical     = f.Critical,
                 defaultValue = f.DefaultValue,

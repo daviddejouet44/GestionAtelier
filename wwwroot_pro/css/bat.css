@@ -6,6 +6,14 @@
   flex-direction: column;
   gap: 16px;
 }
+/*
+ * FIX (Bug 1): overflow:hidden was clipping the thumbnail and actions
+ * column when the sidebar was open (container ~1000-1100px, viewport
+ * always > 900px so the old media-query never fired).
+ * Solution: use overflow:visible here and keep overflow:hidden only on
+ * the children that actually need border-radius clipping
+ * (.bat-card-status-bar, .bat-card-thumb).
+ */
 .bat-card-modern {
   background: var(--bg-card);
   border: 1px solid var(--border-light);
@@ -15,17 +23,18 @@
   flex-direction: column;
   box-shadow: var(--shadow-md);
   transition: box-shadow 0.2s, transform 0.18s;
-  overflow: hidden;
+  overflow: visible; /* was: hidden — caused clipping of thumb + actions */
 }
 .bat-card-modern:hover {
   box-shadow: var(--shadow-hover);
   transform: translateY(-2px);
 }
-/* Status bar at top of each card */
+/* Status bar at top of each card — keep overflow:hidden for border-radius clipping */
 .bat-card-status-bar {
   height: 4px;
   background: #e5e7eb;
   width: 100%;
+  overflow: hidden;
 }
 .bat-card-status-bar.bat-status-new { background: #93c5fd; }
 .bat-card-status-bar.bat-status-sent { background: #2563eb; }
@@ -56,8 +65,9 @@
   font-weight: 800;
   color: var(--primary);
   letter-spacing: 0.05em;
-  overflow: hidden;
+  overflow: hidden; /* needed for border-radius on the thumbnail image */
   flex-shrink: 0;
+  align-self: flex-start; /* stay at top when row wraps */
 }
 .bat-card-body {
   display: flex;
@@ -103,16 +113,19 @@
 }
 /* ---------------------------------------------------------
    Actions column (right side)
-   FIX: previously buttons on the right could be cut off when the
-   card was narrow (sidebar open / smaller screens). We now allow
-   the actions column to grow vertically and wrap below the body
-   on narrow viewports instead of overflowing horizontally.
+   FIX (Bug 1): align-self:stretch ensures the column stretches
+   to the full card height when flex-wrap is in play. Without it,
+   the column could be pushed out of the visible area before the
+   wrap triggers, because flex-shrink was not set and the body
+   (flex:1) would push it out. The breakpoint was also raised from
+   900px to 1280px so it fires even with a 280px sidebar open.
 --------------------------------------------------------- */
 .bat-card-actions {
   display: flex;
   flex-direction: column;
   gap: 8px;
   align-items: stretch;
+  align-self: stretch; /* stay in the row and stretch vertically */
   /* allow the column to shrink and wrap to a new row when needed */
   flex: 0 1 190px;
   min-width: 160px;
@@ -137,9 +150,11 @@
   transform: translateY(-1px);
 }
 
-/* On narrow viewports the actions column stacks under the body
-   so all buttons remain fully visible. */
-@media (max-width: 900px) {
+/* On viewports ≤ 1280px (sidebar open ~280px → container ≤ ~1100px)
+   the actions column wraps to a full-width row below the body
+   so all buttons remain fully visible.
+   Raised from 900px to 1280px to cover the sidebar-open case. */
+@media (max-width: 1280px) {
   .bat-card-actions {
     flex: 1 1 100%;
     flex-direction: row;
