@@ -139,6 +139,9 @@ public class OrderSourcePollingService : BackgroundService
             {
                 "sftp" => CreateSftpProvider(configJson),
                 "dropbox" => CreateDropboxProvider(configJson),
+                "googledrive" => CreateGoogleDriveProvider(configJson),
+                "box" => CreateBoxProvider(configJson, source.Id),
+                "onedrive" => CreateOneDriveProvider(configJson, source.Id),
                 _ => throw new NotSupportedException($"Type de source non supporté : {source.Type}")
             };
 
@@ -422,6 +425,53 @@ public class OrderSourcePollingService : BackgroundService
         var cfg = JsonSerializer.Deserialize<DropboxSourceConfig>(configJson)
                   ?? throw new Exception("Configuration Dropbox invalide");
         return new DropboxOrderSourceProvider(cfg, _logger);
+    }
+
+    private IOrderSourceProvider CreateGoogleDriveProvider(string configJson)
+    {
+        var cfg = JsonSerializer.Deserialize<GoogleDriveSourceConfig>(configJson)
+                  ?? throw new Exception("Configuration Google Drive invalide");
+        return new GoogleDriveOrderSourceProvider(cfg, _logger);
+    }
+
+    private IOrderSourceProvider CreateBoxProvider(string configJson, string sourceId)
+    {
+        var cfg = JsonSerializer.Deserialize<BoxSourceConfig>(configJson)
+                  ?? throw new Exception("Configuration Box invalide");
+        return new BoxOrderSourceProvider(cfg, _logger, async updatedCfg =>
+        {
+            try
+            {
+                var newJson = JsonSerializer.Serialize(updatedCfg);
+                var col = MongoDbHelper.GetCollection<BsonDocument>("order_sources");
+                col.UpdateOne(
+                    Builders<BsonDocument>.Filter.Eq("_id", sourceId),
+                    Builders<BsonDocument>.Update
+                        .Set("configEncrypted", CredentialCrypto.Encrypt(newJson))
+                        .Set("updatedAt", DateTime.UtcNow.ToString("O")));
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "[Box] Failed to persist refreshed tokens for source {Id}", sourceId); }
+        });
+    }
+
+    private IOrderSourceProvider CreateOneDriveProvider(string configJson, string sourceId)
+    {
+        var cfg = JsonSerializer.Deserialize<OneDriveSourceConfig>(configJson)
+                  ?? throw new Exception("Configuration OneDrive invalide");
+        return new OneDriveOrderSourceProvider(cfg, _logger, async updatedCfg =>
+        {
+            try
+            {
+                var newJson = JsonSerializer.Serialize(updatedCfg);
+                var col = MongoDbHelper.GetCollection<BsonDocument>("order_sources");
+                col.UpdateOne(
+                    Builders<BsonDocument>.Filter.Eq("_id", sourceId),
+                    Builders<BsonDocument>.Update
+                        .Set("configEncrypted", CredentialCrypto.Encrypt(newJson))
+                        .Set("updatedAt", DateTime.UtcNow.ToString("O")));
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "[OneDrive] Failed to persist refreshed tokens for source {Id}", sourceId); }
+        });
     }
 
     private static OrderSource? DeserializeSource(BsonDocument doc)

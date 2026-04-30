@@ -135,6 +135,12 @@ public static class OrderSourcesEndpoints
                         JsonSerializer.Deserialize<SftpSourceConfig>(configJson)!, logger),
                     "dropbox" => new DropboxOrderSourceProvider(
                         JsonSerializer.Deserialize<DropboxSourceConfig>(configJson)!, logger),
+                    "googledrive" => new GoogleDriveOrderSourceProvider(
+                        JsonSerializer.Deserialize<GoogleDriveSourceConfig>(configJson)!, logger),
+                    "box" => new BoxOrderSourceProvider(
+                        JsonSerializer.Deserialize<BoxSourceConfig>(configJson)!, logger, null),
+                    "onedrive" => new OneDriveOrderSourceProvider(
+                        JsonSerializer.Deserialize<OneDriveSourceConfig>(configJson)!, logger, null),
                     _ => throw new NotSupportedException($"Type non supporté : {source.Type}")
                 };
 
@@ -356,6 +362,386 @@ public static class OrderSourcesEndpoints
                 // Never expose the app secret
                 return Results.Json(new { ok = true, appKey = cfg.AppKey, callbackUrl = cfg.CallbackUrl,
                     hasAppSecret = !string.IsNullOrEmpty(cfg.AppSecret) });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // ── GET /api/integrations/google-drive/authorize ──────────────────────
+        app.MapGet("/api/integrations/google-drive/authorize", (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            try
+            {
+                var sourceId = ctx.Request.Query["sourceId"].ToString();
+                var gdCfg = MongoDbHelper.GetSettings<GoogleDriveGlobalConfig>("googleDriveGlobalConfig")
+                            ?? new GoogleDriveGlobalConfig();
+                if (string.IsNullOrEmpty(gdCfg.AppClientId))
+                    return Results.Json(new { ok = false, error = "Client ID Google Drive non configuré dans les paramètres globaux" });
+
+                var callbackUrl = string.IsNullOrEmpty(gdCfg.CallbackUrl)
+                    ? $"{ctx.Request.Scheme}://{ctx.Request.Host}/api/integrations/google-drive/callback"
+                    : gdCfg.CallbackUrl;
+
+                var state = Uri.EscapeDataString($"{sourceId}|{Guid.NewGuid():N}");
+                var url = GoogleDriveOrderSourceProvider.GetAuthorizationUrl(gdCfg.AppClientId, callbackUrl, state);
+                return Results.Json(new { ok = true, url });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // ── GET /api/integrations/google-drive/callback ───────────────────────
+        app.MapGet("/api/integrations/google-drive/callback", async (HttpContext ctx) =>
+        {
+            try
+            {
+                var code = ctx.Request.Query["code"].ToString();
+                var state = ctx.Request.Query["state"].ToString();
+                var error = ctx.Request.Query["error"].ToString();
+
+                if (!string.IsNullOrEmpty(error))
+                {
+                    ctx.Response.Redirect($"/pro/index.html#settings/integrations?googledrive_error={Uri.EscapeDataString(error)}");
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(code))
+                {
+                    ctx.Response.Redirect("/pro/index.html#settings/integrations?googledrive_error=code_missing");
+                    return;
+                }
+
+                var stateDecoded = Uri.UnescapeDataString(state);
+                var sourceId = stateDecoded.Contains('|') ? stateDecoded.Split('|')[0] : "";
+
+                var gdCfg = MongoDbHelper.GetSettings<GoogleDriveGlobalConfig>("googleDriveGlobalConfig")
+                            ?? new GoogleDriveGlobalConfig();
+                var callbackUrl = string.IsNullOrEmpty(gdCfg.CallbackUrl)
+                    ? $"{ctx.Request.Scheme}://{ctx.Request.Host}/api/integrations/google-drive/callback"
+                    : gdCfg.CallbackUrl;
+
+                var refreshToken = await GoogleDriveOrderSourceProvider.ExchangeCodeForRefreshTokenAsync(
+                    gdCfg.AppClientId, gdCfg.AppClientSecret, code, callbackUrl);
+
+                if (!string.IsNullOrEmpty(sourceId))
+                {
+                    var col = MongoDbHelper.GetCollection<BsonDocument>("order_sources");
+                    var doc = col.Find(Builders<BsonDocument>.Filter.Eq("_id", sourceId)).FirstOrDefault();
+                    if (doc != null)
+                    {
+                        var source = DeserializeSource(doc);
+                        if (source != null)
+                        {
+                            var existingCfgJson = CredentialCrypto.Decrypt(source.ConfigEncrypted);
+                            var gdSourceCfg = string.IsNullOrEmpty(existingCfgJson)
+                                ? new GoogleDriveSourceConfig()
+                                : JsonSerializer.Deserialize<GoogleDriveSourceConfig>(existingCfgJson) ?? new GoogleDriveSourceConfig();
+
+                            gdSourceCfg.AppClientId = gdCfg.AppClientId;
+                            gdSourceCfg.AppClientSecret = gdCfg.AppClientSecret;
+                            gdSourceCfg.RefreshToken = refreshToken;
+
+                            var newConfigJson = JsonSerializer.Serialize(gdSourceCfg);
+                            var update = Builders<BsonDocument>.Update
+                                .Set("configEncrypted", CredentialCrypto.Encrypt(newConfigJson))
+                                .Set("updatedAt", DateTime.UtcNow.ToString("O"));
+                            col.UpdateOne(Builders<BsonDocument>.Filter.Eq("_id", sourceId), update);
+                        }
+                    }
+                }
+
+                ctx.Response.Redirect($"/pro/index.html#settings/integrations?googledrive_ok=1&sourceId={Uri.EscapeDataString(sourceId)}");
+            }
+            catch (Exception ex)
+            {
+                ctx.Response.Redirect($"/pro/index.html#settings/integrations?googledrive_error={Uri.EscapeDataString(ex.Message)}");
+            }
+        });
+
+        // ── GET /api/integrations/google-drive/global-config ─────────────────
+        app.MapGet("/api/integrations/google-drive/global-config", (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            try
+            {
+                var cfg = MongoDbHelper.GetSettings<GoogleDriveGlobalConfig>("googleDriveGlobalConfig")
+                          ?? new GoogleDriveGlobalConfig();
+                return Results.Json(new { ok = true, appClientId = cfg.AppClientId, callbackUrl = cfg.CallbackUrl,
+                    hasAppClientSecret = !string.IsNullOrEmpty(cfg.AppClientSecret) });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // ── PUT /api/integrations/google-drive/global-config ─────────────────
+        app.MapPut("/api/integrations/google-drive/global-config", async (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            try
+            {
+                var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+                var cfg = MongoDbHelper.GetSettings<GoogleDriveGlobalConfig>("googleDriveGlobalConfig")
+                          ?? new GoogleDriveGlobalConfig();
+                if (body.TryGetProperty("appClientId", out var cid) && !string.IsNullOrEmpty(cid.GetString()))
+                    cfg.AppClientId = cid.GetString()!;
+                if (body.TryGetProperty("appClientSecret", out var csec) && !string.IsNullOrEmpty(csec.GetString()))
+                    cfg.AppClientSecret = csec.GetString()!;
+                if (body.TryGetProperty("callbackUrl", out var cb)) cfg.CallbackUrl = cb.GetString() ?? "";
+                MongoDbHelper.UpsertSettings("googleDriveGlobalConfig", cfg);
+                return Results.Json(new { ok = true });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // ── GET /api/integrations/box/authorize ───────────────────────────────
+        app.MapGet("/api/integrations/box/authorize", (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            try
+            {
+                var sourceId = ctx.Request.Query["sourceId"].ToString();
+                var boxCfg = MongoDbHelper.GetSettings<BoxGlobalConfig>("boxGlobalConfig")
+                             ?? new BoxGlobalConfig();
+                if (string.IsNullOrEmpty(boxCfg.AppClientId))
+                    return Results.Json(new { ok = false, error = "Client ID Box non configuré dans les paramètres globaux" });
+
+                var callbackUrl = string.IsNullOrEmpty(boxCfg.CallbackUrl)
+                    ? $"{ctx.Request.Scheme}://{ctx.Request.Host}/api/integrations/box/callback"
+                    : boxCfg.CallbackUrl;
+
+                var state = Uri.EscapeDataString($"{sourceId}|{Guid.NewGuid():N}");
+                var url = BoxOrderSourceProvider.GetAuthorizationUrl(boxCfg.AppClientId, callbackUrl, state);
+                return Results.Json(new { ok = true, url });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // ── GET /api/integrations/box/callback ────────────────────────────────
+        app.MapGet("/api/integrations/box/callback", async (HttpContext ctx) =>
+        {
+            try
+            {
+                var code = ctx.Request.Query["code"].ToString();
+                var state = ctx.Request.Query["state"].ToString();
+                var error = ctx.Request.Query["error"].ToString();
+
+                if (!string.IsNullOrEmpty(error))
+                {
+                    ctx.Response.Redirect($"/pro/index.html#settings/integrations?box_error={Uri.EscapeDataString(error)}");
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(code))
+                {
+                    ctx.Response.Redirect("/pro/index.html#settings/integrations?box_error=code_missing");
+                    return;
+                }
+
+                var stateDecoded = Uri.UnescapeDataString(state);
+                var sourceId = stateDecoded.Contains('|') ? stateDecoded.Split('|')[0] : "";
+
+                var boxCfg = MongoDbHelper.GetSettings<BoxGlobalConfig>("boxGlobalConfig")
+                             ?? new BoxGlobalConfig();
+                var callbackUrl = string.IsNullOrEmpty(boxCfg.CallbackUrl)
+                    ? $"{ctx.Request.Scheme}://{ctx.Request.Host}/api/integrations/box/callback"
+                    : boxCfg.CallbackUrl;
+
+                var (accessToken, refreshToken) = await BoxOrderSourceProvider.ExchangeCodeForTokensAsync(
+                    boxCfg.AppClientId, boxCfg.AppClientSecret, code, callbackUrl);
+
+                if (!string.IsNullOrEmpty(sourceId))
+                {
+                    var col = MongoDbHelper.GetCollection<BsonDocument>("order_sources");
+                    var doc = col.Find(Builders<BsonDocument>.Filter.Eq("_id", sourceId)).FirstOrDefault();
+                    if (doc != null)
+                    {
+                        var source = DeserializeSource(doc);
+                        if (source != null)
+                        {
+                            var existingCfgJson = CredentialCrypto.Decrypt(source.ConfigEncrypted);
+                            var boxSourceCfg = string.IsNullOrEmpty(existingCfgJson)
+                                ? new BoxSourceConfig()
+                                : JsonSerializer.Deserialize<BoxSourceConfig>(existingCfgJson) ?? new BoxSourceConfig();
+
+                            boxSourceCfg.AppClientId = boxCfg.AppClientId;
+                            boxSourceCfg.AppClientSecret = boxCfg.AppClientSecret;
+                            boxSourceCfg.AccessToken = accessToken;
+                            boxSourceCfg.RefreshToken = refreshToken;
+
+                            var newConfigJson = JsonSerializer.Serialize(boxSourceCfg);
+                            var update = Builders<BsonDocument>.Update
+                                .Set("configEncrypted", CredentialCrypto.Encrypt(newConfigJson))
+                                .Set("updatedAt", DateTime.UtcNow.ToString("O"));
+                            col.UpdateOne(Builders<BsonDocument>.Filter.Eq("_id", sourceId), update);
+                        }
+                    }
+                }
+
+                ctx.Response.Redirect($"/pro/index.html#settings/integrations?box_ok=1&sourceId={Uri.EscapeDataString(sourceId)}");
+            }
+            catch (Exception ex)
+            {
+                ctx.Response.Redirect($"/pro/index.html#settings/integrations?box_error={Uri.EscapeDataString(ex.Message)}");
+            }
+        });
+
+        // ── GET /api/integrations/box/global-config ───────────────────────────
+        app.MapGet("/api/integrations/box/global-config", (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            try
+            {
+                var cfg = MongoDbHelper.GetSettings<BoxGlobalConfig>("boxGlobalConfig")
+                          ?? new BoxGlobalConfig();
+                return Results.Json(new { ok = true, appClientId = cfg.AppClientId, callbackUrl = cfg.CallbackUrl,
+                    hasAppClientSecret = !string.IsNullOrEmpty(cfg.AppClientSecret) });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // ── PUT /api/integrations/box/global-config ───────────────────────────
+        app.MapPut("/api/integrations/box/global-config", async (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            try
+            {
+                var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+                var cfg = MongoDbHelper.GetSettings<BoxGlobalConfig>("boxGlobalConfig")
+                          ?? new BoxGlobalConfig();
+                if (body.TryGetProperty("appClientId", out var cid) && !string.IsNullOrEmpty(cid.GetString()))
+                    cfg.AppClientId = cid.GetString()!;
+                if (body.TryGetProperty("appClientSecret", out var csec) && !string.IsNullOrEmpty(csec.GetString()))
+                    cfg.AppClientSecret = csec.GetString()!;
+                if (body.TryGetProperty("callbackUrl", out var cb)) cfg.CallbackUrl = cb.GetString() ?? "";
+                MongoDbHelper.UpsertSettings("boxGlobalConfig", cfg);
+                return Results.Json(new { ok = true });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // ── GET /api/integrations/onedrive/authorize ──────────────────────────
+        app.MapGet("/api/integrations/onedrive/authorize", (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            try
+            {
+                var sourceId = ctx.Request.Query["sourceId"].ToString();
+                var driveType = ctx.Request.Query["driveType"].ToString();
+                var odCfg = MongoDbHelper.GetSettings<OneDriveGlobalConfig>("oneDriveGlobalConfig")
+                            ?? new OneDriveGlobalConfig();
+                if (string.IsNullOrEmpty(odCfg.AppClientId))
+                    return Results.Json(new { ok = false, error = "Client ID OneDrive non configuré dans les paramètres globaux" });
+
+                var callbackUrl = string.IsNullOrEmpty(odCfg.CallbackUrl)
+                    ? $"{ctx.Request.Scheme}://{ctx.Request.Host}/api/integrations/onedrive/callback"
+                    : odCfg.CallbackUrl;
+
+                var state = Uri.EscapeDataString($"{sourceId}|{Guid.NewGuid():N}");
+                var url = OneDriveOrderSourceProvider.GetAuthorizationUrl(
+                    odCfg.AppClientId, odCfg.TenantId, callbackUrl, state, driveType ?? "personal");
+                return Results.Json(new { ok = true, url });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // ── GET /api/integrations/onedrive/callback ───────────────────────────
+        app.MapGet("/api/integrations/onedrive/callback", async (HttpContext ctx) =>
+        {
+            try
+            {
+                var code = ctx.Request.Query["code"].ToString();
+                var state = ctx.Request.Query["state"].ToString();
+                var error = ctx.Request.Query["error"].ToString();
+
+                if (!string.IsNullOrEmpty(error))
+                {
+                    ctx.Response.Redirect($"/pro/index.html#settings/integrations?onedrive_error={Uri.EscapeDataString(error)}");
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(code))
+                {
+                    ctx.Response.Redirect("/pro/index.html#settings/integrations?onedrive_error=code_missing");
+                    return;
+                }
+
+                var stateDecoded = Uri.UnescapeDataString(state);
+                var sourceId = stateDecoded.Contains('|') ? stateDecoded.Split('|')[0] : "";
+
+                var odCfg = MongoDbHelper.GetSettings<OneDriveGlobalConfig>("oneDriveGlobalConfig")
+                            ?? new OneDriveGlobalConfig();
+                var callbackUrl = string.IsNullOrEmpty(odCfg.CallbackUrl)
+                    ? $"{ctx.Request.Scheme}://{ctx.Request.Host}/api/integrations/onedrive/callback"
+                    : odCfg.CallbackUrl;
+
+                var (accessToken, refreshToken) = await OneDriveOrderSourceProvider.ExchangeCodeForTokensAsync(
+                    odCfg.AppClientId, odCfg.AppClientSecret, odCfg.TenantId, code, callbackUrl);
+
+                if (!string.IsNullOrEmpty(sourceId))
+                {
+                    var col = MongoDbHelper.GetCollection<BsonDocument>("order_sources");
+                    var doc = col.Find(Builders<BsonDocument>.Filter.Eq("_id", sourceId)).FirstOrDefault();
+                    if (doc != null)
+                    {
+                        var source = DeserializeSource(doc);
+                        if (source != null)
+                        {
+                            var existingCfgJson = CredentialCrypto.Decrypt(source.ConfigEncrypted);
+                            var odSourceCfg = string.IsNullOrEmpty(existingCfgJson)
+                                ? new OneDriveSourceConfig()
+                                : JsonSerializer.Deserialize<OneDriveSourceConfig>(existingCfgJson) ?? new OneDriveSourceConfig();
+
+                            odSourceCfg.AppClientId = odCfg.AppClientId;
+                            odSourceCfg.AppClientSecret = odCfg.AppClientSecret;
+                            odSourceCfg.TenantId = odCfg.TenantId;
+                            odSourceCfg.RefreshToken = refreshToken;
+
+                            var newConfigJson = JsonSerializer.Serialize(odSourceCfg);
+                            var update = Builders<BsonDocument>.Update
+                                .Set("configEncrypted", CredentialCrypto.Encrypt(newConfigJson))
+                                .Set("updatedAt", DateTime.UtcNow.ToString("O"));
+                            col.UpdateOne(Builders<BsonDocument>.Filter.Eq("_id", sourceId), update);
+                        }
+                    }
+                }
+
+                ctx.Response.Redirect($"/pro/index.html#settings/integrations?onedrive_ok=1&sourceId={Uri.EscapeDataString(sourceId)}");
+            }
+            catch (Exception ex)
+            {
+                ctx.Response.Redirect($"/pro/index.html#settings/integrations?onedrive_error={Uri.EscapeDataString(ex.Message)}");
+            }
+        });
+
+        // ── GET /api/integrations/onedrive/global-config ──────────────────────
+        app.MapGet("/api/integrations/onedrive/global-config", (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            try
+            {
+                var cfg = MongoDbHelper.GetSettings<OneDriveGlobalConfig>("oneDriveGlobalConfig")
+                          ?? new OneDriveGlobalConfig();
+                return Results.Json(new { ok = true, appClientId = cfg.AppClientId, tenantId = cfg.TenantId,
+                    callbackUrl = cfg.CallbackUrl, hasAppClientSecret = !string.IsNullOrEmpty(cfg.AppClientSecret) });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // ── PUT /api/integrations/onedrive/global-config ──────────────────────
+        app.MapPut("/api/integrations/onedrive/global-config", async (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            try
+            {
+                var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+                var cfg = MongoDbHelper.GetSettings<OneDriveGlobalConfig>("oneDriveGlobalConfig")
+                          ?? new OneDriveGlobalConfig();
+                if (body.TryGetProperty("appClientId", out var cid) && !string.IsNullOrEmpty(cid.GetString()))
+                    cfg.AppClientId = cid.GetString()!;
+                if (body.TryGetProperty("appClientSecret", out var csec) && !string.IsNullOrEmpty(csec.GetString()))
+                    cfg.AppClientSecret = csec.GetString()!;
+                if (body.TryGetProperty("tenantId", out var tid)) cfg.TenantId = tid.GetString() ?? "common";
+                if (body.TryGetProperty("callbackUrl", out var cb)) cfg.CallbackUrl = cb.GetString() ?? "";
+                MongoDbHelper.UpsertSettings("oneDriveGlobalConfig", cfg);
+                return Results.Json(new { ok = true });
             }
             catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
         });
