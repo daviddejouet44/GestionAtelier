@@ -843,13 +843,13 @@ function setupProfileUI() {
   const profileLabel = profileLabels[currentUser.profile] || `Profil ${currentUser.profile}`;
   userInfo.textContent = `${currentUser.name} (${profileLabel})`;
 
-  // Profile 4 (Façonnage): read-only access, only sees kanban (not submission/settings)
+  // Profile 4 (Façonnage/Finitions): sees plannings but NOT BAT and Rapport
   if (currentUser.profile === 4) {
     if (btnRecycle) btnRecycle.style.display = "none";
     if (btnDossiers) btnDossiers.style.display = "inline-block";
     if (btnDashboard) btnDashboard.style.display = "none";
-    if (btnBat) btnBat.style.display = "inline-block";
-    if (btnRapport) btnRapport.style.display = "inline-block";
+    if (btnBat) btnBat.style.display = "none";
+    if (btnRapport) btnRapport.style.display = "none";
     if (btnSubmission) btnSubmission.style.display = "none";
     if (btnSettings) btnSettings.style.display = "none";
     const btnGlobalProd = document.getElementById("btnViewGlobalProd");
@@ -930,9 +930,9 @@ function setupKanbanActions() {
     btnCalendar.style.display = "inline-block";
     btnSubmission.style.display = "inline-block";
   } else if (currentUser.profile === 4) {
-    // Profile 4 (Façonnage): kanban read-only, no submission, no calendar
+    // Profile 4 (Finitions): kanban read-only + calendar (planning), no submission
     btnKanban.style.display = "inline-block";
-    btnCalendar.style.display = "none";
+    btnCalendar.style.display = "inline-block";
     if (btnSubmission) btnSubmission.style.display = "none";
   } else if (currentUser.profile === 5) {
     // Profile 5 (Lecture plannings): only calendar, read-only
@@ -1652,6 +1652,8 @@ async function initApp() {
 
     if (currentUser.profile === 1) {
       showSubmission();
+    } else if (currentUser.profile === 5) {
+      showCalendar();
     } else {
       showKanban();
     }
@@ -1681,11 +1683,7 @@ document.getElementById("btn-logout").onclick = logout;
 document.getElementById("btn-settings").onclick = showSettings;
 
 document.getElementById("btnViewKanban").onclick = () => {
-  if (currentUser && currentUser.profile === 1) {
-    showProduction();
-  } else {
-    showKanban();
-  }
+  showKanban();
 };
 
 document.getElementById("btnViewCalendar").onclick = () => {

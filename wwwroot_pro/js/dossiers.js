@@ -33,12 +33,36 @@ export async function initDossiersView() {
             <button id="dossiers-view-list" title="Vue liste" style="padding:5px 10px;border:none;border-radius:6px;background:${_dossiersViewMode==='list'?'white':'transparent'};cursor:pointer;font-size:16px;line-height:1;box-shadow:${_dossiersViewMode==='list'?'0 1px 3px rgba(0,0,0,0.15)':'none'};">☰</button>
           </div>
           <button id="dossiers-refresh" class="btn btn-primary">Rafraîchir</button>
+          <button id="dossiers-export-xml" class="btn" title="Exporter toutes les commandes en XML">📤 XML</button>
+          <button id="dossiers-export-csv" class="btn" title="Exporter toutes les commandes en CSV">📤 CSV</button>
         </div>
       </div>
       <div id="dossiers-list"><p style="color:#6b7280;">Chargement...</p></div>
     </div>
   `;
   document.getElementById("dossiers-refresh").onclick = loadDossiersList;
+  // Export buttons
+  const makeExportBtn = (btnId, fmt) => {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.onclick = async () => {
+      btn.disabled = true; btn.textContent = '⏳';
+      try {
+        const resp = await fetch(`/api/integrations/export?format=${fmt}`, { headers: { 'Authorization': `Bearer ${authToken}` } });
+        if (!resp.ok) { showNotification('❌ Erreur export', 'error'); return; }
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `export-commandes.${fmt}`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showNotification(`✅ Export ${fmt.toUpperCase()} téléchargé`, 'success');
+      } catch(e) { showNotification('❌ Erreur réseau', 'error'); }
+      finally { btn.disabled = false; btn.textContent = fmt === 'xml' ? '📤 XML' : '📤 CSV'; }
+    };
+  };
+  makeExportBtn('dossiers-export-xml', 'xml');
+  makeExportBtn('dossiers-export-csv', 'csv');
   document.getElementById("dossiers-sort").value = _dossiersSortMode;
   document.getElementById("dossiers-sort").onchange = (e) => {
     _dossiersSortMode = e.target.value;

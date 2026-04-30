@@ -538,6 +538,34 @@ export function initFabrication() {
     if(typeof submissionCalendar!=='undefined'&&submissionCalendar)submissionCalendar.refetchEvents();
   };
   if(fabPrisma)fabPrisma.style.display='none';
+
+  // Export button: download fiche as XML or CSV
+  const fabExport = document.getElementById('fab-export');
+  if (fabExport) {
+    fabExport.onclick = async () => {
+      if (!fabCurrentPath) return;
+      // Show a simple format picker
+      const fmt = window.confirm('Exporter en XML ? (OK = XML, Annuler = CSV)') ? 'xml' : 'csv';
+      const fn = fnKey(fabCurrentPath);
+      try {
+        const resp = await fetch(
+          `/api/integrations/export?format=${fmt}&fileName=${encodeURIComponent(fn)}&limit=1`,
+          { headers: { 'Authorization': `Bearer ${authToken}` } }
+        );
+        if (!resp.ok) { showNotification('❌ Erreur export', 'error'); return; }
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `export-${fn}.${fmt}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showNotification(`✅ Export ${fmt.toUpperCase()} téléchargé`, 'success');
+      } catch(e) { showNotification('❌ Erreur réseau', 'error'); }
+    };
+  }
 }
 
 export async function openFabrication(fullPath) {
