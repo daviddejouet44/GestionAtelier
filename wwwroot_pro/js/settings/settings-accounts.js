@@ -1,9 +1,9 @@
 import { authToken, showNotification, esc } from '../core.js';
 
-const PROFILE_LABELS = { 1: "Soumission", 2: "Opérateur", 3: "Admin", 4: "Finitions" };
+const PROFILE_LABELS = { 1: "Soumission", 2: "Opérateur", 3: "Admin", 4: "Finitions", 5: "Lecture plannings", 6: "Opérateur restreint" };
 
 function profileOptions(selected) {
-  return [1,2,3,4].map(p => `<option value="${p}" ${selected === p ? 'selected' : ''}>${p} — ${PROFILE_LABELS[p] || p}</option>`).join("");
+  return [1,2,3,4,5,6].map(p => `<option value="${p}" ${selected === p ? 'selected' : ''}>${p} — ${PROFILE_LABELS[p] || p}</option>`).join("");
 }
 
 export async function renderSettingsAccounts(panel) {
@@ -20,6 +20,8 @@ export async function renderSettingsAccounts(panel) {
           <option value="2">Profil 2 — Opérateur</option>
           <option value="3">Profil 3 — Admin</option>
           <option value="4">Profil 4 — Finitions (lecture seule)</option>
+          <option value="5">Profil 5 — Lecture plannings (lecture seule)</option>
+          <option value="6">Profil 6 — Opérateur restreint (sans modif. planning/dates)</option>
         </select>
         <button id="sa-create" class="btn btn-primary">Créer</button>
       </div>

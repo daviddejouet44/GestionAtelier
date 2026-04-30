@@ -137,19 +137,15 @@ function renderGlobalProdTable(jobs, assignMap, deliveryMap, sortMode, wrap) {
     const operatorName = assignMap[fileKey] || "";
     const deliveryDate = deliveryMap[fileKey] || "";
 
-    // Build stage display label, including BAT sub-status when available
-    const baseStageLabel = getStageLabelDisplay(job.currentStage) || '—';
-    let stageDisplay = baseStageLabel;
+    // Build stage display label, including BAT sub-status when available (centralized in constants.js)
+    const stageDisplay = getStageLabelDisplay(job.currentStage, job.batStatus) || '—';
     let stageBadgeStyle = "background:#dbeafe;color:#1e40af;"; // default blue
     if (job.currentStage === 'BAT') {
       if (job.batStatus === 'refuse') {
-        stageDisplay = 'BAT — ❌ Refusé';
         stageBadgeStyle = "background:#fee2e2;color:#991b1b;";
       } else if (job.batStatus === 'valide') {
-        stageDisplay = 'BAT — ✅ Validé';
         stageBadgeStyle = "background:#dcfce7;color:#166534;";
       } else if (job.batStatus === 'envoye') {
-        stageDisplay = 'BAT — 📤 Envoyé';
         stageBadgeStyle = "background:#fef9c3;color:#92400e;";
       }
     }

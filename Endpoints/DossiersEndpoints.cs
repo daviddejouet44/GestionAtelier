@@ -288,8 +288,8 @@ app.MapGet("/api/production/summary", () =>
         var fabCol = MongoDbHelper.GetFabricationsCollection();
         var allFabs = fabCol.Find(new BsonDocument()).ToList();
 
-        // Load BAT tracking collection for status lookup
-        var batTrackCol = MongoDbHelper.GetCollection<BsonDocument>("batTracking");
+        // Load BAT status collection (batStatus) for status lookup
+        var batTrackCol = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
         var allBatTracking = batTrackCol.Find(new BsonDocument()).ToList();
 
         // Build a set of BAT_ files found in the BAT folder for quick lookup
@@ -339,8 +339,13 @@ app.MapGet("/api/production/summary", () =>
                 if (effectiveStage == "BAT")
                 {
                     var batDoc = allBatTracking
-                        .Where(d => d.Contains("fileName") && d["fileName"] != BsonNull.Value &&
-                                    string.Equals(d["fileName"].AsString, fName, StringComparison.OrdinalIgnoreCase))
+                        .Where(d => {
+                            if (!d.Contains("fullPath") || d["fullPath"] == BsonNull.Value) return false;
+                            var docFn = Path.GetFileName(d["fullPath"].AsString);
+                            // Strip BAT_ prefix used in the BAT folder
+                            if (docFn.StartsWith("BAT_", StringComparison.OrdinalIgnoreCase)) docFn = docFn.Substring(4);
+                            return string.Equals(docFn, fName, StringComparison.OrdinalIgnoreCase);
+                        })
                         .OrderByDescending(d => d["_id"].AsObjectId.CreationTime)
                         .FirstOrDefault();
                     if (batDoc != null)
