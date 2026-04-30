@@ -183,7 +183,7 @@ public static class PortalAuthEndpoints
                 {
                     var settings = MongoDbHelper.GetSettings<PortalSettings>("portalSettings") ?? new PortalSettings();
                     var portalUrl = string.IsNullOrWhiteSpace(settings.PortalUrl) ? "" : settings.PortalUrl.TrimEnd('/');
-                    var resetLink = $"{portalUrl}/portal/reset-password.html?token={token}";
+                    var resetLink = $"{portalUrl}/portal/login.html?token={token}";
                     var tpl = MongoDbHelper.GetSettings<PortalEmailTemplate>("portalEmailTemplate_password_reset");
                     var subject = tpl?.Subject ?? "Réinitialisation de votre mot de passe";
                     var body = (tpl?.Body ?? "Bonjour {clientName},\n\nVoici le lien pour réinitialiser votre mot de passe (valable 2h) :\n{resetLink}\n\nCordialement,")
