@@ -5,7 +5,7 @@ import { renderSettingsSchedule, getFrenchPublicHolidays } from './settings/sett
 import { renderSettingsPaths } from './settings/settings-paths.js';
 import { renderSettingsPreflight } from './settings/settings-preflight.js';
 import { renderSettingsKanbanColumns } from './settings/settings-kanban.js';
-import { renderSettingsBatConfig, renderSettingsIntegrations, renderSettingsBatCommand, renderSettingsActionButtons } from './settings/settings-bat.js';
+import { renderSettingsBatConfig, renderSettingsBatCommand, renderSettingsActionButtons } from './settings/settings-bat.js';
 import { renderSettingsPrintEngines, refreshPrintEnginesPanel, extractEngineName } from './settings/settings-engines.js';
 import { renderSettingsWorkTypes, refreshWorkTypesPanel } from './settings/settings-work-types.js';
 import { renderSettingsPrintRouting, refreshPrintRoutingPanel, renderSettingsHotfolderRouting, refreshHotfolderRoutingPanel } from './settings/settings-routing.js';
@@ -117,7 +117,6 @@ export async function loadSettingsPanel(tabName, panelEl) {
     case "paths": await renderSettingsPaths(panelEl); break;
     case "preflight": await renderSettingsPreflight(panelEl); break;
     case "kanban-columns": await renderSettingsKanbanColumns(panelEl); break;
-    case "integrations":
     case "bat-config": await renderSettingsBatConfig(panelEl); break;
     case "print-engines": await renderSettingsPrintEngines(panelEl); break;
     case "work-types": await renderSettingsWorkTypes(panelEl); break;
@@ -158,10 +157,10 @@ async function renderSettingsImapConfig(panel) {
 
     <div class='settings-section-card' style='background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px 16px;margin-bottom:16px;'>
       <h4 style='margin:0 0 8px;font-size:13px;color:#854d0e;'>⚠️ Gmail — Mot de passe d'application</h4>
-      <p style='font-size:12px;color:#713f12;margin:0 0 6px;'>Google a progressivement désactivé l'accès IMAP par mot de passe d'application pour les nouveaux comptes. Si la connexion échoue, essayez :</p>
+      <p style='font-size:12px;color:#713f12;margin:0 0 6px;'>Google a progressivement désactivé l'accès IMAP par mot de passe d'application pour les nouveaux comptes. Si la connexion échoue, suivez ces étapes :</p>
       <ul style='font-size:12px;color:#713f12;margin:0;padding-left:18px;'>
         <li>Serveur : <code>imap.gmail.com</code>, Port : <code>993</code>, SSL activé</li>
-        <li>Activer la vérification en 2 étapes sur votre compte Google, puis générer un <strong>mot de passe d'application</strong> dans <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:#1d4ed8;">myaccount.google.com/apppasswords</a></li>
+        <li>Activer la vérification en 2 étapes sur votre compte Google, puis générer un <strong>mot de passe d'application</strong> dans <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">Google App Passwords</a></li>
         <li>Utiliser le mot de passe d'application à 16 caractères comme mot de passe ici (saisissez-le <strong>sans espaces</strong>)</li>
         <li>Si cela ne fonctionne pas, Google peut bloquer l'accès IMAP — une intégration OAuth2 sera nécessaire dans une prochaine version.</li>
       </ul>
