@@ -16,6 +16,46 @@ const API = {
 function authH() { return { 'Authorization': `Bearer ${authToken}` }; }
 function authJsonH() { return { ...authH(), 'Content-Type': 'application/json' }; }
 
+/**
+ * Loads the list of production-sheet fields from /api/settings/form-config
+ * and returns them as an array of { key, label } objects.
+ * System anchor fields (numeroDossier, referenceCommande) are always prepended.
+ * Falls back to the hardcoded list on any error so existing mappings are preserved.
+ * @returns {Promise<Array<{key: string, label: string}>>}
+ */
+async function loadFicheFields() {
+  const SYSTEM_FIELDS = [
+    { key: 'numeroDossier',    label: 'Numéro de dossier' },
+    { key: 'referenceCommande', label: 'Référence commande' },
+  ];
+  const FALLBACK_FIELDS = [
+    { key: 'numeroDossier',            label: 'Numéro de dossier' },
+    { key: 'client',                   label: 'Client' },
+    { key: 'nomClient',                label: 'Nom client' },
+    { key: 'typeTravail',              label: 'Type de travail' },
+    { key: 'quantite',                 label: 'Quantité' },
+    { key: 'formatFini',               label: 'Format fini' },
+    { key: 'moteurImpression',         label: 'Moteur d\'impression' },
+    { key: 'operateur',                label: 'Opérateur' },
+    { key: 'dateReceptionSouhaitee',   label: 'Date réception souhaitée' },
+    { key: 'dateLivraisonSouhaitee',   label: 'Date livraison souhaitée' },
+    { key: 'retraitLivraison',         label: 'Retrait / Livraison' },
+    { key: 'commentaire',              label: 'Commentaire' },
+    { key: 'referenceCommande',        label: 'Référence commande' },
+  ];
+  try {
+    const r = await fetch('/api/settings/form-config', { headers: authH() }).then(r => r.json());
+    if (!r || !r.fields || !r.fields.length) return FALLBACK_FIELDS;
+    // Build deduplicated list: system anchors first, then all config fields
+    const systemKeys = new Set(SYSTEM_FIELDS.map(f => f.key));
+    const configFields = r.fields.map(f => ({ key: f.id || '', label: f.label || f.id || '' }))
+                                  .filter(f => f.key && !systemKeys.has(f.key));
+    return [...SYSTEM_FIELDS, ...configFields];
+  } catch {
+    return FALLBACK_FIELDS;
+  }
+}
+
 export async function renderSettingsIntegrations(panel) {
   panel.innerHTML = `
     <h3>Intégrations — Import &amp; Export</h3>
@@ -75,16 +115,22 @@ export async function renderSettingsIntegrations(panel) {
 // ======================================================
 // XML IMPORT
 // ======================================================
-function renderXmlImportTab(panel, cfg) {
+async function renderXmlImportTab(panel, cfg) {
   const xmlCfg = cfg.xmlImport || {};
   const mapping = xmlCfg.mapping || {};
-  const FICHE_FIELDS = [
-    'numeroDossier','client','nomClient','typeTravail','quantite','formatFini',
-    'moteurImpression','operateur','dateReceptionSouhaitee','dateLivraisonSouhaitee',
-    'retraitLivraison','commentaire','referenceCommande'
-  ];
+
+  // Load dynamic fields from form-config (falls back to hardcoded list on error)
+  const ficheFields = await loadFicheFields();
 
   panel.innerHTML = `
+    <div class="settings-section-card" style="background:#f0f9ff;border:1px solid #bae6fd;margin-bottom:16px;">
+      <p style="margin:0;font-size:13px;color:#0369a1;">
+        💡 Les champs disponibles correspondent à ceux configurés dans
+        <strong>Paramétrages → Fiche de production</strong>.
+        Ajoutez-y vos champs personnalisés pour pouvoir les mapper ici.
+      </p>
+    </div>
+
     <div class="settings-section-card">
       <h4>Import XML manuel</h4>
       <p style="color:#6b7280;font-size:13px;">Importez un fichier XML pour pré-remplir automatiquement une fiche de production.</p>
@@ -111,7 +157,7 @@ function renderXmlImportTab(panel, cfg) {
       <h4>Clé de déduplication</h4>
       <p style="color:#6b7280;font-size:13px;">Champ utilisé pour éviter les doublons (mise à jour si la clé existe déjà).</p>
       <select id="xml-dedup-key" class="settings-input" style="min-width:200px;">
-        ${FICHE_FIELDS.map(f => `<option value="${f}" ${(xmlCfg.dedupKey||'referenceCommande')===f?'selected':''}>${f}</option>`).join('')}
+        ${ficheFields.map(f => `<option value="${esc(f.key)}" ${(xmlCfg.dedupKey||'referenceCommande')===f.key?'selected':''}>${esc(f.key)} — ${esc(f.label)}</option>`).join('')}
       </select>
       <button id="xml-dedup-save" class="btn btn-primary" style="margin-left:10px;">Enregistrer</button>
       <div id="xml-dedup-msg" style="font-size:13px;margin-top:6px;"></div>
@@ -120,21 +166,21 @@ function renderXmlImportTab(panel, cfg) {
 
   // Build mapping rows
   const rowsEl = panel.querySelector('#xml-mapping-rows');
-  FICHE_FIELDS.forEach(f => {
+  ficheFields.forEach(f => {
     rowsEl.innerHTML += `
       <div style="display:flex;flex-direction:column;gap:4px;">
-        <label style="font-size:12px;font-weight:600;color:#374151;">${f}</label>
-        <input type="text" id="xml-map-${f}" placeholder="Balise XML source" class="settings-input"
-          value="${esc(mapping[f] || '')}" style="font-size:12px;padding:5px 8px;" />
+        <label style="font-size:12px;font-weight:600;color:#374151;">${esc(f.key)}<span style="font-weight:400;color:#6b7280;margin-left:4px;">— ${esc(f.label)}</span></label>
+        <input type="text" id="xml-map-${esc(f.key)}" placeholder="Balise XML source" class="settings-input"
+          value="${esc(mapping[f.key] || '')}" style="font-size:12px;padding:5px 8px;" />
       </div>`;
   });
 
   // Save mapping
   panel.querySelector('#xml-mapping-save').onclick = async () => {
     const newMapping = {};
-    FICHE_FIELDS.forEach(f => {
-      const v = panel.querySelector(`#xml-map-${f}`)?.value?.trim();
-      if (v) newMapping[f] = v;
+    ficheFields.forEach(f => {
+      const v = panel.querySelector(`#xml-map-${f.key}`)?.value?.trim();
+      if (v) newMapping[f.key] = v;
     });
     const msgEl = panel.querySelector('#xml-mapping-msg');
     try {
@@ -443,8 +489,12 @@ function renderMdsfTab(panel, cfg) {
 // ======================================================
 // EXPORT COMMANDES
 // ======================================================
-function renderExportTab(panel, cfg) {
+async function renderExportTab(panel, cfg) {
   const expCfg = cfg.export || {};
+
+  // Load dynamic fields from form-config (falls back to hardcoded list on error)
+  const ficheFields = await loadFicheFields();
+
   panel.innerHTML = `
     <div class="settings-section-card">
       <h4>Export des commandes</h4>
@@ -504,26 +554,21 @@ function renderExportTab(panel, cfg) {
     </div>
   `;
 
-  const EXPORT_FIELDS = [
-    'numeroDossier','client','nomClient','typeTravail','quantite','formatFini',
-    'moteurImpression','operateur','dateReceptionSouhaitee','dateLivraisonSouhaitee',
-    'retraitLivraison','commentaire','referenceCommande'
-  ];
   const expMapping = expCfg.mapping || {};
   const rowsEl = panel.querySelector('#exp-mapping-rows');
-  EXPORT_FIELDS.forEach(f => {
+  ficheFields.forEach(f => {
     rowsEl.innerHTML += `
       <div style="display:flex;flex-direction:column;gap:4px;">
-        <label style="font-size:12px;font-weight:600;color:#374151;">${f}</label>
-        <input type="text" id="exp-map-${f}" placeholder="${f}" class="settings-input"
-          value="${esc(expMapping[f]||'')}" style="font-size:12px;padding:5px 8px;" />
+        <label style="font-size:12px;font-weight:600;color:#374151;">${esc(f.key)}<span style="font-weight:400;color:#6b7280;margin-left:4px;">— ${esc(f.label)}</span></label>
+        <input type="text" id="exp-map-${esc(f.key)}" placeholder="${esc(f.key)}" class="settings-input"
+          value="${esc(expMapping[f.key]||'')}" style="font-size:12px;padding:5px 8px;" />
       </div>`;
   });
 
   panel.querySelector('#exp-save').onclick = async () => {
     const msgEl = panel.querySelector('#exp-msg');
     const mapping = {};
-    EXPORT_FIELDS.forEach(f => { const v=panel.querySelector(`#exp-map-${f}`)?.value?.trim(); if(v) mapping[f]=v; });
+    ficheFields.forEach(f => { const v=panel.querySelector(`#exp-map-${f.key}`)?.value?.trim(); if(v) mapping[f.key]=v; });
     const data = {
       enableXml: panel.querySelector('#exp-xml').checked,
       enableCsv: panel.querySelector('#exp-csv').checked,

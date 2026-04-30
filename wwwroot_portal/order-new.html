@@ -124,10 +124,40 @@
         return;
       }
 
+      // Ensure critical fields (title, quantity) are always present and visible.
+      // The server only returns visible fields but may omit them if the admin
+      // removed them from the portal config.  We inject them at the top so the
+      // form is never missing its mandatory inputs.
+      const criticalDefaults = [
+        { id: 'title',    label: 'Intitulé du job', type: 'text',   visible: true, required: true,  placeholder: 'Ex. : Flyer A5 — Promotions été 2025' },
+        { id: 'quantity', label: 'Quantité',        type: 'number', visible: true, required: true,  placeholder: 'Ex. : 1000' },
+      ];
+      // Build a set of inserts at the beginning in correct order
+      const toInsert = [];
+      for (const crit of criticalDefaults) {
+        const idx = fieldConfigs.findIndex(f => f.id === crit.id);
+        if (idx === -1) {
+          toInsert.push(crit);
+        } else if (fieldConfigs[idx].visible === false) {
+          // Force critical field visible
+          fieldConfigs[idx] = { ...fieldConfigs[idx], visible: true, required: true };
+        }
+      }
+      if (toInsert.length) fieldConfigs.unshift(...toInsert);
+
+      // If after the above fixes there are still no visible fields, fall back
+      // to the built-in default layout so the form is never empty.
+      if (!fieldConfigs.some(f => f.visible !== false)) {
+        renderDefaultFormFields(container);
+        return;
+      }
+
       container.innerHTML = '';
 
       fieldConfigs.forEach(field => {
-        if (!field.visible) return;
+        // Only skip fields explicitly marked invisible (server already filters,
+        // but guard against undefined/null from future API changes).
+        if (field.visible === false) return;
 
         const group = document.createElement('div');
         group.className = 'form-group';
