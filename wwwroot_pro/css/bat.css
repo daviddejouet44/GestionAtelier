@@ -39,6 +39,9 @@
   gap: 16px;
   align-items: flex-start;
   padding: 20px 22px;
+  /* ensure children can wrap and shrink properly */
+  width: 100%;
+  box-sizing: border-box;
 }
 .bat-card-thumb {
   width: 100px;
@@ -98,25 +101,54 @@
   border-radius: 2px;
   flex-shrink: 0;
 }
+/* ---------------------------------------------------------
+   Actions column (right side)
+   FIX: previously buttons on the right could be cut off when the
+   card was narrow (sidebar open / smaller screens). We now allow
+   the actions column to grow vertically and wrap below the body
+   on narrow viewports instead of overflowing horizontally.
+--------------------------------------------------------- */
 .bat-card-actions {
   display: flex;
   flex-direction: column;
   gap: 8px;
   align-items: stretch;
-  flex-shrink: 0;
-  flex-basis: 170px;
+  /* allow the column to shrink and wrap to a new row when needed */
+  flex: 0 1 190px;
+  min-width: 160px;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .bat-card-actions .btn {
-  min-width: 150px;
+  width: 100%;            /* fill the actions column */
+  min-width: 0;           /* prevent the 150px floor that caused overflow */
   text-align: center;
   border-radius: 50px;
   font-size: 12px;
   font-weight: 600;
   padding: 7px 16px;
   transition: var(--transition-fast);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
 }
 .bat-card-actions .btn:hover {
   transform: translateY(-1px);
+}
+
+/* On narrow viewports the actions column stacks under the body
+   so all buttons remain fully visible. */
+@media (max-width: 900px) {
+  .bat-card-actions {
+    flex: 1 1 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .bat-card-actions .btn {
+    width: auto;
+    flex: 1 1 140px;
+  }
 }
 .bat-status-badge, .bat-btn {
   font-size: 11px;
