@@ -1,0 +1,653 @@
+// settings-integrations.js — Paramétrages → Intégrations
+// Gestion des imports automatiques (XML, ERP, Pressero, MDSF) et exports (XML, CSV, ERP, Pressero, MDSF)
+import { authToken, showNotification, esc } from '../core.js';
+
+const API = {
+  config:    '/api/settings/integrations-config',
+  testConn:  '/api/settings/integrations/test-connection',
+  importXml: '/api/integrations/import-xml',
+  importLog: '/api/integrations/import-log',
+  exportLog: '/api/integrations/export-log',
+  exportCmd: '/api/integrations/export',
+};
+
+/** Simple auth header helper */
+function authH() { return { 'Authorization': `Bearer ${authToken}` }; }
+function authJsonH() { return { ...authH(), 'Content-Type': 'application/json' }; }
+
+export async function renderSettingsIntegrations(panel) {
+  panel.innerHTML = `
+    <h3>Intégrations — Import &amp; Export</h3>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:20px;">
+      Configurez les sources d'import automatique de la fiche de production (XML, ERP, Web-to-Print)
+      et les destinations d'export des commandes.
+    </p>
+    <div class="settings-tabs" id="integ-tabs" style="margin-bottom:20px;">
+      <button class="settings-tab active" data-itab="xml-import">📥 Import XML</button>
+      <button class="settings-tab" data-itab="erp-import">🔗 ERP / Import auto</button>
+      <button class="settings-tab" data-itab="pressero">🌐 Pressero</button>
+      <button class="settings-tab" data-itab="mdsf">🌐 MDSF</button>
+      <button class="settings-tab" data-itab="export">📤 Export commandes</button>
+      <button class="settings-tab" data-itab="import-log">📋 Journal imports</button>
+      <button class="settings-tab" data-itab="export-log">📋 Journal exports</button>
+    </div>
+    <div id="integ-panel"></div>
+  `;
+
+  // Load config
+  let cfg = {};
+  try {
+    const r = await fetch(API.config, { headers: authH() }).then(r => r.json()).catch(() => ({}));
+    if (r.ok && r.config) cfg = r.config;
+  } catch(e) { /* use defaults */ }
+
+  const integPanel = panel.querySelector('#integ-panel');
+
+  function showIntegTab(tabId) {
+    panel.querySelectorAll('.settings-tab[data-itab]').forEach(t => {
+      t.classList.toggle('active', t.dataset.itab === tabId);
+    });
+    switch(tabId) {
+      case 'xml-import':  renderXmlImportTab(integPanel, cfg); break;
+      case 'erp-import':  renderErpImportTab(integPanel, cfg); break;
+      case 'pressero':    renderPresseroTab(integPanel, cfg); break;
+      case 'mdsf':        renderMdsfTab(integPanel, cfg); break;
+      case 'export':      renderExportTab(integPanel, cfg); break;
+      case 'import-log':  renderImportLogTab(integPanel); break;
+      case 'export-log':  renderExportLogTab(integPanel); break;
+    }
+  }
+
+  panel.querySelectorAll('.settings-tab[data-itab]').forEach(btn => {
+    btn.onclick = () => showIntegTab(btn.dataset.itab);
+  });
+
+  showIntegTab('xml-import');
+}
+
+// ======================================================
+// XML IMPORT
+// ======================================================
+function renderXmlImportTab(panel, cfg) {
+  const xmlCfg = cfg.xmlImport || {};
+  const mapping = xmlCfg.mapping || {};
+  const FICHE_FIELDS = [
+    'numeroDossier','client','nomClient','typeTravail','quantite','formatFini',
+    'moteurImpression','operateur','dateReceptionSouhaitee','dateLivraisonSouhaitee',
+    'retraitLivraison','commentaire','referenceCommande'
+  ];
+
+  panel.innerHTML = `
+    <div class="settings-section-card">
+      <h4>Import XML manuel</h4>
+      <p style="color:#6b7280;font-size:13px;">Importez un fichier XML pour pré-remplir automatiquement une fiche de production.</p>
+      <div style="margin-bottom:16px;">
+        <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">Fichier XML</label>
+        <input type="file" id="xml-import-file" accept=".xml" class="settings-input" style="margin-bottom:8px;" />
+        <button id="xml-import-btn" class="btn btn-primary">📥 Importer</button>
+        <div id="xml-import-msg" style="margin-top:8px;font-size:13px;"></div>
+      </div>
+    </div>
+
+    <div class="settings-section-card">
+      <h4>Mapping des champs XML → Fiche</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:14px;">
+        Associez les balises XML de votre export ERP/W2P aux champs de la fiche.<br>
+        Laissez vide pour ignorer un champ.
+      </p>
+      <div id="xml-mapping-rows" style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;max-width:700px;"></div>
+      <button id="xml-mapping-save" class="btn btn-primary" style="margin-top:16px;">💾 Enregistrer le mapping</button>
+      <div id="xml-mapping-msg" style="margin-top:8px;font-size:13px;"></div>
+    </div>
+
+    <div class="settings-section-card">
+      <h4>Clé de déduplication</h4>
+      <p style="color:#6b7280;font-size:13px;">Champ utilisé pour éviter les doublons (mise à jour si la clé existe déjà).</p>
+      <select id="xml-dedup-key" class="settings-input" style="min-width:200px;">
+        ${FICHE_FIELDS.map(f => `<option value="${f}" ${(xmlCfg.dedupKey||'referenceCommande')===f?'selected':''}>${f}</option>`).join('')}
+      </select>
+      <button id="xml-dedup-save" class="btn btn-primary" style="margin-left:10px;">Enregistrer</button>
+      <div id="xml-dedup-msg" style="font-size:13px;margin-top:6px;"></div>
+    </div>
+  `;
+
+  // Build mapping rows
+  const rowsEl = panel.querySelector('#xml-mapping-rows');
+  FICHE_FIELDS.forEach(f => {
+    rowsEl.innerHTML += `
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <label style="font-size:12px;font-weight:600;color:#374151;">${f}</label>
+        <input type="text" id="xml-map-${f}" placeholder="Balise XML source" class="settings-input"
+          value="${esc(mapping[f] || '')}" style="font-size:12px;padding:5px 8px;" />
+      </div>`;
+  });
+
+  // Save mapping
+  panel.querySelector('#xml-mapping-save').onclick = async () => {
+    const newMapping = {};
+    FICHE_FIELDS.forEach(f => {
+      const v = panel.querySelector(`#xml-map-${f}`)?.value?.trim();
+      if (v) newMapping[f] = v;
+    });
+    const msgEl = panel.querySelector('#xml-mapping-msg');
+    try {
+      const r = await fetch(API.config, {
+        method: 'PUT',
+        headers: authJsonH(),
+        body: JSON.stringify({ section: 'xmlImport', data: { ...cfg.xmlImport, mapping: newMapping } })
+      }).then(r => r.json());
+      if (r.ok) {
+        msgEl.style.color = '#16a34a'; msgEl.textContent = '✅ Mapping enregistré';
+        cfg.xmlImport = { ...cfg.xmlImport, mapping: newMapping };
+      } else { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ ' + (r.error || 'Erreur'); }
+    } catch(e) { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ Erreur réseau'; }
+  };
+
+  // Save dedup key
+  panel.querySelector('#xml-dedup-save').onclick = async () => {
+    const key = panel.querySelector('#xml-dedup-key').value;
+    const msgEl = panel.querySelector('#xml-dedup-msg');
+    try {
+      const r = await fetch(API.config, {
+        method: 'PUT',
+        headers: authJsonH(),
+        body: JSON.stringify({ section: 'xmlImport', data: { ...cfg.xmlImport, dedupKey: key } })
+      }).then(r => r.json());
+      if (r.ok) {
+        msgEl.style.color = '#16a34a'; msgEl.textContent = '✅ Clé enregistrée';
+        cfg.xmlImport = { ...cfg.xmlImport, dedupKey: key };
+      } else { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ ' + (r.error || 'Erreur'); }
+    } catch(e) { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ Erreur réseau'; }
+  };
+
+  // XML import button
+  panel.querySelector('#xml-import-btn').onclick = async () => {
+    const fileInput = panel.querySelector('#xml-import-file');
+    const msgEl = panel.querySelector('#xml-import-msg');
+    if (!fileInput.files || fileInput.files.length === 0) {
+      msgEl.style.color = '#ef4444'; msgEl.textContent = 'Sélectionnez un fichier XML'; return;
+    }
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    msgEl.style.color = '#6b7280'; msgEl.textContent = '⏳ Import en cours…';
+    try {
+      const r = await fetch(API.importXml, {
+        method: 'POST',
+        headers: authH(),
+        body: formData
+      }).then(r => r.json()).catch(() => ({ ok: false, error: 'Erreur réseau' }));
+      if (r.ok) {
+        msgEl.style.color = '#16a34a';
+        msgEl.textContent = `✅ ${r.imported || 0} fiche(s) importée(s)${r.updated ? ', ' + r.updated + ' mise(s) à jour' : ''}${r.duplicates ? ', ' + r.duplicates + ' doublon(s) ignoré(s)' : ''}`;
+      } else { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ ' + (r.error || 'Erreur'); }
+    } catch(e) { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ Erreur réseau'; }
+  };
+}
+
+// ======================================================
+// ERP IMPORT
+// ======================================================
+function renderErpImportTab(panel, cfg) {
+  const erpCfg = cfg.erp || {};
+  panel.innerHTML = `
+    <div class="settings-section-card">
+      <h4>Connexion ERP / Source externe</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:14px;">
+        Configurez la connexion à votre ERP ou logiciel tiers pour importer automatiquement les commandes.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;max-width:700px;">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Activé</label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="erp-enabled" ${erpCfg.enabled ? 'checked' : ''} style="width:16px;height:16px;" />
+            <span style="font-size:13px;">Activer l'import ERP</span>
+          </label>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Format de données</label>
+          <select id="erp-format" class="settings-input" style="width:100%;">
+            <option value="xml" ${erpCfg.format==='xml'?'selected':''}>XML</option>
+            <option value="json" ${erpCfg.format==='json'?'selected':''}>JSON</option>
+            <option value="csv" ${erpCfg.format==='csv'?'selected':''}>CSV</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">URL de l'endpoint</label>
+          <input type="url" id="erp-url" placeholder="https://erp.example.com/api/orders" class="settings-input" style="width:100%;" value="${esc(erpCfg.url||'')}" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Clé API / Token</label>
+          <input type="password" id="erp-apikey" placeholder="••••••••" class="settings-input" style="width:100%;" value="${esc(erpCfg.apiKey||'')}" autocomplete="new-password" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Login (si Basic Auth)</label>
+          <input type="text" id="erp-login" class="settings-input" style="width:100%;" value="${esc(erpCfg.login||'')}" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Mot de passe (si Basic Auth)</label>
+          <input type="password" id="erp-password" placeholder="••••••••" class="settings-input" style="width:100%;" autocomplete="new-password" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Fréquence de polling (minutes)</label>
+          <input type="number" id="erp-interval" min="1" max="1440" class="settings-input" style="width:120px;" value="${erpCfg.intervalMinutes||60}" />
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
+        <button id="erp-save" class="btn btn-primary">💾 Enregistrer</button>
+        <button id="erp-test" class="btn">🔌 Tester la connexion</button>
+      </div>
+      <div id="erp-msg" style="margin-top:8px;font-size:13px;"></div>
+    </div>
+  `;
+
+  panel.querySelector('#erp-save').onclick = async () => {
+    const msgEl = panel.querySelector('#erp-msg');
+    const data = {
+      enabled: panel.querySelector('#erp-enabled').checked,
+      format:  panel.querySelector('#erp-format').value,
+      url:     panel.querySelector('#erp-url').value.trim(),
+      apiKey:  panel.querySelector('#erp-apikey').value,
+      login:   panel.querySelector('#erp-login').value.trim(),
+      password: panel.querySelector('#erp-password').value || erpCfg.password || '',
+      intervalMinutes: parseInt(panel.querySelector('#erp-interval').value) || 60,
+    };
+    try {
+      const r = await fetch(API.config, {
+        method: 'PUT', headers: authJsonH(),
+        body: JSON.stringify({ section: 'erp', data })
+      }).then(r => r.json());
+      if (r.ok) { msgEl.style.color='#16a34a'; msgEl.textContent='✅ Configuration ERP enregistrée'; cfg.erp = data; }
+      else { msgEl.style.color='#ef4444'; msgEl.textContent='❌ '+(r.error||'Erreur'); }
+    } catch(e) { msgEl.style.color='#ef4444'; msgEl.textContent='❌ Erreur réseau'; }
+  };
+
+  panel.querySelector('#erp-test').onclick = async () => {
+    const msgEl = panel.querySelector('#erp-msg');
+    msgEl.style.color='#6b7280'; msgEl.textContent='⏳ Test de connexion…';
+    try {
+      const r = await fetch(API.testConn, {
+        method: 'POST', headers: authJsonH(),
+        body: JSON.stringify({ source: 'erp', url: panel.querySelector('#erp-url').value.trim(), apiKey: panel.querySelector('#erp-apikey').value, format: panel.querySelector('#erp-format').value })
+      }).then(r => r.json()).catch(() => ({ ok: false, error: 'Erreur réseau' }));
+      if (r.ok) { msgEl.style.color='#16a34a'; msgEl.textContent='✅ Connexion réussie'+(r.message?': '+r.message:''); }
+      else { msgEl.style.color='#ef4444'; msgEl.textContent='❌ '+(r.error||'Connexion échouée'); }
+    } catch(e) { msgEl.style.color='#ef4444'; msgEl.textContent='❌ Erreur réseau'; }
+  };
+}
+
+// ======================================================
+// PRESSERO
+// ======================================================
+function renderPresseroTab(panel, cfg) {
+  const pCfg = cfg.pressero || {};
+  panel.innerHTML = `
+    <div class="settings-section-card">
+      <h4>Pressero (Web-to-Print)</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:14px;">
+        Configurez la connexion à Pressero pour importer les commandes W2P et/ou renvoyer les statuts.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;max-width:700px;">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Activé</label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="pressero-enabled" ${pCfg.enabled ? 'checked' : ''} />
+            <span style="font-size:13px;">Activer l'intégration Pressero</span>
+          </label>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">URL API Pressero</label>
+          <input type="url" id="pressero-url" placeholder="https://api.pressero.com/v1" class="settings-input" style="width:100%;" value="${esc(pCfg.apiUrl||'')}" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Clé API</label>
+          <input type="password" id="pressero-apikey" placeholder="••••••••" class="settings-input" style="width:100%;" autocomplete="new-password" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Secret API</label>
+          <input type="password" id="pressero-secret" placeholder="••••••••" class="settings-input" style="width:100%;" autocomplete="new-password" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Webhook (URL de réception Pressero → GestionAtelier)</label>
+          <input type="url" id="pressero-webhook" placeholder="https://gestionatelier.example.com/api/webhooks/pressero" class="settings-input" style="width:100%;" value="${esc(pCfg.webhookUrl||'')}" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Import automatique des commandes</label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="pressero-auto-import" ${pCfg.autoImport ? 'checked' : ''} />
+            <span style="font-size:13px;">Importer automatiquement</span>
+          </label>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
+        <button id="pressero-save" class="btn btn-primary">💾 Enregistrer</button>
+        <button id="pressero-test" class="btn">🔌 Tester la connexion</button>
+      </div>
+      <div id="pressero-msg" style="margin-top:8px;font-size:13px;"></div>
+    </div>
+  `;
+
+  panel.querySelector('#pressero-save').onclick = async () => {
+    const msgEl = panel.querySelector('#pressero-msg');
+    const data = {
+      enabled: panel.querySelector('#pressero-enabled').checked,
+      apiUrl: panel.querySelector('#pressero-url').value.trim(),
+      apiKey: panel.querySelector('#pressero-apikey').value || pCfg.apiKey || '',
+      apiSecret: panel.querySelector('#pressero-secret').value || pCfg.apiSecret || '',
+      webhookUrl: panel.querySelector('#pressero-webhook').value.trim(),
+      autoImport: panel.querySelector('#pressero-auto-import').checked,
+    };
+    try {
+      const r = await fetch(API.config, { method:'PUT', headers: authJsonH(), body: JSON.stringify({ section:'pressero', data }) }).then(r=>r.json());
+      if (r.ok) { msgEl.style.color='#16a34a'; msgEl.textContent='✅ Configuration Pressero enregistrée'; cfg.pressero=data; }
+      else { msgEl.style.color='#ef4444'; msgEl.textContent='❌ '+(r.error||'Erreur'); }
+    } catch(e) { msgEl.style.color='#ef4444'; msgEl.textContent='❌ Erreur réseau'; }
+  };
+
+  panel.querySelector('#pressero-test').onclick = async () => {
+    const msgEl = panel.querySelector('#pressero-msg');
+    msgEl.style.color='#6b7280'; msgEl.textContent='⏳ Test de connexion Pressero…';
+    try {
+      const r = await fetch(API.testConn, { method:'POST', headers: authJsonH(), body: JSON.stringify({ source:'pressero', url: panel.querySelector('#pressero-url').value.trim(), apiKey: panel.querySelector('#pressero-apikey').value || pCfg.apiKey || '' }) }).then(r=>r.json()).catch(()=>({ ok:false, error:'Erreur réseau' }));
+      if (r.ok) { msgEl.style.color='#16a34a'; msgEl.textContent='✅ Connexion réussie'; }
+      else { msgEl.style.color='#ef4444'; msgEl.textContent='❌ '+(r.error||'Connexion échouée'); }
+    } catch(e) { msgEl.style.color='#ef4444'; msgEl.textContent='❌ Erreur réseau'; }
+  };
+}
+
+// ======================================================
+// MDSF (Market Direct Store Front)
+// ======================================================
+function renderMdsfTab(panel, cfg) {
+  const mCfg = cfg.mdsf || {};
+  panel.innerHTML = `
+    <div class="settings-section-card">
+      <h4>Market Direct StoreFront (MDSF)</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:14px;">
+        Configurez la connexion à Market Direct StoreFront pour synchroniser les commandes.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;max-width:700px;">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Activé</label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="mdsf-enabled" ${mCfg.enabled ? 'checked' : ''} />
+            <span style="font-size:13px;">Activer l'intégration MDSF</span>
+          </label>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">URL API MDSF</label>
+          <input type="url" id="mdsf-url" placeholder="https://mdsf.example.com/api" class="settings-input" style="width:100%;" value="${esc(mCfg.apiUrl||'')}" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Clé API / Token</label>
+          <input type="password" id="mdsf-apikey" placeholder="••••••••" class="settings-input" style="width:100%;" autocomplete="new-password" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Site ID / Store ID</label>
+          <input type="text" id="mdsf-storeid" class="settings-input" style="width:100%;" value="${esc(mCfg.storeId||'')}" />
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Import automatique</label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="mdsf-auto-import" ${mCfg.autoImport ? 'checked' : ''} />
+            <span style="font-size:13px;">Importer automatiquement les commandes</span>
+          </label>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Fréquence (minutes)</label>
+          <input type="number" id="mdsf-interval" min="1" max="1440" class="settings-input" style="width:120px;" value="${mCfg.intervalMinutes||30}" />
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
+        <button id="mdsf-save" class="btn btn-primary">💾 Enregistrer</button>
+        <button id="mdsf-test" class="btn">🔌 Tester la connexion</button>
+      </div>
+      <div id="mdsf-msg" style="margin-top:8px;font-size:13px;"></div>
+    </div>
+  `;
+
+  panel.querySelector('#mdsf-save').onclick = async () => {
+    const msgEl = panel.querySelector('#mdsf-msg');
+    const data = {
+      enabled: panel.querySelector('#mdsf-enabled').checked,
+      apiUrl: panel.querySelector('#mdsf-url').value.trim(),
+      apiKey: panel.querySelector('#mdsf-apikey').value || mCfg.apiKey || '',
+      storeId: panel.querySelector('#mdsf-storeid').value.trim(),
+      autoImport: panel.querySelector('#mdsf-auto-import').checked,
+      intervalMinutes: parseInt(panel.querySelector('#mdsf-interval').value)||30,
+    };
+    try {
+      const r = await fetch(API.config, { method:'PUT', headers: authJsonH(), body: JSON.stringify({ section:'mdsf', data }) }).then(r=>r.json());
+      if (r.ok) { msgEl.style.color='#16a34a'; msgEl.textContent='✅ Configuration MDSF enregistrée'; cfg.mdsf=data; }
+      else { msgEl.style.color='#ef4444'; msgEl.textContent='❌ '+(r.error||'Erreur'); }
+    } catch(e) { msgEl.style.color='#ef4444'; msgEl.textContent='❌ Erreur réseau'; }
+  };
+
+  panel.querySelector('#mdsf-test').onclick = async () => {
+    const msgEl = panel.querySelector('#mdsf-msg');
+    msgEl.style.color='#6b7280'; msgEl.textContent='⏳ Test de connexion MDSF…';
+    try {
+      const r = await fetch(API.testConn, { method:'POST', headers: authJsonH(), body: JSON.stringify({ source:'mdsf', url: panel.querySelector('#mdsf-url').value.trim(), apiKey: panel.querySelector('#mdsf-apikey').value || mCfg.apiKey||'' }) }).then(r=>r.json()).catch(()=>({ ok:false, error:'Erreur réseau' }));
+      if (r.ok) { msgEl.style.color='#16a34a'; msgEl.textContent='✅ Connexion réussie'; }
+      else { msgEl.style.color='#ef4444'; msgEl.textContent='❌ '+(r.error||'Connexion échouée'); }
+    } catch(e) { msgEl.style.color='#ef4444'; msgEl.textContent='❌ Erreur réseau'; }
+  };
+}
+
+// ======================================================
+// EXPORT COMMANDES
+// ======================================================
+function renderExportTab(panel, cfg) {
+  const expCfg = cfg.export || {};
+  panel.innerHTML = `
+    <div class="settings-section-card">
+      <h4>Export des commandes</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:14px;">
+        Configurez les formats et destinations d'export des informations de commandes.
+      </p>
+
+      <h5 style="margin-bottom:8px;font-size:13px;color:#374151;">Formats disponibles</h5>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" id="exp-xml" ${expCfg.enableXml !== false ? 'checked' : ''} />
+          <span style="font-size:13px;font-weight:600;">XML</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" id="exp-csv" ${expCfg.enableCsv !== false ? 'checked' : ''} />
+          <span style="font-size:13px;font-weight:600;">CSV</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" id="exp-erp" ${expCfg.enableErp ? 'checked' : ''} />
+          <span style="font-size:13px;font-weight:600;">Envoi vers ERP</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" id="exp-pressero" ${expCfg.enablePressero ? 'checked' : ''} />
+          <span style="font-size:13px;font-weight:600;">Renvoi vers Pressero</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" id="exp-mdsf" ${expCfg.enableMdsf ? 'checked' : ''} />
+          <span style="font-size:13px;font-weight:600;">Renvoi vers MDSF</span>
+        </label>
+      </div>
+
+      <h5 style="margin-bottom:8px;font-size:13px;color:#374151;">Séparateur CSV</h5>
+      <select id="exp-csv-sep" class="settings-input" style="min-width:100px;margin-bottom:16px;">
+        <option value="," ${(expCfg.csvSeparator||';')===','?'selected':''}>Virgule (,)</option>
+        <option value=";" ${(expCfg.csvSeparator||';')===';'?'selected':''}>Point-virgule (;)</option>
+        <option value="\\t" ${expCfg.csvSeparator==='\\t'?'selected':''}>Tabulation</option>
+      </select>
+
+      <h5 style="margin-bottom:8px;font-size:13px;color:#374151;">Mapping des champs (export)</h5>
+      <p style="color:#6b7280;font-size:12px;margin-bottom:10px;">Renommez les champs dans le fichier d'export. Laissez vide pour utiliser le nom interne.</p>
+      <div id="exp-mapping-rows" style="display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;max-width:700px;margin-bottom:16px;"></div>
+
+      <button id="exp-save" class="btn btn-primary">💾 Enregistrer la configuration d'export</button>
+      <div id="exp-msg" style="margin-top:8px;font-size:13px;"></div>
+
+      <hr style="margin:20px 0;border:none;border-top:1px solid #e5e7eb;" />
+
+      <h5 style="margin-bottom:8px;font-size:13px;color:#374151;">Test d'export (commandes récentes)</h5>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+        <select id="exp-test-format" class="settings-input" style="min-width:140px;">
+          <option value="xml">XML</option>
+          <option value="csv">CSV</option>
+        </select>
+        <button id="exp-test-btn" class="btn btn-primary">📤 Télécharger un export test</button>
+      </div>
+      <div id="exp-test-msg" style="margin-top:8px;font-size:13px;"></div>
+    </div>
+  `;
+
+  const EXPORT_FIELDS = [
+    'numeroDossier','client','nomClient','typeTravail','quantite','formatFini',
+    'moteurImpression','operateur','dateReceptionSouhaitee','dateLivraisonSouhaitee',
+    'retraitLivraison','commentaire','referenceCommande'
+  ];
+  const expMapping = expCfg.mapping || {};
+  const rowsEl = panel.querySelector('#exp-mapping-rows');
+  EXPORT_FIELDS.forEach(f => {
+    rowsEl.innerHTML += `
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <label style="font-size:12px;font-weight:600;color:#374151;">${f}</label>
+        <input type="text" id="exp-map-${f}" placeholder="${f}" class="settings-input"
+          value="${esc(expMapping[f]||'')}" style="font-size:12px;padding:5px 8px;" />
+      </div>`;
+  });
+
+  panel.querySelector('#exp-save').onclick = async () => {
+    const msgEl = panel.querySelector('#exp-msg');
+    const mapping = {};
+    EXPORT_FIELDS.forEach(f => { const v=panel.querySelector(`#exp-map-${f}`)?.value?.trim(); if(v) mapping[f]=v; });
+    const data = {
+      enableXml: panel.querySelector('#exp-xml').checked,
+      enableCsv: panel.querySelector('#exp-csv').checked,
+      enableErp: panel.querySelector('#exp-erp').checked,
+      enablePressero: panel.querySelector('#exp-pressero').checked,
+      enableMdsf: panel.querySelector('#exp-mdsf').checked,
+      csvSeparator: panel.querySelector('#exp-csv-sep').value,
+      mapping,
+    };
+    try {
+      const r = await fetch(API.config, { method:'PUT', headers: authJsonH(), body: JSON.stringify({ section:'export', data }) }).then(r=>r.json());
+      if (r.ok) { msgEl.style.color='#16a34a'; msgEl.textContent='✅ Configuration d\'export enregistrée'; cfg.export=data; }
+      else { msgEl.style.color='#ef4444'; msgEl.textContent='❌ '+(r.error||'Erreur'); }
+    } catch(e) { msgEl.style.color='#ef4444'; msgEl.textContent='❌ Erreur réseau'; }
+  };
+
+  panel.querySelector('#exp-test-btn').onclick = async () => {
+    const fmt = panel.querySelector('#exp-test-format').value;
+    const msgEl = panel.querySelector('#exp-test-msg');
+    msgEl.style.color='#6b7280'; msgEl.textContent='⏳ Génération de l\'export…';
+    try {
+      const resp = await fetch(`${API.exportCmd}?format=${fmt}&limit=10`, { headers: authH() });
+      if (!resp.ok) {
+        const err = await resp.json().catch(()=>({ error: 'Erreur' }));
+        msgEl.style.color='#ef4444'; msgEl.textContent='❌ '+(err.error||'Erreur');
+        return;
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `export-commandes.${fmt}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      msgEl.style.color='#16a34a'; msgEl.textContent='✅ Export téléchargé';
+    } catch(e) { msgEl.style.color='#ef4444'; msgEl.textContent='❌ Erreur réseau'; }
+  };
+}
+
+// ======================================================
+// JOURNAL IMPORTS
+// ======================================================
+async function renderImportLogTab(panel) {
+  panel.innerHTML = '<div style="padding:20px;color:#6b7280;">Chargement du journal…</div>';
+  try {
+    const r = await fetch(API.importLog + '?limit=50', { headers: authH() }).then(r => r.json()).catch(() => ({ ok: false, logs: [] }));
+    const logs = (r.ok && Array.isArray(r.logs)) ? r.logs : [];
+    if (logs.length === 0) {
+      panel.innerHTML = '<div class="settings-section-card"><p style="color:#9ca3af;">Aucun import enregistré.</p></div>';
+      return;
+    }
+    const rowsHtml = logs.map(l => `
+      <tr style="border-bottom:1px solid #f3f4f6;">
+        <td style="padding:8px 10px;font-size:12px;color:#6b7280;">${new Date(l.timestamp).toLocaleString('fr-FR')}</td>
+        <td style="padding:8px 10px;font-size:12px;font-weight:600;">${esc(l.source||'')}</td>
+        <td style="padding:8px 10px;font-size:12px;">${esc(l.fileName||'')}</td>
+        <td style="padding:8px 10px;font-size:12px;">${l.status==='ok'?'✅ Succès':l.status==='update'?'🔄 MàJ':'❌ Erreur'}</td>
+        <td style="padding:8px 10px;font-size:12px;color:#6b7280;">${esc(l.message||'')}</td>
+      </tr>`).join('');
+    panel.innerHTML = `
+      <div class="settings-section-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <h4>Journal des imports (${logs.length} dernières entrées)</h4>
+          <button id="import-log-refresh" class="btn btn-sm btn-primary">Rafraîchir</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#f9fafb;text-align:left;">
+                <th style="padding:8px 10px;font-size:12px;font-weight:700;color:#374151;">Date</th>
+                <th style="padding:8px 10px;font-size:12px;font-weight:700;color:#374151;">Source</th>
+                <th style="padding:8px 10px;font-size:12px;font-weight:700;color:#374151;">Fichier</th>
+                <th style="padding:8px 10px;font-size:12px;font-weight:700;color:#374151;">Statut</th>
+                <th style="padding:8px 10px;font-size:12px;font-weight:700;color:#374151;">Message</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      </div>`;
+    panel.querySelector('#import-log-refresh').onclick = () => renderImportLogTab(panel);
+  } catch(e) {
+    panel.innerHTML = '<div class="settings-section-card"><p style="color:#ef4444;">Erreur lors du chargement du journal.</p></div>';
+  }
+}
+
+// ======================================================
+// JOURNAL EXPORTS
+// ======================================================
+async function renderExportLogTab(panel) {
+  panel.innerHTML = '<div style="padding:20px;color:#6b7280;">Chargement du journal…</div>';
+  try {
+    const r = await fetch(API.exportLog + '?limit=50', { headers: authH() }).then(r => r.json()).catch(() => ({ ok: false, logs: [] }));
+    const logs = (r.ok && Array.isArray(r.logs)) ? r.logs : [];
+    if (logs.length === 0) {
+      panel.innerHTML = '<div class="settings-section-card"><p style="color:#9ca3af;">Aucun export enregistré.</p></div>';
+      return;
+    }
+    const rowsHtml = logs.map(l => `
+      <tr style="border-bottom:1px solid #f3f4f6;">
+        <td style="padding:8px 10px;font-size:12px;color:#6b7280;">${new Date(l.timestamp).toLocaleString('fr-FR')}</td>
+        <td style="padding:8px 10px;font-size:12px;font-weight:600;">${esc(l.format||'')}</td>
+        <td style="padding:8px 10px;font-size:12px;">${esc(l.destination||'')}</td>
+        <td style="padding:8px 10px;font-size:12px;">${l.status==='ok'?'✅ Succès':'❌ Erreur'}</td>
+        <td style="padding:8px 10px;font-size:12px;color:#6b7280;">${esc(l.message||'')}</td>
+      </tr>`).join('');
+    panel.innerHTML = `
+      <div class="settings-section-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <h4>Journal des exports (${logs.length} dernières entrées)</h4>
+          <button id="export-log-refresh" class="btn btn-sm btn-primary">Rafraîchir</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#f9fafb;text-align:left;">
+                <th style="padding:8px 10px;font-size:12px;font-weight:700;color:#374151;">Date</th>
+                <th style="padding:8px 10px;font-size:12px;font-weight:700;color:#374151;">Format</th>
+                <th style="padding:8px 10px;font-size:12px;font-weight:700;color:#374151;">Destination</th>
+                <th style="padding:8px 10px;font-size:12px;font-weight:700;color:#374151;">Statut</th>
+                <th style="padding:8px 10px;font-size:12px;font-weight:700;color:#374151;">Message</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      </div>`;
+    panel.querySelector('#export-log-refresh').onclick = () => renderExportLogTab(panel);
+  } catch(e) {
+    panel.innerHTML = '<div class="settings-section-card"><p style="color:#ef4444;">Erreur lors du chargement du journal.</p></div>';
+  }
+}

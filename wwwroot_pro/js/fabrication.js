@@ -538,6 +538,48 @@ export function initFabrication() {
     if(typeof submissionCalendar!=='undefined'&&submissionCalendar)submissionCalendar.refetchEvents();
   };
   if(fabPrisma)fabPrisma.style.display='none';
+
+  // Export button: show inline format picker then download
+  const fabExport = document.getElementById('fab-export');
+  if (fabExport) {
+    fabExport.onclick = () => {
+      if (!fabCurrentPath) return;
+      // Show a small inline format picker
+      const existing = document.getElementById('fab-export-picker');
+      if (existing) { existing.remove(); return; }
+      const picker = document.createElement('span');
+      picker.id = 'fab-export-picker';
+      picker.style.cssText = 'display:inline-flex;gap:6px;margin-left:8px;align-items:center;';
+      picker.innerHTML = '<span style="font-size:12px;color:#374151;">Format :</span>';
+      ['xml', 'csv'].forEach(fmt => {
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-sm';
+        btn.style.cssText = 'font-size:12px;padding:4px 10px;';
+        btn.textContent = fmt.toUpperCase();
+        btn.onclick = async (e) => {
+          e.stopPropagation();
+          picker.remove();
+          const fn = fnKey(fabCurrentPath);
+          try {
+            const resp = await fetch(
+              `/api/integrations/export?format=${fmt}`,
+              { headers: { 'Authorization': `Bearer ${authToken}` } }
+            );
+            if (!resp.ok) { showNotification('❌ Erreur export', 'error'); return; }
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `export-${fn}.${fmt}`;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showNotification(`✅ Export ${fmt.toUpperCase()} téléchargé`, 'success');
+          } catch(err) { showNotification('❌ Erreur réseau', 'error'); }
+        };
+        picker.appendChild(btn);
+      });
+      fabExport.insertAdjacentElement('afterend', picker);
+    };
+  }
 }
 
 export async function openFabrication(fullPath) {

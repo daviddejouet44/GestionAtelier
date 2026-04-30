@@ -44,29 +44,23 @@ export async function loadDashboardData() {
   }
   html += `</div>`;
 
-  // Dashboard image section — same pattern as Paramétrages → Logos/Images (settings-logo.js)
+  // Dashboard image section — display only (upload managed in Paramétrages → Logos/Images)
   if (dashboardImageExists) {
     html += `<div style="width:100%;max-height:calc(100vh - 220px);overflow:hidden;border-radius:12px;border:1px solid #e5e7eb;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
       <img src="/api/dashboard-image?v=${Date.now()}" alt="Image du dashboard" style="width:100%;height:auto;display:block;max-height:calc(100vh - 220px);object-fit:contain;" />
     </div>`;
     if (currentUser && currentUser.profile === 3) {
       html += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;">
-        <input type="file" id="dashboard-img-file" accept="image/*" style="display:none;" />
-        <button id="dashboard-img-upload-btn" class="btn btn-primary" style="font-size:13px;">🖼️ Remplacer l'image</button>
-        <button id="dashboard-img-delete" class="btn btn-sm" style="font-size:12px;color:#ef4444;border-color:#ef4444;">🗑️ Supprimer l'image</button>
-        <span id="dashboard-img-msg" style="font-size:12px;color:#6b7280;"></span>
+        <span style="font-size:12px;color:#6b7280;">Pour modifier ou supprimer cette image, allez dans</span>
+        <a href="#" id="dashboard-goto-logo-settings" style="font-size:12px;color:#2563eb;text-decoration:underline;cursor:pointer;">Paramétrages → Logos/Images</a>
       </div>`;
     }
   } else if (currentUser && currentUser.profile === 3) {
-    // Admin placeholder with upload section (mirrors settings-logo.js pattern exactly)
-    html += `<div style="background:#f9fafb;border:2px dashed #e5e7eb;border-radius:12px;padding:32px;color:#6b7280;">
+    // Admin placeholder — direct to Paramétrages → Logos/Images
+    html += `<div style="background:#f9fafb;border:2px dashed #e5e7eb;border-radius:12px;padding:32px;color:#6b7280;text-align:center;">
       <p style="font-size:15px;font-weight:600;margin:0 0 8px;color:#374151;">Image du dashboard</p>
-      <p style="font-size:13px;margin:0 0 16px;">Sélectionnez une image (PNG, JPG, WEBP…) puis cliquez sur "Enregistrer".</p>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <input type="file" id="dashboard-img-file" accept="image/*" style="display:none;" />
-        <button id="dashboard-img-upload-btn" class="btn btn-primary" style="font-size:13px;">��️ Sélectionner et enregistrer une image</button>
-        <span id="dashboard-img-msg" style="font-size:13px;margin-top:4px;display:block;color:#6b7280;"></span>
-      </div>
+      <p style="font-size:13px;margin:0 0 16px;">Aucune image configurée. Ajoutez-en une depuis Paramétrages → Logos/Images.</p>
+      <a href="#" id="dashboard-goto-logo-settings" style="display:inline-block;padding:8px 20px;background:#2563eb;color:white;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;">⚙️ Configurer l'image →</a>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-top:16px;">
       <a href="https://prismalytics-eu.cpp.canon/accounting#" target="_blank" rel="noopener"
@@ -97,59 +91,23 @@ export async function loadDashboardData() {
   const settingsBtn = contentEl.querySelector("#prismasync-settings-btn");
   if (settingsBtn) settingsBtn.onclick = () => _showPrismaSyncUrlEditor(contentEl);
 
-  // Dashboard image upload — click button → opens file dialog → auto-upload on selection
-  const imgUploadBtn = contentEl.querySelector("#dashboard-img-upload-btn");
-  const fileInputEl = contentEl.querySelector("#dashboard-img-file");
-  const msgEl = contentEl.querySelector("#dashboard-img-msg");
-
-  const doUpload = async (file) => {
-    if (!file) return;
-    if (msgEl) { msgEl.style.color = "#6b7280"; msgEl.textContent = "⏳ Envoi en cours..."; }
-    const formData = new FormData();
-    formData.append("file", file);
-    try {
-      const r = await fetch("/api/dashboard-image", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${authToken}` },
-        body: formData
-      }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
-      if (r.ok) {
-        if (msgEl) { msgEl.style.color = "#16a34a"; msgEl.textContent = "✅ Image enregistrée"; }
-        await loadDashboardData();
+  // Link to logo settings (for admin only, when shown in dashboard)
+  const gotoLogoBtn = contentEl.querySelector("#dashboard-goto-logo-settings");
+  if (gotoLogoBtn) {
+    gotoLogoBtn.onclick = (e) => {
+      e.preventDefault();
+      // Navigate to Settings → Logos/Images tab
+      if (typeof window._showSettings === 'function') {
+        window._showSettings("logo");
       } else {
-        if (msgEl) { msgEl.style.color = "#ef4444"; msgEl.textContent = "❌ " + (r.error || "Erreur"); }
+        // fallback: click the settings button and activate the logo tab
+        const settingsBtnEl = document.getElementById("btn-settings");
+        if (settingsBtnEl) settingsBtnEl.click();
+        setTimeout(() => {
+          const logoTab = document.querySelector('.settings-tab[data-tab="logo"]');
+          if (logoTab) logoTab.click();
+        }, 200);
       }
-    } catch(e) {
-      if (msgEl) { msgEl.style.color = "#ef4444"; msgEl.textContent = "❌ Erreur réseau"; }
-    }
-  };
-
-  if (fileInputEl) {
-    fileInputEl.onchange = () => {
-      if (fileInputEl.files && fileInputEl.files.length > 0) {
-        doUpload(fileInputEl.files[0]);
-      }
-    };
-  }
-
-  if (imgUploadBtn && fileInputEl) {
-    imgUploadBtn.onclick = () => {
-      fileInputEl.value = "";  // reset so same file can be re-selected
-      fileInputEl.click();     // open native file dialog
-    };
-  }
-
-  const imgDeleteBtn = contentEl.querySelector("#dashboard-img-delete");
-  if (imgDeleteBtn) {
-    imgDeleteBtn.onclick = async () => {
-      if (!confirm("Supprimer l'image du dashboard ?")) return;
-      try {
-        const r = await fetch("/api/dashboard-image", {
-          method: "DELETE",
-          headers: { "Authorization": `Bearer ${authToken}` }
-        }).then(res => res.json()).catch(() => ({ ok: false }));
-        if (r.ok) await loadDashboardData();
-      } catch(e) { /* ignore */ }
     };
   }
 }

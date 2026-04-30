@@ -133,6 +133,8 @@ async function applyPlanningView(calendarEl) {
   // Show/hide filter bars
   const machineWrap = document.getElementById("planning-machine-filter-wrap");
   if (machineWrap) machineWrap.style.display = _planningViewMode === 'machine' ? 'flex' : 'none';
+  const finWrap = document.getElementById("planning-finitions-filter-wrap");
+  if (finWrap) finWrap.style.display = _planningViewMode === 'finitions' ? 'flex' : 'none';
 }
 
 // ======================================================
@@ -351,16 +353,19 @@ export async function initCalendar() {
         })();
         const myName = currentUser?.name || '';
 
-        // Get machine filter (multi-select: empty selection = all)
-        const machineSelEl = document.getElementById("planning-machine-filter");
-        const machineFilters = machineSelEl
-          ? Array.from(machineSelEl.selectedOptions).map(o => o.value).filter(Boolean)
+        // Get machine filter — pill buttons (empty selection = all)
+        const machinePillsEl = document.getElementById("planning-machine-pills");
+        const machineFilters = machinePillsEl
+          ? Array.from(machinePillsEl.querySelectorAll('.planning-engine-pill[data-selected="true"]')).map(p => p.dataset.value).filter(Boolean)
           : [];
         const operatorFilter = document.getElementById("planning-operator-filter")?.value || "";
 
-        // Get finitions filters
+        // Get finitions filters — pill buttons (empty selection = all types)
         const finOpFilter = document.getElementById("planning-finitions-operator-filter")?.value || "";
-        const finTypeFilter = document.getElementById("planning-finitions-type-filter")?.value || "";
+        const finPillsEl = document.getElementById("planning-finitions-pills");
+        const finTypeFilters = finPillsEl
+          ? Array.from(finPillsEl.querySelectorAll('.planning-engine-pill[data-selected="true"]')).map(p => p.dataset.value).filter(Boolean)
+          : [];
 
         // Build events from fabrication key dates based on view mode
         const fabCalEvents = fabEvents
@@ -375,7 +380,7 @@ export async function initCalendar() {
             if (_planningViewMode === 'finitions') {
               if (fe.type !== 'finitions') return false;
               if (finOpFilter && fe.operateur !== finOpFilter) return false;
-              if (finTypeFilter && !(fe.finitionTypes || []).includes(finTypeFilter)) return false;
+              if (finTypeFilters.length > 0 && !(fe.finitionTypes || []).some(t => finTypeFilters.includes(t))) return false;
               return true;
             }
             if (_planningViewMode === 'livraison') return fe.type === 'reception';
@@ -579,8 +584,7 @@ async function addMachineFilter(calendarEl) {
   wrap.innerHTML = `
     <div style="display:flex;align-items:flex-start;gap:6px;flex-direction:column;">
       <label style="font-size:13px;font-weight:500;">Moteur(s) :</label>
-      <select id="planning-machine-filter" multiple class="settings-input" style="font-size:13px;padding:4px 8px;min-width:180px;max-height:90px;" title="Ctrl+clic pour sélection multiple"></select>
-      <span style="font-size:11px;color:#9ca3af;">Ctrl+clic pour plusieurs</span>
+      <div id="planning-machine-pills" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
     </div>
     <div style="display:flex;align-items:flex-start;gap:6px;flex-direction:column;">
       <label style="font-size:13px;font-weight:500;">Opérateur :</label>
@@ -601,9 +605,36 @@ async function addMachineFilter(calendarEl) {
     </div>
     <div style="display:flex;align-items:flex-start;gap:6px;flex-direction:column;">
       <label style="font-size:13px;font-weight:500;">Type de finition :</label>
-      <select id="planning-finitions-type-filter" class="settings-input" style="font-size:13px;padding:4px 8px;min-width:160px;"></select>
+      <div id="planning-finitions-pills" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
     </div>`;
   calendarEl.parentNode?.insertBefore(finWrap, calendarEl);
+
+  /** Build clickable pill buttons for multi-selection */
+  function buildPills(containerId, values, onToggle) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = "";
+    if (values.length === 0) {
+      container.innerHTML = '<span style="font-size:12px;color:#9ca3af;">Aucun élément</span>';
+      return;
+    }
+    values.forEach(val => {
+      const pill = document.createElement("button");
+      pill.type = "button";
+      pill.className = "planning-engine-pill";
+      pill.dataset.value = val;
+      pill.dataset.selected = "false";
+      pill.textContent = val;
+      pill.style.cssText = "font-size:12px;font-weight:600;padding:5px 13px;border-radius:20px;border:2px solid #d1d5db;background:white;color:#374151;cursor:pointer;transition:all 0.15s;white-space:nowrap;";
+      pill.onclick = () => {
+        const isSelected = pill.dataset.selected === "true";
+        pill.dataset.selected = isSelected ? "false" : "true";
+        pill.style.cssText = `font-size:12px;font-weight:600;padding:5px 13px;border-radius:20px;border:2px solid ${isSelected ? '#d1d5db' : '#2563eb'};background:${isSelected ? 'white' : '#2563eb'};color:${isSelected ? '#374151' : '#fff'};cursor:pointer;transition:all 0.15s;white-space:nowrap;`;
+        onToggle();
+      };
+      container.appendChild(pill);
+    });
+  }
 
   try {
     const [engines, usersResp, faconnageOpts] = await Promise.all([
@@ -611,12 +642,12 @@ async function addMachineFilter(calendarEl) {
       fetch("/api/auth/users", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, users: [] })),
       fetch("/api/settings/faconnage-options", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => [])
     ]);
-    const sel = wrap.querySelector("#planning-machine-filter");
-    sel.innerHTML = (Array.isArray(engines) ? engines.map(e => {
-      const n = typeof e === 'object' ? (e.name || '') : String(e || '');
-      return `<option value="${n}">${n}</option>`;
-    }).join('') : '');
-    sel.onchange = () => calendar?.refetchEvents();
+
+    // Machine pills
+    const engineNames = Array.isArray(engines)
+      ? engines.map(e => typeof e === 'object' ? (e.name || '') : String(e || '')).filter(Boolean)
+      : [];
+    buildPills("planning-machine-pills", engineNames, () => calendar?.refetchEvents());
 
     const userList = (usersResp.ok && Array.isArray(usersResp.users)) ? usersResp.users : [];
     const opSel = wrap.querySelector("#planning-operator-filter");
@@ -626,7 +657,7 @@ async function addMachineFilter(calendarEl) {
     }).join('');
     opSel.onchange = () => calendar?.refetchEvents();
 
-    // Finitions filters
+    // Finitions operator filter
     const finOpSel = finWrap.querySelector("#planning-finitions-operator-filter");
     finOpSel.innerHTML = '<option value="">Tous opérateurs</option>' + userList.map(u => {
       const name = u.name || u.login || '';
@@ -634,23 +665,11 @@ async function addMachineFilter(calendarEl) {
     }).join('');
     finOpSel.onchange = () => calendar?.refetchEvents();
 
+    // Finitions type pills
     const finTypes = ['Embellissement','Rainage','Pliage','Façonnage','Coupe','Emballage','Départ','Livraison'];
     if (Array.isArray(faconnageOpts)) faconnageOpts.forEach(o => { if (!finTypes.includes(o)) finTypes.push(o); });
-    const finTypeSel = finWrap.querySelector("#planning-finitions-type-filter");
-    finTypeSel.innerHTML = '<option value="">Tous types</option>' + finTypes.map(t => `<option value="${t}">${t}</option>`).join('');
-    finTypeSel.onchange = () => calendar?.refetchEvents();
+    buildPills("planning-finitions-pills", finTypes, () => calendar?.refetchEvents());
   } catch(e) { /* ignore */ }
-
-  // Show correct filter bar when view changes
-  const switcher = document.getElementById("planning-view-switcher");
-  if (switcher) {
-    switcher.querySelectorAll("button").forEach(btn => {
-      btn.addEventListener("click", () => {
-        wrap.style.display = _planningViewMode === 'machine' ? 'flex' : 'none';
-        finWrap.style.display = _planningViewMode === 'finitions' ? 'flex' : 'none';
-      });
-    });
-  }
 }
 
 // ======================================================

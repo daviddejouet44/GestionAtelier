@@ -32,5 +32,6 @@ public static class SettingsEndpointsExtensions
         app.MapKanbanConfigEndpoints(recyclePath);
         app.MapAccountsEndpoints(recyclePath);
         app.MapFormConfigEndpoints();
+        app.MapIntegrationsEndpoints();
     }
 }
