@@ -85,49 +85,49 @@ public static class IntegrationsEndpoints
                             foreach (var prop in mapEl.EnumerateObject())
                                 cfg.XmlImport.Mapping[prop.Name] = prop.Value.GetString() ?? "";
                         }
-                        if (data.TryGetProperty("dedupKey", out var dkEl)) cfg.XmlImport.DedupKey = dkEl.GetString() ?? "referenceCommande";
-                        if (data.TryGetProperty("enabled", out var xeEl)) cfg.XmlImport.Enabled = xeEl.GetBoolean();
+                        { var s = TryGetString(data, "dedupKey"); if (s != null) cfg.XmlImport.DedupKey = s; }
+                        { var v = TryGetBool(data, "enabled"); if (v.HasValue) cfg.XmlImport.Enabled = v.Value; }
                         break;
 
                     case "erp":
                         cfg.Erp ??= new ErpConfig();
-                        if (data.TryGetProperty("enabled", out var eeEl)) cfg.Erp.Enabled = eeEl.GetBoolean();
-                        if (data.TryGetProperty("url", out var euEl)) cfg.Erp.Url = euEl.GetString() ?? "";
-                        if (data.TryGetProperty("apiKey", out var eakEl) && !string.IsNullOrEmpty(eakEl.GetString())) cfg.Erp.ApiKey = eakEl.GetString()!;
-                        if (data.TryGetProperty("login", out var elEl)) cfg.Erp.Login = elEl.GetString() ?? "";
-                        if (data.TryGetProperty("password", out var epEl) && !string.IsNullOrEmpty(epEl.GetString())) cfg.Erp.Password = epEl.GetString()!;
-                        if (data.TryGetProperty("format", out var efEl)) cfg.Erp.Format = efEl.GetString() ?? "xml";
-                        if (data.TryGetProperty("intervalMinutes", out var eiEl)) cfg.Erp.IntervalMinutes = eiEl.GetInt32();
+                        { var v = TryGetBool(data, "enabled"); if (v.HasValue) cfg.Erp.Enabled = v.Value; }
+                        { var s = TryGetString(data, "url"); if (s != null) cfg.Erp.Url = s; }
+                        { var s = TryGetString(data, "apiKey"); if (!string.IsNullOrEmpty(s)) cfg.Erp.ApiKey = s!; }
+                        { var s = TryGetString(data, "login"); if (s != null) cfg.Erp.Login = s; }
+                        { var s = TryGetString(data, "password"); if (!string.IsNullOrEmpty(s)) cfg.Erp.Password = s!; }
+                        { var s = TryGetString(data, "format"); if (s != null) cfg.Erp.Format = s; }
+                        { var i = TryGetInt(data, "intervalMinutes"); if (i.HasValue) cfg.Erp.IntervalMinutes = i.Value; }
                         break;
 
                     case "pressero":
                         cfg.Pressero ??= new PresseroConfig();
-                        if (data.TryGetProperty("enabled", out var peen)) cfg.Pressero.Enabled = peen.GetBoolean();
-                        if (data.TryGetProperty("apiUrl", out var pau)) cfg.Pressero.ApiUrl = pau.GetString() ?? "";
-                        if (data.TryGetProperty("apiKey", out var pak) && !string.IsNullOrEmpty(pak.GetString())) cfg.Pressero.ApiKey = pak.GetString()!;
-                        if (data.TryGetProperty("apiSecret", out var pas) && !string.IsNullOrEmpty(pas.GetString())) cfg.Pressero.ApiSecret = pas.GetString()!;
-                        if (data.TryGetProperty("webhookUrl", out var pwu)) cfg.Pressero.WebhookUrl = pwu.GetString() ?? "";
-                        if (data.TryGetProperty("autoImport", out var pai)) cfg.Pressero.AutoImport = pai.GetBoolean();
+                        { var v = TryGetBool(data, "enabled"); if (v.HasValue) cfg.Pressero.Enabled = v.Value; }
+                        { var s = TryGetString(data, "apiUrl"); if (s != null) cfg.Pressero.ApiUrl = s; }
+                        { var s = TryGetString(data, "apiKey"); if (!string.IsNullOrEmpty(s)) cfg.Pressero.ApiKey = s!; }
+                        { var s = TryGetString(data, "apiSecret"); if (!string.IsNullOrEmpty(s)) cfg.Pressero.ApiSecret = s!; }
+                        { var s = TryGetString(data, "webhookUrl"); if (s != null) cfg.Pressero.WebhookUrl = s; }
+                        { var v = TryGetBool(data, "autoImport"); if (v.HasValue) cfg.Pressero.AutoImport = v.Value; }
                         break;
 
                     case "mdsf":
                         cfg.Mdsf ??= new MdsfConfig();
-                        if (data.TryGetProperty("enabled", out var meen)) cfg.Mdsf.Enabled = meen.GetBoolean();
-                        if (data.TryGetProperty("apiUrl", out var mau)) cfg.Mdsf.ApiUrl = mau.GetString() ?? "";
-                        if (data.TryGetProperty("apiKey", out var mak) && !string.IsNullOrEmpty(mak.GetString())) cfg.Mdsf.ApiKey = mak.GetString()!;
-                        if (data.TryGetProperty("storeId", out var msi)) cfg.Mdsf.StoreId = msi.GetString() ?? "";
-                        if (data.TryGetProperty("autoImport", out var mai)) cfg.Mdsf.AutoImport = mai.GetBoolean();
-                        if (data.TryGetProperty("intervalMinutes", out var mim)) cfg.Mdsf.IntervalMinutes = mim.GetInt32();
+                        { var v = TryGetBool(data, "enabled"); if (v.HasValue) cfg.Mdsf.Enabled = v.Value; }
+                        { var s = TryGetString(data, "apiUrl"); if (s != null) cfg.Mdsf.ApiUrl = s; }
+                        { var s = TryGetString(data, "apiKey"); if (!string.IsNullOrEmpty(s)) cfg.Mdsf.ApiKey = s!; }
+                        { var s = TryGetString(data, "storeId"); if (s != null) cfg.Mdsf.StoreId = s; }
+                        { var v = TryGetBool(data, "autoImport"); if (v.HasValue) cfg.Mdsf.AutoImport = v.Value; }
+                        { var i = TryGetInt(data, "intervalMinutes"); if (i.HasValue) cfg.Mdsf.IntervalMinutes = i.Value; }
                         break;
 
                     case "export":
                         cfg.Export ??= new ExportConfig();
-                        if (data.TryGetProperty("enableXml", out var exXml)) cfg.Export.EnableXml = exXml.GetBoolean();
-                        if (data.TryGetProperty("enableCsv", out var exCsv)) cfg.Export.EnableCsv = exCsv.GetBoolean();
-                        if (data.TryGetProperty("enableErp", out var exErp)) cfg.Export.EnableErp = exErp.GetBoolean();
-                        if (data.TryGetProperty("enablePressero", out var exPressero)) cfg.Export.EnablePressero = exPressero.GetBoolean();
-                        if (data.TryGetProperty("enableMdsf", out var exMdsf)) cfg.Export.EnableMdsf = exMdsf.GetBoolean();
-                        if (data.TryGetProperty("csvSeparator", out var exSep)) cfg.Export.CsvSeparator = exSep.GetString() ?? ";";
+                        { var v = TryGetBool(data, "enableXml"); if (v.HasValue) cfg.Export.EnableXml = v.Value; }
+                        { var v = TryGetBool(data, "enableCsv"); if (v.HasValue) cfg.Export.EnableCsv = v.Value; }
+                        { var v = TryGetBool(data, "enableErp"); if (v.HasValue) cfg.Export.EnableErp = v.Value; }
+                        { var v = TryGetBool(data, "enablePressero"); if (v.HasValue) cfg.Export.EnablePressero = v.Value; }
+                        { var v = TryGetBool(data, "enableMdsf"); if (v.HasValue) cfg.Export.EnableMdsf = v.Value; }
+                        { var s = TryGetString(data, "csvSeparator"); if (s != null) cfg.Export.CsvSeparator = s; }
                         if (data.TryGetProperty("mapping", out var exMap) && exMap.ValueKind == JsonValueKind.Object)
                         {
                             cfg.Export.Mapping = new Dictionary<string, string>();
@@ -452,6 +452,29 @@ public static class IntegrationsEndpoints
             }
             catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
         });
+    }
+
+    // ── Null-safe JSON helpers ────────────────────────────────────────────────
+    private static bool? TryGetBool(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out var el)) return null;
+        if (el.ValueKind == JsonValueKind.True) return true;
+        if (el.ValueKind == JsonValueKind.False) return false;
+        return null;
+    }
+
+    private static string? TryGetString(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out var el)) return null;
+        if (el.ValueKind == JsonValueKind.String) return el.GetString();
+        return null;
+    }
+
+    private static int? TryGetInt(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out var el)) return null;
+        if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var v)) return v;
+        return null;
     }
 }
 

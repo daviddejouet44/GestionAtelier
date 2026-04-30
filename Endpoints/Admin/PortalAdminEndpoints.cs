@@ -49,7 +49,7 @@ public static class PortalAdminEndpoints
                 var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
                 var existing = MongoDbHelper.GetSettings<PortalSettings>("portalSettings") ?? new PortalSettings();
 
-                if (json.TryGetProperty("enabled", out var eEl)) existing.Enabled = eEl.GetBoolean();
+                if (json.TryGetProperty("enabled", out var eEl) && eEl.ValueKind != JsonValueKind.Null) existing.Enabled = eEl.GetBoolean();
                 if (json.TryGetProperty("portalUrl", out var puEl)) existing.PortalUrl = puEl.GetString() ?? "";
                 if (json.TryGetProperty("welcomeText", out var wtEl)) existing.WelcomeText = wtEl.GetString() ?? "";
                 if (json.TryGetProperty("maxUploadSizeMb", out var musEl) && musEl.TryGetInt32(out var mus)) existing.MaxUploadSizeMb = mus;
@@ -117,7 +117,7 @@ public static class PortalAdminEndpoints
                     var smtpSettings = MongoDbHelper.GetSettings<PortalSmtpSettings>("portalSmtp") ?? new PortalSmtpSettings();
                     if (smtpEl.TryGetProperty("host", out var hEl)) smtpSettings.Host = hEl.GetString() ?? "";
                     if (smtpEl.TryGetProperty("port", out var portEl) && portEl.TryGetInt32(out var portVal)) smtpSettings.Port = portVal;
-                    if (smtpEl.TryGetProperty("useSsl", out var sslEl)) smtpSettings.UseSsl = sslEl.GetBoolean();
+                    if (smtpEl.TryGetProperty("useSsl", out var sslEl) && sslEl.ValueKind != JsonValueKind.Null) smtpSettings.UseSsl = sslEl.GetBoolean();
                     if (smtpEl.TryGetProperty("username", out var uEl)) smtpSettings.Username = uEl.GetString() ?? "";
                     if (smtpEl.TryGetProperty("password", out var pwEl) && !string.IsNullOrWhiteSpace(pwEl.GetString())) smtpSettings.Password = pwEl.GetString() ?? "";
                     if (smtpEl.TryGetProperty("fromAddress", out var faEl)) smtpSettings.FromAddress = faEl.GetString() ?? "";

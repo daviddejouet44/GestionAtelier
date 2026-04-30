@@ -381,9 +381,113 @@ public static class PortalOrdersEndpoints
             }
         });
 
-        // GET /api/portal/orders/{id}/files/{fileName}  — download a file
-        app.MapGet("/api/portal/orders/{id}/files/{fileName}", (HttpContext ctx, string id, string fileName) =>
+        // POST /api/portal/orders/{id}/submit  — move files to kanban root and mark as submitted
+        app.MapPost("/api/portal/orders/{id}/submit", async (HttpContext ctx, string id) =>
         {
+            try
+            {
+                var client = PortalAuthEndpoints.GetAuthenticatedClient(ctx);
+                if (client == null) return Results.Json(new { ok = false, error = "Non authentifié" });
+
+                var settings = MongoDbHelper.GetSettings<PortalSettings>("portalSettings") ?? new PortalSettings();
+
+                var col = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
+                var doc = col.Find(Builders<BsonDocument>.Filter.Eq("id", id)).FirstOrDefault();
+                if (doc == null) return Results.Json(new { ok = false, error = "Commande non trouvée" });
+
+                var order = DocToOrder(doc);
+                if (order.ClientAccountId != client.Id)
+                    return Results.Json(new { ok = false, error = "Accès refusé" });
+
+                if (order.Status != "draft")
+                    return Results.Json(new { ok = false, error = "La commande a déjà été soumise" });
+
+                var hotRoot = BackendUtils.HotfoldersRoot();
+                var webFolder = Path.Combine(hotRoot, settings.WebOrderKanbanFolder ?? "Commandes web");
+                Directory.CreateDirectory(webFolder);
+
+                var titlePart = SanitizeForFs(order.Title);
+
+                // Move each file from the draft subfolder to the kanban root folder
+                for (int i = 0; i < order.Files.Count; i++)
+                {
+                    var f = order.Files[i];
+                    var newName = $"{order.OrderNumber}__{titlePart}__{Path.GetFileName(f.StoredPath)}";
+                    var newPath = Path.Combine(webFolder, newName);
+
+                    // Avoid collisions
+                    if (File.Exists(newPath))
+                    {
+                        var stem = Path.GetFileNameWithoutExtension(newName);
+                        var ext2 = Path.GetExtension(newName);
+                        newName = $"{stem}_{i}{ext2}";
+                        newPath = Path.Combine(webFolder, newName);
+                    }
+
+                    if (File.Exists(f.StoredPath))
+                        File.Move(f.StoredPath, newPath);
+
+                    order.Files[i] = new ClientOrderFile
+                    {
+                        FileName = newName,
+                        StoredPath = newPath,
+                        UploadedAt = f.UploadedAt,
+                        Size = f.Size
+                    };
+                }
+
+                // Try to remove now-empty draft subfolder
+                try
+                {
+                    var draftDir = Path.Combine(hotRoot, settings.WebOrderKanbanFolder ?? "Commandes web", id);
+                    if (Directory.Exists(draftDir) && !Directory.EnumerateFileSystemEntries(draftDir).Any())
+                        Directory.Delete(draftDir);
+                }
+                catch { /* non-blocking */ }
+
+                var now = DateTime.UtcNow;
+                order.Status = "submitted";
+                order.UpdatedAt = now;
+                order.StatusHistory.Add(new ClientOrderStatusEntry
+                {
+                    Status = "submitted",
+                    Timestamp = now,
+                    Comment = "Commande soumise par le client"
+                });
+
+                var filesArray = new BsonArray(order.Files.Select(f => new BsonDocument
+                {
+                    ["fileName"] = f.FileName,
+                    ["storedPath"] = f.StoredPath,
+                    ["uploadedAt"] = f.UploadedAt,
+                    ["size"] = f.Size
+                }));
+
+                var historyArray = new BsonArray(order.StatusHistory.Select(h => new BsonDocument
+                {
+                    ["status"] = h.Status,
+                    ["timestamp"] = h.Timestamp,
+                    ["comment"] = h.Comment
+                }));
+
+                col.UpdateOne(
+                    Builders<BsonDocument>.Filter.Eq("id", id),
+                    Builders<BsonDocument>.Update
+                        .Set("status", "submitted")
+                        .Set("updatedAt", now)
+                        .Set("files", filesArray)
+                        .Set("statusHistory", historyArray));
+
+                return Results.Json(new { ok = true });
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { ok = false, error = ex.Message });
+            }
+        });
+
+        // GET /api/portal/orders/{id}/files/{fileName}  — download a file
+        app.MapGet("/api/portal/orders/{id}/files/{fileName}", (HttpContext ctx, string id, string fileName) =>        {
             var client = PortalAuthEndpoints.GetAuthenticatedClient(ctx);
             if (client == null) return Results.Json(new { ok = false, error = "Non authentifié" });
 
@@ -471,5 +575,14 @@ public static class PortalOrdersEndpoints
             doc["desiredDeliveryDate"] = BsonNull.Value;
 
         return doc;
+    }
+
+    // ── File-system name sanitizer ────────────────────────────────────────────
+    private static string SanitizeForFs(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "sans-titre";
+        var safe = System.Text.RegularExpressions.Regex.Replace(s, @"[^\w\-]", "_");
+        if (safe.Length > 40) safe = safe[..40];
+        return string.IsNullOrWhiteSpace(safe) ? "sans-titre" : safe;
     }
 }

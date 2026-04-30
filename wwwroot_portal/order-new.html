@@ -525,6 +525,10 @@
           }
         }
 
+        // Submit the order (moves files to kanban root, sets status to submitted)
+        btn.textContent = 'Finalisation…';
+        await apiRequest(`/orders/${orderId}/submit`, { method: 'POST' });
+
         // Show confirmation
         document.querySelector('.page-header').classList.add('hidden');
         document.getElementById('section-upload').classList.add('hidden');
