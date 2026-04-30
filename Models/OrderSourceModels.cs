@@ -141,3 +141,109 @@ public class DropboxGlobalConfig
     [JsonPropertyName("callbackUrl")]
     public string CallbackUrl { get; set; } = "http://localhost:5080/api/integrations/dropbox/callback";
 }
+
+// ── Google Drive config (stored encrypted) ───────────────────────────────────
+public class GoogleDriveSourceConfig
+{
+    [JsonPropertyName("appClientId")]
+    public string AppClientId { get; set; } = "";
+
+    [JsonPropertyName("appClientSecret")]
+    public string AppClientSecret { get; set; } = "";
+
+    [JsonPropertyName("refreshToken")]
+    public string RefreshToken { get; set; } = "";
+
+    [JsonPropertyName("folderId")]
+    public string FolderId { get; set; } = "root";
+}
+
+// ── Global Google Drive OAuth app config ─────────────────────────────────────
+public class GoogleDriveGlobalConfig
+{
+    [JsonPropertyName("appClientId")]
+    public string AppClientId { get; set; } = "";
+
+    [JsonPropertyName("appClientSecret")]
+    public string AppClientSecret { get; set; } = "";
+
+    [JsonPropertyName("callbackUrl")]
+    public string CallbackUrl { get; set; } = "http://localhost:5080/api/integrations/google-drive/callback";
+}
+
+// ── Box config (stored encrypted) ────────────────────────────────────────────
+public class BoxSourceConfig
+{
+    [JsonPropertyName("appClientId")]
+    public string AppClientId { get; set; } = "";
+
+    [JsonPropertyName("appClientSecret")]
+    public string AppClientSecret { get; set; } = "";
+
+    [JsonPropertyName("accessToken")]
+    public string AccessToken { get; set; } = "";
+
+    [JsonPropertyName("refreshToken")]
+    public string RefreshToken { get; set; } = "";
+
+    [JsonPropertyName("folderId")]
+    public string FolderId { get; set; } = "0";
+}
+
+// ── Global Box OAuth app config ───────────────────────────────────────────────
+public class BoxGlobalConfig
+{
+    [JsonPropertyName("appClientId")]
+    public string AppClientId { get; set; } = "";
+
+    [JsonPropertyName("appClientSecret")]
+    public string AppClientSecret { get; set; } = "";
+
+    [JsonPropertyName("callbackUrl")]
+    public string CallbackUrl { get; set; } = "http://localhost:5080/api/integrations/box/callback";
+}
+
+// ── OneDrive config (stored encrypted) ───────────────────────────────────────
+public class OneDriveSourceConfig
+{
+    [JsonPropertyName("appClientId")]
+    public string AppClientId { get; set; } = "";
+
+    [JsonPropertyName("appClientSecret")]
+    public string AppClientSecret { get; set; } = "";
+
+    [JsonPropertyName("tenantId")]
+    public string TenantId { get; set; } = "common";
+
+    [JsonPropertyName("refreshToken")]
+    public string RefreshToken { get; set; } = "";
+
+    /// <summary>personal | business | sharepoint</summary>
+    [JsonPropertyName("driveType")]
+    public string DriveType { get; set; } = "personal";
+
+    [JsonPropertyName("siteId")]
+    public string SiteId { get; set; } = "";
+
+    [JsonPropertyName("driveId")]
+    public string DriveId { get; set; } = "";
+
+    [JsonPropertyName("folderItemId")]
+    public string FolderItemId { get; set; } = "root";
+}
+
+// ── Global OneDrive/Microsoft OAuth app config ────────────────────────────────
+public class OneDriveGlobalConfig
+{
+    [JsonPropertyName("appClientId")]
+    public string AppClientId { get; set; } = "";
+
+    [JsonPropertyName("appClientSecret")]
+    public string AppClientSecret { get; set; } = "";
+
+    [JsonPropertyName("tenantId")]
+    public string TenantId { get; set; } = "common";
+
+    [JsonPropertyName("callbackUrl")]
+    public string CallbackUrl { get; set; } = "http://localhost:5080/api/integrations/onedrive/callback";
+}

@@ -4,8 +4,14 @@ import { authToken, showNotification, esc } from '../core.js';
 const API = {
   sources:  '/api/integrations/order-sources',
   logs:     '/api/integrations/order-sources/logs',
-  dropboxGlobalConfig: '/api/integrations/dropbox/global-config',
-  dropboxAuthorize:    '/api/integrations/dropbox/authorize',
+  dropboxGlobalConfig:    '/api/integrations/dropbox/global-config',
+  dropboxAuthorize:       '/api/integrations/dropbox/authorize',
+  googleDriveGlobalConfig: '/api/integrations/google-drive/global-config',
+  googleDriveAuthorize:   '/api/integrations/google-drive/authorize',
+  boxGlobalConfig:        '/api/integrations/box/global-config',
+  boxAuthorize:           '/api/integrations/box/authorize',
+  oneDriveGlobalConfig:   '/api/integrations/onedrive/global-config',
+  oneDriveAuthorize:      '/api/integrations/onedrive/authorize',
 };
 
 function authH() { return { 'Authorization': `Bearer ${authToken}` }; }
@@ -52,6 +58,9 @@ export async function renderSettingsOrderSources(panel) {
     <div class="settings-tabs" id="os-tabs" style="margin-bottom:20px;">
       <button class="settings-tab active" data-ostab="sources">🔗 Sources configurées</button>
       <button class="settings-tab" data-ostab="dropbox-global">☁️ Config Dropbox globale</button>
+      <button class="settings-tab" data-ostab="googledrive-global">☁️ Config Google Drive globale</button>
+      <button class="settings-tab" data-ostab="box-global">☁️ Config Box globale</button>
+      <button class="settings-tab" data-ostab="onedrive-global">☁️ Config OneDrive globale</button>
       <button class="settings-tab" data-ostab="imports-log">📋 Journal des imports</button>
     </div>
     <div id="os-panel"></div>
@@ -64,9 +73,12 @@ export async function renderSettingsOrderSources(panel) {
       t.classList.toggle('active', t.dataset.ostab === tabId);
     });
     switch (tabId) {
-      case 'sources':        renderSourcesList(osPanel); break;
-      case 'dropbox-global': renderDropboxGlobalConfig(osPanel); break;
-      case 'imports-log':    renderImportsLog(osPanel); break;
+      case 'sources':          renderSourcesList(osPanel); break;
+      case 'dropbox-global':   renderDropboxGlobalConfig(osPanel); break;
+      case 'googledrive-global': renderGoogleDriveGlobalConfig(osPanel); break;
+      case 'box-global':       renderBoxGlobalConfig(osPanel); break;
+      case 'onedrive-global':  renderOneDriveGlobalConfig(osPanel); break;
+      case 'imports-log':      renderImportsLog(osPanel); break;
     }
   }
 
@@ -83,6 +95,30 @@ export async function renderSettingsOrderSources(panel) {
     const errMatch = hash.match(/dropbox_error=([^&]+)/);
     const errMsg = errMatch ? decodeURIComponent(errMatch[1]) : 'Erreur inconnue';
     showNotification('❌ Erreur Dropbox : ' + errMsg, 'error');
+    window.location.hash = '#settings/integrations';
+  } else if (hash.includes('googledrive_ok=1')) {
+    showNotification('✅ Google Drive connecté avec succès !', 'success');
+    window.location.hash = '#settings/integrations';
+  } else if (hash.includes('googledrive_error=')) {
+    const errMatch = hash.match(/googledrive_error=([^&]+)/);
+    const errMsg = errMatch ? decodeURIComponent(errMatch[1]) : 'Erreur inconnue';
+    showNotification('❌ Erreur Google Drive : ' + errMsg, 'error');
+    window.location.hash = '#settings/integrations';
+  } else if (hash.includes('box_ok=1')) {
+    showNotification('✅ Box connecté avec succès !', 'success');
+    window.location.hash = '#settings/integrations';
+  } else if (hash.includes('box_error=')) {
+    const errMatch = hash.match(/box_error=([^&]+)/);
+    const errMsg = errMatch ? decodeURIComponent(errMatch[1]) : 'Erreur inconnue';
+    showNotification('❌ Erreur Box : ' + errMsg, 'error');
+    window.location.hash = '#settings/integrations';
+  } else if (hash.includes('onedrive_ok=1')) {
+    showNotification('✅ OneDrive connecté avec succès !', 'success');
+    window.location.hash = '#settings/integrations';
+  } else if (hash.includes('onedrive_error=')) {
+    const errMatch = hash.match(/onedrive_error=([^&]+)/);
+    const errMsg = errMatch ? decodeURIComponent(errMatch[1]) : 'Erreur inconnue';
+    showNotification('❌ Erreur OneDrive : ' + errMsg, 'error');
     window.location.hash = '#settings/integrations';
   }
 
@@ -128,7 +164,14 @@ async function renderSourcesList(panel) {
 }
 
 function renderSourceCard(s) {
-  const typeLabel = s.type === 'sftp' ? '🖥️ SFTP' : s.type === 'dropbox' ? '☁️ Dropbox' : esc(s.type);
+  const typeLabels = {
+    sftp: '🖥️ SFTP',
+    dropbox: '☁️ Dropbox',
+    googledrive: '☁️ Google Drive',
+    box: '☁️ Box',
+    onedrive: '☁️ OneDrive / Office 365',
+  };
+  const typeLabel = typeLabels[s.type] || esc(s.type);
   const mapping = s.clientMapping || {};
   const mappingStr = Object.entries(mapping).map(([k, v]) => `${esc(k)} → ${esc(v)}`).join(', ') || '—';
   return `
@@ -274,6 +317,72 @@ function openSourceModal(parentPanel, source, onSaved) {
           </div>
         </div>
       `;
+    } else if (type === 'googledrive') {
+      return `
+        <div class="settings-section-card" style="margin-top:16px;background:#f8fafc;">
+          <h4 style="margin:0 0 12px;font-size:13px;color:#374151;">Configuration Google Drive</h4>
+          <p style="color:#6b7280;font-size:12px;margin-bottom:12px;">
+            Les identifiants OAuth se configurent dans l'onglet <strong>Config Google Drive globale</strong>.
+            Cliquez sur "Connecter Google Drive" après avoir enregistré la source.
+          </p>
+          <div style="margin-bottom:10px;"><label class="settings-form-group" style="font-size:12px;">ID du dossier racine Google Drive</label>
+            <input type="text" id="googledrive-folderid" class="settings-input settings-input-wide" placeholder="root" value="${esc('root')}" />
+            <span style="font-size:11px;color:#6b7280;">Utilisez "root" pour Mon Drive, ou l'ID d'un dossier spécifique (visible dans l'URL Drive).</span>
+          </div>
+          <div style="font-size:12px;color:#6b7280;margin-top:8px;">
+            ${isEdit && s.id ? 'Statut OAuth : vérifiez via "Tester la connexion"' : 'Enregistrez la source pour démarrer le flux OAuth2.'}
+          </div>
+        </div>
+      `;
+    } else if (type === 'box') {
+      return `
+        <div class="settings-section-card" style="margin-top:16px;background:#f8fafc;">
+          <h4 style="margin:0 0 12px;font-size:13px;color:#374151;">Configuration Box</h4>
+          <p style="color:#6b7280;font-size:12px;margin-bottom:12px;">
+            Les identifiants OAuth se configurent dans l'onglet <strong>Config Box globale</strong>.
+            Cliquez sur "Connecter Box" après avoir enregistré la source.
+          </p>
+          <div style="margin-bottom:10px;"><label class="settings-form-group" style="font-size:12px;">ID du dossier racine Box</label>
+            <input type="text" id="box-folderid" class="settings-input settings-input-wide" placeholder="0" value="${esc('0')}" />
+            <span style="font-size:11px;color:#6b7280;">Utilisez "0" pour le dossier racine, ou l'ID d'un sous-dossier.</span>
+          </div>
+          <div style="font-size:12px;color:#6b7280;margin-top:8px;">
+            ${isEdit && s.id ? 'Statut OAuth : vérifiez via "Tester la connexion"' : 'Enregistrez la source pour démarrer le flux OAuth2.'}
+          </div>
+        </div>
+      `;
+    } else if (type === 'onedrive') {
+      return `
+        <div class="settings-section-card" style="margin-top:16px;background:#f8fafc;">
+          <h4 style="margin:0 0 12px;font-size:13px;color:#374151;">Configuration OneDrive / Office 365</h4>
+          <p style="color:#6b7280;font-size:12px;margin-bottom:12px;">
+            Les identifiants OAuth se configurent dans l'onglet <strong>Config OneDrive globale</strong>.
+            Cliquez sur "Connecter OneDrive" après avoir enregistré la source.
+          </p>
+          <div style="margin-bottom:10px;"><label class="settings-form-group" style="font-size:12px;">Type de drive</label>
+            <select id="onedrive-drivetype" class="settings-input">
+              <option value="personal">OneDrive Personnel</option>
+              <option value="business">OneDrive Entreprise (Business)</option>
+              <option value="sharepoint">SharePoint</option>
+            </select>
+          </div>
+          <div id="onedrive-siteid-row" style="margin-bottom:10px;display:none;">
+            <label class="settings-form-group" style="font-size:12px;">Site ID SharePoint</label>
+            <input type="text" id="onedrive-siteid" class="settings-input settings-input-wide" placeholder="contoso.sharepoint.com,…" value="" />
+          </div>
+          <div id="onedrive-driveid-row" style="margin-bottom:10px;display:none;">
+            <label class="settings-form-group" style="font-size:12px;">Drive ID (optionnel)</label>
+            <input type="text" id="onedrive-driveid" class="settings-input settings-input-wide" placeholder="b!…" value="" />
+          </div>
+          <div style="margin-bottom:10px;"><label class="settings-form-group" style="font-size:12px;">ID de l'élément dossier racine</label>
+            <input type="text" id="onedrive-folderitemid" class="settings-input settings-input-wide" placeholder="root" value="${esc('root')}" />
+            <span style="font-size:11px;color:#6b7280;">Utilisez "root" pour la racine, ou l'ID d'un dossier spécifique.</span>
+          </div>
+          <div style="font-size:12px;color:#6b7280;margin-top:8px;">
+            ${isEdit && s.id ? 'Statut OAuth : vérifiez via "Tester la connexion"' : 'Enregistrez la source pour démarrer le flux OAuth2.'}
+          </div>
+        </div>
+      `;
     }
     return '';
   }
@@ -294,6 +403,9 @@ function openSourceModal(parentPanel, source, onSaved) {
       <select id="os-type" class="settings-input" style="min-width:200px;">
         <option value="sftp" ${s.type==='sftp'?'selected':''}>🖥️ SFTP</option>
         <option value="dropbox" ${s.type==='dropbox'?'selected':''}>☁️ Dropbox</option>
+        <option value="googledrive" ${s.type==='googledrive'?'selected':''}>☁️ Google Drive</option>
+        <option value="box" ${s.type==='box'?'selected':''}>☁️ Box</option>
+        <option value="onedrive" ${s.type==='onedrive'?'selected':''}>☁️ OneDrive / Office 365</option>
       </select>
     </div>
 
@@ -335,7 +447,12 @@ function openSourceModal(parentPanel, source, onSaved) {
 
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;">
       <button id="os-modal-cancel" class="btn">Annuler</button>
-      ${isEdit ? `<button id="os-modal-dropbox-connect" class="btn" style="display:${s.type==='dropbox'?'inline-flex':'none'}">🔗 Connecter Dropbox</button>` : ''}
+      ${isEdit ? `
+        <button id="os-modal-dropbox-connect" class="btn" style="display:${s.type==='dropbox'?'inline-flex':'none'}">🔗 Connecter Dropbox</button>
+        <button id="os-modal-googledrive-connect" class="btn" style="display:${s.type==='googledrive'?'inline-flex':'none'}">🔗 Connecter Google Drive</button>
+        <button id="os-modal-box-connect" class="btn" style="display:${s.type==='box'?'inline-flex':'none'}">🔗 Connecter Box</button>
+        <button id="os-modal-onedrive-connect" class="btn" style="display:${s.type==='onedrive'?'inline-flex':'none'}">🔗 Connecter OneDrive</button>
+      ` : ''}
       <button id="os-modal-save" class="btn btn-primary">💾 Enregistrer</button>
     </div>
   `;
@@ -346,9 +463,17 @@ function openSourceModal(parentPanel, source, onSaved) {
   // Handle type change
   const typeSelect = modal.querySelector('#os-type');
   typeSelect.addEventListener('change', () => {
-    modal.querySelector('#os-config-fields').innerHTML = buildConfigFields(typeSelect.value);
-    const dropboxBtn = modal.querySelector('#os-modal-dropbox-connect');
-    if (dropboxBtn) dropboxBtn.style.display = typeSelect.value === 'dropbox' ? 'inline-flex' : 'none';
+    const t = typeSelect.value;
+    modal.querySelector('#os-config-fields').innerHTML = buildConfigFields(t);
+    if (isEdit) {
+      const oauthTypes = ['dropbox', 'googledrive', 'box', 'onedrive'];
+      oauthTypes.forEach(ot => {
+        const btn = modal.querySelector(`#os-modal-${ot}-connect`);
+        if (btn) btn.style.display = t === ot ? 'inline-flex' : 'none';
+      });
+    }
+    // Wire up OneDrive driveType toggle if applicable
+    if (t === 'onedrive') wireOneDriveDriveTypeToggle(modal);
   });
 
   // Mapping rows
@@ -393,6 +518,21 @@ function openSourceModal(parentPanel, source, onSaved) {
     } else if (type === 'dropbox') {
       return {
         folderPath: modal.querySelector('#dropbox-folder')?.value.trim() || '/GestionAtelier',
+      };
+    } else if (type === 'googledrive') {
+      return {
+        folderId: modal.querySelector('#googledrive-folderid')?.value.trim() || 'root',
+      };
+    } else if (type === 'box') {
+      return {
+        folderId: modal.querySelector('#box-folderid')?.value.trim() || '0',
+      };
+    } else if (type === 'onedrive') {
+      return {
+        driveType: modal.querySelector('#onedrive-drivetype')?.value || 'personal',
+        siteId: modal.querySelector('#onedrive-siteid')?.value.trim() || '',
+        driveId: modal.querySelector('#onedrive-driveid')?.value.trim() || '',
+        folderItemId: modal.querySelector('#onedrive-folderitemid')?.value.trim() || 'root',
       };
     }
     return {};
@@ -449,9 +589,76 @@ function openSourceModal(parentPanel, source, onSaved) {
     };
   }
 
+  // Google Drive OAuth
+  const googleDriveConnectBtn = modal.querySelector('#os-modal-googledrive-connect');
+  if (googleDriveConnectBtn) {
+    googleDriveConnectBtn.onclick = async () => {
+      if (!s.id) { showNotification('⚠️ Enregistrez d\'abord la source', 'warning'); return; }
+      try {
+        const r = await fetch(`${API.googleDriveAuthorize}?sourceId=${encodeURIComponent(s.id)}`, { headers: authH() }).then(r => r.json());
+        if (r.ok && r.url) {
+          window.open(r.url, '_blank', 'width=600,height=700,noopener,noreferrer');
+        } else {
+          showNotification('❌ ' + (r.error || 'Impossible de générer l\'URL OAuth'), 'error');
+        }
+      } catch(e) { showNotification('❌ Erreur réseau', 'error'); }
+    };
+  }
+
+  // Box OAuth
+  const boxConnectBtn = modal.querySelector('#os-modal-box-connect');
+  if (boxConnectBtn) {
+    boxConnectBtn.onclick = async () => {
+      if (!s.id) { showNotification('⚠️ Enregistrez d\'abord la source', 'warning'); return; }
+      try {
+        const r = await fetch(`${API.boxAuthorize}?sourceId=${encodeURIComponent(s.id)}`, { headers: authH() }).then(r => r.json());
+        if (r.ok && r.url) {
+          window.open(r.url, '_blank', 'width=600,height=700,noopener,noreferrer');
+        } else {
+          showNotification('❌ ' + (r.error || 'Impossible de générer l\'URL OAuth'), 'error');
+        }
+      } catch(e) { showNotification('❌ Erreur réseau', 'error'); }
+    };
+  }
+
+  // OneDrive OAuth
+  const oneDriveConnectBtn = modal.querySelector('#os-modal-onedrive-connect');
+  if (oneDriveConnectBtn) {
+    oneDriveConnectBtn.onclick = async () => {
+      if (!s.id) { showNotification('⚠️ Enregistrez d\'abord la source', 'warning'); return; }
+      const driveType = modal.querySelector('#onedrive-drivetype')?.value || 'personal';
+      try {
+        const r = await fetch(`${API.oneDriveAuthorize}?sourceId=${encodeURIComponent(s.id)}&driveType=${encodeURIComponent(driveType)}`, { headers: authH() }).then(r => r.json());
+        if (r.ok && r.url) {
+          window.open(r.url, '_blank', 'width=600,height=700,noopener,noreferrer');
+        } else {
+          showNotification('❌ ' + (r.error || 'Impossible de générer l\'URL OAuth'), 'error');
+        }
+      } catch(e) { showNotification('❌ Erreur réseau', 'error'); }
+    };
+  }
+
+  // Wire up OneDrive driveType toggle for initial render
+  if (s.type === 'onedrive') wireOneDriveDriveTypeToggle(modal);
+
   modal.querySelector('#os-modal-close').onclick = () => overlay.remove();
   modal.querySelector('#os-modal-cancel').onclick = () => overlay.remove();
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+// ── OneDrive driveType toggle ────────────────────────────────────────────────
+function wireOneDriveDriveTypeToggle(modal) {
+  const driveTypeSelect = modal.querySelector('#onedrive-drivetype');
+  if (!driveTypeSelect) return;
+  function updateVisibility() {
+    const v = driveTypeSelect.value;
+    const siteRow = modal.querySelector('#onedrive-siteid-row');
+    const driveRow = modal.querySelector('#onedrive-driveid-row');
+    if (siteRow) siteRow.style.display = v === 'sharepoint' ? 'block' : 'none';
+    if (driveRow) driveRow.style.display = (v === 'business' || v === 'sharepoint') ? 'block' : 'none';
+  }
+  driveTypeSelect.addEventListener('change', updateVisibility);
+  updateVisibility();
 }
 
 // ── Dropbox global config ────────────────────────────────────────────────────
@@ -504,6 +711,179 @@ async function renderDropboxGlobalConfig(panel) {
         method: 'PUT', headers: authJsonH(), body: JSON.stringify(body)
       }).then(r => r.json());
       if (r.ok) showNotification('✅ Configuration Dropbox enregistrée', 'success');
+      else showNotification('❌ ' + (r.error || 'Erreur'), 'error');
+    } catch(e) { showNotification('❌ Erreur réseau', 'error'); }
+  };
+}
+
+// ── Google Drive global config ───────────────────────────────────────────────
+async function renderGoogleDriveGlobalConfig(panel) {
+  panel.innerHTML = `<div style="text-align:center;padding:20px;color:#6b7280;">Chargement…</div>`;
+
+  let cfg = {};
+  try {
+    const r = await fetch(API.googleDriveGlobalConfig, { headers: authH() }).then(r => r.json()).catch(() => ({}));
+    if (r.ok) cfg = r;
+  } catch(e) {}
+
+  panel.innerHTML = `
+    <div class="settings-section-card">
+      <h4>Configuration globale Google Drive OAuth2</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
+        Créez une application sur
+        <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>
+        (type OAuth 2.0), activez l'API Google Drive, puis renseignez ici le Client ID et le Client Secret.
+        L'URL de callback à autoriser dans la Console Google est :
+        <code>${esc(cfg.callbackUrl || window.location.origin + '/api/integrations/google-drive/callback')}</code>
+      </p>
+      <div style="display:grid;gap:12px;max-width:500px;">
+        <div class="settings-form-group">
+          <label>Client ID</label>
+          <input type="text" id="gd-clientid" class="settings-input settings-input-wide" value="${esc(cfg.appClientId||'')}" placeholder="xxx.apps.googleusercontent.com" />
+        </div>
+        <div class="settings-form-group">
+          <label>Client Secret</label>
+          <input type="password" id="gd-clientsecret" class="settings-input settings-input-wide" placeholder="${cfg.hasAppClientSecret ? '(déjà configuré — laisser vide pour conserver)' : 'GOCSPX-…'}" />
+          ${cfg.hasAppClientSecret ? '<span style="font-size:11px;color:#16a34a;">✅ Client Secret enregistré</span>' : ''}
+        </div>
+        <div class="settings-form-group">
+          <label>URL de callback (doit correspondre à Google Cloud Console)</label>
+          <input type="text" id="gd-callback" class="settings-input settings-input-wide" value="${esc(cfg.callbackUrl||window.location.origin+'/api/integrations/google-drive/callback')}" />
+        </div>
+      </div>
+      <button id="gd-save" class="btn btn-primary" style="margin-top:16px;">💾 Enregistrer</button>
+      <div id="gd-msg" style="margin-top:8px;font-size:13px;"></div>
+    </div>
+  `;
+
+  panel.querySelector('#gd-save').onclick = async () => {
+    const appClientId = panel.querySelector('#gd-clientid').value.trim();
+    const appClientSecret = panel.querySelector('#gd-clientsecret').value;
+    const callbackUrl = panel.querySelector('#gd-callback').value.trim();
+    const body = { appClientId, callbackUrl };
+    if (appClientSecret) body.appClientSecret = appClientSecret;
+    try {
+      const r = await fetch(API.googleDriveGlobalConfig, {
+        method: 'PUT', headers: authJsonH(), body: JSON.stringify(body)
+      }).then(r => r.json());
+      if (r.ok) showNotification('✅ Configuration Google Drive enregistrée', 'success');
+      else showNotification('❌ ' + (r.error || 'Erreur'), 'error');
+    } catch(e) { showNotification('❌ Erreur réseau', 'error'); }
+  };
+}
+
+// ── Box global config ────────────────────────────────────────────────────────
+async function renderBoxGlobalConfig(panel) {
+  panel.innerHTML = `<div style="text-align:center;padding:20px;color:#6b7280;">Chargement…</div>`;
+
+  let cfg = {};
+  try {
+    const r = await fetch(API.boxGlobalConfig, { headers: authH() }).then(r => r.json()).catch(() => ({}));
+    if (r.ok) cfg = r;
+  } catch(e) {}
+
+  panel.innerHTML = `
+    <div class="settings-section-card">
+      <h4>Configuration globale Box OAuth2</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
+        Créez une application sur
+        <a href="https://app.box.com/developers/console" target="_blank" rel="noopener">Box Developer Console</a>
+        (type OAuth 2.0), puis renseignez ici le Client ID et le Client Secret.
+        L'URL de callback à enregistrer dans Box est :
+        <code>${esc(cfg.callbackUrl || window.location.origin + '/api/integrations/box/callback')}</code>
+      </p>
+      <div style="display:grid;gap:12px;max-width:500px;">
+        <div class="settings-form-group">
+          <label>Client ID</label>
+          <input type="text" id="box-clientid" class="settings-input settings-input-wide" value="${esc(cfg.appClientId||'')}" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxx" />
+        </div>
+        <div class="settings-form-group">
+          <label>Client Secret</label>
+          <input type="password" id="box-clientsecret" class="settings-input settings-input-wide" placeholder="${cfg.hasAppClientSecret ? '(déjà configuré — laisser vide pour conserver)' : 'xxxxxxxxxxxxxxxxxxxxxxxxxxxx'}" />
+          ${cfg.hasAppClientSecret ? '<span style="font-size:11px;color:#16a34a;">✅ Client Secret enregistré</span>' : ''}
+        </div>
+        <div class="settings-form-group">
+          <label>URL de callback (doit correspondre à Box Developer Console)</label>
+          <input type="text" id="box-callback" class="settings-input settings-input-wide" value="${esc(cfg.callbackUrl||window.location.origin+'/api/integrations/box/callback')}" />
+        </div>
+      </div>
+      <button id="box-save" class="btn btn-primary" style="margin-top:16px;">💾 Enregistrer</button>
+      <div id="box-msg" style="margin-top:8px;font-size:13px;"></div>
+    </div>
+  `;
+
+  panel.querySelector('#box-save').onclick = async () => {
+    const appClientId = panel.querySelector('#box-clientid').value.trim();
+    const appClientSecret = panel.querySelector('#box-clientsecret').value;
+    const callbackUrl = panel.querySelector('#box-callback').value.trim();
+    const body = { appClientId, callbackUrl };
+    if (appClientSecret) body.appClientSecret = appClientSecret;
+    try {
+      const r = await fetch(API.boxGlobalConfig, {
+        method: 'PUT', headers: authJsonH(), body: JSON.stringify(body)
+      }).then(r => r.json());
+      if (r.ok) showNotification('✅ Configuration Box enregistrée', 'success');
+      else showNotification('❌ ' + (r.error || 'Erreur'), 'error');
+    } catch(e) { showNotification('❌ Erreur réseau', 'error'); }
+  };
+}
+
+// ── OneDrive global config ───────────────────────────────────────────────────
+async function renderOneDriveGlobalConfig(panel) {
+  panel.innerHTML = `<div style="text-align:center;padding:20px;color:#6b7280;">Chargement…</div>`;
+
+  let cfg = {};
+  try {
+    const r = await fetch(API.oneDriveGlobalConfig, { headers: authH() }).then(r => r.json()).catch(() => ({}));
+    if (r.ok) cfg = r;
+  } catch(e) {}
+
+  panel.innerHTML = `
+    <div class="settings-section-card">
+      <h4>Configuration globale OneDrive / Office 365 OAuth2</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
+        Créez une application sur
+        <a href="https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener">Azure App Registrations</a>,
+        ajoutez les permissions <code>Files.ReadWrite</code> et <code>offline_access</code> (et <code>Sites.ReadWrite.All</code> pour SharePoint).
+        L'URL de callback à enregistrer est :
+        <code>${esc(cfg.callbackUrl || window.location.origin + '/api/integrations/onedrive/callback')}</code>
+      </p>
+      <div style="display:grid;gap:12px;max-width:500px;">
+        <div class="settings-form-group">
+          <label>Application (Client) ID</label>
+          <input type="text" id="od-clientid" class="settings-input settings-input-wide" value="${esc(cfg.appClientId||'')}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+        </div>
+        <div class="settings-form-group">
+          <label>Client Secret</label>
+          <input type="password" id="od-clientsecret" class="settings-input settings-input-wide" placeholder="${cfg.hasAppClientSecret ? '(déjà configuré — laisser vide pour conserver)' : 'Valeur du secret'}" />
+          ${cfg.hasAppClientSecret ? '<span style="font-size:11px;color:#16a34a;">✅ Client Secret enregistré</span>' : ''}
+        </div>
+        <div class="settings-form-group">
+          <label>Tenant ID (optionnel, "common" pour multi-tenant)</label>
+          <input type="text" id="od-tenantid" class="settings-input settings-input-wide" value="${esc(cfg.tenantId||'common')}" placeholder="common" />
+        </div>
+        <div class="settings-form-group">
+          <label>URL de callback (doit correspondre à Azure)</label>
+          <input type="text" id="od-callback" class="settings-input settings-input-wide" value="${esc(cfg.callbackUrl||window.location.origin+'/api/integrations/onedrive/callback')}" />
+        </div>
+      </div>
+      <button id="od-save" class="btn btn-primary" style="margin-top:16px;">💾 Enregistrer</button>
+      <div id="od-msg" style="margin-top:8px;font-size:13px;"></div>
+    </div>
+  `;
+
+  panel.querySelector('#od-save').onclick = async () => {
+    const appClientId = panel.querySelector('#od-clientid').value.trim();
+    const appClientSecret = panel.querySelector('#od-clientsecret').value;
+    const tenantId = panel.querySelector('#od-tenantid').value.trim() || 'common';
+    const callbackUrl = panel.querySelector('#od-callback').value.trim();
+    const body = { appClientId, tenantId, callbackUrl };
+    if (appClientSecret) body.appClientSecret = appClientSecret;
+    try {
+      const r = await fetch(API.oneDriveGlobalConfig, {
+        method: 'PUT', headers: authJsonH(), body: JSON.stringify(body)
+      }).then(r => r.json());
+      if (r.ok) showNotification('✅ Configuration OneDrive enregistrée', 'success');
       else showNotification('❌ ' + (r.error || 'Erreur'), 'error');
     } catch(e) { showNotification('❌ Erreur réseau', 'error'); }
   };

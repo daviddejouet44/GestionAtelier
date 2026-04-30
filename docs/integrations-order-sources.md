@@ -11,9 +11,9 @@ des commandes (PDF + métadonnées) depuis des serveurs distants sans interventi
 |------------|-----------------|----------------------------------|
 | **SFTP**   | SSH/SFTP        | Mot de passe ou clé privée PEM  |
 | **Dropbox**| API Dropbox v2  | OAuth2 (refresh token)           |
-
-> **Architecture extensible** : WebDAV, OneDrive/SharePoint, Google Drive, S3, FTPS peuvent être ajoutés
-> en implémentant `IOrderSourceProvider`.
+| **Google Drive** | API Google Drive v3 | OAuth2 (refresh token)  |
+| **Box**    | API Box v2      | OAuth2 (access + refresh token)  |
+| **OneDrive / Office 365** | Microsoft Graph API | OAuth2 (refresh token) |
 
 ---
 
@@ -112,6 +112,104 @@ Format OpenSSH (nécessite conversion avec `ssh-keygen -p -m PEM`) :
 5. Dropbox redirige vers GestionAtelier avec un code d'autorisation
 6. Le **refresh token** est automatiquement stocké chiffré en base de données
 7. Testez via **🔌 Tester**
+
+---
+
+## Connexion Google Drive (OAuth2)
+
+### Prérequis
+
+1. Créez un projet sur [Google Cloud Console](https://console.cloud.google.com/)
+2. Activez l'**API Google Drive**
+3. Créez des identifiants **OAuth 2.0** (type "Application Web")
+4. Ajoutez l'URL de callback autorisée :
+   `http://votre-serveur:5080/api/integrations/google-drive/callback`
+5. Permissions requises : `https://www.googleapis.com/auth/drive`
+
+### Configuration globale
+
+1. Ouvrez **Paramétrages → Intégrations → Sources de commandes → ☁️ Config Google Drive globale**
+2. Renseignez le **Client ID** et le **Client Secret**
+3. Vérifiez l'**URL de callback**
+4. Cliquez sur **💾 Enregistrer**
+
+### Connexion d'une source Google Drive
+
+1. Créez une source de type **Google Drive**
+2. Renseignez l'**ID du dossier racine** (utilisez `root` pour Mon Drive, ou l'ID visible dans l'URL de Google Drive)
+3. Enregistrez la source
+4. Cliquez sur **✏️ Modifier** puis **🔗 Connecter Google Drive**
+5. Une fenêtre Google s'ouvre → autorisez l'accès
+6. Le **refresh token** est automatiquement stocké chiffré en base de données
+7. Testez via **🔌 Tester**
+
+> **Note** : L'URL d'autorisation inclut `access_type=offline&prompt=consent` pour garantir la réception d'un refresh token permanent.
+
+---
+
+## Connexion Box (OAuth2)
+
+### Prérequis
+
+1. Créez une application sur [Box Developer Console](https://app.box.com/developers/console)
+2. Sélectionnez le type **OAuth 2.0**
+3. Ajoutez l'URL de callback :
+   `http://votre-serveur:5080/api/integrations/box/callback`
+
+### Configuration globale
+
+1. Ouvrez **Paramétrages → Intégrations → Sources de commandes → ☁️ Config Box globale**
+2. Renseignez le **Client ID** et le **Client Secret**
+3. Vérifiez l'**URL de callback**
+4. Cliquez sur **💾 Enregistrer**
+
+### Connexion d'une source Box
+
+1. Créez une source de type **Box**
+2. Renseignez l'**ID du dossier racine** (utilisez `0` pour la racine)
+3. Enregistrez la source
+4. Cliquez sur **✏️ Modifier** puis **🔗 Connecter Box**
+5. Une fenêtre Box s'ouvre → autorisez l'accès
+6. Les tokens (access + refresh) sont automatiquement stockés chiffrés
+7. Testez via **🔌 Tester**
+
+> **Note Box** : Box invalide l'ancien refresh token à chaque renouvellement. GestionAtelier persiste automatiquement les nouveaux tokens à chaque cycle de polling.
+
+---
+
+## Connexion OneDrive / Office 365 (OAuth2)
+
+### Prérequis
+
+1. Créez une application sur [Azure App Registrations](https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
+2. Ajoutez les permissions **déléguées** :
+   - `Files.ReadWrite`
+   - `offline_access`
+   - `Sites.ReadWrite.All` (si SharePoint)
+3. Créez un **secret client**
+4. Ajoutez l'URL de callback (Redirect URI) :
+   `http://votre-serveur:5080/api/integrations/onedrive/callback`
+
+### Configuration globale
+
+1. Ouvrez **Paramétrages → Intégrations → Sources de commandes → ☁️ Config OneDrive globale**
+2. Renseignez l'**Application (Client) ID**, le **Client Secret** et le **Tenant ID** (ou `common` pour multi-tenant)
+3. Vérifiez l'**URL de callback**
+4. Cliquez sur **💾 Enregistrer**
+
+### Connexion d'une source OneDrive
+
+1. Créez une source de type **OneDrive / Office 365**
+2. Sélectionnez le **type de drive** :
+   - **OneDrive Personnel** : drive personnel du compte Microsoft
+   - **OneDrive Entreprise** : fournissez le Drive ID de l'entreprise
+   - **SharePoint** : fournissez le Site ID et optionnellement le Drive ID
+3. Renseignez l'**ID de l'élément dossier racine** (utilisez `root` pour la racine)
+4. Enregistrez la source
+5. Cliquez sur **✏️ Modifier** puis **🔗 Connecter OneDrive**
+6. Une fenêtre Microsoft s'ouvre → autorisez l'accès
+7. Le **refresh token** est automatiquement stocké chiffré en base de données
+8. Testez via **🔌 Tester**
 
 ---
 
