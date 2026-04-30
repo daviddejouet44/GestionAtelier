@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Mon compte — Espace client</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/portal/css/portal.css" />
+</head>
+<body>
+  <header class="portal-header">
+    <div class="portal-header-brand">
+      <img id="portal-logo" src="/api/logo" alt="Logo" onerror="this.style.display='none'" style="max-height:36px;max-width:120px;object-fit:contain;" />
+      <h1>Espace client</h1>
+    </div>
+    <div class="portal-header-right">
+      <span class="portal-user-name" id="portal-user-name"></span>
+      <button class="btn btn-secondary btn-sm" id="btn-portal-logout">Déconnexion</button>
+    </div>
+  </header>
+  <nav class="portal-nav">
+    <a href="/portal/orders.html" data-page="orders">Mes commandes</a>
+    <a href="/portal/account.html" data-page="account">Mon compte</a>
+  </nav>
+
+  <main class="portal-main">
+    <div class="page-header">
+      <h2 class="page-title">Mon compte</h2>
+    </div>
+
+    <div id="account-container">
+      <div class="loading-overlay"><div class="spinner"></div> Chargement…</div>
+    </div>
+  </main>
+
+  <script type="module">
+    import { requireAuth, renderHeader, showToast, esc, apiRequest } from '/portal/js/portal-core.js';
+
+    let client = null;
+
+    (async () => {
+      client = await requireAuth();
+      if (!client) return;
+      renderHeader('account');
+      await loadAccount();
+    })();
+
+    async function loadAccount() {
+      const container = document.getElementById('account-container');
+      try {
+        const r = await apiRequest('/me');
+        if (!r.ok) { container.innerHTML = `<div class="alert alert-error">${esc(r.error)}</div>`; return; }
+        renderAccount(r.client);
+      } catch {
+        container.innerHTML = `<div class="alert alert-error">Erreur de chargement</div>`;
+      }
+    }
+
+    function renderAccount(c) {
+      const container = document.getElementById('account-container');
+      container.innerHTML = `
+        <!-- Profile info -->
+        <div class="card">
+          <div class="card-header"><span class="card-title">Informations personnelles</span></div>
+          <div id="profile-msg"></div>
+          <div class="form-row form-row-2">
+            <div class="form-group">
+              <label for="display-name">Nom / Prénom</label>
+              <input type="text" id="display-name" class="form-control" value="${esc(c.displayName || '')}" />
+            </div>
+            <div class="form-group">
+              <label for="company-name">Société</label>
+              <input type="text" id="company-name" class="form-control" value="${esc(c.companyName || '')}" />
+            </div>
+          </div>
+          <div class="form-row form-row-2">
+            <div class="form-group">
+              <label for="contact-phone">Téléphone</label>
+              <input type="tel" id="contact-phone" class="form-control" value="${esc(c.contactPhone || '')}" />
+            </div>
+            <div class="form-group">
+              <label for="account-email">Email (lecture seule)</label>
+              <input type="email" id="account-email" class="form-control" value="${esc(c.email || '')}" readonly style="background:var(--color-gray-100);" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="delivery-address">Adresse de livraison par défaut</label>
+            <textarea id="delivery-address" class="form-control" rows="3">${esc(c.defaultDeliveryAddress || '')}</textarea>
+          </div>
+          <button class="btn btn-primary" id="btn-save-profile">Enregistrer</button>
+        </div>
+
+        <!-- Change password -->
+        <div class="card">
+          <div class="card-header"><span class="card-title">Changer le mot de passe</span></div>
+          <div id="pwd-msg"></div>
+          <div class="form-group">
+            <label for="current-password">Mot de passe actuel</label>
+            <input type="password" id="current-password" class="form-control" placeholder="••••••••" />
+          </div>
+          <div class="form-row form-row-2">
+            <div class="form-group">
+              <label for="new-password">Nouveau mot de passe</label>
+              <input type="password" id="new-password" class="form-control" placeholder="Minimum 8 caractères" />
+            </div>
+            <div class="form-group">
+              <label for="confirm-password">Confirmer</label>
+              <input type="password" id="confirm-password" class="form-control" placeholder="••••••••" />
+            </div>
+          </div>
+          <button class="btn btn-primary" id="btn-save-password">Changer le mot de passe</button>
+        </div>
+      `;
+
+      // Save profile
+      document.getElementById('btn-save-profile').onclick = async () => {
+        const msg = document.getElementById('profile-msg');
+        msg.innerHTML = '';
+        const btn = document.getElementById('btn-save-profile');
+        btn.disabled = true; btn.textContent = 'Enregistrement…';
+        try {
+          const r = await apiRequest('/me', {
+            method: 'PUT',
+            body: JSON.stringify({
+              displayName: document.getElementById('display-name').value.trim(),
+              companyName: document.getElementById('company-name').value.trim(),
+              contactPhone: document.getElementById('contact-phone').value.trim(),
+              defaultDeliveryAddress: document.getElementById('delivery-address').value.trim()
+            })
+          });
+          if (r.ok) {
+            msg.innerHTML = `<div class="alert alert-success">Profil mis à jour.</div>`;
+            showToast('Profil enregistré', 'success');
+          } else {
+            msg.innerHTML = `<div class="alert alert-error">${esc(r.error)}</div>`;
+          }
+        } catch { msg.innerHTML = `<div class="alert alert-error">Erreur réseau</div>`; }
+        btn.disabled = false; btn.textContent = 'Enregistrer';
+      };
+
+      // Save password
+      document.getElementById('btn-save-password').onclick = async () => {
+        const msg = document.getElementById('pwd-msg');
+        msg.innerHTML = '';
+        const btn = document.getElementById('btn-save-password');
+        const currentPwd = document.getElementById('current-password').value;
+        const newPwd = document.getElementById('new-password').value;
+        const confirmPwd = document.getElementById('confirm-password').value;
+
+        if (!currentPwd || !newPwd) { msg.innerHTML = `<div class="alert alert-error">Remplissez tous les champs</div>`; return; }
+        if (newPwd !== confirmPwd) { msg.innerHTML = `<div class="alert alert-error">Les mots de passe ne correspondent pas</div>`; return; }
+        if (newPwd.length < 8) { msg.innerHTML = `<div class="alert alert-error">Minimum 8 caractères</div>`; return; }
+
+        btn.disabled = true; btn.textContent = 'Modification…';
+        try {
+          const r = await apiRequest('/me', {
+            method: 'PUT',
+            body: JSON.stringify({ currentPassword: currentPwd, newPassword: newPwd })
+          });
+          if (r.ok) {
+            msg.innerHTML = `<div class="alert alert-success">Mot de passe modifié.</div>`;
+            document.getElementById('current-password').value = '';
+            document.getElementById('new-password').value = '';
+            document.getElementById('confirm-password').value = '';
+            showToast('Mot de passe modifié', 'success');
+          } else {
+            msg.innerHTML = `<div class="alert alert-error">${esc(r.error)}</div>`;
+          }
+        } catch { msg.innerHTML = `<div class="alert alert-error">Erreur réseau</div>`; }
+        btn.disabled = false; btn.textContent = 'Changer le mot de passe';
+      };
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Mes commandes — Espace client</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/portal/css/portal.css" />
+</head>
+<body>
+  <!-- HEADER -->
+  <header class="portal-header">
+    <div class="portal-header-brand">
+      <img id="portal-logo" src="/api/logo" alt="Logo" onerror="this.style.display='none'" style="max-height:36px;max-width:120px;object-fit:contain;" />
+      <h1>Espace client</h1>
+    </div>
+    <div class="portal-header-right">
+      <span class="portal-user-name" id="portal-user-name"></span>
+      <button class="btn btn-secondary btn-sm" id="btn-portal-logout">Déconnexion</button>
+    </div>
+  </header>
+  <nav class="portal-nav">
+    <a href="/portal/orders.html" data-page="orders">Mes commandes</a>
+    <a href="/portal/account.html" data-page="account">Mon compte</a>
+  </nav>
+
+  <main class="portal-main">
+    <div class="page-header">
+      <h2 class="page-title">Mes commandes</h2>
+      <a href="/portal/order-new.html" class="btn btn-primary">+ Nouvelle commande</a>
+    </div>
+
+    <!-- Filters -->
+    <div class="card" style="margin-bottom:16px;padding:12px 16px;">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+        <input type="text" id="filter-search" class="form-control" placeholder="Rechercher par n° ou intitulé…" style="max-width:240px;padding:7px 10px;font-size:13px;" />
+        <select id="filter-status" class="form-control" style="max-width:180px;padding:7px 10px;font-size:13px;">
+          <option value="">Tous les statuts</option>
+          <option value="draft">Reçue</option>
+          <option value="in_production">En production</option>
+          <option value="bat_pending">BAT à valider</option>
+          <option value="bat_refused">BAT refusé</option>
+          <option value="completed">Terminée</option>
+          <option value="delivered">Livrée</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" id="btn-filter-clear">Effacer</button>
+      </div>
+    </div>
+
+    <div id="orders-container">
+      <div class="loading-overlay"><div class="spinner"></div> Chargement…</div>
+    </div>
+  </main>
+
+  <script type="module">
+    import { requireAuth, renderHeader, statusBadge, fmtDate, esc, apiRequest } from '/portal/js/portal-core.js';
+
+    let allOrders = [];
+
+    (async () => {
+      const client = await requireAuth();
+      if (!client) return;
+      renderHeader('orders');
+      await loadOrders();
+    })();
+
+    async function loadOrders() {
+      const container = document.getElementById('orders-container');
+      try {
+        const r = await apiRequest('/orders');
+        if (!r.ok) { container.innerHTML = `<div class="alert alert-error">${esc(r.error)}</div>`; return; }
+        allOrders = r.orders || [];
+        renderOrders(allOrders);
+      } catch (err) {
+        container.innerHTML = `<div class="alert alert-error">Erreur de chargement</div>`;
+      }
+    }
+
+    function renderOrders(orders) {
+      const container = document.getElementById('orders-container');
+      if (!orders.length) {
+        container.innerHTML = `
+          <div class="card" style="text-align:center;padding:40px;color:var(--color-gray-500);">
+            <div style="font-size:48px;margin-bottom:12px;">📋</div>
+            <p style="font-size:16px;font-weight:500;color:var(--color-gray-700);">Aucune commande</p>
+            <p style="margin:8px 0 20px;">Déposez votre première commande en quelques clics.</p>
+            <a href="/portal/order-new.html" class="btn btn-primary">Nouvelle commande</a>
+          </div>`;
+        return;
+      }
+
+      const rows = orders.map(o => `
+        <tr>
+          <td><strong>${esc(o.orderNumber)}</strong></td>
+          <td>${esc(o.title)}</td>
+          <td>${fmtDate(o.createdAt)}</td>
+          <td>${statusBadge(o.status)}</td>
+          <td>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <a href="/portal/order.html?id=${esc(o.id)}" class="btn btn-secondary btn-sm">Détail</a>
+              <a href="/portal/order-new.html?reorder=${esc(o.id)}" class="btn btn-secondary btn-sm">Re-commander</a>
+            </div>
+          </td>
+        </tr>`).join('');
+
+      container.innerHTML = `
+        <div class="portal-table-wrap">
+          <table class="portal-table">
+            <thead>
+              <tr>
+                <th>N°</th>
+                <th>Intitulé</th>
+                <th>Date</th>
+                <th>Statut</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    }
+
+    // Filters
+    function applyFilters() {
+      const search = document.getElementById('filter-search').value.toLowerCase();
+      const status = document.getElementById('filter-status').value;
+      const filtered = allOrders.filter(o => {
+        const matchSearch = !search || o.orderNumber.toLowerCase().includes(search) || o.title.toLowerCase().includes(search);
+        const matchStatus = !status || o.status === status;
+        return matchSearch && matchStatus;
+      });
+      renderOrders(filtered);
+    }
+
+    document.getElementById('filter-search').addEventListener('input', applyFilters);
+    document.getElementById('filter-status').addEventListener('change', applyFilters);
+    document.getElementById('btn-filter-clear').onclick = () => {
+      document.getElementById('filter-search').value = '';
+      document.getElementById('filter-status').value = '';
+      renderOrders(allOrders);
+    };
+  </script>
+</body>
+</html>

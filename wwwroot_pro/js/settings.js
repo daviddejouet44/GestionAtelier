@@ -19,6 +19,7 @@ import { renderSettingsCoverProducts, renderSettingsSheetCalcRules, renderSettin
 import { renderSettingsFormConfig } from './settings/settings-form-config.js';
 import { renderSettingsEmailTemplates } from './settings/settings-email-templates.js';
 import { renderSettingsIntegrations } from './settings/settings-integrations.js';
+import { renderSettingsPortal } from './settings/settings-portal.js';
 
 // calendar and submissionCalendar are accessed via window globals set by app.js
 
@@ -61,6 +62,7 @@ export async function initSettingsView() {
         <button class="settings-tab" data-tab="imap-config">Import email (IMAP)</button>
         <button class="settings-tab" data-tab="email-templates">📧 Templates email</button>
         <button class="settings-tab" data-tab="integrations">🔌 Intégrations</button>
+        <button class="settings-tab" data-tab="portal">🌐 Portail client</button>
         <button class="settings-tab" data-tab="logs">Logs</button>
       </div>
       <div class="settings-panel" id="settings-panel-accounts"></div>
@@ -88,6 +90,7 @@ export async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-imap-config"></div>
       <div class="settings-panel hidden" id="settings-panel-email-templates"></div>
       <div class="settings-panel hidden" id="settings-panel-integrations"></div>
+      <div class="settings-panel hidden" id="settings-panel-portal"></div>
       <div class="settings-panel hidden" id="settings-panel-logs"></div>
     </div>
   `;
@@ -139,6 +142,7 @@ export async function loadSettingsPanel(tabName, panelEl) {
     case "imap-config": await renderSettingsImapConfig(panelEl); break;
     case "email-templates": await renderSettingsEmailTemplates(panelEl); break;
     case "integrations": await renderSettingsIntegrations(panelEl); break;
+    case "portal": await renderSettingsPortal(panelEl); break;
     case "logs": await renderSettingsLogs(panelEl); break;
   }
   panelEl._loaded = true;

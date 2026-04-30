@@ -23,6 +23,7 @@ using MongoDB.Bson;
 using GestionAtelier.Models;
 using GestionAtelier.Services;
 using GestionAtelier.Endpoints;
+using GestionAtelier.Endpoints.Portal;
 using GestionAtelier.Watchers;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -94,6 +95,30 @@ else
     Console.WriteLine("[WARN] wwwroot_pro NOT FOUND at " + proPath);
 }
 
+// Portal static files
+var portalPath = Path.Combine(app.Environment.ContentRootPath, "wwwroot_portal");
+Console.WriteLine("[INFO] Expected /portal at " + portalPath);
+if (Directory.Exists(portalPath))
+{
+    var portalProvider = new PhysicalFileProvider(portalPath);
+    app.UseDefaultFiles(new DefaultFilesOptions
+    {
+        FileProvider     = portalProvider,
+        RequestPath      = "/portal",
+        DefaultFileNames = new List<string> { "login.html" }
+    });
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider        = portalProvider,
+        RequestPath         = "/portal",
+        ContentTypeProvider = new FileExtensionContentTypeProvider()
+    });
+}
+else
+{
+    Console.WriteLine("[WARN] wwwroot_portal NOT FOUND at " + portalPath);
+}
+
 // 2. Routing APRÈS les fichiers statiques
 app.UseRouting();
 
@@ -128,6 +153,12 @@ app.MapSettingsEndpoints(recyclePath);
 app.MapReportsEndpoints();
 app.MapMailImportEndpoints();
 
+// Portal API endpoints
+app.MapPortalAuthEndpoints();
+app.MapPortalOrdersEndpoints();
+app.MapPortalBatEndpoints();
+app.MapPortalAccountEndpoints();
+
 // 5. Routes /pro
 app.MapGet("/pro", (HttpContext ctx) =>
 {
@@ -145,6 +176,27 @@ app.MapFallback("/pro/{*path}", async (HttpContext ctx) =>
     ctx.Response.ContentType = "text/html; charset=utf-8";
     await ctx.Response.SendFileAsync(Path.Combine(proPath, "index.html"));
 });
+
+// 5b. Routes /portal
+app.MapGet("/portal", (HttpContext ctx) =>
+{
+    ctx.Response.Redirect("/portal/login.html");
+    return Task.CompletedTask;
+});
+
+if (Directory.Exists(portalPath))
+{
+    app.MapFallback("/portal/{*path}", async (HttpContext ctx) =>
+    {
+        if (Path.HasExtension(ctx.Request.Path))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+        ctx.Response.ContentType = "text/html; charset=utf-8";
+        await ctx.Response.SendFileAsync(Path.Combine(portalPath, "login.html"));
+    });
+}
 
 // 6. Debug endpoint listing
 var summaries = app.Services.GetRequiredService<EndpointDataSource>().Endpoints

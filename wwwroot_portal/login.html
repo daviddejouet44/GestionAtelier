@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Connexion — Espace client</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/portal/css/portal.css" />
+</head>
+<body class="portal-login-page">
+  <div class="portal-login-card">
+    <div class="portal-login-logo">
+      <img id="login-logo" src="/api/logo-login" alt="Logo" onerror="this.style.display='none'" />
+      <h2>Espace client</h2>
+      <p id="welcome-text"></p>
+    </div>
+
+    <div id="login-view">
+      <div id="login-error" class="alert alert-error hidden"></div>
+      <form id="login-form">
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" class="form-control" placeholder="votre@email.com" required autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label for="password">Mot de passe</label>
+          <input type="password" id="password" class="form-control" placeholder="••••••••" required autocomplete="current-password" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-full" id="btn-login">Se connecter</button>
+      </form>
+      <p style="text-align:center;margin-top:16px;">
+        <a href="#" id="link-forgot" style="font-size:13px;color:var(--color-primary);">Mot de passe oublié ?</a>
+      </p>
+    </div>
+
+    <div id="forgot-view" class="hidden">
+      <h3 style="margin-bottom:12px;font-size:16px;">Réinitialiser le mot de passe</h3>
+      <div id="forgot-error" class="alert alert-error hidden"></div>
+      <div id="forgot-success" class="alert alert-success hidden"></div>
+      <form id="forgot-form">
+        <div class="form-group">
+          <label for="forgot-email">Email</label>
+          <input type="email" id="forgot-email" class="form-control" placeholder="votre@email.com" required />
+        </div>
+        <button type="submit" class="btn btn-primary btn-full" id="btn-forgot">Envoyer le lien</button>
+      </form>
+      <p style="text-align:center;margin-top:12px;">
+        <a href="#" id="link-back-login" style="font-size:13px;color:var(--color-primary);">← Retour à la connexion</a>
+      </p>
+    </div>
+
+    <div id="reset-view" class="hidden">
+      <h3 style="margin-bottom:12px;font-size:16px;">Nouveau mot de passe</h3>
+      <div id="reset-error" class="alert alert-error hidden"></div>
+      <div id="reset-success" class="alert alert-success hidden"></div>
+      <form id="reset-form">
+        <div class="form-group">
+          <label for="new-password">Nouveau mot de passe</label>
+          <input type="password" id="new-password" class="form-control" placeholder="Minimum 8 caractères" required />
+        </div>
+        <div class="form-group">
+          <label for="confirm-password">Confirmer</label>
+          <input type="password" id="confirm-password" class="form-control" placeholder="••••••••" required />
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Réinitialiser</button>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { apiRequest, storeToken, storeClient, getStoredToken, validateSession, showToast } from '/portal/js/portal-core.js';
+
+    // Already logged in?
+    (async () => {
+      const client = await validateSession();
+      if (client) window.location.href = '/portal/orders.html';
+    })();
+
+    // Load welcome text
+    fetch('/api/portal/config/form-options').then(r => r.json()).then(d => {
+      const el = document.getElementById('welcome-text');
+      if (el && d.welcomeText) el.textContent = d.welcomeText;
+    }).catch(() => {});
+
+    const loginView   = document.getElementById('login-view');
+    const forgotView  = document.getElementById('forgot-view');
+    const resetView   = document.getElementById('reset-view');
+    const loginError  = document.getElementById('login-error');
+    const forgotError = document.getElementById('forgot-error');
+    const forgotSuccess = document.getElementById('forgot-success');
+    const resetError  = document.getElementById('reset-error');
+    const resetSuccess= document.getElementById('reset-success');
+
+    function showErr(el, msg) { el.textContent = msg; el.classList.remove('hidden'); }
+    function hideEl(el) { el.classList.add('hidden'); }
+
+    // Login form
+    document.getElementById('login-form').onsubmit = async (e) => {
+      e.preventDefault();
+      hideEl(loginError);
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const btn = document.getElementById('btn-login');
+      btn.disabled = true;
+      btn.textContent = 'Connexion…';
+      try {
+        const r = await apiRequest('/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({ email, password })
+        });
+        if (!r.ok) { showErr(loginError, r.error || 'Erreur de connexion'); btn.disabled = false; btn.textContent = 'Se connecter'; return; }
+        storeToken(r.token);
+        storeClient(r.client);
+        window.location.href = '/portal/orders.html';
+      } catch (err) {
+        showErr(loginError, 'Erreur réseau');
+        btn.disabled = false; btn.textContent = 'Se connecter';
+      }
+    };
+
+    // Forgot password toggle
+    document.getElementById('link-forgot').onclick = (e) => {
+      e.preventDefault();
+      loginView.classList.add('hidden');
+      forgotView.classList.remove('hidden');
+    };
+    document.getElementById('link-back-login').onclick = (e) => {
+      e.preventDefault();
+      forgotView.classList.add('hidden');
+      loginView.classList.remove('hidden');
+    };
+
+    // Forgot form
+    document.getElementById('forgot-form').onsubmit = async (e) => {
+      e.preventDefault();
+      hideEl(forgotError); hideEl(forgotSuccess);
+      const email = document.getElementById('forgot-email').value.trim();
+      const btn = document.getElementById('btn-forgot');
+      btn.disabled = true; btn.textContent = 'Envoi…';
+      try {
+        const r = await apiRequest('/auth/forgot-password', {
+          method: 'POST',
+          body: JSON.stringify({ email })
+        });
+        forgotSuccess.textContent = 'Si cet email est enregistré, vous recevrez un lien de réinitialisation.';
+        forgotSuccess.classList.remove('hidden');
+      } catch { showErr(forgotError, 'Erreur réseau'); }
+      btn.disabled = false; btn.textContent = 'Envoyer le lien';
+    };
+
+    // Reset password (from email link)
+    const params = new URLSearchParams(window.location.search);
+    const resetToken = params.get('token');
+    if (resetToken) {
+      loginView.classList.add('hidden');
+      resetView.classList.remove('hidden');
+
+      document.getElementById('reset-form').onsubmit = async (e) => {
+        e.preventDefault();
+        hideEl(resetError); hideEl(resetSuccess);
+        const pwd = document.getElementById('new-password').value;
+        const confirm = document.getElementById('confirm-password').value;
+        if (pwd !== confirm) { showErr(resetError, 'Les mots de passe ne correspondent pas'); return; }
+        if (pwd.length < 8) { showErr(resetError, 'Minimum 8 caractères'); return; }
+        try {
+          const r = await apiRequest('/auth/reset-password', {
+            method: 'POST',
+            body: JSON.stringify({ token: resetToken, password: pwd })
+          });
+          if (!r.ok) { showErr(resetError, r.error || 'Erreur'); return; }
+          resetSuccess.textContent = 'Mot de passe réinitialisé ! Vous pouvez vous connecter.';
+          resetSuccess.classList.remove('hidden');
+          setTimeout(() => { window.location.href = '/portal/login.html'; }, 2500);
+        } catch { showErr(resetError, 'Erreur réseau'); }
+      };
+    }
+  </script>
+</body>
+</html>
