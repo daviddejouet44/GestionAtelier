@@ -214,3 +214,93 @@ public class PortalSettings
     [JsonPropertyName("smtpFrom")]
     public string SmtpFrom { get; set; } = "";
 }
+
+public class PortalThemeConfig
+{
+    [JsonPropertyName("primaryColor")]
+    public string PrimaryColor { get; set; } = "#1d4ed8";
+
+    [JsonPropertyName("primaryDarkColor")]
+    public string PrimaryDarkColor { get; set; } = "#1e40af";
+
+    [JsonPropertyName("primaryLightColor")]
+    public string PrimaryLightColor { get; set; } = "#eff6ff";
+
+    [JsonPropertyName("backgroundColor")]
+    public string BackgroundColor { get; set; } = "#f9fafb";
+
+    [JsonPropertyName("textColor")]
+    public string TextColor { get; set; } = "#374151";
+
+    [JsonPropertyName("fontFamily")]
+    public string FontFamily { get; set; } = "system-ui";
+
+    [JsonPropertyName("companyName")]
+    public string CompanyName { get; set; } = "Espace client";
+
+    [JsonPropertyName("tagline")]
+    public string Tagline { get; set; } = "";
+
+    [JsonPropertyName("contactLink")]
+    public string ContactLink { get; set; } = "";
+
+    [JsonPropertyName("footerText")]
+    public string FooterText { get; set; } = "";
+
+    [JsonPropertyName("loginBackground")]
+    public string LoginBackground { get; set; } = "";
+
+    [JsonPropertyName("ordersPageText")]
+    public string OrdersPageText { get; set; } = "";
+
+    [JsonPropertyName("customCss")]
+    public string CustomCss { get; set; } = "";
+
+    [JsonPropertyName("usePortalSpecificLogo")]
+    public bool UsePortalSpecificLogo { get; set; } = false;
+
+    [JsonPropertyName("portalLogoPath")]
+    public string PortalLogoPath { get; set; } = "";
+}
+
+public class PortalFormFieldConfig
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = "";
+
+    [JsonPropertyName("label")]
+    public string Label { get; set; } = "";
+
+    [JsonPropertyName("customLabel")]
+    public string CustomLabel { get; set; } = "";
+
+    [JsonPropertyName("placeholder")]
+    public string Placeholder { get; set; } = "";
+
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "text";
+
+    [JsonPropertyName("visible")]
+    public bool Visible { get; set; } = true;
+
+    [JsonPropertyName("required")]
+    public bool Required { get; set; } = false;
+
+    [JsonPropertyName("order")]
+    public int Order { get; set; } = 0;
+
+    [JsonPropertyName("defaultValue")]
+    public string DefaultValue { get; set; } = "";
+
+    [JsonPropertyName("allowedValues")]
+    public List<string> AllowedValues { get; set; } = new();
+
+    [JsonPropertyName("critical")]
+    public bool Critical { get; set; } = false;
+}
+
+public class PortalFormFieldsConfig
+{
+    [JsonPropertyName("fields")]
+    public List<PortalFormFieldConfig> Fields { get; set; } = new();
+}

@@ -33,7 +33,10 @@
   </main>
 
   <script type="module">
-    import { requireAuth, renderHeader, showToast, esc, apiRequest } from '/portal/js/portal-core.js';
+    import { requireAuth, renderHeader, showToast, esc, apiRequest, applyPortalTheme } from '/portal/js/portal-core.js';
+
+    // Apply theme immediately
+    applyPortalTheme();
 
     let client = null;
 

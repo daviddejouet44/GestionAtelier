@@ -67,7 +67,10 @@
   </div>
 
   <script type="module">
-    import { apiRequest, storeToken, storeClient, getStoredToken, validateSession, showToast } from '/portal/js/portal-core.js';
+    import { apiRequest, storeToken, storeClient, getStoredToken, validateSession, showToast, applyPortalTheme } from '/portal/js/portal-core.js';
+
+    // Apply theming immediately
+    applyPortalTheme();
 
     // Already logged in?
     (async () => {
