@@ -224,11 +224,11 @@ public static class IntegrationsEndpoints
                 {
                     var fiche = new BsonDocument();
 
-                    // Apply mapping: xmlTag → ficheField
+                    // Apply mapping: ficheField (kv.Key) → xmlTagName (kv.Value)
                     foreach (var kv in mapping)
                     {
-                        var xmlTag = kv.Value;
-                        var ficheField = kv.Key;
+                        var ficheField = kv.Key;   // target field in the fiche document
+                        var xmlTag = kv.Value;      // source XML element name
                         var el = order.Element(xmlTag) ?? order.Descendants(xmlTag).FirstOrDefault();
                         if (el != null)
                             fiche[ficheField] = el.Value;

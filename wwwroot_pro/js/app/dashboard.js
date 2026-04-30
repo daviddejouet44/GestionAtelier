@@ -97,7 +97,7 @@ export async function loadDashboardData() {
     gotoLogoBtn.onclick = (e) => {
       e.preventDefault();
       // Navigate to Settings → Logos/Images tab
-      if (window._showSettings) {
+      if (typeof window._showSettings === 'function') {
         window._showSettings("logo");
       } else {
         // fallback: click the settings button and activate the logo tab
