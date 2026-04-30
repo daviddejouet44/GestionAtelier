@@ -92,7 +92,7 @@ public static class PortalAdminEndpoints
                                 }
                             };
                         }
-                        if (!kanbanCfg.Columns.Any(c => c.Folder == folderName))
+                        if (kanbanCfg.Columns != null && !kanbanCfg.Columns.Any(c => c.Folder == folderName))
                         {
                             // Insert portal tile at the top (order -1), then re-number
                             kanbanCfg.Columns.Insert(0, new KanbanColumnConfig

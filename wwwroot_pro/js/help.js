@@ -51,8 +51,8 @@ function renderMarkdown(md) {
     .replace(/\n{2,}/g, '\n</p><p>\n');
 
   // Wrap consecutive <li>
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, match => `<ul>${match}</ul>`);
-  html = html.replace(/(<oli>.*<\/oli>\n?)+/g, match => `<ol>${match.replace(/<\/?oli>/g, tag => tag === '<oli>' ? '<li>' : '</li>')}</ol>`);
+  html = html.replace(/(<li>[\s\S]*?<\/li>\n?)+/g, match => `<ul>${match}</ul>`);
+  html = html.replace(/(<oli>[\s\S]*?<\/oli>\n?)+/g, match => `<ol>${match.replace(/<\/?oli>/g, tag => tag === '<oli>' ? '<li>' : '</li>')}</ol>`);
 
   // Wrap <tr> in <table>
   html = html.replace(/(<tr>.*<\/tr>\n?)+/g, match => `<table>${match}</table>`);
@@ -174,7 +174,7 @@ async function loadSection(section) {
   contentEl.innerHTML = '<p style="color:#9ca3af;">Chargement…</p>';
 
   try {
-    const r = await fetch(`${HELP_BASE}${section}.md?t=${Date.now()}`);
+    const r = await fetch(`${HELP_BASE}${section}.md`);
     if (!r.ok) throw new Error('not found');
     const md = await r.text();
     const html = renderMarkdown(md);

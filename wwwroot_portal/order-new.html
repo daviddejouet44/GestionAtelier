@@ -439,7 +439,7 @@
 
       // Validate required fields from config
       for (const field of fieldConfigs.filter(f => f.required && f.visible)) {
-        const el = document.getElementById(field.id) || document.getElementById(field.id.replace('-', ''));
+        const el = document.getElementById(field.id);
         if (el && !el.value && el.type !== 'radio' && el.type !== 'checkbox') {
           errEl.textContent = `Le champ "${field.label}" est obligatoire`;
           errEl.classList.remove('hidden');

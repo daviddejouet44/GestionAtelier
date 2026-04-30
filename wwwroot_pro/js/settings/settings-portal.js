@@ -332,7 +332,7 @@ export async function renderSettingsPortal(panel) {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
         body: JSON.stringify(body)
       }).then(r => r.json());
-      if (r.ok) { msgEl.style.color = '#16a34a'; msgEl.textContent = '✓ Enregistré (tuile Kanban synchronisée)'; showNotification('Configuration portail enregistrée', 'success'); }
+      if (r.ok) { msgEl.style.color = '#16a34a'; msgEl.textContent = '✓ Configuration enregistrée'; showNotification('Configuration portail enregistrée', 'success'); }
       else { msgEl.style.color = '#dc2626'; msgEl.textContent = r.error || 'Erreur'; }
     } catch { msgEl.style.color = '#dc2626'; msgEl.textContent = 'Erreur réseau'; }
   };
@@ -546,7 +546,7 @@ function renderFormFieldsList(panel, fields) {
     const customLabelInput = document.createElement('input');
     customLabelInput.type = 'text';
     customLabelInput.className = 'settings-input pff-custom-label';
-    customLabelInput.value = esc(field.customLabel || '');
+    customLabelInput.value = field.customLabel || '';
     customLabelInput.placeholder = field.label;
     customLabelInput.style.fontSize = '12px';
     row.appendChild(customLabelInput);
@@ -554,7 +554,7 @@ function renderFormFieldsList(panel, fields) {
     const placeholderInput = document.createElement('input');
     placeholderInput.type = 'text';
     placeholderInput.className = 'settings-input pff-placeholder';
-    placeholderInput.value = esc(field.placeholder || '');
+    placeholderInput.value = field.placeholder || '';
     placeholderInput.placeholder = 'Texte d\'aide…';
     placeholderInput.style.fontSize = '12px';
     row.appendChild(placeholderInput);
