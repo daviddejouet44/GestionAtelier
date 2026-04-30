@@ -582,7 +582,7 @@ export function initFabrication() {
   }
 }
 
-export async function openFabrication(fullPath) {
+export async function openFabrication(fullPath, prefillData = null) {
   fabCurrentPath=normalizePath(fullPath);
   const fabCurrentFileName=fnKey(fabCurrentPath);
   if(fabDynamicForm){fabDynamicForm.style.opacity='0.5';fabDynamicForm.style.pointerEvents='none';}
@@ -608,7 +608,10 @@ export async function openFabrication(fullPath) {
     fetch('/api/settings/folds-options').then(r=>r.json()).catch(()=>({ok:false,options:[]})),
     fetch('/api/settings/output-options').then(r=>r.json()).catch(()=>({ok:false,options:[]}))
   ]);
-  const d=(j&&j.ok===false)?{}:(j||{});
+  // Merge prefill data over loaded data (prefill wins for non-empty values)
+  const d = prefillData
+    ? Object.assign({}, (j&&j.ok===false)?{}:(j||{}), Object.fromEntries(Object.entries(prefillData).filter(([,v])=>v!=null&&v!=='')))
+    : ((j&&j.ok===false)?{}:(j||{}));
   _coverProducts=Array.isArray(coverProducts)?coverProducts:[];
   _sheetCalcRules=(sheetCalcRulesResp&&sheetCalcRulesResp.rules)?sheetCalcRulesResp.rules:{};
   _deliveryDelayHours=(deliveryDelayResp&&deliveryDelayResp.delayHours)?deliveryDelayResp.delayHours:48;
@@ -623,6 +626,13 @@ export async function openFabrication(fullPath) {
   const config=formConfig||{fields:[],sections:[]};
   renderFabForm(config,{engines:Array.isArray(engines)?engines:[],types:Array.isArray(types)?types:[],papers:Array.isArray(papers)?papers:[],sheetFormats:Array.isArray(sheetFormats)?sheetFormats:[],faconnageOptions:Array.isArray(faconnageOptions)?faconnageOptions:[],bindingOptions:Array.isArray(bindingOptionsResp?.options)?bindingOptionsResp.options:[],foldsOptions:Array.isArray(foldsOptionsResp?.options)?foldsOptionsResp.options:[],outputOptions:Array.isArray(outputOptionsResp?.options)?outputOptionsResp.options:[]});
   populateFabForm(d,Array.isArray(faconnageOptions)?faconnageOptions:[]);
+  // If prefill provided, show a banner
+  if(prefillData && Object.keys(prefillData).length > 0) {
+    const banner = document.createElement('div');
+    banner.style.cssText = 'background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:8px 14px;margin-bottom:12px;font-size:12px;color:#1e40af;display:flex;align-items:center;gap:8px;';
+    banner.innerHTML = '🔗 <strong>Formulaire pré-rempli</strong> depuis XML ou ERP/W2P — vérifiez et complétez les champs avant d\'enregistrer.';
+    if(fabDynamicForm) fabDynamicForm.insertAdjacentElement('beforebegin', banner);
+  }
   attachFormHandlers(fabCurrentFileName);
   // Profile 6 (Opérateur restreint): lock date key fields
   if(currentUser && currentUser.profile === 6 && fabDynamicForm) {

@@ -159,6 +159,10 @@ app.MapPortalOrdersEndpoints();
 app.MapPortalBatEndpoints();
 app.MapPortalAccountEndpoints();
 
+// Submission XML coupling + ERP/W2P lookup
+app.MapSubmissionXmlEndpoints();
+app.MapExternalLookupEndpoints();
+
 // 5. Routes /pro
 app.MapGet("/pro", (HttpContext ctx) =>
 {

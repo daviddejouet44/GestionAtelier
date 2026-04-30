@@ -962,8 +962,8 @@ async function initSubmissionView() {
           <div class="upload-zone" id="uploadZone">
             <div class="upload-icon">PDF</div>
             <p class="upload-text">Déposez vos fichiers PDF ici</p>
-            <p class="upload-subtext">ou cliquez pour parcourir</p>
-            <input type="file" id="uploadInput" multiple accept=".pdf" style="display: none;" />
+            <p class="upload-subtext">ou cliquez pour parcourir · PDF et XML acceptés</p>
+            <input type="file" id="uploadInput" multiple accept=".pdf,.xml" style="display: none;" />
           </div>
           <div id="uploadProgress" class="upload-progress" style="display: none;">
             <div class="progress-bar"><div class="progress-fill"></div></div>
@@ -1016,12 +1016,235 @@ async function initSubmissionView() {
   setupMailImportButton();
 }
 
+// ── ERP/W2P lookup popup ──────────────────────────────────────────────────────
+async function openErpLookupPopup(prefillCb, defaultRef = "") {
+  // Load active ERP/W2P sources
+  let lookupCfg = {};
+  try {
+    const r = await fetch("/api/settings/submission-erp-lookup", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => ({}));
+    if (r.ok) lookupCfg = r.config || {};
+  } catch(e) { /* ignore */ }
+
+  const sources = [
+    { id: "pressero", label: "🌐 Pressero" },
+    { id: "mdsf",     label: "🌐 MDSF" },
+    ...((lookupCfg.erpSources || []).map(s => ({ id: s.id, label: `🔗 ${s.name}` })))
+  ];
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;";
+
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:12px;padding:24px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+      <h3 style="margin:0 0 16px;font-size:16px;font-weight:700;color:#111827;">🔗 Récupérer depuis ERP / W2P</h3>
+      <div style="margin-bottom:14px;">
+        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Source</label>
+        <select id="erp-lookup-source" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;">
+          ${sources.map(s => `<option value="${s.id}">${s.label}</option>`).join("")}
+        </select>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Référence / N° commande</label>
+        <input id="erp-lookup-ref" type="text" value="${defaultRef}" placeholder="ex: ORDER-12345"
+          style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;" />
+      </div>
+      <div id="erp-lookup-results" style="display:none;margin-bottom:14px;"></div>
+      <div id="erp-lookup-msg" style="font-size:12px;min-height:18px;margin-bottom:10px;"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button id="erp-lookup-cancel" class="btn" style="padding:8px 16px;">Annuler</button>
+        <button id="erp-lookup-search" class="btn btn-primary" style="padding:8px 16px;">🔍 Rechercher</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector("#erp-lookup-cancel").onclick = () => overlay.remove();
+
+  async function doSearch() {
+    const source  = overlay.querySelector("#erp-lookup-source").value;
+    const ref     = overlay.querySelector("#erp-lookup-ref").value.trim();
+    const msgEl   = overlay.querySelector("#erp-lookup-msg");
+    const resultsEl = overlay.querySelector("#erp-lookup-results");
+
+    if (!ref) { msgEl.style.color = "#ef4444"; msgEl.textContent = "Saisissez une référence commande."; return; }
+
+    msgEl.style.color = "#6b7280"; msgEl.textContent = "⏳ Recherche en cours…";
+    resultsEl.style.display = "none";
+
+    try {
+      const r = await fetch(`/api/external/${encodeURIComponent(source)}/lookup`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${authToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ ref })
+      }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+
+      if (!r.ok) { msgEl.style.color = "#ef4444"; msgEl.textContent = `❌ ${r.error || "Erreur"}`; return; }
+
+      msgEl.textContent = "";
+      const fiche = r.fiche || {};
+      const fieldLabels = {
+        referenceCommande: "Référence", nomClient: "Client", client: "Société",
+        typeTravail: "Type de travail", quantite: "Quantité", formatFini: "Format fini",
+        dateLivraisonSouhaitee: "Livraison souhaitée", dateReceptionSouhaitee: "Réception souhaitée",
+        commentaire: "Commentaire"
+      };
+      const rows = Object.entries(fiche).filter(([, v]) => v).map(([k, v]) =>
+        `<tr><td style="padding:4px 8px;font-size:12px;color:#6b7280;white-space:nowrap;">${fieldLabels[k]||k}</td>
+             <td style="padding:4px 8px;font-size:12px;font-weight:600;">${v}</td></tr>`
+      ).join("");
+
+      resultsEl.style.display = "block";
+      resultsEl.innerHTML = rows
+        ? `<table style="width:100%;border-collapse:collapse;background:#f9fafb;border-radius:8px;overflow:hidden;">${rows}</table>
+           <button id="erp-lookup-apply" class="btn btn-primary" style="width:100%;margin-top:10px;">✅ Appliquer ces métadonnées</button>`
+        : `<p style="color:#9ca3af;font-size:13px;text-align:center;">Aucune métadonnée trouvée.</p>`;
+
+      if (rows) {
+        resultsEl.querySelector("#erp-lookup-apply").onclick = () => {
+          prefillCb(fiche);
+          overlay.remove();
+        };
+      }
+    } catch(e) { msgEl.style.color = "#ef4444"; msgEl.textContent = "❌ Erreur réseau"; }
+  }
+
+  overlay.querySelector("#erp-lookup-search").onclick = doSearch;
+  overlay.querySelector("#erp-lookup-ref").onkeydown = (e) => { if (e.key === "Enter") doSearch(); };
+
+  // Auto-lookup if configured and a ref was detected
+  if (defaultRef && lookupCfg.autoLookup) doSearch();
+}
+
 async function handleSubmissionFiles(files) {
   const uploadProgress = document.getElementById("uploadProgress");
   const progressFill = uploadProgress.querySelector(".progress-fill");
   const uploadStatus = document.getElementById("uploadStatus");
   const uploadZone = document.getElementById("uploadZone");
 
+  // ── Separate PDFs and XMLs ────────────────────────────────────────────────
+  const pdfFiles = files.filter(f => f.name.toLowerCase().endsWith(".pdf"));
+  const xmlFiles = files.filter(f => f.name.toLowerCase().endsWith(".xml"));
+
+  // ── Cases with XML files: use the coupled upload endpoint ─────────────────
+  if (xmlFiles.length > 0) {
+    uploadProgress.style.display = "block";
+    uploadZone.style.opacity = "0.5";
+    uploadZone.style.pointerEvents = "none";
+
+    // Load coupling config
+    let couplingCfg = { enabled: true, mode: "prefill" };
+    try {
+      const r = await fetch("/api/settings/submission-xml-coupling", {
+        headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(r => r.json()).catch(() => ({}));
+      if (r.ok && r.config) couplingCfg = r.config;
+    } catch(e) { /* use defaults */ }
+
+    // Detect pairs by base name (PDF base == XML base)
+    const getBase = f => f.name.replace(/\.(pdf|xml)$/i, "").toLowerCase();
+
+    /** Build pairs: each entry is { pdfs: File[], xml: File|null } */
+    const pairs = [];
+
+    if (pdfFiles.length > 0 && xmlFiles.length === 1) {
+      // 1 XML → all PDFs share the same XML
+      pairs.push({ pdfs: pdfFiles, xml: xmlFiles[0] });
+    } else if (pdfFiles.length > 0 && xmlFiles.length > 1) {
+      // Multiple XMLs → match by base name
+      const xmlByBase = {};
+      xmlFiles.forEach(x => { xmlByBase[getBase(x)] = x; });
+      const unmatched = [];
+      pdfFiles.forEach(p => {
+        const base = getBase(p);
+        if (xmlByBase[base]) {
+          pairs.push({ pdfs: [p], xml: xmlByBase[base] });
+        } else {
+          unmatched.push(p);
+        }
+      });
+      if (unmatched.length > 0) pairs.push({ pdfs: unmatched, xml: null });
+    } else {
+      // No PDFs or XML only
+      pairs.push({ pdfs: pdfFiles, xml: xmlFiles[0] || null });
+    }
+
+    let successCount = 0, errorCount = 0;
+    const total = pairs.length;
+
+    for (let i = 0; i < pairs.length; i++) {
+      const { pdfs, xml } = pairs[i];
+      progressFill.style.width = Math.round(((i + 1) / total) * 100) + "%";
+
+      const label = pdfs.length > 0
+        ? `${pdfs.map(p => p.name).join(", ")}${xml ? " + " + xml.name : ""}`
+        : xml?.name || "fichier inconnu";
+      uploadStatus.textContent = `Envoi ${label}…`;
+
+      const formData = new FormData();
+      pdfs.forEach(p => formData.append("pdf", p));
+      if (xml) formData.append("xml", xml);
+
+      try {
+        const r = await fetch("/api/soumission/upload-with-xml", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${authToken}` },
+          body: formData
+        }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+
+        if (!r.ok) {
+          uploadStatus.textContent = `❌ ${label}: ${r.error || "Erreur"}`;
+          errorCount++;
+          continue;
+        }
+
+        const hasPrefill = r.fichePrefill && Object.keys(r.fichePrefill).length > 0;
+
+        if (hasPrefill && couplingCfg.mode === "prefill") {
+          // Open fabrication form pre-filled
+          uploadStatus.textContent = `✅ ${label} — ouverture du formulaire pré-rempli`;
+          successCount++;
+
+          const firstPdf = (r.jobIds && r.jobIds.length > 0 && r.jobIds[0]?.fullPath)
+            ? r.jobIds[0].fullPath : null;
+
+          // Show a badge in the upload zone
+          const badge = document.createElement("div");
+          badge.style.cssText = "display:inline-flex;gap:6px;align-items:center;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:4px 10px;font-size:12px;margin:4px 0;";
+          badge.innerHTML = `<span style="background:#ef4444;color:#fff;border-radius:4px;padding:2px 5px;font-weight:700;">PDF</span>
+            <span style="background:#3b82f6;color:#fff;border-radius:4px;padding:2px 5px;font-weight:700;">XML ✓</span>
+            <span style="color:#166534;">Formulaire pré-rempli prêt</span>`;
+          uploadZone.appendChild(badge);
+
+          if (firstPdf) openFabrication(firstPdf, r.fichePrefill);
+          await new Promise(resolve => setTimeout(resolve, 600));
+        } else {
+          uploadStatus.textContent = `✅ ${label}`;
+          successCount++;
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } catch (err) {
+        uploadStatus.textContent = `❌ Erreur`;
+        errorCount++;
+      }
+    }
+
+    uploadProgress.style.display = "none";
+    uploadZone.style.opacity = "1";
+    uploadZone.style.pointerEvents = "auto";
+
+    if (successCount > 0) {
+      showNotification(`✅ ${successCount} envoi(s) réussi(s)`, "success");
+      await refreshSubmissionView();
+      if (submissionCalendar) submissionCalendar.refetchEvents();
+    }
+    if (errorCount > 0) showNotification(`❌ ${errorCount} erreur(s)`, "error");
+    return;
+  }
+
+  // ── PDF only — existing behavior + optional ERP lookup button ─────────────
   uploadProgress.style.display = "block";
   uploadZone.style.opacity = "0.5";
   uploadZone.style.pointerEvents = "none";
@@ -1056,6 +1279,31 @@ async function handleSubmissionFiles(files) {
 
       uploadStatus.textContent = `✅ ${file.name}`;
       successCount++;
+
+      // Try ERP auto-lookup if configured
+      try {
+        const lookupR = await fetch(`/api/external/detect-ref?filename=${encodeURIComponent(file.name)}`, {
+          headers: { "Authorization": `Bearer ${authToken}` }
+        }).then(r => r.json()).catch(() => ({}));
+        if (lookupR.ok && lookupR.detected && r.fullPath) {
+          // Check if auto-lookup is enabled
+          const cfgR = await fetch("/api/settings/submission-erp-lookup", {
+            headers: { "Authorization": `Bearer ${authToken}` }
+          }).then(r => r.json()).catch(() => ({}));
+          if (cfgR.ok && cfgR.config?.autoLookup && cfgR.config?.enabled) {
+            const src = cfgR.config.defaultSource || "pressero";
+            const lR = await fetch(`/api/external/${encodeURIComponent(src)}/lookup`, {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${authToken}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ ref: lookupR.detected })
+            }).then(r => r.json()).catch(() => ({}));
+            if (lR.ok && lR.fiche && Object.keys(lR.fiche).length > 0) {
+              openFabrication(r.fullPath, lR.fiche);
+            }
+          }
+        }
+      } catch(e) { /* auto-lookup failure is non-critical */ }
+
       await new Promise(resolve => setTimeout(resolve, 500));
     } catch (err) {
       uploadStatus.textContent = `❌ Erreur`;
@@ -1151,6 +1399,24 @@ async function refreshSubmissionView() {
       btnFiche.textContent = "Fiche";
       btnFiche.onclick = () => openFabrication(full);
       actions.appendChild(btnFiche);
+
+      const btnErpLookup = document.createElement("button");
+      btnErpLookup.className = "btn";
+      btnErpLookup.title = "Récupérer les métadonnées depuis ERP / W2P";
+      btnErpLookup.textContent = "🔗 ERP/W2P";
+      btnErpLookup.onclick = async (e) => {
+        e.stopPropagation();
+        // Try to detect reference from filename
+        let detectedRef = "";
+        try {
+          const dr = await fetch(`/api/external/detect-ref?filename=${encodeURIComponent(job.name || "")}`, {
+            headers: { "Authorization": `Bearer ${authToken}` }
+          }).then(r => r.json()).catch(() => ({}));
+          if (dr.ok && dr.detected) detectedRef = dr.detected;
+        } catch(e) { /* ignore */ }
+        openErpLookupPopup((fiche) => openFabrication(full, fiche), detectedRef);
+      };
+      actions.appendChild(btnErpLookup);
 
       const btnAssignSub = document.createElement("button");
       btnAssignSub.className = "btn btn-assign";
