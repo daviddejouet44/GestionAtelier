@@ -44,16 +44,23 @@ app.MapGet("/api/file-stage", (string fileName) =>
         if (string.IsNullOrWhiteSpace(safeFileName))
             return Results.Json(new { ok = false, folder = (string?)null, fullPath = (string?)null, batStatus = (string?)null });
 
-        // Helper: resolve BAT sub-status from batTracking collection
+        // Helper: resolve BAT sub-status from batStatus collection
         string? ResolveBatStatus(string fn)
         {
             try
             {
-                var batTrackCol = MongoDbHelper.GetCollection<BsonDocument>("batTracking");
-                var batDoc = batTrackCol.Find(
-                    Builders<BsonDocument>.Filter.Regex("fileName",
-                        new BsonRegularExpression("^" + System.Text.RegularExpressions.Regex.Escape(fn) + "$", "i"))
-                ).SortByDescending(x => x["_id"]).FirstOrDefault();
+                // batStatus documents use fullPath (e.g., ".../BAT/BAT_myfile.pdf"), not fileName
+                var batStatusCol = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
+                var allDocs = batStatusCol.Find(new BsonDocument()).ToList();
+                var batDoc = allDocs
+                    .Where(d => {
+                        if (!d.Contains("fullPath") || d["fullPath"] == BsonNull.Value) return false;
+                        var docFn = Path.GetFileName(d["fullPath"].AsString);
+                        if (docFn.StartsWith("BAT_", StringComparison.OrdinalIgnoreCase)) docFn = docFn.Substring(4);
+                        return string.Equals(docFn, fn, StringComparison.OrdinalIgnoreCase);
+                    })
+                    .OrderByDescending(d => d["_id"].AsObjectId.CreationTime)
+                    .FirstOrDefault();
                 if (batDoc == null) return null;
                 if (batDoc.Contains("rejectedAt") && batDoc["rejectedAt"] != BsonNull.Value) return "refuse";
                 if (batDoc.Contains("validatedAt") && batDoc["validatedAt"] != BsonNull.Value) return "valide";

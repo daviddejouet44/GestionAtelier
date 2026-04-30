@@ -56,6 +56,7 @@ export async function initSettingsView() {
         <button class="settings-tab" data-tab="jdf-config">JDF</button>
         <button class="settings-tab" data-tab="form-config">Fiche de production</button>
         <button class="settings-tab" data-tab="logo">Logos/Images</button>
+        <button class="settings-tab" data-tab="planning-colors">🎨 Couleurs Planning</button>
         <button class="settings-tab" data-tab="imap-config">Import email (IMAP)</button>
         <button class="settings-tab" data-tab="email-templates">📧 Templates email</button>
         <button class="settings-tab" data-tab="logs">Logs</button>
@@ -81,6 +82,7 @@ export async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-jdf-config"></div>
       <div class="settings-panel hidden" id="settings-panel-form-config"></div>
       <div class="settings-panel hidden" id="settings-panel-logo"></div>
+      <div class="settings-panel hidden" id="settings-panel-planning-colors"></div>
       <div class="settings-panel hidden" id="settings-panel-imap-config"></div>
       <div class="settings-panel hidden" id="settings-panel-email-templates"></div>
       <div class="settings-panel hidden" id="settings-panel-logs"></div>
@@ -131,6 +133,7 @@ export async function loadSettingsPanel(tabName, panelEl) {
     case "jdf-config": await renderSettingsJdfConfig(panelEl); break;
     case "form-config": await renderSettingsFormConfig(panelEl); break;
     case "logo": await renderSettingsLogo(panelEl); break;
+    case "planning-colors": await renderSettingsPlanningColors(panelEl); break;
     case "imap-config": await renderSettingsImapConfig(panelEl); break;
     case "email-templates": await renderSettingsEmailTemplates(panelEl); break;
     case "logs": await renderSettingsLogs(panelEl); break;
@@ -201,5 +204,72 @@ async function renderSettingsImapConfig(panel) {
     }).then(res => res.json()).catch(() => ({ ok: false }));
     if (r.ok) showNotification('✅ Configuration IMAP enregistrée', 'success');
     else showNotification('❌ ' + (r.error||'Erreur'), 'error');
+  };
+}
+
+async function renderSettingsPlanningColors(panel) {
+  let engines = [];
+  let currentColors = { engines: {}, finitions: {} };
+  const finitionTypes = ['Embellissement','Rainage','Pliage','Façonnage','Coupe','Emballage','Départ','Livraison'];
+  try {
+    const [engResp, colResp] = await Promise.all([
+      fetch('/api/config/print-engines').then(r => r.json()).catch(() => []),
+      fetch('/api/settings/planning-colors').then(r => r.json()).catch(() => ({ ok: false, colors: {} }))
+    ]);
+    engines = Array.isArray(engResp) ? engResp.map(e => typeof e === 'object' ? (e.name || '') : String(e || '')).filter(Boolean) : [];
+    if (colResp.ok && colResp.colors) currentColors = colResp.colors;
+  } catch(e) { /* ignore */ }
+
+  const defaultEngineColor = '#8b5cf6';
+  const defaultFinitionColor = '#f59e0b';
+
+  function colorRow(id, label, value, defaultColor) {
+    return `<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #f3f4f6;">
+      <input type="color" id="${esc(id)}" value="${esc(value || defaultColor)}" style="width:40px;height:30px;padding:2px;cursor:pointer;border-radius:4px;border:1px solid #d1d5db;" />
+      <label for="${esc(id)}" style="font-size:13px;color:#374151;flex:1;">${esc(label)}</label>
+    </div>`;
+  }
+
+  panel.innerHTML = `<h3>Couleurs du planning</h3>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">Personnalisez les couleurs affichées dans les plannings. La couleur verte "Terminé/Verrouillé" prime toujours sur ces couleurs.</p>
+    <div class="settings-section-card">
+      <h4>Couleurs par moteur d'impression</h4>
+      ${engines.length === 0 ? '<p style="color:#9ca3af;font-size:13px;">Aucun moteur configur&#233;. Allez dans Moteurs d&#39;impression pour en ajouter.</p>' : ''}
+      <div id="engine-colors-list">
+        ${engines.map(e => colorRow('eng-color-' + e.replace(/\s+/g,'_'), e, (currentColors.engines||{})[e], defaultEngineColor)).join('')}
+      </div>
+    </div>
+    <div class="settings-section-card" style="margin-top:16px;">
+      <h4>Couleurs par type de finition</h4>
+      <div id="finition-colors-list">
+        ${finitionTypes.map(t => colorRow('fin-color-' + t.replace(/\s+/g,'_'), t, (currentColors.finitions||{})[t], defaultFinitionColor)).join('')}
+      </div>
+    </div>
+    <div style="margin-top:16px;">
+      <button id="planning-colors-save" class="btn btn-primary">💾 Enregistrer les couleurs</button>
+      <span id="planning-colors-msg" style="margin-left:12px;font-size:13px;"></span>
+    </div>`;
+
+  panel.querySelector('#planning-colors-save').onclick = async () => {
+    const msgEl = panel.querySelector('#planning-colors-msg');
+    const enginesPayload = {};
+    engines.forEach(e => {
+      const input = panel.querySelector('#eng-color-' + e.replace(/\s+/g,'_'));
+      if (input) enginesPayload[e] = input.value;
+    });
+    const finitionsPayload = {};
+    finitionTypes.forEach(t => {
+      const input = panel.querySelector('#fin-color-' + t.replace(/\s+/g,'_'));
+      if (input) finitionsPayload[t] = input.value;
+    });
+    try {
+      const r = await fetch('/api/settings/planning-colors', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ engines: enginesPayload, finitions: finitionsPayload })
+      }).then(res => res.json()).catch(() => ({ ok: false }));
+      if (r.ok) { msgEl.style.color = '#16a34a'; msgEl.textContent = '✅ Couleurs enregistrées'; }
+      else { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ ' + (r.error || 'Erreur'); }
+    } catch(e) { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ Erreur réseau'; }
   };
 }

@@ -43,6 +43,7 @@ window._buildKanban = buildKanban;
 window._refreshSubmissionView = refreshSubmissionView;
 window._loadDeliveries = loadDeliveries;
 window._loadAssignments = loadAssignments;
+window.buildBatView = buildBatView;
 window._updateGlobalAlert = updateGlobalAlert;
 window._renderPdfThumbnail = renderPdfThumbnail;
 window._deleteFile = deleteFile;
@@ -99,7 +100,10 @@ async function updateGlobalAlert() {
 
     // BAT pending alerts
     if (batAlerts.length > 0) {
-      const batHtml = batAlerts.map(a => `<span style="display:inline-block;background:#fefce8;border:1px solid #fde68a;border-radius:4px;padding:1px 7px;font-size:11px;margin:1px 2px;color:#92400e;" title="${esc(a.fileName)}">${esc(a.fileName)} (${a.ageDays >= 1 ? a.ageDays + 'j' : a.ageHours + 'h'})</span>`).join('');
+      const batHtml = batAlerts.map(a => {
+        const dossier = a.numeroDossier ? ` — N°${esc(a.numeroDossier)}` : '';
+        return `<span style="display:inline-block;background:#fefce8;border:1px solid #fde68a;border-radius:4px;padding:1px 7px;font-size:11px;margin:1px 2px;color:#92400e;" title="${esc(a.fileName)}">${esc(a.fileName)}${dossier} (${a.ageDays >= 1 ? a.ageDays + 'j' : a.ageHours + 'h'})</span>`;
+      }).join('');
       html += `<div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;">
         <span style="font-size:12px;font-weight:700;color:#92400e;">📋 BAT en attente de validation (${batAlerts.length})</span>
         <div style="margin-top:4px;">${batHtml}</div>
@@ -285,33 +289,56 @@ function showBatView() {
   buildBatView();
 }
 
-async function buildBatView() {
+async function buildBatView(_filterStatus, _sortField) {
   const container = document.getElementById("bat-view");
   if (!container) return;
+  const filterStatus = _filterStatus || container._batFilter || "all";
+  const sortField = _sortField || container._batSort || "date";
+  container._batFilter = filterStatus;
+  container._batSort = sortField;
+
   container.innerHTML = `
     <div class="settings-container">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
-        <h2 style="margin:0;font-size:22px;font-weight:700;color:var(--text-primary);letter-spacing:-0.02em;">Bon à tirer (BAT)</h2>
-        <div style="display:flex;gap:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+        <h2 style="margin:0;font-size:22px;font-weight:700;color:var(--text-primary);">Bon à tirer (BAT)</h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button id="bat-view-adobe" class="btn btn-acrobat" style="border-radius:50px;">📄 Acrobat Online</button>
           <button id="bat-view-refresh" class="btn btn-primary" style="border-radius:50px;">↺ Rafraîchir</button>
         </div>
       </div>
-      <div id="bat-view-list" class="bat-list-grid" style="max-height:calc(100vh - 160px);overflow-y:auto;scrollbar-width:thin;padding-bottom:16px;"><p style="color:#6b7280;">Chargement...</p></div>
+      <div id="bat-view-summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;"></div>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+        <span style="font-size:13px;font-weight:500;">Filtrer :</span>
+        <button class="btn btn-sm bat-filter-btn ${filterStatus === 'all' ? 'active' : ''}" data-filter="all">Tous</button>
+        <button class="btn btn-sm bat-filter-btn ${filterStatus === 'pending' ? 'active' : ''}" data-filter="pending" style="${filterStatus === 'pending' ? 'background:#fef9c3;border-color:#fde68a;color:#92400e;' : ''}">⏳ En attente</button>
+        <button class="btn btn-sm bat-filter-btn ${filterStatus === 'sent' ? 'active' : ''}" data-filter="sent" style="${filterStatus === 'sent' ? 'background:#dbeafe;border-color:#93c5fd;color:#1e40af;' : ''}">✉️ Envoyé</button>
+        <button class="btn btn-sm bat-filter-btn ${filterStatus === 'validated' ? 'active' : ''}" data-filter="validated" style="${filterStatus === 'validated' ? 'background:#dcfce7;border-color:#86efac;color:#166534;' : ''}">✅ Validé</button>
+        <button class="btn btn-sm bat-filter-btn ${filterStatus === 'rejected' ? 'active' : ''}" data-filter="rejected" style="${filterStatus === 'rejected' ? 'background:#fee2e2;border-color:#fca5a5;color:#991b1b;' : ''}">❌ Refusé</button>
+        <span style="font-size:13px;font-weight:500;margin-left:8px;">Trier :</span>
+        <select id="bat-sort-select" class="settings-input" style="font-size:12px;padding:3px 8px;">
+          <option value="date" ${sortField==='date'?'selected':''}>Date (récent)</option>
+          <option value="name" ${sortField==='name'?'selected':''}>Nom</option>
+          <option value="status" ${sortField==='status'?'selected':''}>Statut</option>
+        </select>
+      </div>
+      <div id="bat-view-list" class="bat-list-grid" style="max-height:calc(100vh - 260px);overflow-y:auto;scrollbar-width:thin;padding-bottom:16px;"><p style="color:#6b7280;">Chargement...</p></div>
     </div>
   `;
+
   container.querySelector("#bat-view-adobe").onclick = () => window.open("https://www.adobe.com/files#", "_blank", "noopener");
-  container.querySelector("#bat-view-refresh").onclick = buildBatView;
+  container.querySelector("#bat-view-refresh").onclick = () => buildBatView();
+  container.querySelectorAll(".bat-filter-btn").forEach(btn => {
+    btn.onclick = () => buildBatView(btn.dataset.filter, sortField);
+  });
+  container.querySelector("#bat-sort-select").onchange = (e) => buildBatView(filterStatus, e.target.value);
 
   const listEl = container.querySelector("#bat-view-list");
+  const summaryEl = container.querySelector("#bat-view-summary");
 
-  // Helper: format a date/time for display
   const fmtDT = (dt) => {
     if (!dt) return null;
     const d = new Date(dt);
-    const date = d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
-    const time = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-    return `${date} à ${time}`;
+    return `${d.toLocaleDateString("fr-FR", {day:"2-digit",month:"2-digit",year:"numeric"})} à ${d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}`;
   };
 
   try {
@@ -320,20 +347,92 @@ async function buildBatView() {
       listEl.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:60px 40px;">Aucun fichier en BAT</p>';
       return;
     }
-    listEl.innerHTML = "";
-    for (const job of jobs) {
+
+    // Load all statuses in parallel
+    const statuses = await Promise.all(jobs.map(job => {
+      const full = normalizePath(job.fullPath || "");
+      return fetch(`/api/bat/status?path=${encodeURIComponent(full)}`).then(r => r.json()).catch(() => ({}));
+    }));
+
+    // Load all fabrication data in parallel
+    const fabs = await Promise.all(jobs.map(job => {
       const full = normalizePath(job.fullPath || "");
       const jobFn = fnKey(full);
+      let lookupFn = jobFn;
+      if (lookupFn.toLowerCase().startsWith("bat_")) lookupFn = lookupFn.substring(4);
+      return fetch("/api/fabrication?fileName=" + encodeURIComponent(lookupFn), {
+        headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(r => r.json()).catch(() => ({}));
+    }));
+
+    // Combine jobs with their status
+    let items = jobs.map((job, i) => ({ job, status: statuses[i], fab: fabs[i] }));
+
+    // Compute status label for each
+    const getStatusCategory = (st) => {
+      if (st.rejectedAt) return 'rejected';
+      if (st.validatedAt) return 'validated';
+      if (st.sentAt) return 'sent';
+      return 'pending';
+    };
+    items.forEach(it => { it.statusCategory = getStatusCategory(it.status); });
+
+    // Summary counts
+    const counts = { pending: 0, sent: 0, validated: 0, rejected: 0 };
+    items.forEach(it => counts[it.statusCategory]++);
+    const summaryItems = [
+      { key: 'pending', label: '⏳ En attente', bg: '#fef9c3', bc: '#fde68a', tc: '#92400e' },
+      { key: 'sent', label: '✉️ Envoyé', bg: '#dbeafe', bc: '#93c5fd', tc: '#1e40af' },
+      { key: 'validated', label: '✅ Validé', bg: '#dcfce7', bc: '#86efac', tc: '#166534' },
+      { key: 'rejected', label: '❌ Refusé', bg: '#fee2e2', bc: '#fca5a5', tc: '#991b1b' },
+    ];
+    summaryEl.innerHTML = summaryItems.map(s => `
+      <div onclick="buildBatView('${s.key}')" style="background:${s.bg};border:1px solid ${s.bc};border-radius:10px;padding:10px 18px;cursor:pointer;display:flex;flex-direction:column;align-items:center;min-width:90px;">
+        <span style="font-size:22px;font-weight:700;color:${s.tc};">${counts[s.key]}</span>
+        <span style="font-size:11px;color:${s.tc};font-weight:600;margin-top:2px;">${s.label}</span>
+      </div>
+    `).join('');
+
+    // Apply filter
+    if (filterStatus !== 'all') {
+      items = items.filter(it => it.statusCategory === filterStatus);
+    }
+
+    // Apply sort
+    items.sort((a, b) => {
+      if (sortField === 'name') return (a.job.name || '').localeCompare(b.job.name || '');
+      if (sortField === 'status') {
+        const order = { rejected: 0, validated: 1, sent: 2, pending: 3 };
+        return (order[a.statusCategory] ?? 99) - (order[b.statusCategory] ?? 99);
+      }
+      // date (default): most recent first
+      return new Date(b.job.modified || 0) - new Date(a.job.modified || 0);
+    });
+
+    if (items.length === 0) {
+      listEl.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:40px;">Aucun BAT dans ce filtre</p>';
+      return;
+    }
+
+    listEl.innerHTML = "";
+    for (const { job, status, fab } of items) {
+      const full = normalizePath(job.fullPath || "");
+      const jobFn = fnKey(full);
+      let lookupFn = jobFn;
+      if (lookupFn.toLowerCase().startsWith("bat_")) lookupFn = lookupFn.substring(4);
 
       const card = document.createElement("div");
       card.className = "bat-card-modern";
 
-      // Status bar (updated after loading status)
+      // Status bar
       const statusBar = document.createElement("div");
       statusBar.className = "bat-card-status-bar";
+      if (status.rejectedAt) statusBar.className += " bat-status-rejected";
+      else if (status.validatedAt) statusBar.className += " bat-status-validated";
+      else if (status.sentAt) statusBar.className += " bat-status-sent";
+      else statusBar.className += " bat-status-new";
       card.appendChild(statusBar);
 
-      // Inner layout wrapper
       const innerDiv = document.createElement("div");
       innerDiv.className = "bat-card-inner";
 
@@ -344,13 +443,12 @@ async function buildBatView() {
         window._renderPdfThumbnail(full, thumbDiv).catch(() => {});
       }
 
-      // --- Body ---
       const bodyDiv = document.createElement("div");
       bodyDiv.className = "bat-card-body";
 
       const dossierEl = document.createElement("div");
       dossierEl.className = "bat-card-dossier";
-      dossierEl.textContent = "—";
+      dossierEl.textContent = fab && fab.numeroDossier ? `N° ${fab.numeroDossier}${fab.client ? ' — ' + fab.client : ''}` : "—";
 
       const filenameEl = document.createElement("div");
       filenameEl.className = "bat-card-filename";
@@ -368,7 +466,6 @@ async function buildBatView() {
       bodyDiv.appendChild(metaEl);
       bodyDiv.appendChild(trackingEl);
 
-      // --- Actions ---
       const actionsDiv = document.createElement("div");
       actionsDiv.className = "bat-card-actions";
 
@@ -379,18 +476,15 @@ async function buildBatView() {
 
       const btnAcrobat = document.createElement("button");
       btnAcrobat.className = "btn btn-sm btn-acrobat";
-      btnAcrobat.textContent = "📄 Ouvrir dans Acrobat";
-      btnAcrobat.onclick = async () => {
-        try {
-          const r = await fetch("/api/acrobat/open", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fullPath: full })
-          }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
-          if (!r.ok) showNotification("❌ " + (r.error || "Erreur ouverture Acrobat"), "error");
-        } catch (err) {
-          showNotification("❌ " + err.message, "error");
-        }
+      btnAcrobat.textContent = "📄 Télécharger (Acrobat)";
+      btnAcrobat.title = "Télécharger le PDF sur votre poste pour l'ouvrir dans Acrobat";
+      btnAcrobat.onclick = () => {
+        const a = document.createElement("a");
+        a.href = "/api/file?path=" + encodeURIComponent(full);
+        a.download = job.name || "bat.pdf";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
       };
 
       const btnArchiver = document.createElement("button");
@@ -398,33 +492,26 @@ async function buildBatView() {
       btnArchiver.textContent = "📦 Archiver";
       btnArchiver.onclick = async () => {
         if (!confirm(`Archiver le BAT "${job.name}" dans le dossier de production ?`)) return;
-        const r = await fetch("/api/jobs/archive", {
+        const archiveFolder = "Fin de production";
+        const archivePath = full.replace(/[/\\]BAT[/\\]/, "/" + archiveFolder + "/").replace(/\\/g, "/");
+        const resp = await fetch("/api/jobs/move", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fullPath: full })
-        }).then(res => res.json()).catch(() => ({ ok: false }));
-        if (r.ok) { showNotification("✅ BAT archivé", "success"); buildBatView(); }
-        else showNotification("❌ Erreur : " + (r.error || ""), "error");
+          body: JSON.stringify({ source: full, destination: archiveFolder, overwrite: true })
+        }).then(r => r.json()).catch(() => ({ ok: false }));
+        if (resp.ok) { showNotification("✅ Archivé dans Fin de production", "success"); buildBatView(); }
+        else showNotification("❌ Erreur archivage", "error");
       };
 
-      const btnDelete = document.createElement("button");
-      btnDelete.className = "btn btn-sm btn-danger";
-      btnDelete.textContent = "🗑 Supprimer";
-      btnDelete.onclick = async () => {
-        if (!confirm(`Supprimer le BAT "${job.name}" ?`)) return;
-        const r = await fetch("/api/jobs/delete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fullPath: full })
-        }).then(r => r.json()).catch(() => ({ ok: false }));
-        if (r.ok) { showNotification("✅ BAT supprimé", "success"); buildBatView(); }
-        else showNotification("❌ Erreur : " + (r.error || ""), "error");
-      };
+      const btnFiche = document.createElement("button");
+      btnFiche.className = "btn btn-sm";
+      btnFiche.textContent = "📋 Fiche";
+      btnFiche.onclick = () => { if (window._openFabrication) window._openFabrication(full.replace(/[/\\]BAT_/, "/").replace("BAT/BAT_", "/")); };
 
       actionsDiv.appendChild(btnOpen);
       actionsDiv.appendChild(btnAcrobat);
       actionsDiv.appendChild(btnArchiver);
-      actionsDiv.appendChild(btnDelete);
+      actionsDiv.appendChild(btnFiche);
 
       innerDiv.appendChild(thumbDiv);
       innerDiv.appendChild(bodyDiv);
@@ -432,105 +519,71 @@ async function buildBatView() {
       card.appendChild(innerDiv);
       listEl.appendChild(card);
 
-      // Load dossier number async — strip BAT_ prefix before lookup (MongoDB stores without it)
-      let lookupFn = jobFn;
-      if (lookupFn.toLowerCase().startsWith("bat_")) lookupFn = lookupFn.substring(4);
-      fetch("/api/fabrication?fileName=" + encodeURIComponent(lookupFn))
-        .then(r => r.json()).then(d => {
-          if (d && d.numeroDossier) dossierEl.textContent = "N° " + d.numeroDossier;
-        }).catch(() => {});
-
-      try {
-        const status = await fetch(`/api/bat/status?path=${encodeURIComponent(full)}`).then(r => r.json()).catch(() => ({}));
-
-        // Update status bar color
-        if (status.rejectedAt) statusBar.className = "bat-card-status-bar bat-status-rejected";
-        else if (status.validatedAt) statusBar.className = "bat-card-status-bar bat-status-validated";
-        else if (status.sentAt) statusBar.className = "bat-card-status-bar bat-status-sent";
-        else statusBar.className = "bat-card-status-bar bat-status-new";
-
-        const btnSent = document.createElement("button");
-        btnSent.className = "bat-status-badge bat-sent" + (status.sentAt ? " active" : "");
-        const sentTs = status.sentAt ? fmtDT(status.sentAt) : null;
-        btnSent.innerHTML = status.sentAt
-          ? `✉️ Envoyé<span style="font-size:9px;font-weight:400;margin-left:4px;">${sentTs}</span>`
-          : "✉️ Marquer envoyé";
-        btnSent.onclick = async () => {
-          // Load mail template
-          let tmpl = null;
-          try {
-            const tr = await fetch("/api/config/bat-mail-template").then(r => r.json()).catch(() => null);
-            if (tr && tr.ok && tr.template) tmpl = tr.template;
-          } catch(e) { /* ignore */ }
-
-          // If a template is configured, open the mail client
-          if (tmpl && (tmpl.subject || tmpl.body)) {
-            // Load fabrication data for variable substitution
-            let fab = {};
-            try {
-              fab = await fetch("/api/fabrication?fileName=" + encodeURIComponent(lookupFn)).then(r => r.json()).catch(() => ({}));
-            } catch(e) { /* ignore */ }
-
-            const replaceVars = (str) => (str || '')
-              .replace(/\{\{numeroDossier\}\}/g, fab.numeroDossier || '')
-              .replace(/\{\{nomClient\}\}/g, fab.nomClient || '')
-              .replace(/\{\{nomFichier\}\}/g, job.name || '')
-              .replace(/\{\{dateCreation\}\}/g, fab.dateCreation ? new Date(fab.dateCreation).toLocaleDateString('fr-FR') : '')
-              .replace(/\{\{typeTravail\}\}/g, fab.typeTravail || '')
-              .replace(/\{\{quantite\}\}/g, fab.quantite || '')
-              .replace(/\{\{operateur\}\}/g, fab.operateur || '')
-              .replace(/\{\{dateLivraison\}\}/g, fab.dateLivraison ? new Date(fab.dateLivraison).toLocaleDateString('fr-FR') : '');
-
-            const to = tmpl.to || fab.mailClient || '';
-            const subject = replaceVars(tmpl.subject);
-            const body = replaceVars(tmpl.body);
-            const mailto = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-            window.open(mailto);
-          }
-
-          // Mark as sent in DB
-          fetch("/api/bat/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(buildBatView);
-        };
-
-        const sep1 = document.createElement("span");
-        sep1.className = "bat-tracking-sep";
-
-        const btnValidate = document.createElement("button");
-        btnValidate.className = "bat-status-badge bat-validated" + (status.validatedAt ? " active" : "");
-        const validateTs = status.validatedAt ? fmtDT(status.validatedAt) : null;
-        btnValidate.innerHTML = status.validatedAt
-          ? `✅ Validé<span style="font-size:9px;font-weight:400;margin-left:4px;">${validateTs}</span>`
-          : "✅ Valider";
-        btnValidate.onclick = () => fetch("/api/bat/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(buildBatView);
-
-        const sep2 = document.createElement("span");
-        sep2.className = "bat-tracking-sep";
-
-        const btnReject = document.createElement("button");
-        btnReject.className = "bat-status-badge bat-rejected" + (status.rejectedAt ? " active" : "");
-        const rejectTs = status.rejectedAt ? fmtDT(status.rejectedAt) : null;
-        btnReject.innerHTML = status.rejectedAt
-          ? `❌ Refusé<span style="font-size:9px;font-weight:400;margin-left:4px;">${rejectTs}</span>`
-          : "❌ Refuser";
-        btnReject.onclick = () => fetch("/api/bat/reject", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(buildBatView);
-
-        trackingEl.appendChild(btnSent);
-        trackingEl.appendChild(sep1);
-        trackingEl.appendChild(btnValidate);
-        trackingEl.appendChild(sep2);
-        trackingEl.appendChild(btnReject);
-
-        if (status.sentAt && !status.validatedAt && !status.rejectedAt) {
-          const MS_PER_HOUR = 3600000;
-          const ageHours = (Date.now() - new Date(status.sentAt)) / MS_PER_HOUR;
-          if (ageHours >= 48) {
-            const alertEl = document.createElement("div");
-            alertEl.className = "bat-alert-j2";
-            alertEl.textContent = `⚠️ BAT envoyé depuis ${Math.floor(ageHours / 24)} jour(s) sans réponse !`;
-            bodyDiv.appendChild(alertEl);
-          }
+      // Tracking buttons
+      const btnSent = document.createElement("button");
+      btnSent.className = "bat-status-badge bat-sent" + (status.sentAt ? " active" : "");
+      const sentTs = status.sentAt ? fmtDT(status.sentAt) : null;
+      btnSent.innerHTML = status.sentAt
+        ? `✉️ Envoyé<span style="font-size:9px;font-weight:400;margin-left:4px;">${sentTs}</span>`
+        : "✉️ Marquer envoyé";
+      btnSent.onclick = async () => {
+        let tmpl = null;
+        try {
+          const tr = await fetch("/api/config/bat-mail-template").then(r => r.json()).catch(() => null);
+          if (tr && tr.ok && tr.template) tmpl = tr.template;
+        } catch(e) { /* ignore */ }
+        if (tmpl && (tmpl.subject || tmpl.body)) {
+          const replaceVars = (str) => (str || '')
+            .replace(/\{\{numeroDossier\}\}/g, fab.numeroDossier || '')
+            .replace(/\{\{nomClient\}\}/g, fab.nomClient || '')
+            .replace(/\{\{nomFichier\}\}/g, job.name || '')
+            .replace(/\{\{typeTravail\}\}/g, fab.typeTravail || '')
+            .replace(/\{\{operateur\}\}/g, fab.operateur || '');
+          const to = tmpl.to || fab.mailClient || '';
+          const mailto = `mailto:${to}?subject=${encodeURIComponent(replaceVars(tmpl.subject))}&body=${encodeURIComponent(replaceVars(tmpl.body))}`;
+          window.open(mailto);
         }
-      } catch (e) { /* ignore */ }
+        fetch("/api/bat/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(() => buildBatView());
+      };
+
+      const sep1 = document.createElement("span");
+      sep1.className = "bat-tracking-sep";
+
+      const btnValidate = document.createElement("button");
+      btnValidate.className = "bat-status-badge bat-validated" + (status.validatedAt ? " active" : "");
+      const validateTs = status.validatedAt ? fmtDT(status.validatedAt) : null;
+      btnValidate.innerHTML = status.validatedAt
+        ? `✅ Validé<span style="font-size:9px;font-weight:400;margin-left:4px;">${validateTs}</span>`
+        : "✅ Valider";
+      btnValidate.onclick = () => fetch("/api/bat/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(() => buildBatView());
+
+      const sep2 = document.createElement("span");
+      sep2.className = "bat-tracking-sep";
+
+      const btnReject = document.createElement("button");
+      btnReject.className = "bat-status-badge bat-rejected" + (status.rejectedAt ? " active" : "");
+      const rejectTs = status.rejectedAt ? fmtDT(status.rejectedAt) : null;
+      btnReject.innerHTML = status.rejectedAt
+        ? `❌ Refusé<span style="font-size:9px;font-weight:400;margin-left:4px;">${rejectTs}</span>`
+        : "❌ Refuser";
+      btnReject.onclick = () => fetch("/api/bat/reject", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(() => buildBatView());
+
+      trackingEl.appendChild(btnSent);
+      trackingEl.appendChild(sep1);
+      trackingEl.appendChild(btnValidate);
+      trackingEl.appendChild(sep2);
+      trackingEl.appendChild(btnReject);
+
+      if (status.sentAt && !status.validatedAt && !status.rejectedAt) {
+        const MS_PER_HOUR = 3600000;
+        const ageHours = (Date.now() - new Date(status.sentAt)) / MS_PER_HOUR;
+        if (ageHours >= 48) {
+          const alertEl = document.createElement("div");
+          alertEl.className = "bat-alert-j2";
+          alertEl.textContent = `⚠️ BAT envoyé depuis ${Math.floor(ageHours / 24)} jour(s) sans réponse !`;
+          bodyDiv.appendChild(alertEl);
+        }
+      }
     }
   } catch (err) {
     listEl.innerHTML = `<p style="color:#ef4444;">Erreur : ${err.message}</p>`;
@@ -658,85 +711,10 @@ async function buildKanbanSidebar() {
   sidebar.innerHTML = '<div style="padding:12px;color:#6b7280;font-size:12px;">Chargement...</div>';
 
   try {
-    // --- Section 1: Calendrier semaine compact (lun-ven) ---
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Local ISO date string (avoids UTC timezone offset bug)
-    function localIso(d) {
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    }
-    const todayIso = localIso(today);
-
-    // Find Monday of the current week (Mon–Fri only)
-    const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-
-    const weekDays = [];
-    for (let i = 0; i < 5; i++) {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      weekDays.push(d);
-    }
-
-    const weekJobsHtml = weekDays.map(d => {
-      const iso = localIso(d);
-      const jobs = Object.entries(deliveriesByPath)
-        .filter(([k, v]) => !k.endsWith("_time") && v === iso)
-        .map(([k]) => k);
-      const label = d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
-      const isToday = iso === todayIso;
-      function escHtml(s) { return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-      return `
-        <div style="padding:6px 0;border-bottom:1px solid #f0f0f0;">
-          <div style="font-size:11px;font-weight:${isToday ? '700' : '500'};color:${isToday ? '#BC0024' : '#374151'};">${label}</div>
-          ${jobs.length > 0
-            ? jobs.map(j => `<div style="font-size:11px;background:#dbeafe;color:#1e40af;border-radius:6px;padding:3px 8px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;font-weight:500;" title="${escHtml(j)}">📄 ${escHtml(j)}</div>`).join("")
-            : `<div style="font-size:10px;color:#9ca3af;margin-top:2px;">—</div>`}
-        </div>
-      `;
-    }).join("");
-
-    // --- Section 2: Vue production globale compacte ---
-    let prodRows = "";
-    try {
-      const prodJobs = await fetch("/api/production/summary", {
-        headers: { "Authorization": `Bearer ${authToken}` }
-      }).then(r => r.json()).catch(() => []);
-
-      if (Array.isArray(prodJobs) && prodJobs.length > 0) {
-        prodRows = prodJobs.slice(0, 8).map(job => {
-          const stageLabel = STAGE_DISPLAY_LABELS[job.currentStage] || job.currentStage || "—";
-          const progress = Object.entries(STAGE_PROGRESS).find(([k]) => (job.currentStage || "").includes(k))?.[1] ?? 0;
-          const color = progress === 100 ? "#22c55e" : progress >= 65 ? "#f97316" : progress >= 35 ? "#3b82f6" : "#f59e0b";
-          return `
-            <div style="padding:6px 0;border-bottom:1px solid #f0f0f0;">
-              <div style="font-size:11px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${job.numeroDossier || job.fileName || '—'}</div>
-              <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
-                <div style="flex:1;background:#e5e7eb;border-radius:4px;height:6px;overflow:hidden;">
-                  <div style="width:${progress}%;height:100%;background:${color};border-radius:4px;"></div>
-                </div>
-                <span style="font-size:10px;color:#6b7280;white-space:nowrap;">${stageLabel}</span>
-              </div>
-            </div>
-          `;
-        }).join("");
-      } else {
-        prodRows = '<div style="font-size:11px;color:#9ca3af;padding:8px 0;">Aucun job en production</div>';
-      }
-    } catch(e) {
-      prodRows = '<div style="font-size:11px;color:#9ca3af;">—</div>';
-    }
-
     sidebar.innerHTML = `
       <div class="kanban-sidebar-section">
-        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">📅 Cette semaine</div>
-        ${weekJobsHtml}
-      </div>
-      <div class="kanban-sidebar-section">
-        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">📊 Production</div>
-        ${prodRows}
+        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">🖨️ Planning Machine</div>
+        <div id="kanban-sidebar-machine-list" style="font-size:11px;color:#9ca3af;">Chargement...</div>
       </div>
       <div class="kanban-sidebar-section">
         <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">🖨 BAT en cours</div>
@@ -744,10 +722,63 @@ async function buildKanbanSidebar() {
       </div>
     `;
 
-    // Load BAT sidebar asynchronously
+    // Load Machine planning and BAT sidebar asynchronously
+    loadMachineSidebar();
     loadBatSidebar();
   } catch(e) {
     sidebar.innerHTML = '<div style="padding:12px;color:#9ca3af;font-size:12px;">—</div>';
+  }
+}
+
+async function loadMachineSidebar() {
+  const listEl = document.getElementById("kanban-sidebar-machine-list");
+  if (!listEl) return;
+  try {
+    const resp = await fetch("/api/fabrication/events", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => ({ ok: false, events: [] }));
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayIso = today.toISOString().split('T')[0];
+
+    const fabEvents = (resp.ok && Array.isArray(resp.events)) ? resp.events : [];
+    const machineEvents = fabEvents
+      .filter(fe => fe.type === 'impression' && fe.date && fe.date >= todayIso)
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.manualTime || '').localeCompare(b.manualTime || ''));
+
+    if (machineEvents.length === 0) {
+      listEl.innerHTML = '<div style="color:#9ca3af;">Aucune impression planifiée</div>';
+      return;
+    }
+
+    function escH(s) { return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+    listEl.innerHTML = machineEvents.slice(0, 10).map(fe => {
+      const d = new Date(fe.date + 'T00:00:00');
+      const dateStr = d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
+      const timeStr = fe.manualTime || "09:00";
+      const isLocked = !!fe.locked;
+      const bg = isLocked ? '#dcfce7' : '#ede9fe';
+      const tc = isLocked ? '#166534' : '#5b21b6';
+      const lockIcon = isLocked ? '🔒 ' : '';
+      const label = fe.title || fe.fileName || '—';
+      const truncLabel = label.length > 20 ? label.substring(0, 18) + '…' : label;
+      const machine = fe.moteurImpression ? ` · ${escH(fe.moteurImpression)}` : '';
+      return `<div style="padding:5px 0;border-bottom:1px solid #f0f0f0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
+          <span style="background:${bg};color:${tc};padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;white-space:nowrap;">${lockIcon}${escH(dateStr)} ${escH(timeStr)}</span>
+        </div>
+        <div style="font-size:11px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;" title="${escH(label)}">${escH(truncLabel)}${machine}</div>
+      </div>`;
+    }).join("");
+
+    if (machineEvents.length > 10) {
+      listEl.innerHTML += `<div style="font-size:10px;color:#9ca3af;padding-top:4px;text-align:center;">+${machineEvents.length - 10} autres</div>`;
+    }
+  } catch(e) {
+    const el = document.getElementById("kanban-sidebar-machine-list");
+    if (el) el.innerHTML = '<div style="color:#9ca3af;">—</div>';
   }
 }
 
@@ -808,7 +839,8 @@ function setupProfileUI() {
   const btnRapport = document.getElementById("btnViewRapport");
   const userInfo = document.getElementById("user-info");
 
-  const profileLabel = currentUser.profile === 4 ? "Finitions" : `Profil ${currentUser.profile}`;
+  const profileLabels = { 1: "Soumission", 2: "Opérateur", 3: "Admin", 4: "Finitions", 5: "Lecture plannings", 6: "Opérateur restreint" };
+  const profileLabel = profileLabels[currentUser.profile] || `Profil ${currentUser.profile}`;
   userInfo.textContent = `${currentUser.name} (${profileLabel})`;
 
   // Profile 4 (Façonnage): read-only access, only sees kanban (not submission/settings)
@@ -819,6 +851,36 @@ function setupProfileUI() {
     if (btnBat) btnBat.style.display = "inline-block";
     if (btnRapport) btnRapport.style.display = "inline-block";
     if (btnSubmission) btnSubmission.style.display = "none";
+    if (btnSettings) btnSettings.style.display = "none";
+    const btnGlobalProd = document.getElementById("btnViewGlobalProd");
+    if (btnGlobalProd) btnGlobalProd.style.display = "inline-block";
+    setupKanbanActions();
+    return;
+  }
+
+  // Profile 5 (Lecture plannings): only sees planning calendar, no modifications
+  if (currentUser.profile === 5) {
+    if (btnRecycle) btnRecycle.style.display = "none";
+    if (btnDossiers) btnDossiers.style.display = "none";
+    if (btnDashboard) btnDashboard.style.display = "none";
+    if (btnBat) btnBat.style.display = "none";
+    if (btnRapport) btnRapport.style.display = "none";
+    if (btnSubmission) btnSubmission.style.display = "none";
+    if (btnSettings) btnSettings.style.display = "none";
+    const btnGlobalProd = document.getElementById("btnViewGlobalProd");
+    if (btnGlobalProd) btnGlobalProd.style.display = "none";
+    setupKanbanActions();
+    return;
+  }
+
+  // Profile 6 (Opérateur restreint): like Opérateur but plannings and dates are read-only
+  if (currentUser.profile === 6) {
+    if (btnRecycle) btnRecycle.style.display = "inline-block";
+    if (btnDossiers) btnDossiers.style.display = "inline-block";
+    if (btnDashboard) btnDashboard.style.display = "none";
+    if (btnBat) btnBat.style.display = "inline-block";
+    if (btnRapport) btnRapport.style.display = "inline-block";
+    if (btnSubmission) btnSubmission.style.display = "inline-block";
     if (btnSettings) btnSettings.style.display = "none";
     const btnGlobalProd = document.getElementById("btnViewGlobalProd");
     if (btnGlobalProd) btnGlobalProd.style.display = "inline-block";
@@ -872,6 +934,16 @@ function setupKanbanActions() {
     btnKanban.style.display = "inline-block";
     btnCalendar.style.display = "none";
     if (btnSubmission) btnSubmission.style.display = "none";
+  } else if (currentUser.profile === 5) {
+    // Profile 5 (Lecture plannings): only calendar, read-only
+    btnKanban.style.display = "none";
+    btnCalendar.style.display = "inline-block";
+    if (btnSubmission) btnSubmission.style.display = "none";
+  } else if (currentUser.profile === 6) {
+    // Profile 6 (Opérateur restreint): kanban + calendar (read-only plannings)
+    btnKanban.style.display = "inline-block";
+    btnCalendar.style.display = "inline-block";
+    if (btnSubmission) btnSubmission.style.display = "inline-block";
   }
 }
 

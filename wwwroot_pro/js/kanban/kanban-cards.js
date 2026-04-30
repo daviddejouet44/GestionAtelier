@@ -607,7 +607,8 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         };
         const STEP_ORDER = ["embellissement","rainage","pliage","faconnage","coupe","emballage","depart","livraison"];
 
-        const jobId = encodeURIComponent(full);
+        // Use just the filename for finition-steps API (the endpoint looks up by fileName field)
+        const jobId = encodeURIComponent(jobFileName);
         const jfn   = jobFileName;
 
         // Mini progress badge on card (loaded async)

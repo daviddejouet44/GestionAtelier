@@ -44,6 +44,9 @@ app.MapGet("/api/fabrication/{id}/finition-steps", (string id) =>
             doc = col.Find(Builders<BsonDocument>.Filter.Eq("fullPath", id)).FirstOrDefault();
         if (doc == null)
             doc = col.Find(Builders<BsonDocument>.Filter.Eq("fileName", id)).SortByDescending(x => x["_id"]).FirstOrDefault();
+        // Case-insensitive fallback (fnKey lowercases filenames)
+        if (doc == null)
+            doc = col.Find(Builders<BsonDocument>.Filter.Regex("fileName", new BsonRegularExpression("^" + System.Text.RegularExpressions.Regex.Escape(id) + "$", "i"))).SortByDescending(x => x["_id"]).FirstOrDefault();
 
         if (doc == null)
             return Results.Json(new { ok = false, error = "Fiche introuvable" });
@@ -114,6 +117,12 @@ app.MapPut("/api/fabrication/{id}/finition-step", async (string id, HttpContext 
         if (doc == null)
         {
             filter = Builders<BsonDocument>.Filter.Eq("fileName", id);
+            doc = col.Find(filter).SortByDescending(x => x["_id"]).FirstOrDefault();
+        }
+        // Case-insensitive fallback (fnKey lowercases filenames)
+        if (doc == null)
+        {
+            filter = Builders<BsonDocument>.Filter.Regex("fileName", new BsonRegularExpression("^" + System.Text.RegularExpressions.Regex.Escape(id) + "$", "i"));
             doc = col.Find(filter).SortByDescending(x => x["_id"]).FirstOrDefault();
         }
 

@@ -31,9 +31,10 @@ export const STAGE_DISPLAY_LABELS = {
 
 export function getStageLabelDisplay(stage, batStatus) {
   if (stage === 'BAT') {
-    if (batStatus === 'refuse') return 'BAT — ❌ Refusé';
-    if (batStatus === 'valide') return 'BAT — ✅ Validé';
-    if (batStatus === 'envoye') return 'BAT — 📤 Envoyé';
+    if (batStatus === 'refuse') return 'BAT refusé';
+    if (batStatus === 'valide') return 'BAT validé';
+    if (batStatus === 'envoye') return 'BAT envoyé';
+    return 'BAT';
   }
   return STAGE_DISPLAY_LABELS[stage] || stage;
 }

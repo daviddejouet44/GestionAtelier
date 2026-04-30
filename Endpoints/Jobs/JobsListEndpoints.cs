@@ -139,10 +139,26 @@ app.MapGet("/api/alerts/bat-pending", () =>
 
             var days = (int)Math.Floor(ageHours / 24);
             var ageHoursInt = (int)Math.Floor(ageHours);
+
+            // Look up numeroDossier from fabrication (strip BAT_ prefix if present)
+            string? numeroDossier = null;
+            try
+            {
+                var lookupFn = fName.ToLowerInvariant();
+                if (lookupFn.StartsWith("bat_")) lookupFn = lookupFn.Substring(4);
+                var fabCol = MongoDbHelper.GetFabricationsCollection();
+                var fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", lookupFn))
+                    .SortByDescending(x => x["_id"]).FirstOrDefault();
+                if (fabDoc != null && fabDoc.Contains("numeroDossier") && fabDoc["numeroDossier"] != BsonNull.Value)
+                    numeroDossier = fabDoc["numeroDossier"].AsString;
+            }
+            catch { /* ignore */ }
+
             alerts.Add(new
             {
                 fileName = fName,
                 fullPath = filePath,
+                numeroDossier,
                 createdAt = fi.CreationTimeUtc,
                 ageHours = ageHoursInt,
                 ageDays = days,

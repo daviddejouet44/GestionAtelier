@@ -1116,6 +1116,61 @@ app.MapPut("/api/settings/imap", async (HttpContext ctx) =>
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
+// ======================================================
+// Planning colors configuration (admin only)
+// GET  /api/settings/planning-colors  → { ok, colors: { engines: {name: hex}, finitions: {name: hex} } }
+// PUT  /api/settings/planning-colors  → save colors
+// ======================================================
+app.MapGet("/api/settings/planning-colors", (HttpContext ctx) =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("planningColors");
+        var doc = col.Find(new BsonDocument()).FirstOrDefault();
+        var engines = new Dictionary<string, string>();
+        var finitions = new Dictionary<string, string>();
+        if (doc != null)
+        {
+            if (doc.Contains("engines") && doc["engines"].IsBsonDocument)
+                foreach (var e in doc["engines"].AsBsonDocument)
+                    engines[e.Name] = e.Value.IsString ? e.Value.AsString : "#8b5cf6";
+            if (doc.Contains("finitions") && doc["finitions"].IsBsonDocument)
+                foreach (var f in doc["finitions"].AsBsonDocument)
+                    finitions[f.Name] = f.Value.IsString ? f.Value.AsString : "#f59e0b";
+        }
+        return Results.Json(new { ok = true, colors = new { engines, finitions } });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapPut("/api/settings/planning-colors", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var enginesDoc = new BsonDocument();
+        var finitionsDoc = new BsonDocument();
+        if (json.TryGetProperty("engines", out var engProp) && engProp.ValueKind == JsonValueKind.Object)
+            foreach (var p in engProp.EnumerateObject())
+                enginesDoc[p.Name] = p.Value.GetString() ?? "#8b5cf6";
+        if (json.TryGetProperty("finitions", out var finProp) && finProp.ValueKind == JsonValueKind.Object)
+            foreach (var p in finProp.EnumerateObject())
+                finitionsDoc[p.Name] = p.Value.GetString() ?? "#f59e0b";
+
+        var col = MongoDbHelper.GetCollection<BsonDocument>("planningColors");
+        col.DeleteMany(new BsonDocument());
+        col.InsertOne(new BsonDocument { ["engines"] = enginesDoc, ["finitions"] = finitionsDoc });
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
     }
 
     private static async Task<object> SavePassesConfigAsync(HttpContext ctx)

@@ -1,5 +1,5 @@
 // fabrication.js — Fiche de fabrication (formulaire dynamique)
-import { authToken, deliveriesByPath, fnKey, normalizePath, showNotification, FIN_PROD_FOLDER } from './core.js';
+import { authToken, deliveriesByPath, fnKey, normalizePath, showNotification, FIN_PROD_FOLDER, currentUser } from './core.js';
 import { calendar, submissionCalendar } from './calendar.js';
 
 // Fixed DOM refs
@@ -435,7 +435,11 @@ function populateFabForm(d, faconnageOptions) {
   if(finEl) { finEl.value=d.dateProductionFinitions?fmtDate(d.dateProductionFinitions):''; if(finEl.value) finEl.dataset.protected='1'; else delete finEl.dataset.protected; }
   if(impEl) { impEl.value=d.dateImpression?fmtDate(d.dateImpression):''; if(impEl.value) impEl.dataset.protected='1'; else delete impEl.dataset.protected; }
   const tpEl=document.getElementById('fab-temps-produit');
-  if(tpEl) tpEl.value=d.tempsProduitMinutes!=null?d.tempsProduitMinutes:'';
+  if(tpEl) {
+    tpEl.value=d.tempsProduitMinutes!=null?d.tempsProduitMinutes:'';
+    // Mark as manually-set if loaded from DB so updateTempsProduction() won't overwrite it
+    if(d.tempsProduitMinutes!=null) tpEl.dataset.manual='1'; else delete tpEl.dataset.manual;
+  }
   // If dateReception is set but calculated dates are missing, recalculate
   if(recEl&&recEl.value&&(!envEl||!envEl.value)) updateKeyDates();
 }
@@ -578,6 +582,14 @@ export async function openFabrication(fullPath) {
   renderFabForm(config,{engines:Array.isArray(engines)?engines:[],types:Array.isArray(types)?types:[],papers:Array.isArray(papers)?papers:[],sheetFormats:Array.isArray(sheetFormats)?sheetFormats:[],faconnageOptions:Array.isArray(faconnageOptions)?faconnageOptions:[],bindingOptions:Array.isArray(bindingOptionsResp?.options)?bindingOptionsResp.options:[],foldsOptions:Array.isArray(foldsOptionsResp?.options)?foldsOptionsResp.options:[],outputOptions:Array.isArray(outputOptionsResp?.options)?outputOptionsResp.options:[]});
   populateFabForm(d,Array.isArray(faconnageOptions)?faconnageOptions:[]);
   attachFormHandlers(fabCurrentFileName);
+  // Profile 6 (Opérateur restreint): lock date key fields
+  if(currentUser && currentUser.profile === 6 && fabDynamicForm) {
+    const lockedDateIds = ['fab-date-reception','fab-date-envoi','fab-date-finitions','fab-date-impression'];
+    lockedDateIds.forEach(id => {
+      const el = document.getElementById(id);
+      if(el) { el.setAttribute('readonly',''); el.style.background='#f3f4f6'; el.style.color='#6b7280'; el.style.cursor='not-allowed'; }
+    });
+  }
   const delaiEl=gEl('delai');
   if(delaiEl){const dd=deliveriesByPath[fabCurrentFileName];delaiEl.value=d.delai?fmtDate2(d.delai):dd||'';}
   if(fabHistory){fabHistory.innerHTML='';(d.history||[]).forEach(h=>{const div=document.createElement('div');div.textContent=new Date(h.date).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})+' — '+h.user+' — '+h.action;fabHistory.appendChild(div);});}

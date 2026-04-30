@@ -289,6 +289,13 @@ export async function initCalendar() {
 
   buildPlanningViewSwitcher(calendarEl);
 
+  // Load planning color config (admin-configurable)
+  let _planningColors = { engines: {}, finitions: {} };
+  try {
+    const cr = await fetch("/api/settings/planning-colors").then(r => r.json()).catch(() => ({ ok: false }));
+    if (cr.ok && cr.colors) _planningColors = cr.colors;
+  } catch(e) { /* use defaults */ }
+
   let schedStart = "07:00", schedEnd = "21:00";
   try {
     const sr = await fetch("/api/config/schedule", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json());
@@ -301,6 +308,9 @@ export async function initCalendar() {
       }
     }
   } catch(e) { /* use defaults */ }
+
+  // Profiles 5 (Lecture plannings) and 6 (Opérateur restreint) get read-only calendars
+  const isReadOnlyProfile = currentUser && (currentUser.profile === 5 || currentUser.profile === 6);
 
   calendar = new FullCalendar.Calendar(calendarEl, {
     initialView: "dayGridMonth",
@@ -315,10 +325,10 @@ export async function initCalendar() {
       center: "title",
       right: "dayGridMonth,timeGridWeek"
     },
-    editable: true,
+    editable: !isReadOnlyProfile,
     weekends: true,
     eventDurationEditable: false,
-    eventAllow: (_dropInfo, draggedEvent) => !draggedEvent.extendedProps?.locked,
+    eventAllow: (_dropInfo, draggedEvent) => !isReadOnlyProfile && !draggedEvent.extendedProps?.locked,
     events: async (_info, success) => {
       try {
         // Load delivery events (manual planning) + fabrication key-date events
@@ -341,9 +351,16 @@ export async function initCalendar() {
         })();
         const myName = currentUser?.name || '';
 
-        // Get machine and operator filter values
-        const machineFilter = document.getElementById("planning-machine-filter")?.value || "";
+        // Get machine filter (multi-select: empty selection = all)
+        const machineSelEl = document.getElementById("planning-machine-filter");
+        const machineFilters = machineSelEl
+          ? Array.from(machineSelEl.selectedOptions).map(o => o.value).filter(Boolean)
+          : [];
         const operatorFilter = document.getElementById("planning-operator-filter")?.value || "";
+
+        // Get finitions filters
+        const finOpFilter = document.getElementById("planning-finitions-operator-filter")?.value || "";
+        const finTypeFilter = document.getElementById("planning-finitions-type-filter")?.value || "";
 
         // Build events from fabrication key dates based on view mode
         const fabCalEvents = fabEvents
@@ -351,24 +368,49 @@ export async function initCalendar() {
             if (_planningViewMode === 'global') return fe.type === 'envoi';
             if (_planningViewMode === 'machine') {
               if (fe.type !== 'impression') return false;
-              if (machineFilter && fe.moteurImpression !== machineFilter) return false;
+              if (machineFilters.length > 0 && !machineFilters.includes(fe.moteurImpression)) return false;
               if (operatorFilter && fe.operateur !== operatorFilter) return false;
               return true;
             }
-            if (_planningViewMode === 'finitions') return fe.type === 'finitions';
+            if (_planningViewMode === 'finitions') {
+              if (fe.type !== 'finitions') return false;
+              if (finOpFilter && fe.operateur !== finOpFilter) return false;
+              if (finTypeFilter && !(fe.finitionTypes || []).includes(finTypeFilter)) return false;
+              return true;
+            }
             if (_planningViewMode === 'livraison') return fe.type === 'reception';
             return false;
           })
           .flatMap(fe => {
             if (!fe.date) return []; // skip entries with no date
             const isLocked = !!fe.locked;
-            const colorMap = {
-              envoi:      { bg: '#3b82f6', bc: '#2563eb', tc: '#ffffff' },
-              impression: { bg: '#8b5cf6', bc: '#7c3aed', tc: '#ffffff' },
-              finitions:  { bg: '#f59e0b', bc: '#d97706', tc: '#ffffff' },
-              reception:  { bg: '#06b6d4', bc: '#0891b2', tc: '#ffffff' }
-            };
-            const baseColor = colorMap[fe.type] || { bg: '#6b7280', bc: '#4b5563', tc: '#ffffff' };
+            // Apply configured colors: engines by moteurImpression name, finitions by type, fallback to defaults
+            function _darkenHex(hex, amount = 30) {
+              const r = Math.max(0, parseInt(hex.slice(1,3),16)-amount);
+              const g = Math.max(0, parseInt(hex.slice(3,5),16)-amount);
+              const b = Math.max(0, parseInt(hex.slice(5,7),16)-amount);
+              return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+            }
+            let baseBg, baseBc;
+            if (fe.type === 'impression' && _planningColors.engines && fe.moteurImpression && _planningColors.engines[fe.moteurImpression]) {
+              baseBg = _planningColors.engines[fe.moteurImpression];
+              baseBc = _darkenHex(baseBg);
+            } else if (fe.type === 'finitions' && _planningColors.finitions) {
+              const ftypes = fe.finitionTypes || [];
+              const firstType = ftypes[0] || '';
+              baseBg = (_planningColors.finitions[firstType]) || '#f59e0b';
+              baseBc = _darkenHex(baseBg);
+            } else {
+              const defaultColorMap = {
+                envoi:      { bg: '#3b82f6', bc: '#2563eb' },
+                impression: { bg: '#8b5cf6', bc: '#7c3aed' },
+                finitions:  { bg: '#f59e0b', bc: '#d97706' },
+                reception:  { bg: '#06b6d4', bc: '#0891b2' }
+              };
+              const dc = defaultColorMap[fe.type] || { bg: '#6b7280', bc: '#4b5563' };
+              baseBg = dc.bg; baseBc = dc.bc;
+            }
+            const baseColor = { bg: baseBg, bc: baseBc, tc: '#ffffff' };
             const c = isLocked ? { bg: '#22c55e', bc: '#16a34a', tc: '#ffffff' } : baseColor;
             const durationMins = (fe.tempsProduitMinutes && fe.tempsProduitMinutes > 0)
               ? fe.tempsProduitMinutes : 30;
@@ -394,7 +436,7 @@ export async function initCalendar() {
         // For machine view, filter delivery events by machine and/or operator
         // For finitions and livraison views, delivery events are not relevant (use fab events instead)
         let filtered = (_planningViewMode === 'finitions' || _planningViewMode === 'livraison') ? [] : deliveryList;
-        if (_planningViewMode === 'machine' && (machineFilter || operatorFilter)) {
+        if (_planningViewMode === 'machine' && (machineFilters.length > 0 || operatorFilter)) {
           const withFiche = await Promise.all(filtered.map(async x => {
             try {
               const fiche = await fetch('/api/fabrication?fileName=' + encodeURIComponent(fnKey(x.fullPath || '')), {
@@ -404,7 +446,7 @@ export async function initCalendar() {
             } catch(e) { return { x, machine: '', operateur: '' }; }
           }));
           filtered = withFiche
-            .filter(wm => (!machineFilter || wm.machine === machineFilter) && (!operatorFilter || wm.operateur === operatorFilter))
+            .filter(wm => (machineFilters.length === 0 || machineFilters.includes(wm.machine)) && (!operatorFilter || wm.operateur === operatorFilter))
             .map(wm => wm.x);
         }
 
@@ -533,45 +575,79 @@ async function addMachineFilter(calendarEl) {
 
   const wrap = document.createElement("div");
   wrap.id = "planning-machine-filter-wrap";
-  wrap.style.cssText = "margin-bottom:8px;display:none;align-items:center;gap:16px;flex-wrap:wrap;";
+  wrap.style.cssText = "margin-bottom:8px;display:none;align-items:flex-start;gap:16px;flex-wrap:wrap;";
   wrap.innerHTML = `
-    <div style="display:flex;align-items:center;gap:6px;">
-      <label style="font-size:13px;font-weight:500;">Moteur :</label>
-      <select id="planning-machine-filter" class="settings-input" style="font-size:13px;padding:4px 8px;min-width:160px;"></select>
+    <div style="display:flex;align-items:flex-start;gap:6px;flex-direction:column;">
+      <label style="font-size:13px;font-weight:500;">Moteur(s) :</label>
+      <select id="planning-machine-filter" multiple class="settings-input" style="font-size:13px;padding:4px 8px;min-width:180px;max-height:90px;" title="Ctrl+clic pour sélection multiple"></select>
+      <span style="font-size:11px;color:#9ca3af;">Ctrl+clic pour plusieurs</span>
     </div>
-    <div style="display:flex;align-items:center;gap:6px;">
+    <div style="display:flex;align-items:flex-start;gap:6px;flex-direction:column;">
       <label style="font-size:13px;font-weight:500;">Opérateur :</label>
       <select id="planning-operator-filter" class="settings-input" style="font-size:13px;padding:4px 8px;min-width:160px;"></select>
     </div>`;
   calendarEl.parentNode?.insertBefore(wrap, calendarEl);
 
+  // Also build finitions filters (hidden until finitions view is active)
+  const existingFin = document.getElementById("planning-finitions-filter-wrap");
+  if (existingFin) existingFin.remove();
+  const finWrap = document.createElement("div");
+  finWrap.id = "planning-finitions-filter-wrap";
+  finWrap.style.cssText = "margin-bottom:8px;display:none;align-items:flex-start;gap:16px;flex-wrap:wrap;";
+  finWrap.innerHTML = `
+    <div style="display:flex;align-items:flex-start;gap:6px;flex-direction:column;">
+      <label style="font-size:13px;font-weight:500;">Opérateur :</label>
+      <select id="planning-finitions-operator-filter" class="settings-input" style="font-size:13px;padding:4px 8px;min-width:160px;"></select>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:6px;flex-direction:column;">
+      <label style="font-size:13px;font-weight:500;">Type de finition :</label>
+      <select id="planning-finitions-type-filter" class="settings-input" style="font-size:13px;padding:4px 8px;min-width:160px;"></select>
+    </div>`;
+  calendarEl.parentNode?.insertBefore(finWrap, calendarEl);
+
   try {
-    const [engines, usersResp] = await Promise.all([
+    const [engines, usersResp, faconnageOpts] = await Promise.all([
       fetch("/api/config/print-engines").then(r => r.json()).catch(() => []),
-      fetch("/api/auth/users", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, users: [] }))
+      fetch("/api/auth/users", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, users: [] })),
+      fetch("/api/settings/faconnage-options", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => [])
     ]);
     const sel = wrap.querySelector("#planning-machine-filter");
-    sel.innerHTML = '<option value="">Tous</option>' + (Array.isArray(engines) ? engines.map(e => {
+    sel.innerHTML = (Array.isArray(engines) ? engines.map(e => {
       const n = typeof e === 'object' ? (e.name || '') : String(e || '');
       return `<option value="${n}">${n}</option>`;
     }).join('') : '');
     sel.onchange = () => calendar?.refetchEvents();
 
-    const opSel = wrap.querySelector("#planning-operator-filter");
     const userList = (usersResp.ok && Array.isArray(usersResp.users)) ? usersResp.users : [];
-    opSel.innerHTML = '<option value="">Tous</option>' + userList.map(u => {
+    const opSel = wrap.querySelector("#planning-operator-filter");
+    opSel.innerHTML = '<option value="">Tous opérateurs</option>' + userList.map(u => {
       const name = u.name || u.login || '';
       return `<option value="${name}">${name}</option>`;
     }).join('');
     opSel.onchange = () => calendar?.refetchEvents();
+
+    // Finitions filters
+    const finOpSel = finWrap.querySelector("#planning-finitions-operator-filter");
+    finOpSel.innerHTML = '<option value="">Tous opérateurs</option>' + userList.map(u => {
+      const name = u.name || u.login || '';
+      return `<option value="${name}">${name}</option>`;
+    }).join('');
+    finOpSel.onchange = () => calendar?.refetchEvents();
+
+    const finTypes = ['Embellissement','Rainage','Pliage','Façonnage','Coupe','Emballage','Départ','Livraison'];
+    if (Array.isArray(faconnageOpts)) faconnageOpts.forEach(o => { if (!finTypes.includes(o)) finTypes.push(o); });
+    const finTypeSel = finWrap.querySelector("#planning-finitions-type-filter");
+    finTypeSel.innerHTML = '<option value="">Tous types</option>' + finTypes.map(t => `<option value="${t}">${t}</option>`).join('');
+    finTypeSel.onchange = () => calendar?.refetchEvents();
   } catch(e) { /* ignore */ }
 
-  // Show filter only in machine view
+  // Show correct filter bar when view changes
   const switcher = document.getElementById("planning-view-switcher");
   if (switcher) {
     switcher.querySelectorAll("button").forEach(btn => {
       btn.addEventListener("click", () => {
         wrap.style.display = _planningViewMode === 'machine' ? 'flex' : 'none';
+        finWrap.style.display = _planningViewMode === 'finitions' ? 'flex' : 'none';
       });
     });
   }
@@ -584,6 +660,13 @@ async function addMachineFilter(calendarEl) {
 export async function initSubmissionCalendar() {
   const calendarEl = document.getElementById("submissionCalendar");
   if (!calendarEl || submissionCalendar) return;
+
+  // Load planning color config (admin-configurable)
+  let _planningColors = { engines: {}, finitions: {} };
+  try {
+    const cr = await fetch("/api/settings/planning-colors").then(r => r.json()).catch(() => ({ ok: false }));
+    if (cr.ok && cr.colors) _planningColors = cr.colors;
+  } catch(e) { /* use defaults */ }
 
   let schedStart = "07:00", schedEnd = "21:00";
   try {
@@ -610,7 +693,7 @@ export async function initSubmissionCalendar() {
     headerToolbar: { left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek" },
     editable: true,
     eventDurationEditable: false,
-    eventAllow: (_dropInfo, draggedEvent) => !draggedEvent.extendedProps?.locked,
+    eventAllow: (_dropInfo, draggedEvent) => !isReadOnlyProfile && !draggedEvent.extendedProps?.locked,
     events: async (info, success) => {
       try {
         // Load fabrication events of type "reception" (dateReceptionSouhaitee)

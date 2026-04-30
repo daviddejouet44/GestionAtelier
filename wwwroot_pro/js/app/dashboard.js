@@ -44,29 +44,31 @@ export async function loadDashboardData() {
   }
   html += `</div>`;
 
-  // Dashboard image section
+  // Dashboard image section — same pattern as Paramétrages → Logos/Images (settings-logo.js)
   if (dashboardImageExists) {
     html += `<div style="width:100%;max-height:calc(100vh - 220px);overflow:hidden;border-radius:12px;border:1px solid #e5e7eb;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
       <img src="/api/dashboard-image?v=${Date.now()}" alt="Image du dashboard" style="width:100%;height:auto;display:block;max-height:calc(100vh - 220px);object-fit:contain;" />
     </div>`;
     if (currentUser && currentUser.profile === 3) {
-      html += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <label for="dashboard-img-file" class="btn btn-sm" style="cursor:pointer;font-size:12px;">🖼️ Remplacer l'image</label>
+      html += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;">
         <input type="file" id="dashboard-img-file" accept="image/*" style="display:none;" />
+        <button id="dashboard-img-upload-btn" class="btn btn-primary" style="font-size:13px;">🖼️ Remplacer l'image</button>
         <button id="dashboard-img-delete" class="btn btn-sm" style="font-size:12px;color:#ef4444;border-color:#ef4444;">🗑️ Supprimer l'image</button>
-        <span id="dashboard-img-msg" style="font-size:12px;"></span>
+        <span id="dashboard-img-msg" style="font-size:12px;color:#6b7280;"></span>
       </div>`;
     }
   } else if (currentUser && currentUser.profile === 3) {
-    // Admin placeholder with upload button
-    html += `<div style="background:#f9fafb;border:2px dashed #e5e7eb;border-radius:12px;padding:40px;text-align:center;color:#9ca3af;">
-      <p style="font-size:16px;font-weight:600;margin:0 0 12px;">Image du dashboard non configurée</p>
-      <p style="font-size:13px;margin:0 0 16px;">Importez une image à afficher ici (PNG, JPG, WEBP...).</p>
-      <label for="dashboard-img-file" class="btn btn-primary" style="cursor:pointer;display:inline-block;">🖼️ Ajouter une image</label>
-      <input type="file" id="dashboard-img-file" accept="image/*" style="display:none;" />
-      <span id="dashboard-img-msg" style="display:block;margin-top:10px;font-size:13px;"></span>
+    // Admin placeholder with upload section (mirrors settings-logo.js pattern exactly)
+    html += `<div style="background:#f9fafb;border:2px dashed #e5e7eb;border-radius:12px;padding:32px;color:#6b7280;">
+      <p style="font-size:15px;font-weight:600;margin:0 0 8px;color:#374151;">Image du dashboard</p>
+      <p style="font-size:13px;margin:0 0 16px;">Sélectionnez une image (PNG, JPG, WEBP…) puis cliquez sur "Enregistrer".</p>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <input type="file" id="dashboard-img-file" accept="image/*" style="display:none;" />
+        <button id="dashboard-img-upload-btn" class="btn btn-primary" style="font-size:13px;">��️ Sélectionner et enregistrer une image</button>
+        <span id="dashboard-img-msg" style="font-size:13px;margin-top:4px;display:block;color:#6b7280;"></span>
+      </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-top:16px;">
       <a href="https://prismalytics-eu.cpp.canon/accounting#" target="_blank" rel="noopener"
          style="display:flex;flex-direction:column;gap:10px;background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius-lg);padding:24px;text-decoration:none;color:inherit;box-shadow:var(--shadow-md);">
         <span style="font-size:36px;">📊</span>
@@ -95,30 +97,45 @@ export async function loadDashboardData() {
   const settingsBtn = contentEl.querySelector("#prismasync-settings-btn");
   if (settingsBtn) settingsBtn.onclick = () => _showPrismaSyncUrlEditor(contentEl);
 
-  // Dashboard image upload/delete handlers
-  const imgFileInput = contentEl.querySelector("#dashboard-img-file");
-  if (imgFileInput) {
-    imgFileInput.onchange = async () => {
-      const msgEl = contentEl.querySelector("#dashboard-img-msg");
-      const file = imgFileInput.files && imgFileInput.files[0];
-      if (!file) return;
-      const formData = new FormData();
-      formData.append("file", file);
-      if (msgEl) { msgEl.style.color = "#6b7280"; msgEl.textContent = "⏳ Envoi en cours..."; }
-      try {
-        const r = await fetch("/api/dashboard-image", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${authToken}` },
-          body: formData
-        }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
-        if (r.ok) {
-          await loadDashboardData();
-        } else {
-          if (msgEl) { msgEl.style.color = "#ef4444"; msgEl.textContent = "❌ " + (r.error || "Erreur"); }
-        }
-      } catch(e) {
-        if (msgEl) { msgEl.style.color = "#ef4444"; msgEl.textContent = "❌ Erreur réseau"; }
+  // Dashboard image upload — click button → opens file dialog → auto-upload on selection
+  const imgUploadBtn = contentEl.querySelector("#dashboard-img-upload-btn");
+  const fileInputEl = contentEl.querySelector("#dashboard-img-file");
+  const msgEl = contentEl.querySelector("#dashboard-img-msg");
+
+  const doUpload = async (file) => {
+    if (!file) return;
+    if (msgEl) { msgEl.style.color = "#6b7280"; msgEl.textContent = "⏳ Envoi en cours..."; }
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const r = await fetch("/api/dashboard-image", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${authToken}` },
+        body: formData
+      }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+      if (r.ok) {
+        if (msgEl) { msgEl.style.color = "#16a34a"; msgEl.textContent = "✅ Image enregistrée"; }
+        await loadDashboardData();
+      } else {
+        if (msgEl) { msgEl.style.color = "#ef4444"; msgEl.textContent = "❌ " + (r.error || "Erreur"); }
       }
+    } catch(e) {
+      if (msgEl) { msgEl.style.color = "#ef4444"; msgEl.textContent = "❌ Erreur réseau"; }
+    }
+  };
+
+  if (fileInputEl) {
+    fileInputEl.onchange = () => {
+      if (fileInputEl.files && fileInputEl.files.length > 0) {
+        doUpload(fileInputEl.files[0]);
+      }
+    };
+  }
+
+  if (imgUploadBtn && fileInputEl) {
+    imgUploadBtn.onclick = () => {
+      fileInputEl.value = "";  // reset so same file can be re-selected
+      fileInputEl.click();     // open native file dialog
     };
   }
 
