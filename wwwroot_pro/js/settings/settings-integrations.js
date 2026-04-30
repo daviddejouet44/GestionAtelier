@@ -1,6 +1,7 @@
 // settings-integrations.js — Paramétrages → Intégrations
 // Gestion des imports automatiques (XML, ERP, Pressero, MDSF) et exports (XML, CSV, ERP, Pressero, MDSF)
 import { authToken, showNotification, esc } from '../core.js';
+import { renderSettingsOrderSources } from './settings-order-sources.js';
 
 const API = {
   config:    '/api/settings/integrations-config',
@@ -30,6 +31,7 @@ export async function renderSettingsIntegrations(panel) {
       <button class="settings-tab" data-itab="export">📤 Export commandes</button>
       <button class="settings-tab" data-itab="import-log">📋 Journal imports</button>
       <button class="settings-tab" data-itab="export-log">📋 Journal exports</button>
+      <button class="settings-tab" data-itab="order-sources">📡 Sources de commandes</button>
     </div>
     <div id="integ-panel"></div>
   `;
@@ -48,13 +50,14 @@ export async function renderSettingsIntegrations(panel) {
       t.classList.toggle('active', t.dataset.itab === tabId);
     });
     switch(tabId) {
-      case 'xml-import':  renderXmlImportTab(integPanel, cfg); break;
-      case 'erp-import':  renderErpImportTab(integPanel, cfg); break;
-      case 'pressero':    renderPresseroTab(integPanel, cfg); break;
-      case 'mdsf':        renderMdsfTab(integPanel, cfg); break;
-      case 'export':      renderExportTab(integPanel, cfg); break;
-      case 'import-log':  renderImportLogTab(integPanel); break;
-      case 'export-log':  renderExportLogTab(integPanel); break;
+      case 'xml-import':    renderXmlImportTab(integPanel, cfg); break;
+      case 'erp-import':    renderErpImportTab(integPanel, cfg); break;
+      case 'pressero':      renderPresseroTab(integPanel, cfg); break;
+      case 'mdsf':          renderMdsfTab(integPanel, cfg); break;
+      case 'export':        renderExportTab(integPanel, cfg); break;
+      case 'import-log':    renderImportLogTab(integPanel); break;
+      case 'export-log':    renderExportLogTab(integPanel); break;
+      case 'order-sources': renderSettingsOrderSources(integPanel); break;
     }
   }
 
