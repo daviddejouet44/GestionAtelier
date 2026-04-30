@@ -66,6 +66,51 @@ public static class PortalAdminEndpoints
 
                 MongoDbHelper.UpsertSettings("portalSettings", existing);
 
+                // Sync "Commandes web" tile to kanbanColumns if not already present
+                try
+                {
+                    var folderName = existing.WebOrderKanbanFolder;
+                    if (!string.IsNullOrWhiteSpace(folderName))
+                    {
+                        var kanbanCfg = MongoDbHelper.GetSettings<KanbanSettings>("kanbanColumns");
+                        if (kanbanCfg == null || kanbanCfg.Columns == null || kanbanCfg.Columns.Count == 0)
+                        {
+                            // Initialise with default columns from the client-side defaults
+                            kanbanCfg = new KanbanSettings
+                            {
+                                Columns = new List<KanbanColumnConfig>
+                                {
+                                    new() { Folder = "Début de production", Label = "Jobs à traiter",                Color = "#5fa8c4", Visible = true, Order = 0 },
+                                    new() { Folder = "Corrections",         Label = "Preflight",                     Color = "#e0e0e0", Visible = true, Order = 1 },
+                                    new() { Folder = "Corrections et fond perdu", Label = "Preflight avec fond perdu", Color = "#e0e0e0", Visible = true, Order = 2 },
+                                    new() { Folder = "Prêt pour impression", Label = "En attente",                   Color = "#b8b8b8", Visible = true, Order = 3 },
+                                    new() { Folder = "PrismaPrepare",        Label = "PrismaPrepare",                Color = "#8f8f8f", Visible = true, Order = 4 },
+                                    new() { Folder = "Fiery",                Label = "Fiery",                        Color = "#8f8f8f", Visible = true, Order = 5 },
+                                    new() { Folder = "Impression en cours",  Label = "Impression en cours",          Color = "#7a7a7a", Visible = true, Order = 6 },
+                                    new() { Folder = "Façonnage",            Label = "Finitions",                    Color = "#666666", Visible = true, Order = 7 },
+                                    new() { Folder = "Fin de production",    Label = "Fin de production",            Color = "#22c55e", Visible = true, Order = 8 },
+                                }
+                            };
+                        }
+                        if (!kanbanCfg.Columns.Any(c => c.Folder == folderName))
+                        {
+                            // Insert portal tile at the top (order -1), then re-number
+                            kanbanCfg.Columns.Insert(0, new KanbanColumnConfig
+                            {
+                                Folder = folderName,
+                                Label = "Commandes web",
+                                Color = "#4f46e5",
+                                Visible = true,
+                                Order = 0
+                            });
+                            for (int i = 0; i < kanbanCfg.Columns.Count; i++)
+                                kanbanCfg.Columns[i].Order = i;
+                            MongoDbHelper.UpsertSettings("kanbanColumns", kanbanCfg);
+                        }
+                    }
+                }
+                catch (Exception ex2) { Console.WriteLine($"[WARN] Kanban tile sync failed: {ex2.Message}"); }
+
                 // SMTP settings (separate)
                 if (json.TryGetProperty("smtp", out var smtpEl))
                 {
@@ -464,6 +509,147 @@ public static class PortalAdminEndpoints
                 return Results.Json(new { ok = true });
             }
             catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // =====================================================================
+        // Portal theme configuration
+        // =====================================================================
+
+        // GET /api/admin/portal/theme
+        app.MapGet("/api/admin/portal/theme", (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            var theme = MongoDbHelper.GetSettings<PortalThemeConfig>("portalTheme") ?? new PortalThemeConfig();
+            return Results.Json(new { ok = true, theme });
+        });
+
+        // PUT /api/admin/portal/theme
+        app.MapPut("/api/admin/portal/theme", async (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            try
+            {
+                var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+                var theme = MongoDbHelper.GetSettings<PortalThemeConfig>("portalTheme") ?? new PortalThemeConfig();
+
+                if (json.TryGetProperty("primaryColor",      out var pc))  theme.PrimaryColor      = pc.GetString()  ?? theme.PrimaryColor;
+                if (json.TryGetProperty("primaryDarkColor",  out var pdc)) theme.PrimaryDarkColor  = pdc.GetString() ?? theme.PrimaryDarkColor;
+                if (json.TryGetProperty("primaryLightColor", out var plc)) theme.PrimaryLightColor = plc.GetString() ?? theme.PrimaryLightColor;
+                if (json.TryGetProperty("backgroundColor",   out var bg))  theme.BackgroundColor   = bg.GetString()  ?? theme.BackgroundColor;
+                if (json.TryGetProperty("textColor",         out var tc))  theme.TextColor         = tc.GetString()  ?? theme.TextColor;
+                if (json.TryGetProperty("fontFamily",        out var ff))  theme.FontFamily        = ff.GetString()  ?? theme.FontFamily;
+                if (json.TryGetProperty("companyName",       out var cn))  theme.CompanyName       = cn.GetString()  ?? theme.CompanyName;
+                if (json.TryGetProperty("tagline",           out var tg))  theme.Tagline           = tg.GetString()  ?? "";
+                if (json.TryGetProperty("contactLink",       out var cl))  theme.ContactLink       = cl.GetString()  ?? "";
+                if (json.TryGetProperty("footerText",        out var ft))  theme.FooterText        = ft.GetString()  ?? "";
+                if (json.TryGetProperty("loginBackground",   out var lb))  theme.LoginBackground   = lb.GetString()  ?? "";
+                if (json.TryGetProperty("ordersPageText",    out var opt)) theme.OrdersPageText    = opt.GetString() ?? "";
+                if (json.TryGetProperty("customCss",         out var css)) theme.CustomCss         = css.GetString() ?? "";
+                if (json.TryGetProperty("usePortalSpecificLogo", out var upl)) theme.UsePortalSpecificLogo = upl.GetBoolean();
+                if (json.TryGetProperty("portalLogoPath",    out var plp)) theme.PortalLogoPath    = plp.GetString() ?? "";
+
+                MongoDbHelper.UpsertSettings("portalTheme", theme);
+                return Results.Json(new { ok = true });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // GET /api/portal/config/theme  (public — used by portal pages)
+        app.MapGet("/api/portal/config/theme", () =>
+        {
+            var theme = MongoDbHelper.GetSettings<PortalThemeConfig>("portalTheme") ?? new PortalThemeConfig();
+            return Results.Json(new { ok = true, theme });
+        });
+
+        // =====================================================================
+        // Portal form fields configuration
+        // =====================================================================
+
+        static List<PortalFormFieldConfig> DefaultPortalFormFields() => new()
+        {
+            new() { Id = "title",            Label = "Intitulé du job",          Type = "text",     Visible = true,  Required = true,  Critical = true,  Order = 0 },
+            new() { Id = "quantity",         Label = "Quantité",                 Type = "number",   Visible = true,  Required = true,  Critical = true,  Order = 1 },
+            new() { Id = "format",           Label = "Format",                   Type = "select",   Visible = true,  Required = false, Critical = false, Order = 2 },
+            new() { Id = "paper",            Label = "Support / Papier",         Type = "select",   Visible = true,  Required = false, Critical = false, Order = 3 },
+            new() { Id = "recto",            Label = "Impression",               Type = "radio",    Visible = true,  Required = false, Critical = false, Order = 4 },
+            new() { Id = "finitions",        Label = "Finitions souhaitées",     Type = "checkbox", Visible = true,  Required = false, Critical = false, Order = 5 },
+            new() { Id = "delivery-date",    Label = "Date de réception",        Type = "date",     Visible = true,  Required = false, Critical = false, Order = 6 },
+            new() { Id = "delivery-mode",    Label = "Mode de livraison",        Type = "radio",    Visible = true,  Required = true,  Critical = true,  Order = 7 },
+            new() { Id = "delivery-address", Label = "Adresse de livraison",     Type = "textarea", Visible = true,  Required = false, Critical = false, Order = 8 },
+            new() { Id = "comments",         Label = "Commentaires",             Type = "textarea", Visible = true,  Required = false, Critical = false, Order = 9 },
+        };
+
+        // GET /api/admin/portal/form-fields
+        app.MapGet("/api/admin/portal/form-fields", (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            var cfg = MongoDbHelper.GetSettings<PortalFormFieldsConfig>("portalFormFields");
+            var fields = (cfg == null || cfg.Fields.Count == 0) ? DefaultPortalFormFields() : cfg.Fields;
+            return Results.Json(new { ok = true, fields });
+        });
+
+        // PUT /api/admin/portal/form-fields
+        app.MapPut("/api/admin/portal/form-fields", async (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            try
+            {
+                var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+                if (!json.TryGetProperty("fields", out var fieldsEl) || fieldsEl.ValueKind != JsonValueKind.Array)
+                    return Results.Json(new { ok = false, error = "fields manquant" });
+
+                var fields = new List<PortalFormFieldConfig>();
+                foreach (var f in fieldsEl.EnumerateArray())
+                {
+                    var id = f.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? "" : "";
+                    if (string.IsNullOrWhiteSpace(id)) continue;
+                    var allowedValues = new List<string>();
+                    if (f.TryGetProperty("allowedValues", out var avEl) && avEl.ValueKind == JsonValueKind.Array)
+                        allowedValues = avEl.EnumerateArray().Select(v => v.GetString() ?? "").Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+
+                    fields.Add(new PortalFormFieldConfig
+                    {
+                        Id           = id,
+                        Label        = f.TryGetProperty("label",        out var lEl)  ? lEl.GetString()  ?? "" : "",
+                        CustomLabel  = f.TryGetProperty("customLabel",  out var clEl) ? clEl.GetString() ?? "" : "",
+                        Placeholder  = f.TryGetProperty("placeholder",  out var phEl) ? phEl.GetString() ?? "" : "",
+                        Type         = f.TryGetProperty("type",         out var tEl)  ? tEl.GetString()  ?? "text" : "text",
+                        Visible      = f.TryGetProperty("visible",      out var vEl)  ? vEl.GetBoolean()  : true,
+                        Required     = f.TryGetProperty("required",     out var rEl)  ? rEl.GetBoolean()  : false,
+                        Critical     = f.TryGetProperty("critical",     out var crEl) ? crEl.GetBoolean() : false,
+                        Order        = f.TryGetProperty("order",        out var oEl)  ? oEl.GetInt32()    : 0,
+                        DefaultValue = f.TryGetProperty("defaultValue", out var dvEl) ? dvEl.GetString() ?? "" : "",
+                        AllowedValues = allowedValues,
+                    });
+                }
+
+                // Ensure critical fields are visible and required
+                foreach (var f in fields.Where(f => f.Critical)) { f.Visible = true; f.Required = true; }
+
+                MongoDbHelper.UpsertSettings("portalFormFields", new PortalFormFieldsConfig { Fields = fields });
+                return Results.Json(new { ok = true });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // GET /api/portal/config/form-fields  (public — used by order-new.html)
+        app.MapGet("/api/portal/config/form-fields", () =>
+        {
+            var cfg = MongoDbHelper.GetSettings<PortalFormFieldsConfig>("portalFormFields");
+            var fields = (cfg == null || cfg.Fields.Count == 0) ? DefaultPortalFormFields() : cfg.Fields;
+            // Only return visible fields to clients, sorted by order
+            var visible = fields.Where(f => f.Visible).OrderBy(f => f.Order).Select(f => new
+            {
+                id           = f.Id,
+                label        = string.IsNullOrWhiteSpace(f.CustomLabel) ? f.Label : f.CustomLabel,
+                placeholder  = f.Placeholder,
+                type         = f.Type,
+                required     = f.Required,
+                critical     = f.Critical,
+                defaultValue = f.DefaultValue,
+                allowedValues = f.AllowedValues
+            }).ToList();
+            return Results.Json(new { ok = true, fields = visible });
         });
     }
 }

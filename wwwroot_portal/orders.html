@@ -52,7 +52,10 @@
   </main>
 
   <script type="module">
-    import { requireAuth, renderHeader, statusBadge, fmtDate, esc, apiRequest } from '/portal/js/portal-core.js';
+    import { requireAuth, renderHeader, statusBadge, fmtDate, esc, apiRequest, applyPortalTheme } from '/portal/js/portal-core.js';
+
+    // Apply theming immediately
+    applyPortalTheme();
 
     let allOrders = [];
 

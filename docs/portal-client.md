@@ -215,3 +215,73 @@ GET  /api/admin/portal/orders              — Liste de toutes les commandes por
 GET  /api/admin/portal/email-templates     — Lire les templates email portail
 PUT  /api/admin/portal/email-templates/{key} — Modifier un template email portail
 ```
+
+---
+
+## Champs du formulaire configurables
+
+L'admin peut configurer exactement quels champs de la fiche sont exposés dans le formulaire "Nouvelle commande" du portail.
+
+### Accès
+
+**Paramétrages → 🌐 Portail client → 📋 Champs du formulaire**
+
+### Fonctionnalités
+
+- **Visible** : afficher ou masquer chaque champ côté portail
+- **Obligatoire** : rendre le champ requis (les champs critiques ne peuvent pas être rendus optionnels)
+- **Libellé personnalisé** : override le libellé interne affiché au client
+- **Aide / placeholder** : texte court affiché sous le champ
+- **Valeurs autorisées** : pour les champs à options (formats, papiers, finitions) — restreindre la sélection client
+- **Ordre** : utiliser les boutons ↑ ↓ pour réordonner les champs
+
+### Champs critiques 🔒
+
+Ces champs sont obligatoires et ne peuvent pas être masqués :
+- **Intitulé du job** (`title`)
+- **Quantité** (`quantity`)
+- **Mode de livraison** (`delivery-mode`)
+
+### Endpoints API
+
+```
+GET  /api/admin/portal/form-fields          — Lire la configuration des champs (admin)
+PUT  /api/admin/portal/form-fields          — Modifier la configuration des champs (admin)
+GET  /api/portal/config/form-fields         — Champs visibles pour le formulaire client (public)
+```
+
+---
+
+## Apparence et mise en forme
+
+L'admin peut personnaliser l'apparence de toutes les pages du portail client.
+
+### Accès
+
+**Paramétrages → 🌐 Portail client → 🎨 Apparence**
+
+### Options disponibles
+
+- **Couleurs** : couleur principale, foncée, fond, texte (sélecteur + saisie hex)
+- **Typographie** : choix d'une police (Inter, Roboto, Open Sans, Lato, Arial, système)
+- **En-tête** : nom de l'entreprise, slogan, lien "Nous contacter"
+- **Pied de page** : mentions légales, CGV, copyright
+- **Page "Mes commandes"** : texte personnalisé
+- **CSS personnalisé** : code CSS appliqué uniquement sur `/portal/*`
+
+### Endpoints API
+
+```
+GET  /api/admin/portal/theme                — Lire la configuration du thème (admin)
+PUT  /api/admin/portal/theme                — Modifier la configuration du thème (admin)
+GET  /api/portal/config/theme               — Thème actif (public, utilisé par les pages portail)
+```
+
+### Variables CSS injectées
+
+Les couleurs sont appliquées via des variables CSS sur `:root` :
+- `--color-primary` — Couleur principale
+- `--color-primary-dark` — Couleur principale foncée (hover)
+- `--color-primary-light` — Couleur principale claire (fonds)
+- `--color-gray-50` — Couleur de fond
+- `--color-gray-700` — Couleur du texte

@@ -22,6 +22,7 @@ import { STAGE_PROGRESS, STAGE_DISPLAY_LABELS } from './constants.js';
 
 import { hideAllViews, showDossiers, showSettings, showGlobalProduction } from './app/navigation.js';
 import { initDashboardView } from './app/dashboard.js';
+import { initHelpPanel } from './help.js';
 
 // ======================================================
 // DOM REFS
@@ -1637,6 +1638,7 @@ async function initApp() {
 
   setupProfileUI();
   initNotificationBell();
+  initHelpPanel();
   initFabrication();
 
   try {

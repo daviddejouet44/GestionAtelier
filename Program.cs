@@ -83,11 +83,13 @@ if (Directory.Exists(proPath))
         RequestPath      = "/pro",
         DefaultFileNames = new List<string> { "index.html", "index.htm" }
     });
+    var proContentTypes = new FileExtensionContentTypeProvider();
+    proContentTypes.Mappings[".md"] = "text/markdown; charset=utf-8";
     app.UseStaticFiles(new StaticFileOptions
     {
         FileProvider        = provider,
         RequestPath         = "/pro",
-        ContentTypeProvider = new FileExtensionContentTypeProvider()
+        ContentTypeProvider = proContentTypes
     });
 }
 else

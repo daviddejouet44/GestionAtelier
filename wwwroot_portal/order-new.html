@@ -54,68 +54,8 @@
         <span class="card-title">📋 Détails de la commande</span>
       </div>
 
-      <div class="form-group">
-        <label for="title">Intitulé du job <span class="required">*</span></label>
-        <input type="text" id="title" class="form-control" placeholder="Ex. : Flyer A5 — Promotions été 2025" required />
-      </div>
-
-      <div class="form-row form-row-2">
-        <div class="form-group">
-          <label for="quantity">Quantité <span class="required">*</span></label>
-          <input type="number" id="quantity" class="form-control" min="1" placeholder="Ex. : 1000" required />
-        </div>
-        <div class="form-group">
-          <label for="format">Format</label>
-          <select id="format" class="form-control">
-            <option value="">— Sélectionner —</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="form-row form-row-2">
-        <div class="form-group">
-          <label for="paper">Support / Papier</label>
-          <select id="paper" class="form-control">
-            <option value="">— Sélectionner —</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Impression</label>
-          <div class="radio-group" style="margin-top:8px;">
-            <label class="radio-option"><input type="radio" name="recto" value="recto" checked /> Recto</label>
-            <label class="radio-option"><input type="radio" name="recto" value="recto-verso" /> Recto-verso</label>
-          </div>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label>Finitions souhaitées</label>
-        <div class="checkbox-group" id="finitions-group"></div>
-      </div>
-
-      <div class="form-row form-row-2">
-        <div class="form-group">
-          <label for="delivery-date">Date de réception souhaitée</label>
-          <input type="date" id="delivery-date" class="form-control" />
-        </div>
-        <div class="form-group">
-          <label>Mode de livraison <span class="required">*</span></label>
-          <div class="radio-group" style="margin-top:8px;">
-            <label class="radio-option"><input type="radio" name="delivery-mode" value="retrait" checked /> Retrait imprimerie</label>
-            <label class="radio-option"><input type="radio" name="delivery-mode" value="livraison" /> Livraison</label>
-          </div>
-        </div>
-      </div>
-
-      <div class="form-group" id="delivery-address-group" style="display:none;">
-        <label for="delivery-address">Adresse de livraison <span class="required">*</span></label>
-        <textarea id="delivery-address" class="form-control" rows="3" placeholder="Nom, Adresse complète, Code postal, Ville"></textarea>
-      </div>
-
-      <div class="form-group">
-        <label for="comments">Commentaires</label>
-        <textarea id="comments" class="form-control" rows="3" placeholder="Informations complémentaires, demandes particulières…"></textarea>
-      </div>
+      <!-- Dynamic form fields loaded from portal form config -->
+      <div id="dynamic-form-fields"></div>
     </div>
 
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px;">
@@ -137,9 +77,10 @@
   </main>
 
   <script type="module">
-    import { requireAuth, renderHeader, showToast, esc, apiRequest, apiUpload } from '/portal/js/portal-core.js';
+    import { requireAuth, renderHeader, showToast, esc, apiRequest, apiUpload, applyPortalTheme } from '/portal/js/portal-core.js';
 
     let formOptions = {};
+    let fieldConfigs = [];
     let selectedFiles = [];
     let maxSizeMb = 500;
     let maxFiles = 10;
@@ -147,8 +88,10 @@
     (async () => {
       const client = await requireAuth();
       if (!client) return;
+      applyPortalTheme();
       renderHeader('orders');
-      await loadFormOptions();
+      await Promise.all([loadFormOptions(), loadFieldConfigs()]);
+      buildDynamicForm();
       initUploadZone();
       handleReorder();
     })();
@@ -160,50 +103,241 @@
         formOptions = r;
         maxSizeMb = r.maxUploadSizeMb || 500;
         maxFiles = r.maxFilesPerOrder || 10;
-
-        // Max size hint
         document.getElementById('max-size').textContent = maxSizeMb;
-
-        // Formats
-        const fmtSel = document.getElementById('format');
-        (r.formats || []).forEach(f => {
-          const o = document.createElement('option'); o.value = f; o.textContent = f; fmtSel.appendChild(o);
-        });
-
-        // Papers
-        const paperSel = document.getElementById('paper');
-        (r.papers || []).forEach(p => {
-          const o = document.createElement('option'); o.value = p; o.textContent = p; paperSel.appendChild(o);
-        });
-
-        // Finitions
-        const finGroup = document.getElementById('finitions-group');
-        (r.finitions || []).forEach(fin => {
-          const label = document.createElement('label');
-          label.className = 'checkbox-option';
-          label.innerHTML = `<input type="checkbox" value="${esc(fin)}" /> ${esc(fin)}`;
-          label.querySelector('input').onchange = (e) => {
-            label.classList.toggle('checked', e.target.checked);
-          };
-          finGroup.appendChild(label);
-        });
       } catch { /* use defaults */ }
     }
 
-    // Delivery mode toggle
-    document.querySelectorAll('input[name="delivery-mode"]').forEach(r => {
-      r.addEventListener('change', () => {
-        const isLivraison = document.querySelector('input[name="delivery-mode"]:checked').value === 'livraison';
-        document.getElementById('delivery-address-group').style.display = isLivraison ? 'block' : 'none';
+    async function loadFieldConfigs() {
+      try {
+        const r = await fetch('/api/portal/config/form-fields').then(r => r.json());
+        if (r.ok && r.fields && r.fields.length) fieldConfigs = r.fields;
+      } catch { /* use default layout */ }
+    }
+
+    function buildDynamicForm() {
+      const container = document.getElementById('dynamic-form-fields');
+      if (!container) return;
+
+      // If no custom config, render the default static form fields
+      if (!fieldConfigs.length) {
+        renderDefaultFormFields(container);
+        return;
+      }
+
+      container.innerHTML = '';
+
+      fieldConfigs.forEach(field => {
+        if (!field.visible) return;
+
+        const group = document.createElement('div');
+        group.className = 'form-group';
+        group.id = `fg-${field.id}`;
+        const labelText = (field.label || field.id) + (field.required ? ' <span class="required">*</span>' : '');
+
+        switch (field.id) {
+          case 'title':
+            group.innerHTML = `<label for="title">${labelText}</label>
+              <input type="text" id="title" class="form-control" placeholder="${esc(field.placeholder || '')}" ${field.required ? 'required' : ''} />`;
+            break;
+
+          case 'quantity':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="quantity">${labelText}</label>
+              <input type="number" id="quantity" class="form-control" min="1" placeholder="${esc(field.placeholder || 'Ex. : 1000')}" ${field.required ? 'required' : ''} />`;
+            break;
+
+          case 'format': {
+            const opts = (field.allowedValues && field.allowedValues.length ? field.allowedValues : (formOptions.formats || []));
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="format">${labelText}</label>
+              <select id="format" class="form-control">
+                <option value="">— ${esc(field.placeholder || 'Sélectionner')} —</option>
+                ${opts.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}
+              </select>`;
+            break;
+          }
+
+          case 'paper': {
+            const opts = (field.allowedValues && field.allowedValues.length ? field.allowedValues : (formOptions.papers || []));
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="paper">${labelText}</label>
+              <select id="paper" class="form-control">
+                <option value="">— ${esc(field.placeholder || 'Sélectionner')} —</option>
+                ${opts.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}
+              </select>`;
+            break;
+          }
+
+          case 'recto':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label>${labelText}</label>
+              <div class="radio-group" style="margin-top:8px;">
+                <label class="radio-option"><input type="radio" name="recto" value="recto" checked /> Recto</label>
+                <label class="radio-option"><input type="radio" name="recto" value="recto-verso" /> Recto-verso</label>
+              </div>`;
+            break;
+
+          case 'finitions': {
+            const opts = (field.allowedValues && field.allowedValues.length ? field.allowedValues : (formOptions.finitions || []));
+            group.innerHTML = `<label>${labelText}</label>
+              <div class="checkbox-group" id="finitions-group">
+                ${opts.map(fin => `<label class="checkbox-option"><input type="checkbox" value="${esc(fin)}" /> ${esc(fin)}</label>`).join('')}
+              </div>`;
+            // Wire up checkbox styling
+            setTimeout(() => {
+              group.querySelectorAll('.checkbox-option input').forEach(cb => {
+                cb.onchange = (e) => cb.closest('.checkbox-option').classList.toggle('checked', e.target.checked);
+              });
+            }, 0);
+            break;
+          }
+
+          case 'delivery-date':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="delivery-date">${labelText}</label>
+              <input type="date" id="delivery-date" class="form-control" />`;
+            break;
+
+          case 'delivery-mode':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label>${labelText}</label>
+              <div class="radio-group" style="margin-top:8px;">
+                <label class="radio-option"><input type="radio" name="delivery-mode" value="retrait" checked /> Retrait imprimerie</label>
+                <label class="radio-option"><input type="radio" name="delivery-mode" value="livraison" /> Livraison</label>
+              </div>`;
+            setTimeout(() => {
+              document.querySelectorAll('input[name="delivery-mode"]').forEach(r => {
+                r.addEventListener('change', () => {
+                  const isLiv = document.querySelector('input[name="delivery-mode"]:checked')?.value === 'livraison';
+                  const addrGroup = document.getElementById('fg-delivery-address');
+                  if (addrGroup) addrGroup.style.display = isLiv ? 'block' : 'none';
+                });
+              });
+            }, 0);
+            break;
+
+          case 'delivery-address':
+            group.style.display = 'none'; // shown only when livraison selected
+            group.innerHTML = `<label for="delivery-address">${labelText}</label>
+              <textarea id="delivery-address" class="form-control" rows="3" placeholder="${esc(field.placeholder || 'Nom, Adresse, Code postal, Ville')}"></textarea>`;
+            break;
+
+          case 'comments':
+            group.innerHTML = `<label for="comments">${labelText}</label>
+              <textarea id="comments" class="form-control" rows="3" placeholder="${esc(field.placeholder || 'Informations complémentaires…')}"></textarea>`;
+            break;
+
+          default:
+            // Generic text field
+            group.innerHTML = `<label for="${esc(field.id)}">${labelText}</label>
+              <input type="text" id="${esc(field.id)}" class="form-control" placeholder="${esc(field.placeholder || '')}" ${field.required ? 'required' : ''} />`;
+        }
+
+        container.appendChild(group);
       });
-    });
+
+      // Wrap quantity+format and paper+recto in .form-row.form-row-2 for layout
+      wrapRowPairs(container, ['fg-quantity', 'fg-format'], ['fg-paper', 'fg-recto'], ['fg-delivery-date', 'fg-delivery-mode']);
+    }
+
+    function wrapRowPairs(container, ...pairs) {
+      pairs.forEach(([a, b]) => {
+        const elA = container.querySelector(`#${a}`);
+        const elB = container.querySelector(`#${b}`);
+        if (!elA || !elB) return;
+        const row = document.createElement('div');
+        row.className = 'form-row form-row-2';
+        elA.parentNode.insertBefore(row, elA);
+        row.appendChild(elA);
+        row.appendChild(elB);
+      });
+    }
+
+    function renderDefaultFormFields(container) {
+      container.innerHTML = `
+        <div class="form-group">
+          <label for="title">Intitulé du job <span class="required">*</span></label>
+          <input type="text" id="title" class="form-control" placeholder="Ex. : Flyer A5 — Promotions été 2025" required />
+        </div>
+        <div class="form-row form-row-2">
+          <div class="form-group">
+            <label for="quantity">Quantité <span class="required">*</span></label>
+            <input type="number" id="quantity" class="form-control" min="1" placeholder="Ex. : 1000" required />
+          </div>
+          <div class="form-group">
+            <label for="format">Format</label>
+            <select id="format" class="form-control">
+              <option value="">— Sélectionner —</option>
+              ${(formOptions.formats||[]).map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="form-row form-row-2">
+          <div class="form-group">
+            <label for="paper">Support / Papier</label>
+            <select id="paper" class="form-control">
+              <option value="">— Sélectionner —</option>
+              ${(formOptions.papers||[]).map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Impression</label>
+            <div class="radio-group" style="margin-top:8px;">
+              <label class="radio-option"><input type="radio" name="recto" value="recto" checked /> Recto</label>
+              <label class="radio-option"><input type="radio" name="recto" value="recto-verso" /> Recto-verso</label>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Finitions souhaitées</label>
+          <div class="checkbox-group" id="finitions-group">
+            ${(formOptions.finitions||[]).map(fin=>`<label class="checkbox-option"><input type="checkbox" value="${esc(fin)}" /> ${esc(fin)}</label>`).join('')}
+          </div>
+        </div>
+        <div class="form-row form-row-2">
+          <div class="form-group">
+            <label for="delivery-date">Date de réception souhaitée</label>
+            <input type="date" id="delivery-date" class="form-control" />
+          </div>
+          <div class="form-group">
+            <label>Mode de livraison <span class="required">*</span></label>
+            <div class="radio-group" style="margin-top:8px;">
+              <label class="radio-option"><input type="radio" name="delivery-mode" value="retrait" checked /> Retrait imprimerie</label>
+              <label class="radio-option"><input type="radio" name="delivery-mode" value="livraison" /> Livraison</label>
+            </div>
+          </div>
+        </div>
+        <div class="form-group" id="delivery-address-group" style="display:none;">
+          <label for="delivery-address">Adresse de livraison <span class="required">*</span></label>
+          <textarea id="delivery-address" class="form-control" rows="3" placeholder="Nom, Adresse complète, Code postal, Ville"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="comments">Commentaires</label>
+          <textarea id="comments" class="form-control" rows="3" placeholder="Informations complémentaires, demandes particulières…"></textarea>
+        </div>
+      `;
+      // Wire up checkbox styling
+      container.querySelectorAll('.checkbox-option input').forEach(cb => {
+        cb.onchange = (e) => cb.closest('.checkbox-option').classList.toggle('checked', e.target.checked);
+      });
+      // Wire up delivery mode toggle for default form
+      document.querySelectorAll('input[name="delivery-mode"]').forEach(r => {
+        r.addEventListener('change', () => {
+          const isLiv = document.querySelector('input[name="delivery-mode"]:checked')?.value === 'livraison';
+          const addrGroup = document.getElementById('delivery-address-group') || document.getElementById('fg-delivery-address');
+          if (addrGroup) addrGroup.style.display = isLiv ? 'block' : 'none';
+        });
+      });
+    }
 
     // Pre-fill delivery address from account
     (async () => {
       try {
         const r = await apiRequest('/me');
-        if (r.ok && r.client && r.client.defaultDeliveryAddress)
-          document.getElementById('delivery-address').value = r.client.defaultDeliveryAddress;
+        if (r.ok && r.client && r.client.defaultDeliveryAddress) {
+          const el = document.getElementById('delivery-address');
+          if (el) el.value = r.client.defaultDeliveryAddress;
+        }
       } catch {}
     })();
 
@@ -236,7 +370,7 @@
         if (selectedFiles.length >= maxFiles) {
           showToast(`Maximum ${maxFiles} fichiers par commande`, 'error'); break;
         }
-        if (selectedFiles.some(sf => sf.name === f.name)) continue; // deduplicate
+        if (selectedFiles.some(sf => sf.name === f.name)) continue;
         selectedFiles.push(f);
       }
       renderFileList();
@@ -271,14 +405,18 @@
         const r = await apiRequest(`/orders/${reorderId}`);
         if (!r.ok || !r.order) return;
         const o = r.order;
-        document.getElementById('title').value = o.title || '';
-        document.getElementById('quantity').value = o.quantity || '';
-        if (o.format) { const s = document.getElementById('format'); for (const opt of s.options) if (opt.value === o.format) { s.value = o.format; break; } }
-        if (o.paper)  { const s = document.getElementById('paper');  for (const opt of s.options) if (opt.value === o.paper)  { s.value = o.paper;  break; } }
+        const titleEl = document.getElementById('title');
+        const qtyEl = document.getElementById('quantity');
+        if (titleEl) titleEl.value = o.title || '';
+        if (qtyEl) qtyEl.value = o.quantity || '';
+        const fmtEl = document.getElementById('format');
+        if (fmtEl && o.format) { for (const opt of fmtEl.options) if (opt.value === o.format) { fmtEl.value = o.format; break; } }
+        const paperEl = document.getElementById('paper');
+        if (paperEl && o.paper) { for (const opt of paperEl.options) if (opt.value === o.paper) { paperEl.value = o.paper; break; } }
         const rectoVal = o.recto || 'recto';
         document.querySelector(`input[name="recto"][value="${rectoVal}"]`)?.click();
-        if (o.comments) document.getElementById('comments').value = o.comments;
-        // Finitions
+        const commentsEl = document.getElementById('comments');
+        if (commentsEl && o.comments) commentsEl.value = o.comments;
         if (o.finitions && o.finitions.length) {
           document.querySelectorAll('#finitions-group .checkbox-option input').forEach(cb => {
             if (o.finitions.includes(cb.value)) { cb.checked = true; cb.closest('.checkbox-option').classList.add('checked'); }
@@ -294,13 +432,24 @@
       errEl.classList.add('hidden');
       const btn = document.getElementById('btn-submit');
 
-      const title = document.getElementById('title').value.trim();
-      const quantity = parseInt(document.getElementById('quantity').value) || 0;
+      const title = document.getElementById('title')?.value.trim() || '';
+      const quantity = parseInt(document.getElementById('quantity')?.value || '0') || 0;
       if (!title) { errEl.textContent = 'L\'intitulé est obligatoire'; errEl.classList.remove('hidden'); return; }
       if (quantity <= 0) { errEl.textContent = 'La quantité est obligatoire'; errEl.classList.remove('hidden'); return; }
 
-      const deliveryMode = document.querySelector('input[name="delivery-mode"]:checked').value;
-      const deliveryAddress = document.getElementById('delivery-address').value.trim();
+      // Validate required fields from config
+      for (const field of fieldConfigs.filter(f => f.required && f.visible)) {
+        const el = document.getElementById(field.id) || document.getElementById(field.id.replace('-', ''));
+        if (el && !el.value && el.type !== 'radio' && el.type !== 'checkbox') {
+          errEl.textContent = `Le champ "${field.label}" est obligatoire`;
+          errEl.classList.remove('hidden');
+          el.focus();
+          return;
+        }
+      }
+
+      const deliveryMode = document.querySelector('input[name="delivery-mode"]:checked')?.value || 'retrait';
+      const deliveryAddress = document.getElementById('delivery-address')?.value.trim() || '';
       if (deliveryMode === 'livraison' && !deliveryAddress) {
         errEl.textContent = 'L\'adresse de livraison est obligatoire'; errEl.classList.remove('hidden'); return;
       }
@@ -310,20 +459,19 @@
       btn.disabled = true; btn.textContent = 'Envoi en cours…';
 
       try {
-        // Create order
         const orderResp = await apiRequest('/orders', {
           method: 'POST',
           body: JSON.stringify({
             title,
             quantity,
-            format: document.getElementById('format').value,
-            paper: document.getElementById('paper').value,
-            recto: document.querySelector('input[name="recto"]:checked').value,
+            format: document.getElementById('format')?.value || '',
+            paper: document.getElementById('paper')?.value || '',
+            recto: document.querySelector('input[name="recto"]:checked')?.value || 'recto',
             finitions,
-            desiredDeliveryDate: document.getElementById('delivery-date').value || null,
+            desiredDeliveryDate: document.getElementById('delivery-date')?.value || null,
             deliveryMode,
             deliveryAddress,
-            comments: document.getElementById('comments').value.trim()
+            comments: document.getElementById('comments')?.value.trim() || ''
           })
         });
 
@@ -337,14 +485,12 @@
         const orderId = orderResp.orderId;
         const orderNumber = orderResp.orderNumber;
 
-        // Upload files
         if (selectedFiles.length > 0) {
           btn.textContent = 'Upload des fichiers…';
           const fd = new FormData();
           for (const f of selectedFiles) fd.append('files', f);
           const uploadResp = await apiUpload(`/orders/${orderId}/files`, fd);
           if (!uploadResp.ok) {
-            // Order created, but file upload failed — still show confirmation
             showToast('Commande créée. Erreur lors de l\'upload : ' + (uploadResp.error || 'Erreur'), 'error');
           }
         }

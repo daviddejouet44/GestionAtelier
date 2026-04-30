@@ -29,10 +29,13 @@
   </main>
 
   <script type="module">
-    import { requireAuth, renderHeader, statusBadge, fmtDate, fmtDateTime, fmtSize, esc, apiRequest, apiUpload, showToast } from '/portal/js/portal-core.js';
+    import { requireAuth, renderHeader, statusBadge, fmtDate, fmtDateTime, fmtSize, esc, apiRequest, apiUpload, showToast, applyPortalTheme } from '/portal/js/portal-core.js';
 
     const params = new URLSearchParams(window.location.search);
     const orderId = params.get('id');
+
+    // Apply theme immediately
+    applyPortalTheme();
 
     (async () => {
       const client = await requireAuth();
