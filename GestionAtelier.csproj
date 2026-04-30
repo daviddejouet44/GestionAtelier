@@ -25,7 +25,7 @@
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
     <PackageReference Include="Box.V2.Core" Version="5.2.0" />
     <PackageReference Include="Dropbox.Api" Version="7.0.0" />
-    <PackageReference Include="Google.Apis.Drive.v3" Version="1.68.0.3463" />
+    <PackageReference Include="Google.Apis.Drive.v3" Version="1.68.0.3466" />
     <PackageReference Include="Microsoft.Graph" Version="5.65.0" />
     <PackageReference Include="MongoDB.Driver" Version="3.7.1" />
     <PackageReference Include="QRCoder" Version="1.6.0" />
