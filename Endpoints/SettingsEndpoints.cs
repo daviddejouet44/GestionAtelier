@@ -18,6 +18,7 @@ using MongoDB.Bson;
 using GestionAtelier.Models;
 using GestionAtelier.Services;
 using GestionAtelier.Endpoints.Settings;
+using GestionAtelier.Endpoints.Admin;
 
 namespace GestionAtelier.Endpoints;
 
@@ -34,5 +35,6 @@ public static class SettingsEndpointsExtensions
         app.MapFormConfigEndpoints();
         app.MapIntegrationsEndpoints();
         app.MapOrderSourcesEndpoints();
+        app.MapPortalAdminEndpoints();
     }
 }

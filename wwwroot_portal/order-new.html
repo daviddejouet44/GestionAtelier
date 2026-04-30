@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Nouvelle commande — Espace client</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/portal/css/portal.css" />
+</head>
+<body>
+  <header class="portal-header">
+    <div class="portal-header-brand">
+      <img id="portal-logo" src="/api/logo" alt="Logo" onerror="this.style.display='none'" style="max-height:36px;max-width:120px;object-fit:contain;" />
+      <h1>Espace client</h1>
+    </div>
+    <div class="portal-header-right">
+      <span class="portal-user-name" id="portal-user-name"></span>
+      <button class="btn btn-secondary btn-sm" id="btn-portal-logout">Déconnexion</button>
+    </div>
+  </header>
+  <nav class="portal-nav">
+    <a href="/portal/orders.html" data-page="orders">Mes commandes</a>
+    <a href="/portal/account.html" data-page="account">Mon compte</a>
+  </nav>
+
+  <main class="portal-main">
+    <div class="page-header">
+      <div>
+        <h2 class="page-title">Nouvelle commande</h2>
+        <p class="text-muted" style="margin-top:4px;">Déposez vos fichiers PDF et renseignez les informations de production.</p>
+      </div>
+      <a href="/portal/orders.html" class="btn btn-secondary btn-sm">← Retour</a>
+    </div>
+
+    <div id="form-error" class="alert alert-error hidden"></div>
+
+    <!-- Step 1: Upload -->
+    <div class="card" id="section-upload">
+      <div class="card-header">
+        <span class="card-title">📄 Fichiers PDF</span>
+        <span class="text-muted text-sm" id="upload-hint"></span>
+      </div>
+      <div id="upload-zone" class="upload-zone">
+        <div class="upload-icon">📂</div>
+        <p>Glissez-déposez vos PDF ici ou cliquez pour sélectionner</p>
+        <p class="upload-hint" id="upload-limits-hint">Max <span id="max-size">500</span> Mo par fichier · PDF uniquement</p>
+      </div>
+      <input type="file" id="file-input" accept=".pdf,application/pdf" multiple style="display:none" />
+      <div class="file-list" id="file-list"></div>
+    </div>
+
+    <!-- Step 2: Details -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">📋 Détails de la commande</span>
+      </div>
+
+      <div class="form-group">
+        <label for="title">Intitulé du job <span class="required">*</span></label>
+        <input type="text" id="title" class="form-control" placeholder="Ex. : Flyer A5 — Promotions été 2025" required />
+      </div>
+
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label for="quantity">Quantité <span class="required">*</span></label>
+          <input type="number" id="quantity" class="form-control" min="1" placeholder="Ex. : 1000" required />
+        </div>
+        <div class="form-group">
+          <label for="format">Format</label>
+          <select id="format" class="form-control">
+            <option value="">— Sélectionner —</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label for="paper">Support / Papier</label>
+          <select id="paper" class="form-control">
+            <option value="">— Sélectionner —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Impression</label>
+          <div class="radio-group" style="margin-top:8px;">
+            <label class="radio-option"><input type="radio" name="recto" value="recto" checked /> Recto</label>
+            <label class="radio-option"><input type="radio" name="recto" value="recto-verso" /> Recto-verso</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Finitions souhaitées</label>
+        <div class="checkbox-group" id="finitions-group"></div>
+      </div>
+
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label for="delivery-date">Date de réception souhaitée</label>
+          <input type="date" id="delivery-date" class="form-control" />
+        </div>
+        <div class="form-group">
+          <label>Mode de livraison <span class="required">*</span></label>
+          <div class="radio-group" style="margin-top:8px;">
+            <label class="radio-option"><input type="radio" name="delivery-mode" value="retrait" checked /> Retrait imprimerie</label>
+            <label class="radio-option"><input type="radio" name="delivery-mode" value="livraison" /> Livraison</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group" id="delivery-address-group" style="display:none;">
+        <label for="delivery-address">Adresse de livraison <span class="required">*</span></label>
+        <textarea id="delivery-address" class="form-control" rows="3" placeholder="Nom, Adresse complète, Code postal, Ville"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label for="comments">Commentaires</label>
+        <textarea id="comments" class="form-control" rows="3" placeholder="Informations complémentaires, demandes particulières…"></textarea>
+      </div>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px;">
+      <a href="/portal/orders.html" class="btn btn-secondary">Annuler</a>
+      <button class="btn btn-primary" id="btn-submit">Soumettre la commande</button>
+    </div>
+
+    <!-- Confirmation -->
+    <div id="confirm-block" class="card hidden" style="text-align:center;padding:40px;">
+      <div style="font-size:48px;margin-bottom:16px;">✅</div>
+      <h3 style="font-size:20px;font-weight:700;color:var(--color-gray-900);">Commande envoyée !</h3>
+      <p style="color:var(--color-gray-500);margin:12px 0;">Votre commande <strong id="confirm-order-number"></strong> a bien été reçue.</p>
+      <p style="color:var(--color-gray-500);margin-bottom:20px;">Un email de confirmation vous a été envoyé. Nous vous contacterons prochainement.</p>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+        <a id="confirm-detail-link" href="#" class="btn btn-primary">Voir le détail</a>
+        <a href="/portal/orders.html" class="btn btn-secondary">Mes commandes</a>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    import { requireAuth, renderHeader, showToast, esc, apiRequest, apiUpload } from '/portal/js/portal-core.js';
+
+    let formOptions = {};
+    let selectedFiles = [];
+    let maxSizeMb = 500;
+    let maxFiles = 10;
+
+    (async () => {
+      const client = await requireAuth();
+      if (!client) return;
+      renderHeader('orders');
+      await loadFormOptions();
+      initUploadZone();
+      handleReorder();
+    })();
+
+    async function loadFormOptions() {
+      try {
+        const r = await fetch('/api/portal/config/form-options').then(r => r.json());
+        if (!r.ok) return;
+        formOptions = r;
+        maxSizeMb = r.maxUploadSizeMb || 500;
+        maxFiles = r.maxFilesPerOrder || 10;
+
+        // Max size hint
+        document.getElementById('max-size').textContent = maxSizeMb;
+
+        // Formats
+        const fmtSel = document.getElementById('format');
+        (r.formats || []).forEach(f => {
+          const o = document.createElement('option'); o.value = f; o.textContent = f; fmtSel.appendChild(o);
+        });
+
+        // Papers
+        const paperSel = document.getElementById('paper');
+        (r.papers || []).forEach(p => {
+          const o = document.createElement('option'); o.value = p; o.textContent = p; paperSel.appendChild(o);
+        });
+
+        // Finitions
+        const finGroup = document.getElementById('finitions-group');
+        (r.finitions || []).forEach(fin => {
+          const label = document.createElement('label');
+          label.className = 'checkbox-option';
+          label.innerHTML = `<input type="checkbox" value="${esc(fin)}" /> ${esc(fin)}`;
+          label.querySelector('input').onchange = (e) => {
+            label.classList.toggle('checked', e.target.checked);
+          };
+          finGroup.appendChild(label);
+        });
+      } catch { /* use defaults */ }
+    }
+
+    // Delivery mode toggle
+    document.querySelectorAll('input[name="delivery-mode"]').forEach(r => {
+      r.addEventListener('change', () => {
+        const isLivraison = document.querySelector('input[name="delivery-mode"]:checked').value === 'livraison';
+        document.getElementById('delivery-address-group').style.display = isLivraison ? 'block' : 'none';
+      });
+    });
+
+    // Pre-fill delivery address from account
+    (async () => {
+      try {
+        const r = await apiRequest('/me');
+        if (r.ok && r.client && r.client.defaultDeliveryAddress)
+          document.getElementById('delivery-address').value = r.client.defaultDeliveryAddress;
+      } catch {}
+    })();
+
+    // Upload zone
+    function initUploadZone() {
+      const zone = document.getElementById('upload-zone');
+      const input = document.getElementById('file-input');
+
+      zone.onclick = () => input.click();
+      input.onchange = () => addFiles(Array.from(input.files));
+
+      zone.ondragover = (e) => { e.preventDefault(); zone.classList.add('drag-over'); };
+      zone.ondragleave = () => zone.classList.remove('drag-over');
+      zone.ondrop = (e) => {
+        e.preventDefault();
+        zone.classList.remove('drag-over');
+        addFiles(Array.from(e.dataTransfer.files));
+      };
+    }
+
+    function addFiles(files) {
+      const maxSizeBytes = maxSizeMb * 1024 * 1024;
+      for (const f of files) {
+        if (!f.name.toLowerCase().endsWith('.pdf')) {
+          showToast(`${f.name} : seul le format PDF est accepté`, 'error'); continue;
+        }
+        if (f.size > maxSizeBytes) {
+          showToast(`${f.name} : fichier trop volumineux (max ${maxSizeMb} Mo)`, 'error'); continue;
+        }
+        if (selectedFiles.length >= maxFiles) {
+          showToast(`Maximum ${maxFiles} fichiers par commande`, 'error'); break;
+        }
+        if (selectedFiles.some(sf => sf.name === f.name)) continue; // deduplicate
+        selectedFiles.push(f);
+      }
+      renderFileList();
+    }
+
+    function renderFileList() {
+      const list = document.getElementById('file-list');
+      list.innerHTML = selectedFiles.map((f, i) => `
+        <div class="file-item">
+          <span class="file-item-icon">📄</span>
+          <span class="file-item-name">${esc(f.name)}</span>
+          <span class="file-item-size">${fmtSize(f.size)}</span>
+          <button class="file-item-remove" data-idx="${i}" title="Supprimer">✕</button>
+        </div>`).join('');
+      list.querySelectorAll('.file-item-remove').forEach(btn => {
+        btn.onclick = () => { selectedFiles.splice(parseInt(btn.dataset.idx), 1); renderFileList(); };
+      });
+    }
+
+    function fmtSize(b) {
+      if (b < 1024) return b + ' o';
+      if (b < 1024*1024) return (b/1024).toFixed(0) + ' Ko';
+      return (b/1024/1024).toFixed(1) + ' Mo';
+    }
+
+    // Reorder pre-fill
+    async function handleReorder() {
+      const params = new URLSearchParams(window.location.search);
+      const reorderId = params.get('reorder');
+      if (!reorderId) return;
+      try {
+        const r = await apiRequest(`/orders/${reorderId}`);
+        if (!r.ok || !r.order) return;
+        const o = r.order;
+        document.getElementById('title').value = o.title || '';
+        document.getElementById('quantity').value = o.quantity || '';
+        if (o.format) { const s = document.getElementById('format'); for (const opt of s.options) if (opt.value === o.format) { s.value = o.format; break; } }
+        if (o.paper)  { const s = document.getElementById('paper');  for (const opt of s.options) if (opt.value === o.paper)  { s.value = o.paper;  break; } }
+        const rectoVal = o.recto || 'recto';
+        document.querySelector(`input[name="recto"][value="${rectoVal}"]`)?.click();
+        if (o.comments) document.getElementById('comments').value = o.comments;
+        // Finitions
+        if (o.finitions && o.finitions.length) {
+          document.querySelectorAll('#finitions-group .checkbox-option input').forEach(cb => {
+            if (o.finitions.includes(cb.value)) { cb.checked = true; cb.closest('.checkbox-option').classList.add('checked'); }
+          });
+        }
+        showToast('Formulaire pré-rempli depuis la commande précédente', 'info');
+      } catch { /* ignore */ }
+    }
+
+    // Submit
+    document.getElementById('btn-submit').onclick = async () => {
+      const errEl = document.getElementById('form-error');
+      errEl.classList.add('hidden');
+      const btn = document.getElementById('btn-submit');
+
+      const title = document.getElementById('title').value.trim();
+      const quantity = parseInt(document.getElementById('quantity').value) || 0;
+      if (!title) { errEl.textContent = 'L\'intitulé est obligatoire'; errEl.classList.remove('hidden'); return; }
+      if (quantity <= 0) { errEl.textContent = 'La quantité est obligatoire'; errEl.classList.remove('hidden'); return; }
+
+      const deliveryMode = document.querySelector('input[name="delivery-mode"]:checked').value;
+      const deliveryAddress = document.getElementById('delivery-address').value.trim();
+      if (deliveryMode === 'livraison' && !deliveryAddress) {
+        errEl.textContent = 'L\'adresse de livraison est obligatoire'; errEl.classList.remove('hidden'); return;
+      }
+
+      const finitions = Array.from(document.querySelectorAll('#finitions-group .checkbox-option input:checked')).map(cb => cb.value);
+
+      btn.disabled = true; btn.textContent = 'Envoi en cours…';
+
+      try {
+        // Create order
+        const orderResp = await apiRequest('/orders', {
+          method: 'POST',
+          body: JSON.stringify({
+            title,
+            quantity,
+            format: document.getElementById('format').value,
+            paper: document.getElementById('paper').value,
+            recto: document.querySelector('input[name="recto"]:checked').value,
+            finitions,
+            desiredDeliveryDate: document.getElementById('delivery-date').value || null,
+            deliveryMode,
+            deliveryAddress,
+            comments: document.getElementById('comments').value.trim()
+          })
+        });
+
+        if (!orderResp.ok) {
+          errEl.textContent = orderResp.error || 'Erreur lors de la création de la commande';
+          errEl.classList.remove('hidden');
+          btn.disabled = false; btn.textContent = 'Soumettre la commande';
+          return;
+        }
+
+        const orderId = orderResp.orderId;
+        const orderNumber = orderResp.orderNumber;
+
+        // Upload files
+        if (selectedFiles.length > 0) {
+          btn.textContent = 'Upload des fichiers…';
+          const fd = new FormData();
+          for (const f of selectedFiles) fd.append('files', f);
+          const uploadResp = await apiUpload(`/orders/${orderId}/files`, fd);
+          if (!uploadResp.ok) {
+            // Order created, but file upload failed — still show confirmation
+            showToast('Commande créée. Erreur lors de l\'upload : ' + (uploadResp.error || 'Erreur'), 'error');
+          }
+        }
+
+        // Show confirmation
+        document.querySelector('.page-header').classList.add('hidden');
+        document.getElementById('section-upload').classList.add('hidden');
+        document.querySelector('.card:not(#section-upload):not(#confirm-block)').classList.add('hidden');
+        document.querySelector('[style*="justify-content:flex-end"]').classList.add('hidden');
+        document.getElementById('form-error').classList.add('hidden');
+
+        document.getElementById('confirm-order-number').textContent = orderNumber;
+        document.getElementById('confirm-detail-link').href = `/portal/order.html?id=${orderId}`;
+        document.getElementById('confirm-block').classList.remove('hidden');
+
+      } catch (err) {
+        errEl.textContent = 'Erreur réseau';
+        errEl.classList.remove('hidden');
+        btn.disabled = false; btn.textContent = 'Soumettre la commande';
+      }
+    };
+  </script>
+</body>
+</html>

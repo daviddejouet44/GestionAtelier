@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Détail commande — Espace client</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/portal/css/portal.css" />
+</head>
+<body>
+  <header class="portal-header">
+    <div class="portal-header-brand">
+      <img id="portal-logo" src="/api/logo" alt="Logo" onerror="this.style.display='none'" style="max-height:36px;max-width:120px;object-fit:contain;" />
+      <h1>Espace client</h1>
+    </div>
+    <div class="portal-header-right">
+      <span class="portal-user-name" id="portal-user-name"></span>
+      <button class="btn btn-secondary btn-sm" id="btn-portal-logout">Déconnexion</button>
+    </div>
+  </header>
+  <nav class="portal-nav">
+    <a href="/portal/orders.html" data-page="orders">Mes commandes</a>
+    <a href="/portal/account.html" data-page="account">Mon compte</a>
+  </nav>
+
+  <main class="portal-main">
+    <div id="order-container">
+      <div class="loading-overlay"><div class="spinner"></div> Chargement…</div>
+    </div>
+  </main>
+
+  <script type="module">
+    import { requireAuth, renderHeader, statusBadge, fmtDate, fmtDateTime, fmtSize, esc, apiRequest, apiUpload, showToast } from '/portal/js/portal-core.js';
+
+    const params = new URLSearchParams(window.location.search);
+    const orderId = params.get('id');
+
+    (async () => {
+      const client = await requireAuth();
+      if (!client) return;
+      renderHeader('orders');
+      if (!orderId) { document.getElementById('order-container').innerHTML = `<div class="alert alert-error">Identifiant de commande manquant</div>`; return; }
+      await loadOrder();
+    })();
+
+    async function loadOrder() {
+      const container = document.getElementById('order-container');
+      try {
+        const r = await apiRequest(`/orders/${orderId}`);
+        if (!r.ok) { container.innerHTML = `<div class="alert alert-error">${esc(r.error)}</div>`; return; }
+        renderOrder(r.order, r.bats || []);
+      } catch {
+        container.innerHTML = `<div class="alert alert-error">Erreur de chargement</div>`;
+      }
+    }
+
+    function renderOrder(o, bats) {
+      const pendingBat = bats.find(b => b.action === 'pending');
+      const container = document.getElementById('order-container');
+
+      container.innerHTML = `
+        <div class="page-header">
+          <div>
+            <h2 class="page-title">${esc(o.orderNumber)}</h2>
+            <p class="text-muted">${esc(o.title)}</p>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            ${statusBadge(o.status)}
+            <a href="/portal/order-new.html?reorder=${esc(o.id)}" class="btn btn-secondary btn-sm">Re-commander</a>
+            <a href="/portal/orders.html" class="btn btn-secondary btn-sm">← Retour</a>
+          </div>
+        </div>
+
+        <!-- BAT BLOCK (shown when pending) -->
+        ${pendingBat ? renderBatBlock(pendingBat) : ''}
+
+        <!-- Order details -->
+        <div class="card">
+          <div class="card-header"><span class="card-title">Détails de la commande</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;">
+            ${row('N° de commande', esc(o.orderNumber))}
+            ${row('Statut', statusBadge(o.status))}
+            ${row('Date de création', fmtDate(o.createdAt))}
+            ${row('Dernière mise à jour', fmtDate(o.updatedAt))}
+            ${row('Quantité', o.quantity)}
+            ${o.format ? row('Format', esc(o.format)) : ''}
+            ${o.paper ? row('Papier', esc(o.paper)) : ''}
+            ${row('Impression', o.recto === 'recto-verso' ? 'Recto-verso' : 'Recto')}
+            ${o.finitions && o.finitions.length ? row('Finitions', o.finitions.map(f => `<span class="badge badge-gray">${esc(f)}</span>`).join(' ')) : ''}
+            ${o.desiredDeliveryDate ? row('Date souhaitée', fmtDate(o.desiredDeliveryDate)) : ''}
+            ${row('Mode de livraison', o.deliveryMode === 'livraison' ? 'Livraison' : 'Retrait imprimerie')}
+            ${o.deliveryAddress ? row('Adresse', esc(o.deliveryAddress).replace(/\n/g, '<br/>')) : ''}
+            ${o.comments ? row('Commentaires', esc(o.comments).replace(/\n/g, '<br/>')) : ''}
+          </div>
+        </div>
+
+        <!-- Files -->
+        ${renderFiles(o.files || [], o.id)}
+
+        <!-- BAT History -->
+        ${renderBatHistory(bats)}
+
+        <!-- Status timeline -->
+        <div class="card">
+          <div class="card-header"><span class="card-title">Historique</span></div>
+          <div class="timeline" id="status-timeline">
+            ${(o.statusHistory || []).slice().reverse().map(h => `
+              <div class="timeline-item">
+                <div class="timeline-item-date">${fmtDateTime(h.timestamp)}</div>
+                <div class="timeline-item-label">${statusLabel(h.status)}</div>
+                ${h.comment ? `<div class="timeline-item-comment">${esc(h.comment)}</div>` : ''}
+              </div>`).join('')}
+          </div>
+        </div>
+      `;
+
+      // Attach BAT handlers if pending
+      if (pendingBat) {
+        document.getElementById('btn-bat-validate')?.addEventListener('click', () => handleValidate(pendingBat.id));
+        document.getElementById('btn-bat-refuse-show')?.addEventListener('click', () => {
+          document.getElementById('bat-refuse-form').classList.remove('hidden');
+          document.getElementById('btn-bat-refuse-show').classList.add('hidden');
+        });
+        document.getElementById('btn-bat-refuse-submit')?.addEventListener('click', () => handleRefuse(pendingBat.id));
+      }
+    }
+
+    function row(label, value) {
+      return `<div><span class="text-sm" style="color:var(--color-gray-500);">${label}</span><div style="font-size:14px;margin-top:2px;">${value}</div></div>`;
+    }
+
+    function statusLabel(status) {
+      const MAP = {
+        draft: 'Commande reçue', received: 'En attente de traitement',
+        in_production: 'En production', bat_pending: 'BAT envoyé',
+        bat_validated: 'BAT validé', bat_refused: 'BAT refusé',
+        completed: 'Terminée', delivered: 'Livrée'
+      };
+      return MAP[status] || status;
+    }
+
+    function renderFiles(files, oId) {
+      if (!files.length) return `<div class="card"><div class="card-header"><span class="card-title">📄 Fichiers déposés</span></div><p class="text-muted">Aucun fichier déposé.</p></div>`;
+      return `<div class="card">
+        <div class="card-header"><span class="card-title">📄 Fichiers déposés</span></div>
+        <div class="file-list">
+          ${files.map(f => `
+            <div class="file-item">
+              <span class="file-item-icon">📄</span>
+              <span class="file-item-name">${esc(f.fileName)}</span>
+              <span class="file-item-size">${fmtSize(f.size)}</span>
+              <a href="/api/portal/orders/${esc(oId)}/files/${encodeURIComponent(f.fileName)}" target="_blank" class="btn btn-secondary btn-sm" download>Télécharger</a>
+            </div>`).join('')}
+        </div>
+      </div>`;
+    }
+
+    function renderBatBlock(bat) {
+      return `<div class="card" style="border-color:#fde68a;background:#fffbeb;">
+        <div class="card-header" style="background:#fef9c3;border-radius:6px 6px 0 0;margin:-20px -20px 16px;">
+          <span class="card-title">⚠️ BAT à valider</span>
+          <span class="badge badge-yellow">En attente de votre décision</span>
+        </div>
+        <p class="text-sm" style="margin-bottom:12px;">Veuillez consulter le BAT ci-dessous et le valider ou le refuser.</p>
+        <p class="text-muted text-sm" style="margin-bottom:12px;">Fichier : <strong>${esc(bat.batFileName)}</strong></p>
+
+        <iframe class="bat-viewer" src="/api/portal/orders/${orderId}/bat/${esc(bat.id)}/file#toolbar=1&view=FitH"
+          title="Aperçu BAT"></iframe>
+
+        <div class="bat-actions" style="margin-top:16px;">
+          <button class="btn btn-success" id="btn-bat-validate">✅ Valider le BAT</button>
+          <button class="btn btn-danger" id="btn-bat-refuse-show">✗ Refuser le BAT</button>
+        </div>
+
+        <div class="bat-refuse-form hidden" id="bat-refuse-form">
+          <div class="form-group" style="margin-top:12px;">
+            <label for="refuse-motif">Motif du refus <span class="required">*</span></label>
+            <textarea id="refuse-motif" class="form-control" rows="4" placeholder="Décrivez les corrections à apporter…"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="refuse-attachment">Fichier joint (optionnel)</label>
+            <input type="file" id="refuse-attachment" class="form-control" style="padding:6px;" />
+          </div>
+          <button class="btn btn-danger" id="btn-bat-refuse-submit">Confirmer le refus</button>
+        </div>
+      </div>`;
+    }
+
+    function renderBatHistory(bats) {
+      if (!bats.length) return '';
+      const rows = bats.map(b => {
+        const actionBadge = b.action === 'validated' ? '<span class="badge badge-green">Validé</span>'
+          : b.action === 'refused' ? '<span class="badge badge-red">Refusé</span>'
+          : '<span class="badge badge-yellow">En attente</span>';
+        return `<div class="file-item" style="align-items:flex-start;flex-direction:column;gap:4px;padding:12px;">
+          <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+            <span class="file-item-name" style="font-size:14px;">${esc(b.batFileName)}</span>
+            ${actionBadge}
+          </div>
+          <div class="text-muted" style="font-size:12px;">Envoyé le ${fmtDateTime(b.sentAt)}${b.performedAt ? ' · Répondu le ' + fmtDateTime(b.performedAt) : ''}</div>
+          ${b.motif ? `<div class="text-sm" style="color:var(--color-danger);">Motif : ${esc(b.motif)}</div>` : ''}
+        </div>`;
+      }).join('');
+      return `<div class="card"><div class="card-header"><span class="card-title">Historique des BAT</span></div><div class="file-list">${rows}</div></div>`;
+    }
+
+    async function handleValidate(batId) {
+      const btn = document.getElementById('btn-bat-validate');
+      if (!btn) return;
+      btn.disabled = true; btn.textContent = 'Validation…';
+      try {
+        const r = await apiRequest(`/orders/${orderId}/bat/${batId}/validate`, { method: 'POST', body: '{}' });
+        if (r.ok) { showToast('BAT validé avec succès !', 'success'); setTimeout(() => loadOrder(), 800); }
+        else { showToast(r.error || 'Erreur', 'error'); btn.disabled = false; btn.textContent = '✅ Valider le BAT'; }
+      } catch { showToast('Erreur réseau', 'error'); btn.disabled = false; btn.textContent = '✅ Valider le BAT'; }
+    }
+
+    async function handleRefuse(batId) {
+      const motif = document.getElementById('refuse-motif')?.value.trim();
+      if (!motif) { showToast('Le motif de refus est obligatoire', 'error'); return; }
+      const btn = document.getElementById('btn-bat-refuse-submit');
+      btn.disabled = true; btn.textContent = 'Envoi…';
+      try {
+        const fd = new FormData();
+        fd.append('motif', motif);
+        const attachFile = document.getElementById('refuse-attachment')?.files[0];
+        if (attachFile) fd.append('attachment', attachFile);
+        const r = await apiUpload(`/orders/${orderId}/bat/${batId}/refuse`, fd);
+        if (r.ok) { showToast('Refus envoyé.', 'success'); setTimeout(() => loadOrder(), 800); }
+        else { showToast(r.error || 'Erreur', 'error'); btn.disabled = false; btn.textContent = 'Confirmer le refus'; }
+      } catch { showToast('Erreur réseau', 'error'); btn.disabled = false; btn.textContent = 'Confirmer le refus'; }
+    }
+  </script>
+</body>
+</html>

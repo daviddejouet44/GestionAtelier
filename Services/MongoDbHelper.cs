@@ -61,6 +61,27 @@ public static class MongoDbHelper
         }
     }
 
+    public static long GetNextClientOrderNumber()
+    {
+        try
+        {
+            var db = GetDatabase();
+            var countersCol = db.GetCollection<BsonDocument>(CountersCollection);
+
+            var filter = Builders<BsonDocument>.Filter.Eq("_id", "client_order_counter");
+            var update = Builders<BsonDocument>.Update.Inc("value", 1L);
+            var options = new FindOneAndUpdateOptions<BsonDocument> { ReturnDocument = ReturnDocument.After, IsUpsert = true };
+
+            var result = countersCol.FindOneAndUpdate(filter, update, options);
+            return result["value"].ToInt64();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] MongoDB client order counter error: {ex.Message}");
+            return 1;
+        }
+    }
+
     public static IMongoCollection<BsonDocument> GetUsersCollection()
         => GetDatabase().GetCollection<BsonDocument>("users");
 
