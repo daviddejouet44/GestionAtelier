@@ -56,6 +56,17 @@ async function loadFicheFields() {
   }
 }
 
+/**
+ * Converts a field key to a safe CSS/HTML identifier by replacing any
+ * non-alphanumeric characters with underscores.  Custom field keys could
+ * contain spaces or other special chars that would break querySelector.
+ * @param {string} key
+ * @returns {string}
+ */
+function safeDomId(key) {
+  return (key || '').replace(/[^A-Za-z0-9_-]/g, '_');
+}
+
 export async function renderSettingsIntegrations(panel) {
   panel.innerHTML = `
     <h3>Intégrations — Import &amp; Export</h3>
@@ -167,10 +178,11 @@ async function renderXmlImportTab(panel, cfg) {
   // Build mapping rows
   const rowsEl = panel.querySelector('#xml-mapping-rows');
   ficheFields.forEach(f => {
+    const sid = safeDomId(f.key);
     rowsEl.innerHTML += `
       <div style="display:flex;flex-direction:column;gap:4px;">
         <label style="font-size:12px;font-weight:600;color:#374151;">${esc(f.key)}<span style="font-weight:400;color:#6b7280;margin-left:4px;">— ${esc(f.label)}</span></label>
-        <input type="text" id="xml-map-${esc(f.key)}" placeholder="Balise XML source" class="settings-input"
+        <input type="text" id="xml-map-${sid}" placeholder="Balise XML source" class="settings-input"
           value="${esc(mapping[f.key] || '')}" style="font-size:12px;padding:5px 8px;" />
       </div>`;
   });
@@ -179,7 +191,7 @@ async function renderXmlImportTab(panel, cfg) {
   panel.querySelector('#xml-mapping-save').onclick = async () => {
     const newMapping = {};
     ficheFields.forEach(f => {
-      const v = panel.querySelector(`#xml-map-${f.key}`)?.value?.trim();
+      const v = panel.querySelector(`#xml-map-${safeDomId(f.key)}`)?.value?.trim();
       if (v) newMapping[f.key] = v;
     });
     const msgEl = panel.querySelector('#xml-mapping-msg');
@@ -557,10 +569,11 @@ async function renderExportTab(panel, cfg) {
   const expMapping = expCfg.mapping || {};
   const rowsEl = panel.querySelector('#exp-mapping-rows');
   ficheFields.forEach(f => {
+    const sid = safeDomId(f.key);
     rowsEl.innerHTML += `
       <div style="display:flex;flex-direction:column;gap:4px;">
         <label style="font-size:12px;font-weight:600;color:#374151;">${esc(f.key)}<span style="font-weight:400;color:#6b7280;margin-left:4px;">— ${esc(f.label)}</span></label>
-        <input type="text" id="exp-map-${esc(f.key)}" placeholder="${esc(f.key)}" class="settings-input"
+        <input type="text" id="exp-map-${sid}" placeholder="${esc(f.key)}" class="settings-input"
           value="${esc(expMapping[f.key]||'')}" style="font-size:12px;padding:5px 8px;" />
       </div>`;
   });
@@ -568,7 +581,7 @@ async function renderExportTab(panel, cfg) {
   panel.querySelector('#exp-save').onclick = async () => {
     const msgEl = panel.querySelector('#exp-msg');
     const mapping = {};
-    ficheFields.forEach(f => { const v=panel.querySelector(`#exp-map-${f.key}`)?.value?.trim(); if(v) mapping[f.key]=v; });
+    ficheFields.forEach(f => { const v=panel.querySelector(`#exp-map-${safeDomId(f.key)}`)?.value?.trim(); if(v) mapping[f.key]=v; });
     const data = {
       enableXml: panel.querySelector('#exp-xml').checked,
       enableCsv: panel.querySelector('#exp-csv').checked,
