@@ -32,6 +32,8 @@ export async function renderSettingsIntegrations(panel) {
       <button class="settings-tab" data-itab="import-log">📋 Journal imports</button>
       <button class="settings-tab" data-itab="export-log">📋 Journal exports</button>
       <button class="settings-tab" data-itab="order-sources">📡 Sources de commandes</button>
+      <button class="settings-tab" data-itab="submission-xml">📎 Soumission XML couplé</button>
+      <button class="settings-tab" data-itab="submission-erp">🔗 PDF + ERP/W2P</button>
     </div>
     <div id="integ-panel"></div>
   `;
@@ -58,6 +60,8 @@ export async function renderSettingsIntegrations(panel) {
       case 'import-log':    renderImportLogTab(integPanel); break;
       case 'export-log':    renderExportLogTab(integPanel); break;
       case 'order-sources': renderSettingsOrderSources(integPanel); break;
+      case 'submission-xml': renderSubmissionXmlCouplingTab(integPanel); break;
+      case 'submission-erp': renderSubmissionErpLookupTab(integPanel); break;
     }
   }
 
@@ -653,4 +657,256 @@ async function renderExportLogTab(panel) {
   } catch(e) {
     panel.innerHTML = '<div class="settings-section-card"><p style="color:#ef4444;">Erreur lors du chargement du journal.</p></div>';
   }
+}
+
+// ======================================================
+// SOUMISSION XML COUPLÉ
+// ======================================================
+async function renderSubmissionXmlCouplingTab(panel) {
+  panel.innerHTML = '<div style="padding:20px;color:#6b7280;">Chargement…</div>';
+  let cfg = {};
+  try {
+    const r = await fetch('/api/settings/submission-xml-coupling', { headers: authH() }).then(r => r.json()).catch(() => ({}));
+    if (r.ok && r.config) cfg = r.config;
+  } catch(e) { /* use defaults */ }
+
+  panel.innerHTML = `
+    <div class="settings-section-card">
+      <h4>📎 Soumission PDF + XML couplés</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
+        Lorsque cette option est activée, l'onglet <strong>Soumission</strong> accepte de déposer simultanément
+        un <strong>PDF</strong> et un <strong>XML de métadonnées</strong>. Les données XML pré-remplissent
+        automatiquement la fiche en utilisant le mapping configuré dans l'onglet <em>Import XML</em>.
+      </p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 20px;max-width:600px;margin-bottom:20px;">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Activé</label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="sxml-enabled" ${cfg.enabled !== false ? 'checked' : ''} style="width:16px;height:16px;" />
+            <span style="font-size:13px;">Activer la détection PDF+XML en Soumission</span>
+          </label>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Comportement après détection</label>
+          <select id="sxml-mode" class="settings-input" style="width:100%;">
+            <option value="prefill" ${(cfg.mode||'prefill')==='prefill'?'selected':''}>Ouvrir le formulaire pré-rempli (recommandé)</option>
+            <option value="create" ${cfg.mode==='create'?'selected':''}>Créer la fiche directement (sans formulaire)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="settings-section-card" style="background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:18px;">
+        <h5 style="margin:0 0 10px;font-size:13px;color:#374151;">Règles de couplage PDF ↔ XML</h5>
+        <ul style="margin:0;padding-left:18px;font-size:12px;color:#6b7280;line-height:1.8;">
+          <li><strong>1 PDF + 1 XML</strong> → couplage automatique (même nom de base recommandé).</li>
+          <li><strong>N PDF + 1 XML</strong> → tous les PDF rattachés à la même fiche avec les métadonnées du XML.</li>
+          <li><strong>N PDF + N XML</strong> → appariement par nom de base (ex : <code>commande01.pdf</code> + <code>commande01.xml</code>).</li>
+          <li><strong>PDF seul</strong> → comportement habituel (upload simple).</li>
+          <li><strong>XML seul</strong> → création de la fiche sans PDF (le PDF peut être ajouté ensuite).</li>
+        </ul>
+      </div>
+
+      <p style="color:#6b7280;font-size:12px;margin-bottom:12px;">
+        Le <strong>mapping XML → champs fiche</strong> et la <strong>clé de déduplication</strong> sont définis
+        dans l'onglet <em>📥 Import XML</em> et sont réutilisés ici.
+      </p>
+
+      <button id="sxml-save" class="btn btn-primary">💾 Enregistrer</button>
+      <div id="sxml-msg" style="margin-top:8px;font-size:13px;"></div>
+    </div>
+  `;
+
+  panel.querySelector('#sxml-save').onclick = async () => {
+    const msgEl = panel.querySelector('#sxml-msg');
+    const data = {
+      enabled: panel.querySelector('#sxml-enabled').checked,
+      mode:    panel.querySelector('#sxml-mode').value,
+    };
+    try {
+      const r = await fetch('/api/settings/submission-xml-coupling', {
+        method: 'PUT', headers: authJsonH(), body: JSON.stringify(data)
+      }).then(r => r.json());
+      if (r.ok) { msgEl.style.color = '#16a34a'; msgEl.textContent = '✅ Configuration enregistrée'; }
+      else { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ ' + (r.error || 'Erreur'); }
+    } catch(e) { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ Erreur réseau'; }
+  };
+}
+
+// ======================================================
+// SOUMISSION PDF + ERP / W2P LOOKUP
+// ======================================================
+async function renderSubmissionErpLookupTab(panel) {
+  panel.innerHTML = '<div style="padding:20px;color:#6b7280;">Chargement…</div>';
+  let cfg = { enabled: true, defaultSource: '', refDetectionRegex: '', autoLookup: false, erpSources: [] };
+  try {
+    const r = await fetch('/api/settings/submission-erp-lookup', { headers: authH() }).then(r => r.json()).catch(() => ({}));
+    if (r.ok && r.config) cfg = { ...cfg, ...r.config };
+  } catch(e) { /* use defaults */ }
+
+  function buildErpSourceForm(src = {}) {
+    const id = src.id || ('src_' + Date.now());
+    return `
+      <div class="erp-src-card" data-id="${id}" style="border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:12px;background:#fff;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <strong style="font-size:13px;">${esc(src.name || 'Nouvelle source ERP')}</strong>
+          <button class="btn btn-sm erp-src-remove" style="color:#ef4444;padding:2px 8px;">✕ Supprimer</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">Nom</label>
+            <input type="text" class="settings-input erp-src-name" value="${esc(src.name||'')}" placeholder="Mon ERP" style="width:100%;" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">URL (avec {ref} si nécessaire)</label>
+            <input type="url" class="settings-input erp-src-url" value="${esc(src.url||'')}" placeholder="https://erp.example.com/api/orders/{ref}" style="width:100%;" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">Authentification</label>
+            <select class="settings-input erp-src-authtype" style="width:100%;">
+              <option value="none" ${(src.authType||'none')==='none'?'selected':''}>Aucune</option>
+              <option value="basic" ${src.authType==='basic'?'selected':''}>Basic Auth</option>
+              <option value="bearer" ${src.authType==='bearer'?'selected':''}>Bearer Token</option>
+              <option value="apikey" ${src.authType==='apikey'?'selected':''}>API Key (header)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">Login (Basic Auth)</label>
+            <input type="text" class="settings-input erp-src-authuser" value="${esc(src.authUser||'')}" placeholder="login" style="width:100%;" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">Mot de passe / Token</label>
+            <input type="password" class="settings-input erp-src-authpwd" placeholder="••••••••" autocomplete="new-password" style="width:100%;" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">Nom du header (API Key)</label>
+            <input type="text" class="settings-input erp-src-authheader" value="${esc(src.authHeader||'X-Api-Key')}" style="width:100%;" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px;">Format réponse</label>
+            <select class="settings-input erp-src-format" style="width:100%;">
+              <option value="json" ${(src.responseFormat||'json')==='json'?'selected':''}>JSON</option>
+              <option value="xml" ${src.responseFormat==='xml'?'selected':''}>XML</option>
+            </select>
+          </div>
+        </div>
+        <input type="hidden" class="erp-src-id" value="${id}" />
+      </div>`;
+  }
+
+  const sources = cfg.erpSources || [];
+
+  panel.innerHTML = `
+    <div class="settings-section-card">
+      <h4>🔗 Import PDF + ERP / W2P</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
+        Permet, lors d'un dépôt de PDF dans Soumission, de récupérer les métadonnées de la commande
+        depuis un <strong>ERP</strong> ou depuis un <strong>W2P</strong> (Pressero, MDSF) en saisissant
+        ou en détectant automatiquement le n° de commande.
+      </p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 20px;max-width:700px;margin-bottom:20px;">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Activé</label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="serp-enabled" ${cfg.enabled !== false ? 'checked' : ''} style="width:16px;height:16px;" />
+            <span style="font-size:13px;">Afficher le bouton "🔗 ERP/W2P" en Soumission</span>
+          </label>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Source par défaut</label>
+          <select id="serp-default-source" class="settings-input" style="width:100%;">
+            <option value="">— Aucune —</option>
+            <option value="pressero" ${cfg.defaultSource==='pressero'?'selected':''}>Pressero</option>
+            <option value="mdsf" ${cfg.defaultSource==='mdsf'?'selected':''}>MDSF</option>
+            ${sources.map(s => `<option value="${esc(s.id||s.name)}" ${cfg.defaultSource===(s.id||s.name)?'selected':''}>${esc(s.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Regex de détection de référence</label>
+          <input type="text" id="serp-regex" class="settings-input" style="width:100%;"
+            value="${esc(cfg.refDetectionRegex||'')}" placeholder="ex: ^([A-Z0-9-]+)_.*\\.pdf$" />
+          <div style="font-size:11px;color:#9ca3af;margin-top:3px;">Appliquée au nom du fichier PDF. Le 1er groupe capturant est utilisé comme référence.</div>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Auto-lookup au drop</label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="serp-auto" ${cfg.autoLookup ? 'checked' : ''} style="width:16px;height:16px;" />
+            <span style="font-size:13px;">Lancer la recherche automatiquement si une référence est détectée</span>
+          </label>
+        </div>
+      </div>
+
+      <button id="serp-save-global" class="btn btn-primary" style="margin-bottom:20px;">💾 Enregistrer la configuration globale</button>
+      <div id="serp-msg-global" style="margin-bottom:16px;font-size:13px;"></div>
+
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;" />
+      <h5 style="font-size:13px;color:#374151;margin-bottom:12px;">Sources ERP génériques</h5>
+      <div id="serp-sources-list">
+        ${sources.map(s => buildErpSourceForm(s)).join('')}
+        ${sources.length === 0 ? '<p style="color:#9ca3af;font-size:13px;">Aucune source ERP configurée.</p>' : ''}
+      </div>
+      <button id="serp-add-source" class="btn" style="margin-bottom:16px;">+ Ajouter une source ERP</button>
+      <br/>
+      <button id="serp-save-sources" class="btn btn-primary">💾 Enregistrer les sources ERP</button>
+      <div id="serp-msg-sources" style="margin-top:8px;font-size:13px;"></div>
+    </div>
+  `;
+
+  // Add source
+  panel.querySelector('#serp-add-source').onclick = () => {
+    const listEl = panel.querySelector('#serp-sources-list');
+    const noSrc = listEl.querySelector('p');
+    if (noSrc) noSrc.remove();
+    listEl.insertAdjacentHTML('beforeend', buildErpSourceForm({}));
+    listEl.querySelectorAll('.erp-src-remove').forEach(btn => {
+      btn.onclick = () => btn.closest('.erp-src-card').remove();
+    });
+  };
+
+  // Remove source buttons
+  panel.querySelectorAll('.erp-src-remove').forEach(btn => {
+    btn.onclick = () => btn.closest('.erp-src-card').remove();
+  });
+
+  // Save global config
+  panel.querySelector('#serp-save-global').onclick = async () => {
+    const msgEl = panel.querySelector('#serp-msg-global');
+    const data = {
+      enabled:           panel.querySelector('#serp-enabled').checked,
+      defaultSource:     panel.querySelector('#serp-default-source').value,
+      refDetectionRegex: panel.querySelector('#serp-regex').value.trim(),
+      autoLookup:        panel.querySelector('#serp-auto').checked,
+    };
+    try {
+      const r = await fetch('/api/settings/submission-erp-lookup', {
+        method: 'PUT', headers: authJsonH(), body: JSON.stringify(data)
+      }).then(r => r.json());
+      if (r.ok) { msgEl.style.color = '#16a34a'; msgEl.textContent = '✅ Configuration globale enregistrée'; }
+      else { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ ' + (r.error || 'Erreur'); }
+    } catch(e) { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ Erreur réseau'; }
+  };
+
+  // Save sources
+  panel.querySelector('#serp-save-sources').onclick = async () => {
+    const msgEl = panel.querySelector('#serp-msg-sources');
+    const cards = panel.querySelectorAll('.erp-src-card');
+    const erpSources = Array.from(cards).map(card => ({
+      id:             card.querySelector('.erp-src-id').value,
+      name:           card.querySelector('.erp-src-name').value.trim(),
+      url:            card.querySelector('.erp-src-url').value.trim(),
+      authType:       card.querySelector('.erp-src-authtype').value,
+      authUser:       card.querySelector('.erp-src-authuser').value.trim(),
+      authPassword:   card.querySelector('.erp-src-authpwd').value,
+      authHeader:     card.querySelector('.erp-src-authheader').value.trim(),
+      responseFormat: card.querySelector('.erp-src-format').value,
+    }));
+    try {
+      const r = await fetch('/api/settings/submission-erp-lookup', {
+        method: 'PUT', headers: authJsonH(), body: JSON.stringify({ erpSources })
+      }).then(r => r.json());
+      if (r.ok) { msgEl.style.color = '#16a34a'; msgEl.textContent = '✅ Sources ERP enregistrées'; }
+      else { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ ' + (r.error || 'Erreur'); }
+    } catch(e) { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ Erreur réseau'; }
+  };
 }
