@@ -591,8 +591,10 @@ export async function initCalendar() {
 
             if (confirmed === true) {
               // Propagate to other key dates by shifting them the same delta
-              const oldDate = info.oldEvent.start.toLocaleDateString('sv-SE');
-              const deltaDays = Math.round((new Date(newDate) - new Date(oldDate)) / 86400000);
+              const MS_PER_DAY = 86400000;
+              const oldEventStart = info.oldEvent && info.oldEvent.start;
+              const oldDate = oldEventStart ? oldEventStart.toLocaleDateString('sv-SE') : newDate;
+              const deltaDays = Math.round((new Date(newDate) - new Date(oldDate)) / MS_PER_DAY);
               if (deltaDays !== 0) {
                 const fab = await fetch('/api/fabrication?fileName=' + encodeURIComponent(fileName), {
                   headers: { 'Authorization': `Bearer ${authToken}` }
@@ -601,7 +603,7 @@ export async function initCalendar() {
                   const existing = fab && fab[field] ? fab[field] : null;
                   if (existing) {
                     try {
-                      const shifted = new Date(new Date(existing).getTime() + deltaDays * 86400000);
+                      const shifted = new Date(new Date(existing).getTime() + deltaDays * MS_PER_DAY);
                       const shiftedDate = shifted.toLocaleDateString('sv-SE');
                       await fetch("/api/fabrication/key-date", {
                         method: "PUT",

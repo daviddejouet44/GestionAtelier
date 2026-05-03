@@ -532,7 +532,7 @@ async function buildBatView(_filterStatus, _sortField) {
       actionsDiv.appendChild(btnFiche);
 
       // Portal BAT send button — only for web orders (matched by numeroDossier)
-      const dossierKey = (fab && fab.numeroDossier ? fab.numeroDossier : lookupFn).toLowerCase();
+      const dossierKey = (fab && fab.numeroDossier ? String(fab.numeroDossier) : (lookupFn || '')).toLowerCase();
       const portalOrder = portalOrderMap[dossierKey];
       if (portalOrder) {
         const btnPortalBat = document.createElement("button");
