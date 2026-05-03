@@ -28,6 +28,7 @@ export async function renderSettingsPortal(panel) {
       <button class="portal-subtab active" data-subtab="general" style="padding:8px 16px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;color:#1d4ed8;border-bottom:2px solid #1d4ed8;margin-bottom:-2px;">⚙️ Général</button>
       <button class="portal-subtab" data-subtab="form-fields" style="padding:8px 16px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:500;color:#6b7280;">📋 Champs du formulaire</button>
       <button class="portal-subtab" data-subtab="theme" style="padding:8px 16px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:500;color:#6b7280;">🎨 Apparence</button>
+      <button class="portal-subtab" data-subtab="steps" style="padding:8px 16px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:500;color:#6b7280;">🗂️ Étapes client</button>
       <button class="portal-subtab" data-subtab="clients" style="padding:8px 16px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:500;color:#6b7280;">👥 Comptes clients</button>
     </div>
 
@@ -84,22 +85,6 @@ export async function renderSettingsPortal(panel) {
             <label>Nombre max de fichiers par commande</label>
             <input type="number" id="portal-max-files" value="${settings.maxFilesPerOrder ?? 10}" class="settings-input" style="width:80px;" min="1" />
           </div>
-        </div>
-      </div>
-
-      <div class="settings-section-card" style="margin-top:16px;">
-        <h4>Options du formulaire de commande</h4>
-        <div class="settings-form-group" style="margin-bottom:16px;">
-          <label>Formats disponibles (un par ligne)</label>
-          <textarea id="portal-formats" class="settings-input settings-input-wide" rows="5">${esc((settings.availableFormats || []).join('\n'))}</textarea>
-        </div>
-        <div class="settings-form-group" style="margin-bottom:16px;">
-          <label>Supports / Papiers disponibles (un par ligne)</label>
-          <textarea id="portal-papers" class="settings-input settings-input-wide" rows="6">${esc((settings.availablePapers || []).join('\n'))}</textarea>
-        </div>
-        <div class="settings-form-group">
-          <label>Finitions disponibles (un par ligne)</label>
-          <textarea id="portal-finitions" class="settings-input settings-input-wide" rows="5">${esc((settings.availableFinitions || []).join('\n'))}</textarea>
         </div>
       </div>
 
@@ -238,12 +223,31 @@ export async function renderSettingsPortal(panel) {
 
     <!-- CLIENTS TAB -->
     <div id="portal-tab-clients" class="portal-tab-content hidden">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
         <h4 style="margin:0;">Comptes clients</h4>
-        <button id="btn-new-client" class="btn btn-primary btn-sm">+ Nouveau client</button>
+        <div style="display:flex;gap:8px;">
+          <button id="btn-invite-client" class="btn btn-sm" style="background:#f0fdf4;border:1px solid #86efac;color:#15803d;" title="Envoyer un lien d'invitation par e-mail à un client existant">✉️ Inviter un client</button>
+          <button id="btn-new-client" class="btn btn-primary btn-sm">+ Nouveau client</button>
+        </div>
       </div>
 
       <div id="clients-list"></div>
+
+      <!-- Invite form -->
+      <div id="client-invite-card" class="settings-section-card hidden" style="margin-top:16px;border-left:4px solid #86efac;">
+        <h4 style="color:#15803d;margin-top:0;">✉️ Inviter un client existant</h4>
+        <p style="font-size:13px;color:#6b7280;margin-bottom:12px;">Sélectionnez un client pour lui envoyer un e-mail contenant un lien d'activation (valable 48h). Le client n'a pas besoin de connaître son mot de passe actuel.</p>
+        <div class="settings-form-group">
+          <label>Client</label>
+          <select id="ci-client-select" class="settings-input" style="max-width:400px;"></select>
+        </div>
+        <div id="client-invite-error" class="alert alert-error hidden" style="margin:8px 0;"></div>
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <button id="btn-client-invite-send" class="btn btn-primary btn-sm">Envoyer l'invitation</button>
+          <button id="btn-client-invite-cancel" class="btn btn-secondary btn-sm">Annuler</button>
+        </div>
+        <div id="client-invite-msg" style="margin-top:8px;font-size:13px;"></div>
+      </div>
 
       <div id="client-form-card" class="settings-section-card hidden" style="margin-top:16px;">
         <h4 id="client-form-title">Nouveau compte client</h4>
@@ -263,6 +267,19 @@ export async function renderSettingsPortal(panel) {
         </div>
       </div>
     </div>
+
+    <!-- STEPS TAB -->
+    <div id="portal-tab-steps" class="portal-tab-content hidden">
+      <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
+        Choisissez quelles tuiles Kanban sont affichées comme étapes d'avancement dans l'espace client,
+        et personnalisez leur libellé côté client (indépendant du nom interne de la tuile).
+      </p>
+      <div id="portal-steps-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;"></div>
+      <div style="display:flex;gap:8px;">
+        <button id="portal-steps-save" class="btn btn-primary">Enregistrer les étapes</button>
+        <span id="portal-steps-msg" style="margin-left:8px;font-size:13px;align-self:center;"></span>
+      </div>
+    </div>
   `;
 
   // ── Sub-tab navigation ───────────────────────────────────────────────────
@@ -280,6 +297,8 @@ export async function renderSettingsPortal(panel) {
       tab.style.fontWeight = '600';
       panel.querySelectorAll('.portal-tab-content').forEach(c => c.classList.add('hidden'));
       panel.querySelector(`#portal-tab-${tab.dataset.subtab}`).classList.remove('hidden');
+      // Lazy-load the steps tab when first activated
+      if (tab.dataset.subtab === 'steps') loadPortalSteps(panel);
     };
   });
 
@@ -311,9 +330,6 @@ export async function renderSettingsPortal(panel) {
       lockDurationMinutes: parseInt(panel.querySelector('#portal-lock-duration').value) || 30,
       maxUploadSizeMb: parseInt(panel.querySelector('#portal-max-size').value) || 500,
       maxFilesPerOrder: parseInt(panel.querySelector('#portal-max-files').value) || 10,
-      availableFormats: panel.querySelector('#portal-formats').value.split('\n').map(s => s.trim()).filter(Boolean),
-      availablePapers: panel.querySelector('#portal-papers').value.split('\n').map(s => s.trim()).filter(Boolean),
-      availableFinitions: panel.querySelector('#portal-finitions').value.split('\n').map(s => s.trim()).filter(Boolean),
       smtp: {
         host: panel.querySelector('#smtp-host').value.trim(),
         port: parseInt(panel.querySelector('#smtp-port').value) || 587,
@@ -414,6 +430,44 @@ export async function renderSettingsPortal(panel) {
   renderClientsTable(clients, panel);
 
   let editingClientId = null;
+
+  // Invite existing client
+  panel.querySelector('#btn-invite-client').onclick = () => {
+    const card = panel.querySelector('#client-invite-card');
+    card.classList.remove('hidden');
+    panel.querySelector('#client-form-card').classList.add('hidden');
+    panel.querySelector('#client-invite-msg').textContent = '';
+    panel.querySelector('#client-invite-error').classList.add('hidden');
+    // Populate the client selector with current clients
+    const sel = panel.querySelector('#ci-client-select');
+    sel.innerHTML = clients.map(c => `<option value="${esc(c.id)}">${esc(c.email)}${c.displayName ? ' — ' + esc(c.displayName) : ''}</option>`).join('');
+  };
+  panel.querySelector('#btn-client-invite-cancel').onclick = () => {
+    panel.querySelector('#client-invite-card').classList.add('hidden');
+  };
+  panel.querySelector('#btn-client-invite-send').onclick = async () => {
+    const msgEl = panel.querySelector('#client-invite-msg');
+    const errEl = panel.querySelector('#client-invite-error');
+    errEl.classList.add('hidden');
+    msgEl.textContent = '';
+    const clientId = panel.querySelector('#ci-client-select').value;
+    if (!clientId) { errEl.textContent = 'Sélectionnez un client'; errEl.classList.remove('hidden'); return; }
+    msgEl.style.color = '#6b7280'; msgEl.textContent = '⏳ Envoi en cours…';
+    try {
+      const r = await fetch(`/api/admin/portal/clients/${clientId}/invite`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      }).then(r => r.json());
+      if (r.ok) {
+        msgEl.style.color = '#16a34a';
+        msgEl.textContent = `✅ Invitation envoyée à ${r.email || ''}`;
+      } else {
+        msgEl.style.color = '#dc2626';
+        msgEl.textContent = '❌ ' + (r.error || 'Erreur');
+      }
+    } catch { msgEl.style.color = '#dc2626'; msgEl.textContent = '❌ Erreur réseau'; }
+  };
+
   panel.querySelector('#btn-new-client').onclick = () => {
     editingClientId = null;
     panel.querySelector('#client-form-title').textContent = 'Nouveau compte client';
@@ -641,4 +695,87 @@ function renderClientsTable(cls, panel) {
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
+}
+
+// ============================================================
+// PORTAL CLIENT STEPS (Kanban tiles → client-facing stages)
+// ============================================================
+async function loadPortalSteps(panel) {
+  const listEl = panel.querySelector('#portal-steps-list');
+  const msgEl  = panel.querySelector('#portal-steps-msg');
+  if (!listEl) return;
+  listEl.innerHTML = '<p style="color:#6b7280;font-size:13px;">⏳ Chargement…</p>';
+  msgEl.textContent = '';
+
+  let steps = [];
+  try {
+    const r = await fetch('/api/admin/portal/client-steps', {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    }).then(r => r.json());
+    if (r.ok) steps = r.steps || [];
+  } catch { /* ignore */ }
+
+  if (!steps.length) {
+    listEl.innerHTML = '<p style="color:#6b7280;font-size:13px;">Aucune tuile Kanban configurée. Ajoutez d\'abord des tuiles dans Paramétrage → Kanban.</p>';
+    return;
+  }
+
+  listEl.innerHTML = `
+    <div style="display:grid;grid-template-columns:200px 1fr 80px 60px;gap:6px;font-size:12px;font-weight:600;color:#6b7280;padding:4px 8px;margin-bottom:4px;">
+      <span>Tuile Kanban (interne)</span>
+      <span>Libellé client (affiché dans l'espace client)</span>
+      <span>Visible</span>
+      <span>Ordre</span>
+    </div>
+  `;
+
+  steps.forEach((step, i) => {
+    const row = document.createElement('div');
+    row.className = 'pcs-row';
+    row.dataset.folder = step.kanbanFolder;
+    row.style.cssText = 'display:grid;grid-template-columns:200px 1fr 80px 60px;gap:6px;align-items:center;padding:8px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;';
+
+    row.innerHTML = `
+      <span style="font-size:13px;font-weight:600;color:#374151;">${esc(step.kanbanFolder)}</span>
+      <input type="text" class="settings-input pcs-label" placeholder="${esc(step.kanbanFolder)}" value="${esc(step.clientLabel || '')}" style="font-size:12px;" />
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px;justify-content:center;">
+        <input type="checkbox" class="pcs-visible" ${step.visible ? 'checked' : ''} />
+        Visible
+      </label>
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        <button type="button" class="btn btn-sm pcs-up" style="padding:1px 8px;">↑</button>
+        <button type="button" class="btn btn-sm pcs-down" style="padding:1px 8px;">↓</button>
+      </div>
+    `;
+
+    row.querySelector('.pcs-up').onclick = () => {
+      const prev = row.previousElementSibling;
+      if (prev && prev.classList.contains('pcs-row')) listEl.insertBefore(row, prev);
+    };
+    row.querySelector('.pcs-down').onclick = () => {
+      const next = row.nextElementSibling;
+      if (next && next.classList.contains('pcs-row')) listEl.insertBefore(next, row);
+    };
+
+    listEl.appendChild(row);
+  });
+
+  panel.querySelector('#portal-steps-save').onclick = async () => {
+    const rows = Array.from(listEl.querySelectorAll('.pcs-row'));
+    const stepsToSave = rows.map((r, i) => ({
+      kanbanFolder: r.dataset.folder,
+      clientLabel:  r.querySelector('.pcs-label').value.trim(),
+      visible:      r.querySelector('.pcs-visible').checked,
+      order:        i
+    }));
+    try {
+      const res = await fetch('/api/admin/portal/client-steps', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ steps: stepsToSave })
+      }).then(r => r.json());
+      if (res.ok) { msgEl.style.color = '#16a34a'; msgEl.textContent = '✓ Étapes enregistrées'; showNotification('Étapes client enregistrées', 'success'); }
+      else { msgEl.style.color = '#dc2626'; msgEl.textContent = res.error || 'Erreur'; }
+    } catch { msgEl.style.color = '#dc2626'; msgEl.textContent = 'Erreur réseau'; }
+  };
 }

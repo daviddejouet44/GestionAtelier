@@ -80,8 +80,19 @@ public static class SubmissionXmlEndpoints
                     // If multiple PDFs and multiple XMLs, try to match by base name later.
                     // For now parse the first (or only) XML.
                     XDocument doc;
-                    using (var stream = xmlFile.OpenReadStream())
+                    try
+                    {
+                        using var stream = xmlFile.OpenReadStream();
                         doc = XDocument.Load(stream);
+                    }
+                    catch (System.Xml.XmlException xmlEx)
+                    {
+                        return Results.Json(new { ok = false, error = $"Fichier XML invalide ({xmlFile.FileName}) : {xmlEx.Message}" });
+                    }
+                    catch (Exception xmlEx)
+                    {
+                        return Results.Json(new { ok = false, error = $"Impossible de lire le fichier XML ({xmlFile.FileName}) : {xmlEx.Message}" });
+                    }
 
                     // Support flat <Order>, <Commande>, <Job> and wrapped structures
                     var orderEl = doc.Descendants("Order")
@@ -152,8 +163,15 @@ public static class SubmissionXmlEndpoints
                     var destFileName = $"{numero:D5}_{Path.GetFileName(pdf.FileName)}";
                     var destPath = Path.Combine(destDir, destFileName);
 
-                    await using (var fs = new FileStream(destPath, FileMode.Create, FileAccess.Write))
-                        await pdf.CopyToAsync(fs);
+                    try
+                    {
+                        await using (var fs = new FileStream(destPath, FileMode.Create, FileAccess.Write))
+                            await pdf.CopyToAsync(fs);
+                    }
+                    catch (Exception ioEx)
+                    {
+                        return Results.Json(new { ok = false, error = $"Impossible d'enregistrer le fichier PDF ({pdf.FileName}) : {ioEx.Message}" });
+                    }
 
                     savedJobs.Add((destFileName, destPath));
                 }

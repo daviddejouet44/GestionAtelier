@@ -120,6 +120,16 @@ public static class IntegrationsEndpoints
                         { var i = TryGetInt(data, "intervalMinutes"); if (i.HasValue) cfg.Mdsf.IntervalMinutes = i.Value; }
                         break;
 
+                    case "activeProvider":
+                        // Enforce mutual exclusivity: only one provider can be enabled
+                        var activeProviderVal = TryGetString(data, "provider") ?? "none";
+                        cfg.ActiveProvider = activeProviderVal;
+                        // Disable all other providers when one is selected
+                        if (cfg.Erp     != null) cfg.Erp.Enabled      = activeProviderVal == "erp";
+                        if (cfg.Pressero != null) cfg.Pressero.Enabled = activeProviderVal == "pressero";
+                        if (cfg.Mdsf    != null) cfg.Mdsf.Enabled     = activeProviderVal == "mdsf";
+                        break;
+
                     case "export":
                         cfg.Export ??= new ExportConfig();
                         { var v = TryGetBool(data, "enableXml"); if (v.HasValue) cfg.Export.EnableXml = v.Value; }
@@ -496,6 +506,11 @@ public class IntegrationsFullConfig
 
     [JsonPropertyName("export")]
     public ExportConfig? Export { get; set; }
+
+    /// <summary>Which provider is active ("none" | "erp" | "pressero" | "mdsf").
+    /// Only the active provider may have <c>Enabled = true</c>.</summary>
+    [JsonPropertyName("activeProvider")]
+    public string ActiveProvider { get; set; } = "none";
 }
 
 public class XmlImportConfig

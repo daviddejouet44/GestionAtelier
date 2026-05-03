@@ -498,15 +498,15 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
 
         const btnPrisma = document.createElement("button");
         btnPrisma.className = "btn btn-sm btn-primary";
-        btnPrisma.textContent = "Ouvrir dans PrismaPrepare";
-        btnPrisma.onclick = async (e) => {
+        btnPrisma.textContent = "⬇️ Télécharger PDF";
+        btnPrisma.onclick = (e) => {
           e.stopPropagation();
-          const r = await fetch("/api/jobs/open-in-prismaprepare", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fullPath: full })
-          }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
-          if (!r.ok) showNotification("❌ " + (r.error || "Erreur"), "error");
+          const a = document.createElement("a");
+          a.href = "/api/file?path=" + encodeURIComponent(full) + "&download=true";
+          a.download = full.split(/[\\/]/).pop();
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
         };
         if (isActionVisible(folderName, "prismaPrepare")) actions.appendChild(btnPrisma);
 

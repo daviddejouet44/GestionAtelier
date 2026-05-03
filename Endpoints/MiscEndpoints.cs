@@ -135,7 +135,7 @@ app.MapGet("/api/folders", () =>
 // API — FILE
 // ======================================================
 
-app.MapGet("/api/file", (string path) =>
+app.MapGet("/api/file", (string path, bool? download) =>
 {
     var full = Path.GetFullPath(path);
     if (!File.Exists(full))
@@ -145,6 +145,8 @@ app.MapGet("/api/file", (string path) =>
     if (!provider.TryGetContentType(full, out var ct))
         ct = "application/octet-stream";
 
+    if (download == true)
+        return Results.File(File.OpenRead(full), ct, Path.GetFileName(full));
     return Results.File(File.OpenRead(full), ct);
 });
 
