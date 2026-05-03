@@ -39,6 +39,14 @@ var recyclePath    = builder.Configuration["RecycleBin:Path"] ?? Path.Combine(ho
 var recycleDays    = int.TryParse(builder.Configuration["RecycleBin:DaysToKeep"], out var d) ? d : 7;
 Directory.CreateDirectory(recyclePath);
 
+// Remove form body size limit so large PDF uploads in coupled submission are not rejected
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
+{
+    o.MultipartBodyLengthLimit = long.MaxValue;
+    o.ValueLengthLimit         = int.MaxValue;
+    o.ValueCountLimit          = int.MaxValue;
+});
+
 builder.Services.AddHostedService<GestionAtelier.Services.DailyReportService>();
 builder.Services.AddSingleton<GestionAtelier.Services.OrderSourcePollingService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GestionAtelier.Services.OrderSourcePollingService>());

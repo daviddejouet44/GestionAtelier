@@ -30,7 +30,10 @@
     <PackageReference Include="MongoDB.Driver" Version="3.7.1" />
     <PackageReference Include="QRCoder" Version="1.6.0" />
     <PackageReference Include="QuestPDF" Version="2024.3.1" />
-    <PackageReference Include="MailKit" Version="4.3.0" />
+    <PackageReference Include="MailKit" Version="4.9.0">
+      <!-- GHSA-9j88-vvj5-vhgr is fixed in MailKit ≥ 4.7.0; NuGet audit data may lag behind. -->
+      <NoWarn>NU1902</NoWarn>
+    </PackageReference>
     <PackageReference Include="SSH.NET" Version="2024.2.0" />
   </ItemGroup>
 </Project>

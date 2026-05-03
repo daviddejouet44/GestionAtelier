@@ -68,7 +68,9 @@ async function updateGlobalAlert() {
       isProductionTabActive
         ? fetch("/api/alerts/production-delay").then(r => r.json()).catch(() => ({ ok: false, groups: [] }))
         : Promise.resolve({ ok: false, groups: [] }),
-      fetch("/api/alerts/bat-pending").then(r => r.json()).catch(() => [])
+      isProductionTabActive
+        ? fetch("/api/alerts/bat-pending").then(r => r.json()).catch(() => [])
+        : Promise.resolve([])
     ]);
 
     const delayGroups = (delayResp.ok && Array.isArray(delayResp.groups)) ? delayResp.groups : [];

@@ -70,10 +70,36 @@ function safeDomId(key) {
 export async function renderSettingsIntegrations(panel) {
   panel.innerHTML = `
     <h3>Intégrations — Import &amp; Export</h3>
-    <p style="color:#6b7280;font-size:13px;margin-bottom:20px;">
+    <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
       Configurez les sources d'import automatique de la fiche de production (XML, ERP, Web-to-Print)
       et les destinations d'export des commandes.
     </p>
+
+    <!-- ▶ Fournisseur actif — mutuellement exclusif ─────────────────────── -->
+    <div class="settings-section-card" style="margin-bottom:16px;background:#fafafa;">
+      <h4 style="margin-top:0;">🔌 Fournisseur d'intégration externe actif</h4>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:12px;">
+        Vous ne pouvez activer qu'un seul fournisseur à la fois (ERP, Pressero ou MDSF).
+        Sélectionnez celui qui est utilisé dans votre atelier.
+      </p>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;" id="active-provider-radios">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
+          <input type="radio" name="active-provider" value="none" /> Aucun
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
+          <input type="radio" name="active-provider" value="erp" /> 🔗 ERP / Import auto
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
+          <input type="radio" name="active-provider" value="pressero" /> 🌐 Pressero
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;">
+          <input type="radio" name="active-provider" value="mdsf" /> 🌐 MDSF
+        </label>
+      </div>
+      <div id="active-provider-msg" style="margin-top:8px;font-size:13px;"></div>
+    </div>
+    <!-- ──────────────────────────────────────────────────────────────────── -->
+
     <div class="settings-tabs" id="integ-tabs" style="margin-bottom:20px;">
       <button class="settings-tab active" data-itab="xml-import">📥 Import XML</button>
       <button class="settings-tab" data-itab="erp-import">🔗 ERP / Import auto</button>
@@ -96,17 +122,69 @@ export async function renderSettingsIntegrations(panel) {
     if (r.ok && r.config) cfg = r.config;
   } catch(e) { /* use defaults */ }
 
+  // Determine current active provider from config
+  let activeProvider = cfg.activeProvider || 'none';
+  // Back-compat: if a provider has enabled=true but activeProvider isn't set, detect it
+  if (activeProvider === 'none') {
+    if (cfg.erp?.enabled)      activeProvider = 'erp';
+    else if (cfg.pressero?.enabled) activeProvider = 'pressero';
+    else if (cfg.mdsf?.enabled)     activeProvider = 'mdsf';
+  }
+
+  // Set the radio button
+  const setProviderRadio = (val) => {
+    panel.querySelectorAll('input[name="active-provider"]').forEach(r => {
+      r.checked = r.value === val;
+    });
+  };
+  setProviderRadio(activeProvider);
+
+  // When a radio changes: save & refresh the current tab
+  panel.querySelectorAll('input[name="active-provider"]').forEach(radio => {
+    radio.onchange = async () => {
+      const prev = activeProvider;
+      activeProvider = radio.value;
+      const msgEl = panel.querySelector('#active-provider-msg');
+      msgEl.style.color = '#6b7280'; msgEl.textContent = '⏳ Enregistrement…';
+      try {
+        const r = await fetch(API.config, {
+          method: 'PUT', headers: authJsonH(),
+          body: JSON.stringify({ section: 'activeProvider', data: { provider: activeProvider } })
+        }).then(r => r.json());
+        if (r.ok) {
+          cfg.activeProvider = activeProvider;
+          msgEl.style.color = '#16a34a';
+          msgEl.textContent = activeProvider === 'none'
+            ? '✅ Aucun fournisseur actif'
+            : `✅ Fournisseur actif : ${activeProvider.toUpperCase()}`;
+          // Re-render current tab so the enabled state reflects the change
+          const activeTab = panel.querySelector('.settings-tab.active[data-itab]');
+          if (activeTab && activeTab.dataset.itab) showIntegTab(activeTab.dataset.itab);
+        } else {
+          msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ ' + (r.error || 'Erreur');
+          activeProvider = prev;
+          setProviderRadio(prev);
+        }
+      } catch {
+        msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ Erreur réseau';
+        activeProvider = prev;
+        setProviderRadio(prev);
+      }
+    };
+  });
+
   const integPanel = panel.querySelector('#integ-panel');
 
   function showIntegTab(tabId) {
     panel.querySelectorAll('.settings-tab[data-itab]').forEach(t => {
       t.classList.toggle('active', t.dataset.itab === tabId);
     });
+    // Pass activeProvider to the provider tabs so they can disable the checkbox
     switch(tabId) {
       case 'xml-import':    renderXmlImportTab(integPanel, cfg); break;
-      case 'erp-import':    renderErpImportTab(integPanel, cfg); break;
-      case 'pressero':      renderPresseroTab(integPanel, cfg); break;
-      case 'mdsf':          renderMdsfTab(integPanel, cfg); break;
+      case 'erp-import':    renderErpImportTab(integPanel, cfg, activeProvider); break;
+      case 'pressero':      renderPresseroTab(integPanel, cfg, activeProvider); break;
+      case 'mdsf':          renderMdsfTab(integPanel, cfg, activeProvider); break;
       case 'export':        renderExportTab(integPanel, cfg); break;
       case 'import-log':    renderImportLogTab(integPanel); break;
       case 'export-log':    renderExportLogTab(integPanel); break;
@@ -252,20 +330,27 @@ async function renderXmlImportTab(panel, cfg) {
 // ======================================================
 // ERP IMPORT
 // ======================================================
-function renderErpImportTab(panel, cfg) {
+function renderErpImportTab(panel, cfg, activeProvider = 'none') {
   const erpCfg = cfg.erp || {};
+  const isActive = activeProvider === 'erp';
+  const inactiveNote = !isActive
+    ? `<div style="background:#fef9c3;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:13px;color:#92400e;">
+        ⚠️ L'ERP n'est pas le fournisseur actif. Sélectionnez "<strong>ERP / Import auto</strong>" dans la section ci-dessus pour l'activer.
+       </div>`
+    : '';
   panel.innerHTML = `
     <div class="settings-section-card">
       <h4>Connexion ERP / Source externe</h4>
+      ${inactiveNote}
       <p style="color:#6b7280;font-size:13px;margin-bottom:14px;">
         Configurez la connexion à votre ERP ou logiciel tiers pour importer automatiquement les commandes.
       </p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;max-width:700px;">
         <div>
           <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Activé</label>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-            <input type="checkbox" id="erp-enabled" ${erpCfg.enabled ? 'checked' : ''} style="width:16px;height:16px;" />
-            <span style="font-size:13px;">Activer l'import ERP</span>
+          <label style="display:flex;align-items:center;gap:8px;cursor:${isActive ? 'pointer' : 'not-allowed'};">
+            <input type="checkbox" id="erp-enabled" ${isActive && erpCfg.enabled ? 'checked' : ''} ${!isActive ? 'disabled' : ''} style="width:16px;height:16px;" />
+            <span style="font-size:13px;color:${isActive ? 'inherit' : '#9ca3af'};">Activer l'import ERP${!isActive ? ' (sélectionnez ERP comme fournisseur actif)' : ''}</span>
           </label>
         </div>
         <div>
@@ -307,8 +392,10 @@ function renderErpImportTab(panel, cfg) {
 
   panel.querySelector('#erp-save').onclick = async () => {
     const msgEl = panel.querySelector('#erp-msg');
+    // Enforce exclusivity: only save enabled=true if this provider is active
+    const enabled = isActive && panel.querySelector('#erp-enabled').checked;
     const data = {
-      enabled: panel.querySelector('#erp-enabled').checked,
+      enabled,
       format:  panel.querySelector('#erp-format').value,
       url:     panel.querySelector('#erp-url').value.trim(),
       apiKey:  panel.querySelector('#erp-apikey').value,
@@ -343,20 +430,27 @@ function renderErpImportTab(panel, cfg) {
 // ======================================================
 // PRESSERO
 // ======================================================
-function renderPresseroTab(panel, cfg) {
+function renderPresseroTab(panel, cfg, activeProvider = 'none') {
   const pCfg = cfg.pressero || {};
+  const isActive = activeProvider === 'pressero';
+  const inactiveNote = !isActive
+    ? `<div style="background:#fef9c3;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:13px;color:#92400e;">
+        ⚠️ Pressero n'est pas le fournisseur actif. Sélectionnez "<strong>Pressero</strong>" dans la section ci-dessus pour l'activer.
+       </div>`
+    : '';
   panel.innerHTML = `
     <div class="settings-section-card">
       <h4>Pressero (Web-to-Print)</h4>
+      ${inactiveNote}
       <p style="color:#6b7280;font-size:13px;margin-bottom:14px;">
         Configurez la connexion à Pressero pour importer les commandes W2P et/ou renvoyer les statuts.
       </p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;max-width:700px;">
         <div>
           <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Activé</label>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-            <input type="checkbox" id="pressero-enabled" ${pCfg.enabled ? 'checked' : ''} />
-            <span style="font-size:13px;">Activer l'intégration Pressero</span>
+          <label style="display:flex;align-items:center;gap:8px;cursor:${isActive ? 'pointer' : 'not-allowed'};">
+            <input type="checkbox" id="pressero-enabled" ${isActive && pCfg.enabled ? 'checked' : ''} ${!isActive ? 'disabled' : ''} />
+            <span style="font-size:13px;color:${isActive ? 'inherit' : '#9ca3af'};">Activer l'intégration Pressero${!isActive ? ' (sélectionnez Pressero comme fournisseur actif)' : ''}</span>
           </label>
         </div>
         <div>
@@ -393,8 +487,9 @@ function renderPresseroTab(panel, cfg) {
 
   panel.querySelector('#pressero-save').onclick = async () => {
     const msgEl = panel.querySelector('#pressero-msg');
+    const enabled = isActive && panel.querySelector('#pressero-enabled').checked;
     const data = {
-      enabled: panel.querySelector('#pressero-enabled').checked,
+      enabled,
       apiUrl: panel.querySelector('#pressero-url').value.trim(),
       apiKey: panel.querySelector('#pressero-apikey').value || pCfg.apiKey || '',
       apiSecret: panel.querySelector('#pressero-secret').value || pCfg.apiSecret || '',
@@ -422,20 +517,27 @@ function renderPresseroTab(panel, cfg) {
 // ======================================================
 // MDSF (Market Direct Store Front)
 // ======================================================
-function renderMdsfTab(panel, cfg) {
+function renderMdsfTab(panel, cfg, activeProvider = 'none') {
   const mCfg = cfg.mdsf || {};
+  const isActive = activeProvider === 'mdsf';
+  const inactiveNote = !isActive
+    ? `<div style="background:#fef9c3;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:13px;color:#92400e;">
+        ⚠️ MDSF n'est pas le fournisseur actif. Sélectionnez "<strong>MDSF</strong>" dans la section ci-dessus pour l'activer.
+       </div>`
+    : '';
   panel.innerHTML = `
     <div class="settings-section-card">
       <h4>Market Direct StoreFront (MDSF)</h4>
+      ${inactiveNote}
       <p style="color:#6b7280;font-size:13px;margin-bottom:14px;">
         Configurez la connexion à Market Direct StoreFront pour synchroniser les commandes.
       </p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;max-width:700px;">
         <div>
           <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Activé</label>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-            <input type="checkbox" id="mdsf-enabled" ${mCfg.enabled ? 'checked' : ''} />
-            <span style="font-size:13px;">Activer l'intégration MDSF</span>
+          <label style="display:flex;align-items:center;gap:8px;cursor:${isActive ? 'pointer' : 'not-allowed'};">
+            <input type="checkbox" id="mdsf-enabled" ${isActive && mCfg.enabled ? 'checked' : ''} ${!isActive ? 'disabled' : ''} />
+            <span style="font-size:13px;color:${isActive ? 'inherit' : '#9ca3af'};">Activer l'intégration MDSF${!isActive ? ' (sélectionnez MDSF comme fournisseur actif)' : ''}</span>
           </label>
         </div>
         <div>
@@ -472,8 +574,9 @@ function renderMdsfTab(panel, cfg) {
 
   panel.querySelector('#mdsf-save').onclick = async () => {
     const msgEl = panel.querySelector('#mdsf-msg');
+    const enabled = isActive && panel.querySelector('#mdsf-enabled').checked;
     const data = {
-      enabled: panel.querySelector('#mdsf-enabled').checked,
+      enabled,
       apiUrl: panel.querySelector('#mdsf-url').value.trim(),
       apiKey: panel.querySelector('#mdsf-apikey').value || mCfg.apiKey || '',
       storeId: panel.querySelector('#mdsf-storeid').value.trim(),

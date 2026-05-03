@@ -479,7 +479,7 @@ public static class PortalAdminEndpoints
         // Portal email templates
         // =====================================================================
         var portalTemplateKeys = new[] {
-            "client_welcome", "client_password_reset", "client_order_received",
+            "client_welcome", "client_invitation", "client_password_reset", "client_order_received",
             "client_bat_available", "client_order_status_changed",
             "atelier_client_bat_validated", "atelier_client_bat_refused", "atelier_new_client_order"
         };
@@ -651,6 +651,178 @@ public static class PortalAdminEndpoints
                 allowedValues = f.AllowedValues
             }).ToList();
             return Results.Json(new { ok = true, fields = visible });
+        });
+
+        // =====================================================================
+        // Portal client steps (Kanban tile → client-facing stage mapping)
+        // =====================================================================
+
+        // GET /api/admin/portal/client-steps
+        app.MapGet("/api/admin/portal/client-steps", (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            var saved = MongoDbHelper.GetSettings<PortalClientStepsConfig>("portalClientSteps") ?? new PortalClientStepsConfig();
+            var kanbanCfg = MongoDbHelper.GetSettings<KanbanSettings>("kanbanColumns") ?? new KanbanSettings();
+
+            // Merge: for each Kanban column, pick the saved step or build a default
+            var savedMap = saved.Steps.ToDictionary(s => s.KanbanFolder, s => s);
+            var steps = kanbanCfg.Columns
+                .OrderBy(c => c.Order)
+                .Select((c, i) =>
+                {
+                    var sv = savedMap.TryGetValue(c.Folder, out var s) ? s : null;
+                    return new PortalClientStep
+                    {
+                        KanbanFolder = c.Folder,
+                        ClientLabel  = sv?.ClientLabel ?? c.Label,
+                        Visible      = sv?.Visible ?? false,
+                        Order        = sv?.Order ?? i
+                    };
+                })
+                .OrderBy(s => s.Order)
+                .ToList();
+
+            return Results.Json(new { ok = true, steps });
+        });
+
+        // PUT /api/admin/portal/client-steps
+        app.MapPut("/api/admin/portal/client-steps", async (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            try
+            {
+                var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+                if (!json.TryGetProperty("steps", out var stepsEl) || stepsEl.ValueKind != JsonValueKind.Array)
+                    return Results.Json(new { ok = false, error = "steps manquant" });
+
+                var steps = new List<PortalClientStep>();
+                int idx = 0;
+                foreach (var s in stepsEl.EnumerateArray())
+                {
+                    var folder = s.TryGetProperty("kanbanFolder", out var fEl) ? fEl.GetString() ?? "" : "";
+                    if (string.IsNullOrWhiteSpace(folder)) continue;
+                    steps.Add(new PortalClientStep
+                    {
+                        KanbanFolder = folder,
+                        ClientLabel  = s.TryGetProperty("clientLabel", out var lEl) ? lEl.GetString() ?? "" : "",
+                        Visible      = s.TryGetProperty("visible",      out var vEl) ? vEl.GetBoolean() : false,
+                        Order        = s.TryGetProperty("order",        out var oEl) ? oEl.GetInt32()   : idx
+                    });
+                    idx++;
+                }
+
+                MongoDbHelper.UpsertSettings("portalClientSteps", new PortalClientStepsConfig { Steps = steps });
+                return Results.Json(new { ok = true });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // GET /api/portal/config/client-steps  (public — used by client portal pages)
+        app.MapGet("/api/portal/config/client-steps", () =>
+        {
+            var cfg = MongoDbHelper.GetSettings<PortalClientStepsConfig>("portalClientSteps") ?? new PortalClientStepsConfig();
+            var visibleSteps = cfg.Steps
+                .Where(s => s.Visible)
+                .OrderBy(s => s.Order)
+                .Select(s => new { kanbanFolder = s.KanbanFolder, clientLabel = string.IsNullOrWhiteSpace(s.ClientLabel) ? s.KanbanFolder : s.ClientLabel })
+                .ToList();
+            return Results.Json(new { ok = true, steps = visibleSteps });
+        });
+
+        // =====================================================================
+        // Client invitation (sends activation link by email)
+        // =====================================================================
+
+        // POST /api/admin/portal/clients/{id}/invite
+        app.MapPost("/api/admin/portal/clients/{id}/invite", async (HttpContext ctx, string id) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            try
+            {
+                var col = MongoDbHelper.GetCollection<BsonDocument>("client_accounts");
+                var doc = col.Find(Builders<BsonDocument>.Filter.Eq("id", id)).FirstOrDefault();
+                if (doc == null) return Results.Json(new { ok = false, error = "Client non trouvé" });
+
+                var client = PortalAuthEndpoints.DocToClient(doc);
+
+                // Generate invitation token (48h validity) with high-entropy random bytes
+                var tokenBytes = new byte[32];
+                System.Security.Cryptography.RandomNumberGenerator.Fill(tokenBytes);
+                var token  = Convert.ToHexString(tokenBytes).ToLowerInvariant();
+                var expiry = DateTime.UtcNow.AddHours(48);
+
+                col.UpdateOne(
+                    Builders<BsonDocument>.Filter.Eq("id", id),
+                    Builders<BsonDocument>.Update
+                        .Set("inviteToken",  token)
+                        .Set("inviteExpiry", expiry)
+                        .Set("enabled",      true));
+
+                var settings   = MongoDbHelper.GetSettings<PortalSettings>("portalSettings") ?? new PortalSettings();
+                var portalUrl  = (settings.PortalUrl ?? "").TrimEnd('/');
+                var activateLink = $"{portalUrl}/portal/activate.html?token={token}";
+
+                var vars = new Dictionary<string, string>
+                {
+                    ["{clientName}"]   = client.DisplayName.Length > 0 ? client.DisplayName : client.Email,
+                    ["{email}"]        = client.Email,
+                    ["{activateLink}"] = activateLink,
+                    ["{portalLink}"]   = portalUrl
+                };
+                var (subj, body) = PortalEmailHelper.RenderTemplate(
+                    "client_invitation",
+                    "Invitation à votre espace client",
+                    "Bonjour {clientName},\n\nVous avez été invité à accéder à votre espace client.\n\nCliquez sur le lien ci-dessous pour activer votre accès et définir votre mot de passe (lien valable 48h) :\n{activateLink}\n\nEmail de connexion : {email}\n\nCordialement,",
+                    vars);
+
+                PortalEmailHelper.SendEmail(client.Email, subj, body);
+                return Results.Json(new { ok = true, email = client.Email });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // POST /api/portal/auth/activate  (public — client sets password via invite token)
+        app.MapPost("/api/portal/auth/activate", async (HttpContext ctx) =>
+        {
+            try
+            {
+                var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+                var token  = json.TryGetProperty("token",    out var tEl) ? tEl.GetString()  ?? "" : "";
+                var newPwd = json.TryGetProperty("password", out var pEl) ? pEl.GetString()  ?? "" : "";
+
+                if (string.IsNullOrWhiteSpace(token))
+                    return Results.Json(new { ok = false, error = "Token manquant" });
+                if (string.IsNullOrWhiteSpace(newPwd) || newPwd.Length < 8)
+                    return Results.Json(new { ok = false, error = "Le mot de passe doit contenir au moins 8 caractères" });
+
+                var col = MongoDbHelper.GetCollection<BsonDocument>("client_accounts");
+                var doc = col.Find(Builders<BsonDocument>.Filter.Eq("inviteToken", token)).FirstOrDefault();
+                if (doc == null)
+                    return Results.Json(new { ok = false, error = "Lien invalide ou déjà utilisé" });
+
+                var expiry = doc.Contains("inviteExpiry") && !doc["inviteExpiry"].IsBsonNull
+                    ? doc["inviteExpiry"].ToUniversalTime()
+                    : (DateTime?)null;
+                if (!expiry.HasValue || expiry.Value < DateTime.UtcNow)
+                    return Results.Json(new { ok = false, error = "Ce lien d'invitation a expiré" });
+
+                var hash     = BCrypt.Net.BCrypt.HashPassword(newPwd);
+                var clientId = doc["id"].AsString;
+
+                col.UpdateOne(
+                    Builders<BsonDocument>.Filter.Eq("id", clientId),
+                    Builders<BsonDocument>.Update
+                        .Set("passwordHash",          hash)
+                        .Set("inviteToken",           BsonNull.Value)
+                        .Set("inviteExpiry",          BsonNull.Value)
+                        .Set("failedLoginAttempts",   0)
+                        .Set("lockedUntil",           BsonNull.Value));
+
+                var email = doc["email"].AsString;
+                var portalToken = PortalAuthEndpoints.MakePortalToken(clientId, email);
+                return Results.Json(new { ok = true, token = portalToken, email });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
         });
     }
 }

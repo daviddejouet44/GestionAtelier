@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Activation de votre compte — Espace client</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/portal/css/portal.css" />
+</head>
+<body class="portal-login-page">
+  <div class="portal-login-card">
+    <div class="portal-login-logo">
+      <img id="login-logo" src="/api/logo-login" alt="Logo" onerror="this.style.display='none'" />
+      <h2>Activation de votre compte</h2>
+    </div>
+
+    <div id="activate-view">
+      <p style="color:#6b7280;font-size:14px;margin-bottom:16px;">Choisissez un mot de passe pour accéder à votre espace client.</p>
+      <div id="activate-error" class="alert alert-error hidden"></div>
+      <div id="activate-success" class="alert alert-success hidden"></div>
+      <form id="activate-form">
+        <div class="form-group">
+          <label for="new-password">Nouveau mot de passe</label>
+          <input type="password" id="new-password" class="form-control" placeholder="Minimum 8 caractères" required autocomplete="new-password" />
+        </div>
+        <div class="form-group">
+          <label for="confirm-password">Confirmer le mot de passe</label>
+          <input type="password" id="confirm-password" class="form-control" placeholder="Répétez le mot de passe" required autocomplete="new-password" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-full" id="btn-activate">Activer mon compte</button>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { applyPortalTheme, storeToken, storeClient } from '/portal/js/portal-core.js';
+
+    // Apply portal theme
+    applyPortalTheme();
+
+    const params = new URLSearchParams(location.search);
+    const token  = params.get('token') || '';
+
+    if (!token) {
+      document.getElementById('activate-error').textContent = 'Lien invalide — aucun token présent.';
+      document.getElementById('activate-error').classList.remove('hidden');
+      document.getElementById('activate-form').style.display = 'none';
+    }
+
+    document.getElementById('activate-form').onsubmit = async (e) => {
+      e.preventDefault();
+      const errEl = document.getElementById('activate-error');
+      const okEl  = document.getElementById('activate-success');
+      errEl.classList.add('hidden');
+      okEl.classList.add('hidden');
+
+      const pwd  = document.getElementById('new-password').value;
+      const pwd2 = document.getElementById('confirm-password').value;
+
+      if (pwd.length < 8) { errEl.textContent = 'Le mot de passe doit contenir au moins 8 caractères.'; errEl.classList.remove('hidden'); return; }
+      if (pwd !== pwd2)   { errEl.textContent = 'Les mots de passe ne correspondent pas.'; errEl.classList.remove('hidden'); return; }
+
+      const btn = document.getElementById('btn-activate');
+      btn.disabled = true;
+      btn.textContent = '⏳ Activation…';
+
+      try {
+        const r = await fetch('/api/portal/auth/activate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, password: pwd })
+        }).then(r => r.json());
+
+        if (r.ok) {
+          // Store token using the shared portal-core helpers (consistent with login.html)
+          storeToken(r.token);
+          if (r.email) storeClient({ email: r.email });
+          okEl.textContent = '✅ Compte activé ! Redirection en cours…';
+          okEl.classList.remove('hidden');
+          document.getElementById('activate-form').style.display = 'none';
+          setTimeout(() => { location.href = '/portal/orders.html'; }, 1500);
+        } else {
+          errEl.textContent = r.error || 'Erreur lors de l\'activation.';
+          errEl.classList.remove('hidden');
+          btn.disabled = false;
+          btn.textContent = 'Activer mon compte';
+        }
+      } catch {
+        errEl.textContent = 'Erreur réseau. Veuillez réessayer.';
+        errEl.classList.remove('hidden');
+        btn.disabled = false;
+        btn.textContent = 'Activer mon compte';
+      }
+    };
+  </script>
+</body>
+</html>

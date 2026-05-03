@@ -306,3 +306,28 @@ public class FabricationFormConfig
     [JsonPropertyName("sections")]
     public List<string> Sections { get; set; } = new();
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Portal: client-facing steps (Kanban tile → stage visible to the client)
+// ──────────────────────────────────────────────────────────────────────────────
+public class PortalClientStep
+{
+    [JsonPropertyName("kanbanFolder")]
+    public string KanbanFolder { get; set; } = "";
+
+    /// <summary>Label shown to the client (can differ from the internal Kanban tile name).</summary>
+    [JsonPropertyName("clientLabel")]
+    public string ClientLabel { get; set; } = "";
+
+    [JsonPropertyName("visible")]
+    public bool Visible { get; set; } = false;
+
+    [JsonPropertyName("order")]
+    public int Order { get; set; } = 0;
+}
+
+public class PortalClientStepsConfig
+{
+    [JsonPropertyName("steps")]
+    public List<PortalClientStep> Steps { get; set; } = new();
+}

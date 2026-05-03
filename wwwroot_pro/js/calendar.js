@@ -519,8 +519,11 @@ export async function initCalendar() {
       try {
         const fullPath = normalizePath(info.event.extendedProps.fullPath);
         const fk = fnKey(fullPath);
-        const newDate = info.event.startStr.split('T')[0];
-        const newTime = info.event.startStr.split('T')[1]?.substring(0, 5) || "09:00";
+        // Use event.start (JS Date) to extract local date/time — avoids timezone offset issues
+        // that can occur when parsing startStr (e.g. UTC date ≠ local date near midnight).
+        const startLocal = info.event.start;
+        const newDate = startLocal.toLocaleDateString('sv-SE'); // always YYYY-MM-DD in local TZ
+        const newTime = String(startLocal.getHours()).padStart(2, '0') + ':' + String(startLocal.getMinutes()).padStart(2, '0');
 
         if (info.event.extendedProps.isFabEvent) {
           // Save manual time for fabrication key-date event
@@ -811,8 +814,10 @@ export async function initSubmissionCalendar() {
       try {
         const fullPath = normalizePath(info.event.extendedProps.fullPath);
         const fk = fnKey(fullPath);
-        const newDate = info.event.startStr.split('T')[0];
-        const newTime = info.event.startStr.split('T')[1]?.substring(0, 5) || "09:00";
+        // Use event.start (JS Date) to extract local date/time — avoids timezone issues near midnight.
+        const startLocal = info.event.start;
+        const newDate = startLocal.toLocaleDateString('sv-SE'); // YYYY-MM-DD in local TZ
+        const newTime = String(startLocal.getHours()).padStart(2, '0') + ':' + String(startLocal.getMinutes()).padStart(2, '0');
 
         if (info.event.extendedProps.isFabEvent) {
           // Update dateReceptionSouhaitee in the fabrication record
