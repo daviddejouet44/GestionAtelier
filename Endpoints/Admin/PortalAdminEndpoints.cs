@@ -464,10 +464,12 @@ public static class PortalAdminEndpoints
 
                         // Check if a step-specific email template is configured for this status
                         var stepsCfg = MongoDbHelper.GetSettings<PortalClientStepsConfig>("portalClientSteps");
-                        var matchedStep = stepsCfg?.Steps.FirstOrDefault(s =>
-                            string.Equals(s.KanbanFolder, status, StringComparison.OrdinalIgnoreCase));
-                        var templateKey = !string.IsNullOrWhiteSpace(matchedStep?.EmailTemplateKey)
-                            ? matchedStep.EmailTemplateKey
+                        var stepsMap = stepsCfg?.Steps.ToDictionary(
+                            s => s.KanbanFolder.ToLowerInvariant(),
+                            s => s.EmailTemplateKey) ?? new Dictionary<string, string>();
+                        stepsMap.TryGetValue(status.ToLowerInvariant(), out var mappedTemplate);
+                        var templateKey = !string.IsNullOrWhiteSpace(mappedTemplate)
+                            ? mappedTemplate
                             : "client_order_status_changed";
 
                         var (subj, body) = PortalEmailHelper.RenderTemplate(templateKey,

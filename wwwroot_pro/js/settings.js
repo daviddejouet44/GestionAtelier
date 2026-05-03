@@ -326,7 +326,7 @@ async function renderSettingsKanbanActions(panel) {
     row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:13px;color:#374151;';
     row.innerHTML = `
       <input type="checkbox" class="act-enabled" ${a.enabled !== false ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer;" />
-      <span style="font-weight:500;">${esc(a.label)}</span>
+      <span class="act-label" style="font-weight:500;">${esc(a.label)}</span>
       <span style="color:#9ca3af;font-size:11px;">(${esc(a.id)})</span>
     `;
     listEl.appendChild(row);
@@ -338,7 +338,7 @@ async function renderSettingsKanbanActions(panel) {
     const rows = Array.from(listEl.querySelectorAll('.actions-cfg-row'));
     const updatedActions = rows.map(r => ({
       id:      r.dataset.id,
-      label:   r.querySelector('span').textContent,
+    label:   r.querySelector('span.act-label').textContent,
       enabled: r.querySelector('.act-enabled').checked
     }));
     try {

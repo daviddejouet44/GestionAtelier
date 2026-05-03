@@ -63,10 +63,20 @@ public static class XmlParserHelper
             }
             catch (XmlException)
             {
-                // Re-read as Latin-1.
-                var enc = Encoding.Latin1;
-                var xmlString = enc.GetString(raw);
-                return XDocument.Parse(xmlString);
+                // Last attempt: read as Latin-1.
+                try
+                {
+                    var enc = Encoding.Latin1;
+                    var xmlString = enc.GetString(raw);
+                    return XDocument.Parse(xmlString);
+                }
+                catch (XmlException lastEx)
+                {
+                    throw new XmlException(
+                        $"Impossible de parser le XML (UTF-8, Windows-1252, Latin-1 tous échoués). " +
+                        $"Vérifiez que le fichier est bien un XML valide. Dernière erreur : {lastEx.Message}",
+                        lastEx);
+                }
             }
         }
     }
