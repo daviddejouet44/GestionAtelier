@@ -311,9 +311,13 @@ function _showLivraisonConfirmPopup(newDate) {
 
     const cleanup = () => document.body.removeChild(overlay);
 
-    panel.querySelector('#_liv-yes').onclick = () => { cleanup(); resolve(true); };
-    panel.querySelector('#_liv-no').onclick  = () => { cleanup(); resolve(false); };
-    panel.querySelector('#_liv-cancel').onclick = () => { cleanup(); resolve(null); };
+    const yesBtn    = panel.querySelector('#_liv-yes');
+    const noBtn     = panel.querySelector('#_liv-no');
+    const cancelBtn = panel.querySelector('#_liv-cancel');
+
+    if (yesBtn)    yesBtn.onclick    = () => { cleanup(); resolve(true); };
+    if (noBtn)     noBtn.onclick     = () => { cleanup(); resolve(false); };
+    if (cancelBtn) cancelBtn.onclick = () => { cleanup(); resolve(null); };
     overlay.onclick = (e) => { if (e.target === overlay) { cleanup(); resolve(null); } };
   });
 }

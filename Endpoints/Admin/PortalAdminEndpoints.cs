@@ -588,7 +588,7 @@ public static class PortalAdminEndpoints
             new() { Id = "recto",            Label = "Impression",               Type = "radio",    Visible = true,  Required = false, Critical = false, Order = 5 },
             new() { Id = "finitions",        Label = "Finitions souhaitées",     Type = "checkbox", Visible = true,  Required = false, Critical = false, Order = 6 },
             new() { Id = "type-travail",     Label = "Type de travail",          Type = "select",   Visible = false, Required = false, Critical = false, Order = 7 },
-            new() { Id = "pagination",       Label = "Pagination (nombre pages)",Type = "number",   Visible = false, Required = false, Critical = false, Order = 8 },
+            new() { Id = "pagination",       Label = "Pagination (nombre de pages)",Type = "number",   Visible = false, Required = false, Critical = false, Order = 8 },
             new() { Id = "encres",           Label = "Encres",                   Type = "text",     Visible = false, Required = false, Critical = false, Order = 9 },
             new() { Id = "format-feuille",   Label = "Format feuille machine",   Type = "text",     Visible = false, Required = false, Critical = false, Order = 10 },
             // ── Façonnage ──────────────────────────────────────────────────────

@@ -1244,8 +1244,8 @@ async function handleSubmissionFiles(files) {
     uploadZone.style.opacity = "1";
     uploadZone.style.pointerEvents = "auto";
 
-    // Clear any inline badges added to the upload zone
-    uploadZone.querySelectorAll(':scope > div').forEach(el => el.remove());
+    // Clear any transient upload-zone badges added during this upload session
+    uploadZone.querySelectorAll('.upload-xml-badge').forEach(el => el.remove());
 
     if (successCount > 0) {
       showNotification(`✅ ${successCount} envoi(s) réussi(s)`, "success");

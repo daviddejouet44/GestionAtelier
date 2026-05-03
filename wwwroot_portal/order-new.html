@@ -576,7 +576,7 @@
             comments: document.getElementById('comments')?.value.trim() || '',
             // Extended fields (shown only when configured visible by admin)
             typeTravail:      document.getElementById('type-travail')?.value.trim() || undefined,
-            pagination:       document.getElementById('pagination')?.value ? parseInt(document.getElementById('pagination').value) : undefined,
+            pagination:       (() => { const el = document.getElementById('pagination'); return el?.value ? parseInt(el.value) : undefined; })(),
             encres:           document.getElementById('encres')?.value.trim() || undefined,
             formatFeuille:    document.getElementById('format-feuille')?.value.trim() || undefined,
             formeDecoupe:     document.getElementById('forme-decoupe')?.value.trim() || undefined,
