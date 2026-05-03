@@ -324,10 +324,35 @@ public class PortalClientStep
 
     [JsonPropertyName("order")]
     public int Order { get; set; } = 0;
+
+    /// <summary>Optional email template key to send when an order reaches this step.</summary>
+    [JsonPropertyName("emailTemplateKey")]
+    public string EmailTemplateKey { get; set; } = "";
 }
 
 public class PortalClientStepsConfig
 {
     [JsonPropertyName("steps")]
     public List<PortalClientStep> Steps { get; set; } = new();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Kanban action menu configuration (which actions are shown in the Action dropdown)
+// ──────────────────────────────────────────────────────────────────────────────
+public class KanbanAction
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = "";
+
+    [JsonPropertyName("label")]
+    public string Label { get; set; } = "";
+
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; } = true;
+}
+
+public class KanbanActionsConfig
+{
+    [JsonPropertyName("actions")]
+    public List<KanbanAction> Actions { get; set; } = new();
 }

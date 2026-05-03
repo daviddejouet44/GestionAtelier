@@ -31,6 +31,15 @@ public static class SubmissionXmlEndpoints
             catch { return false; }
         }
 
+        // ── GET /api/soumission/upload-with-xml (informational — only POST is supported)
+        app.MapGet("/api/soumission/upload-with-xml", () =>
+            Results.Json(new
+            {
+                ok    = false,
+                error = "Cet endpoint n'accepte que la méthode POST avec un formulaire multipart (pdf + xml). " +
+                        "Utilisez la zone de dépôt de l'onglet Soumission pour importer vos fichiers."
+            }));
+
         // ── POST /api/soumission/upload-with-xml ─────────────────────────────
         // Accepts: multipart form with pdf[] (one or more) + xml (one)
         // Returns: { ok, fichePrefill, jobIds[] }
@@ -83,7 +92,7 @@ public static class SubmissionXmlEndpoints
                     try
                     {
                         using var stream = xmlFile.OpenReadStream();
-                        doc = XDocument.Load(stream);
+                        doc = XmlParserHelper.LoadSafely(stream);
                     }
                     catch (System.Xml.XmlException xmlEx)
                     {
@@ -94,27 +103,37 @@ public static class SubmissionXmlEndpoints
                         return Results.Json(new { ok = false, error = $"Impossible de lire le fichier XML ({xmlFile.FileName}) : {ex.Message}" });
                     }
 
-                    // Support flat <Order>, <Commande>, <Job> and wrapped structures
-                    var orderEl = doc.Descendants("Order")
-                                     .Concat(doc.Descendants("Commande"))
-                                     .Concat(doc.Descendants("Job"))
-                                     .FirstOrDefault()
-                                  ?? doc.Root;
-
-                    if (orderEl != null)
+                    // MasterPrint format: dedicated structured parser
+                    if (XmlParserHelper.IsMasterPrint(doc))
                     {
-                        // Apply configured mapping
-                        foreach (var kv in mapping)
+                        var commandeEl = doc.Descendants("Commande").FirstOrDefault();
+                        if (commandeEl != null)
+                            fichePrefill = XmlParserHelper.ParseMasterPrintCommande(commandeEl);
+                    }
+                    else
+                    {
+                        // Generic: support flat <Order>, <Commande>, <Job> and wrapped structures
+                        var orderEl = doc.Descendants("Order")
+                                         .Concat(doc.Descendants("Commande"))
+                                         .Concat(doc.Descendants("Job"))
+                                         .FirstOrDefault()
+                                      ?? doc.Root;
+
+                        if (orderEl != null)
                         {
-                            var xmlTag = kv.Value;
-                            var el = orderEl.Element(xmlTag) ?? orderEl.Descendants(xmlTag).FirstOrDefault();
-                            if (el != null) fichePrefill[kv.Key] = el.Value;
-                        }
-                        // Fallback: also map direct child tag names
-                        foreach (var el in orderEl.Elements())
-                        {
-                            if (!fichePrefill.ContainsKey(el.Name.LocalName))
-                                fichePrefill[el.Name.LocalName] = el.Value;
+                            // Apply configured mapping first
+                            foreach (var kv in mapping)
+                            {
+                                var xmlTag = kv.Value;
+                                var el = orderEl.Element(xmlTag) ?? orderEl.Descendants(xmlTag).FirstOrDefault();
+                                if (el != null) fichePrefill[kv.Key] = el.Value;
+                            }
+                            // Fallback: map direct child tag names (simple scalar elements only)
+                            foreach (var el in orderEl.Elements())
+                            {
+                                if (!fichePrefill.ContainsKey(el.Name.LocalName) && !el.HasElements)
+                                    fichePrefill[el.Name.LocalName] = el.Value;
+                            }
                         }
                     }
                 }

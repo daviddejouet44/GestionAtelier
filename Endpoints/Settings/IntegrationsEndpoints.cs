@@ -211,21 +211,37 @@ public static class IntegrationsEndpoints
                 var mapping = cfg.XmlImport?.Mapping ?? new Dictionary<string, string>();
                 var dedupKey = cfg.XmlImport?.DedupKey ?? "referenceCommande";
 
-                // Parse XML
+                // Parse XML (handles BOM + ISO-8859-1 / Windows-1252 encoding)
                 XDocument doc;
-                using (var stream = file.OpenReadStream())
-                    doc = XDocument.Load(stream);
+                try
+                {
+                    using var stream = file.OpenReadStream();
+                    doc = GestionAtelier.Services.XmlParserHelper.LoadSafely(stream);
+                }
+                catch (System.Xml.XmlException xmlEx)
+                {
+                    return Results.Json(new { ok = false, error = $"Fichier XML invalide ({file.FileName}) : {xmlEx.Message}" });
+                }
 
                 int imported = 0, updated = 0, duplicates = 0;
                 var fabCol = MongoDbHelper.GetCollection<BsonDocument>("fabrication");
                 var logCol = MongoDbHelper.GetCollection<BsonDocument>("integration_import_log");
 
-                // Support both flat <Order> and wrapped <Orders><Order> structures
-                var orderElements = doc.Descendants("Order")
-                    .Concat(doc.Descendants("Commande"))
-                    .Concat(doc.Descendants("Job"))
-                    .Distinct()
-                    .ToList();
+                // Detect MasterPrint format or fall back to generic element search
+                List<XElement> orderElements;
+                bool isMasterPrint = GestionAtelier.Services.XmlParserHelper.IsMasterPrint(doc);
+                if (isMasterPrint)
+                {
+                    orderElements = doc.Descendants("Commande").ToList();
+                }
+                else
+                {
+                    orderElements = doc.Descendants("Order")
+                        .Concat(doc.Descendants("Commande"))
+                        .Concat(doc.Descendants("Job"))
+                        .Distinct()
+                        .ToList();
+                }
 
                 if (orderElements.Count == 0)
                     return Results.Json(new { ok = false, error = "Aucun élément <Order>, <Commande> ou <Job> trouvé dans le XML" });
@@ -234,21 +250,31 @@ public static class IntegrationsEndpoints
                 {
                     var fiche = new BsonDocument();
 
-                    // Apply mapping: ficheField (kv.Key) → xmlTagName (kv.Value)
-                    foreach (var kv in mapping)
+                    if (isMasterPrint)
                     {
-                        var ficheField = kv.Key;   // target field in the fiche document
-                        var xmlTag = kv.Value;      // source XML element name
-                        var el = order.Element(xmlTag) ?? order.Descendants(xmlTag).FirstOrDefault();
-                        if (el != null)
-                            fiche[ficheField] = el.Value;
+                        // Use the dedicated MasterPrint parser
+                        var parsed = GestionAtelier.Services.XmlParserHelper.ParseMasterPrintCommande(order);
+                        foreach (var kv in parsed)
+                            fiche[kv.Key] = kv.Value;
                     }
-
-                    // Also try direct field names as fallback
-                    foreach (var el in order.Elements())
+                    else
                     {
-                        if (!fiche.Contains(el.Name.LocalName))
-                            fiche[el.Name.LocalName] = el.Value;
+                        // Apply configured mapping: ficheField (kv.Key) → xmlTagName (kv.Value)
+                        foreach (var kv in mapping)
+                        {
+                            var ficheField = kv.Key;
+                            var xmlTag = kv.Value;
+                            var el = order.Element(xmlTag) ?? order.Descendants(xmlTag).FirstOrDefault();
+                            if (el != null)
+                                fiche[ficheField] = el.Value;
+                        }
+
+                        // Also try direct field names as fallback (scalar elements only)
+                        foreach (var el in order.Elements())
+                        {
+                            if (!fiche.Contains(el.Name.LocalName) && !el.HasElements)
+                                fiche[el.Name.LocalName] = el.Value;
+                        }
                     }
 
                     fiche["importedAt"] = DateTime.UtcNow.ToString("O");

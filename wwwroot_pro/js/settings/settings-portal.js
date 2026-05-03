@@ -569,6 +569,32 @@ export async function renderSettingsPortal(panel) {
       else showNotification(r.error || 'Erreur', 'error');
     } catch { showNotification('Erreur réseau', 'error'); }
   };
+
+  // Direct per-row invite (used by the ✉️ button in each table row)
+  window.inviteClientById = async (id, email, btn) => {
+    const origText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳';
+    try {
+      const r = await fetch(`/api/admin/portal/clients/${id}/invite`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      }).then(r => r.json());
+      if (r.ok) {
+        showNotification(`✅ Invitation envoyée à ${email}`, 'success');
+        btn.textContent = '✅';
+        setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 3000);
+      } else {
+        showNotification('❌ ' + (r.error || 'Erreur'), 'error');
+        btn.textContent = origText;
+        btn.disabled = false;
+      }
+    } catch {
+      showNotification('❌ Erreur réseau', 'error');
+      btn.textContent = origText;
+      btn.disabled = false;
+    }
+  };
 }
 
 function renderFormFieldsList(panel, fields) {
@@ -681,6 +707,7 @@ function renderClientsTable(cls, panel) {
           <button class="btn btn-secondary btn-sm" onclick="editClient('${esc(c.id)}','${esc(c.email)}','${esc(c.displayName||'')}','${esc(c.companyName||'')}','${esc(c.contactPhone||'')}')">Modifier</button>
           <button class="btn btn-secondary btn-sm" onclick="toggleClient('${esc(c.id)}',${!c.enabled})">${c.enabled ? 'Désactiver' : 'Réactiver'}</button>
           <button class="btn btn-secondary btn-sm" onclick="resetClientPwd('${esc(c.id)}')">Reset MDP</button>
+          <button class="btn btn-sm" style="background:#f0fdf4;border:1px solid #86efac;color:#15803d;" onclick="inviteClientById('${esc(c.id)}', '${esc(c.email)}', this)" title="Envoyer un lien d'invitation par e-mail">✉️</button>
         </div>
       </td>
     </tr>`).join('');
@@ -708,11 +735,14 @@ async function loadPortalSteps(panel) {
   msgEl.textContent = '';
 
   let steps = [];
+  let emailTemplates = {};
   try {
-    const r = await fetch('/api/admin/portal/client-steps', {
-      headers: { 'Authorization': `Bearer ${authToken}` }
-    }).then(r => r.json());
-    if (r.ok) steps = r.steps || [];
+    const [rSteps, rTpl] = await Promise.all([
+      fetch('/api/admin/portal/client-steps',   { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
+      fetch('/api/admin/portal/email-templates', { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
+    ]);
+    if (rSteps.ok) steps = rSteps.steps || [];
+    if (rTpl.ok)   emailTemplates = rTpl.templates || {};
   } catch { /* ignore */ }
 
   if (!steps.length) {
@@ -720,10 +750,20 @@ async function loadPortalSteps(panel) {
     return;
   }
 
+  // Build template <option> list (key → label)
+  const templateOptions = [
+    { key: '', label: '— Aucun template —' },
+    ...Object.keys(emailTemplates).map(k => ({ key: k, label: k.replace(/_/g, ' ') }))
+  ];
+  const tplOptionsHtml = templateOptions.map(t =>
+    `<option value="${esc(t.key)}">${esc(t.label)}</option>`
+  ).join('');
+
   listEl.innerHTML = `
-    <div style="display:grid;grid-template-columns:200px 1fr 80px 60px;gap:6px;font-size:12px;font-weight:600;color:#6b7280;padding:4px 8px;margin-bottom:4px;">
+    <div style="display:grid;grid-template-columns:180px 1fr 200px 80px 60px;gap:6px;font-size:12px;font-weight:600;color:#6b7280;padding:4px 8px;margin-bottom:4px;">
       <span>Tuile Kanban (interne)</span>
-      <span>Libellé client (affiché dans l'espace client)</span>
+      <span>Libellé client</span>
+      <span>📧 Template email à l'étape</span>
       <span>Visible</span>
       <span>Ordre</span>
     </div>
@@ -733,11 +773,18 @@ async function loadPortalSteps(panel) {
     const row = document.createElement('div');
     row.className = 'pcs-row';
     row.dataset.folder = step.kanbanFolder;
-    row.style.cssText = 'display:grid;grid-template-columns:200px 1fr 80px 60px;gap:6px;align-items:center;padding:8px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;';
+    row.style.cssText = 'display:grid;grid-template-columns:180px 1fr 200px 80px 60px;gap:6px;align-items:center;padding:8px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;';
+
+    const selectedTpl = step.emailTemplateKey || '';
+    const tplSelectHtml = tplOptionsHtml.replace(
+      `value="${esc(selectedTpl)}"`,
+      `value="${esc(selectedTpl)}" selected`
+    );
 
     row.innerHTML = `
       <span style="font-size:13px;font-weight:600;color:#374151;">${esc(step.kanbanFolder)}</span>
       <input type="text" class="settings-input pcs-label" placeholder="${esc(step.kanbanFolder)}" value="${esc(step.clientLabel || '')}" style="font-size:12px;" />
+      <select class="settings-input pcs-email-template" style="font-size:12px;">${tplSelectHtml}</select>
       <label style="display:flex;align-items:center;gap:4px;font-size:12px;justify-content:center;">
         <input type="checkbox" class="pcs-visible" ${step.visible ? 'checked' : ''} />
         Visible
@@ -763,10 +810,11 @@ async function loadPortalSteps(panel) {
   panel.querySelector('#portal-steps-save').onclick = async () => {
     const rows = Array.from(listEl.querySelectorAll('.pcs-row'));
     const stepsToSave = rows.map((r, i) => ({
-      kanbanFolder: r.dataset.folder,
-      clientLabel:  r.querySelector('.pcs-label').value.trim(),
-      visible:      r.querySelector('.pcs-visible').checked,
-      order:        i
+      kanbanFolder:     r.dataset.folder,
+      clientLabel:      r.querySelector('.pcs-label').value.trim(),
+      emailTemplateKey: r.querySelector('.pcs-email-template')?.value || '',
+      visible:          r.querySelector('.pcs-visible').checked,
+      order:            i
     }));
     try {
       const res = await fetch('/api/admin/portal/client-steps', {

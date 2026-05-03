@@ -10,6 +10,29 @@ export async function openPrintDialog(fullPath) {
   openActionsDropdown(null, fullPath);
 }
 
+// Default actions used before the config is loaded
+const DEFAULT_ACTIONS = [
+  { id: "prismasync",    label: "Envoyer vers PrismaSync",   enabled: true },
+  { id: "prisma-prepare",label: "Ouvrir dans PrismaPrepare", enabled: true },
+  { id: "direct-print",  label: "Impression directe",        enabled: true },
+  { id: "fiery",         label: "Envoyer dans Fiery",        enabled: true },
+];
+
+let _actionsConfig = null; // null = not loaded yet
+
+async function getActionsConfig() {
+  if (_actionsConfig !== null) return _actionsConfig;
+  try {
+    const r = await fetch("/api/settings/actions-config", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => ({}));
+    _actionsConfig = (r.ok && Array.isArray(r.actions)) ? r.actions : DEFAULT_ACTIONS;
+  } catch {
+    _actionsConfig = DEFAULT_ACTIONS;
+  }
+  return _actionsConfig;
+}
+
 // ======================================================
 // ACTIONS DROPDOWN (En attente)
 // ======================================================
@@ -24,12 +47,13 @@ export async function openActionsDropdown(btnEl, fullPath) {
     z-index: 9999; min-width: 220px; overflow: hidden; padding: 4px 0;
   `;
 
-  const items = [
-    { label: "Envoyer vers PrismaSync", action: "prismasync" },
-    { label: "Ouvrir dans PrismaPrepare", action: "prisma-prepare" },
-    { label: "Impression directe", action: "direct-print" },
-    { label: "Envoyer dans Fiery", action: "fiery" }
-  ];
+  const allActions = await getActionsConfig();
+  const items = allActions.filter(a => a.enabled !== false);
+
+  if (items.length === 0) {
+    // No enabled actions — nothing to show
+    return;
+  }
 
   items.forEach(item => {
     const el = document.createElement("div");
@@ -39,7 +63,7 @@ export async function openActionsDropdown(btnEl, fullPath) {
     el.onmouseleave = () => el.style.background = "";
     el.onclick = async () => {
       dropdown.remove();
-      await handlePrintAction(item.action, fullPath);
+      await handlePrintAction(item.id, fullPath);
     };
     dropdown.appendChild(el);
   });

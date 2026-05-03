@@ -455,13 +455,22 @@ public static class PortalAdminEndpoints
 
                         var vars = new Dictionary<string, string>
                         {
-                            ["{clientName}"] = clientName,
+                            ["{clientName}"]  = clientName,
                             ["{orderNumber}"] = orderNumber,
-                            ["{orderTitle}"] = orderTitle,
-                            ["{status}"] = status,
-                            ["{portalLink}"] = $"{portalUrl}/portal/order.html?id={orderId}"
+                            ["{orderTitle}"]  = orderTitle,
+                            ["{status}"]      = status,
+                            ["{portalLink}"]  = $"{portalUrl}/portal/order.html?id={orderId}"
                         };
-                        var (subj, body) = PortalEmailHelper.RenderTemplate("client_order_status_changed",
+
+                        // Check if a step-specific email template is configured for this status
+                        var stepsCfg = MongoDbHelper.GetSettings<PortalClientStepsConfig>("portalClientSteps");
+                        var matchedStep = stepsCfg?.Steps.FirstOrDefault(s =>
+                            string.Equals(s.KanbanFolder, status, StringComparison.OrdinalIgnoreCase));
+                        var templateKey = !string.IsNullOrWhiteSpace(matchedStep?.EmailTemplateKey)
+                            ? matchedStep.EmailTemplateKey
+                            : "client_order_status_changed";
+
+                        var (subj, body) = PortalEmailHelper.RenderTemplate(templateKey,
                             "Mise à jour de votre commande — {orderNumber}",
                             "Bonjour {clientName},\n\nLe statut de votre commande {orderNumber} — {orderTitle} a été mis à jour.\n\nConsultez votre espace client : {portalLink}\n\nCordialement,",
                             vars);
@@ -673,10 +682,11 @@ public static class PortalAdminEndpoints
                     var sv = savedMap.TryGetValue(c.Folder, out var s) ? s : null;
                     return new PortalClientStep
                     {
-                        KanbanFolder = c.Folder,
-                        ClientLabel  = sv?.ClientLabel ?? c.Label,
-                        Visible      = sv?.Visible ?? false,
-                        Order        = sv?.Order ?? i
+                        KanbanFolder     = c.Folder,
+                        ClientLabel      = sv?.ClientLabel ?? c.Label,
+                        Visible          = sv?.Visible ?? false,
+                        Order            = sv?.Order ?? i,
+                        EmailTemplateKey = sv?.EmailTemplateKey ?? ""
                     };
                 })
                 .OrderBy(s => s.Order)
@@ -703,10 +713,11 @@ public static class PortalAdminEndpoints
                     if (string.IsNullOrWhiteSpace(folder)) continue;
                     steps.Add(new PortalClientStep
                     {
-                        KanbanFolder = folder,
-                        ClientLabel  = s.TryGetProperty("clientLabel", out var lEl) ? lEl.GetString() ?? "" : "",
-                        Visible      = s.TryGetProperty("visible",      out var vEl) ? vEl.GetBoolean() : false,
-                        Order        = s.TryGetProperty("order",        out var oEl) ? oEl.GetInt32()   : idx
+                        KanbanFolder     = folder,
+                        ClientLabel      = s.TryGetProperty("clientLabel",      out var lEl)  ? lEl.GetString()  ?? "" : "",
+                        Visible          = s.TryGetProperty("visible",          out var vEl)  ? vEl.GetBoolean() : false,
+                        Order            = s.TryGetProperty("order",            out var oEl)  ? oEl.GetInt32()   : idx,
+                        EmailTemplateKey = s.TryGetProperty("emailTemplateKey", out var etEl) ? etEl.GetString() ?? "" : ""
                     });
                     idx++;
                 }

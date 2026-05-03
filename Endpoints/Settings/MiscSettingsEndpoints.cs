@@ -1171,7 +1171,69 @@ app.MapPut("/api/settings/planning-colors", async (HttpContext ctx) =>
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
+// ── GET /api/settings/actions-config  ─────────────────────────────────────────
+app.MapGet("/api/settings/actions-config", (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts   = decoded.Split(':');
+        if (parts.Length < 3) return Results.Json(new { ok = false, error = "Auth requise" });
+
+        var saved = MongoDbHelper.GetSettings<KanbanActionsConfig>("kanbanActionsConfig");
+        var actions = saved?.Actions.Count > 0
+            ? saved.Actions
+            : DefaultKanbanActions();
+        return Results.Json(new { ok = true, actions });
     }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ── PUT /api/settings/actions-config  ─────────────────────────────────────────
+app.MapPut("/api/settings/actions-config", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts   = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        if (!json.TryGetProperty("actions", out var actEl) || actEl.ValueKind != JsonValueKind.Array)
+            return Results.Json(new { ok = false, error = "actions manquant" });
+
+        var actions = new List<KanbanAction>();
+        foreach (var a in actEl.EnumerateArray())
+        {
+            var id    = a.TryGetProperty("id",      out var idEl)  ? idEl.GetString()    ?? "" : "";
+            var label = a.TryGetProperty("label",   out var lEl)   ? lEl.GetString()     ?? "" : "";
+            var enab  = a.TryGetProperty("enabled", out var enEl)  ? enEl.GetBoolean()        : true;
+            if (!string.IsNullOrWhiteSpace(id))
+                actions.Add(new KanbanAction { Id = id, Label = label, Enabled = enab });
+        }
+
+        // If empty list submitted, reset to defaults
+        if (actions.Count == 0)
+            actions = DefaultKanbanActions();
+
+        MongoDbHelper.UpsertSettings("kanbanActionsConfig", new KanbanActionsConfig { Actions = actions });
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+    }
+
+    private static List<KanbanAction> DefaultKanbanActions() => new()
+    {
+        new() { Id = "prismasync",    Label = "Envoyer vers PrismaSync",   Enabled = true },
+        new() { Id = "prisma-prepare",Label = "Ouvrir dans PrismaPrepare", Enabled = true },
+        new() { Id = "direct-print",  Label = "Impression directe",        Enabled = true },
+        new() { Id = "fiery",         Label = "Envoyer dans Fiery",        Enabled = true },
+    };
 
     private static async Task<object> SavePassesConfigAsync(HttpContext ctx)
     {
