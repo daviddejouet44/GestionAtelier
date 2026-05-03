@@ -578,16 +578,31 @@ public static class PortalAdminEndpoints
 
         static List<PortalFormFieldConfig> DefaultPortalFormFields() => new()
         {
+            // ── Champs critiques (toujours présents) ──────────────────────────
             new() { Id = "title",            Label = "Intitulé du job",          Type = "text",     Visible = true,  Required = true,  Critical = true,  Order = 0 },
             new() { Id = "quantity",         Label = "Quantité",                 Type = "number",   Visible = true,  Required = true,  Critical = true,  Order = 1 },
-            new() { Id = "format",           Label = "Format",                   Type = "select",   Visible = true,  Required = false, Critical = false, Order = 2 },
-            new() { Id = "paper",            Label = "Support / Papier",         Type = "select",   Visible = true,  Required = false, Critical = false, Order = 3 },
-            new() { Id = "recto",            Label = "Impression",               Type = "radio",    Visible = true,  Required = false, Critical = false, Order = 4 },
-            new() { Id = "finitions",        Label = "Finitions souhaitées",     Type = "checkbox", Visible = true,  Required = false, Critical = false, Order = 5 },
-            new() { Id = "delivery-date",    Label = "Date de réception",        Type = "date",     Visible = true,  Required = false, Critical = false, Order = 6 },
-            new() { Id = "delivery-mode",    Label = "Mode de livraison",        Type = "radio",    Visible = true,  Required = true,  Critical = true,  Order = 7 },
-            new() { Id = "delivery-address", Label = "Adresse de livraison",     Type = "textarea", Visible = true,  Required = false, Critical = false, Order = 8 },
-            new() { Id = "comments",         Label = "Commentaires",             Type = "textarea", Visible = true,  Required = false, Critical = false, Order = 9 },
+            new() { Id = "delivery-mode",    Label = "Mode de livraison",        Type = "radio",    Visible = true,  Required = true,  Critical = true,  Order = 2 },
+            // ── Caractéristiques du job ────────────────────────────────────────
+            new() { Id = "format",           Label = "Format",                   Type = "select",   Visible = true,  Required = false, Critical = false, Order = 3 },
+            new() { Id = "paper",            Label = "Support / Papier",         Type = "select",   Visible = true,  Required = false, Critical = false, Order = 4 },
+            new() { Id = "recto",            Label = "Impression",               Type = "radio",    Visible = true,  Required = false, Critical = false, Order = 5 },
+            new() { Id = "finitions",        Label = "Finitions souhaitées",     Type = "checkbox", Visible = true,  Required = false, Critical = false, Order = 6 },
+            new() { Id = "type-travail",     Label = "Type de travail",          Type = "select",   Visible = false, Required = false, Critical = false, Order = 7 },
+            new() { Id = "pagination",       Label = "Pagination (nombre pages)",Type = "number",   Visible = false, Required = false, Critical = false, Order = 8 },
+            new() { Id = "encres",           Label = "Encres",                   Type = "text",     Visible = false, Required = false, Critical = false, Order = 9 },
+            new() { Id = "format-feuille",   Label = "Format feuille machine",   Type = "text",     Visible = false, Required = false, Critical = false, Order = 10 },
+            // ── Façonnage ──────────────────────────────────────────────────────
+            new() { Id = "forme-decoupe",    Label = "Forme de découpe",         Type = "text",     Visible = false, Required = false, Critical = false, Order = 11 },
+            new() { Id = "faconnage-binding",Label = "Type de reliure",          Type = "select",   Visible = false, Required = false, Critical = false, Order = 12 },
+            // ── Planification / livraison ──────────────────────────────────────
+            new() { Id = "delivery-date",    Label = "Date de réception souhaitée", Type = "date",  Visible = true,  Required = false, Critical = false, Order = 13 },
+            new() { Id = "delivery-address", Label = "Adresse de livraison",     Type = "textarea", Visible = true,  Required = false, Critical = false, Order = 14 },
+            // ── Contacts ───────────────────────────────────────────────────────
+            new() { Id = "numero-dossier",   Label = "Référence / N° dossier",   Type = "text",     Visible = false, Required = false, Critical = false, Order = 15 },
+            new() { Id = "numero-affaire",   Label = "N° d'affaire",             Type = "text",     Visible = false, Required = false, Critical = false, Order = 16 },
+            // ── Informations complémentaires ───────────────────────────────────
+            new() { Id = "notes",            Label = "Notes internes",           Type = "textarea", Visible = false, Required = false, Critical = false, Order = 17 },
+            new() { Id = "comments",         Label = "Commentaires (client)",    Type = "textarea", Visible = true,  Required = false, Critical = false, Order = 18 },
         };
 
         // GET /api/admin/portal/form-fields

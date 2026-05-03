@@ -257,8 +257,80 @@
               <textarea id="comments" class="form-control" rows="3" placeholder="${esc(field.placeholder || 'Informations complémentaires…')}"></textarea>`;
             break;
 
+          case 'type-travail': {
+            const opts = (field.allowedValues && field.allowedValues.length ? field.allowedValues : (formOptions.typesTravail || []));
+            group.className = 'form-group form-row-item';
+            if (opts.length) {
+              group.innerHTML = `<label for="type-travail">${labelText}</label>
+                <select id="type-travail" class="form-control">
+                  <option value="">— ${esc(field.placeholder || 'Sélectionner')} —</option>
+                  ${opts.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}
+                </select>`;
+            } else {
+              group.innerHTML = `<label for="type-travail">${labelText}</label>
+                <input type="text" id="type-travail" class="form-control" placeholder="${esc(field.placeholder || '')}" />`;
+            }
+            break;
+          }
+
+          case 'pagination':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="pagination">${labelText}</label>
+              <input type="number" id="pagination" class="form-control" min="1" placeholder="${esc(field.placeholder || 'Ex. : 8')}" />`;
+            break;
+
+          case 'encres':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="encres">${labelText}</label>
+              <input type="text" id="encres" class="form-control" placeholder="${esc(field.placeholder || 'Ex. : Quadri, Pantone…')}" />`;
+            break;
+
+          case 'format-feuille':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="format-feuille">${labelText}</label>
+              <input type="text" id="format-feuille" class="form-control" placeholder="${esc(field.placeholder || 'Ex. : 640x450')}" />`;
+            break;
+
+          case 'forme-decoupe':
+            group.innerHTML = `<label for="forme-decoupe">${labelText}</label>
+              <input type="text" id="forme-decoupe" class="form-control" placeholder="${esc(field.placeholder || 'Référence ou description')}" />`;
+            break;
+
+          case 'faconnage-binding': {
+            const opts = (field.allowedValues && field.allowedValues.length ? field.allowedValues : (formOptions.faconnageBindings || []));
+            group.className = 'form-group form-row-item';
+            if (opts.length) {
+              group.innerHTML = `<label for="faconnage-binding">${labelText}</label>
+                <select id="faconnage-binding" class="form-control">
+                  <option value="">— ${esc(field.placeholder || 'Sélectionner')} —</option>
+                  ${opts.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}
+                </select>`;
+            } else {
+              group.innerHTML = `<label for="faconnage-binding">${labelText}</label>
+                <input type="text" id="faconnage-binding" class="form-control" placeholder="${esc(field.placeholder || '')}" />`;
+            }
+            break;
+          }
+
+          case 'numero-dossier':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="numero-dossier">${labelText}</label>
+              <input type="text" id="numero-dossier" class="form-control" placeholder="${esc(field.placeholder || 'Ex. : DOS-2025-001')}" />`;
+            break;
+
+          case 'numero-affaire':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="numero-affaire">${labelText}</label>
+              <input type="text" id="numero-affaire" class="form-control" placeholder="${esc(field.placeholder || '')}" />`;
+            break;
+
+          case 'notes':
+            group.innerHTML = `<label for="notes">${labelText}</label>
+              <textarea id="notes" class="form-control" rows="3" placeholder="${esc(field.placeholder || 'Notes pour l\'imprimeur…')}"></textarea>`;
+            break;
+
           default:
-            // Generic text field
+            // Generic text field for any unknown field id
             group.innerHTML = `<label for="${esc(field.id)}">${labelText}</label>
               <input type="text" id="${esc(field.id)}" class="form-control" placeholder="${esc(field.placeholder || '')}" ${field.required ? 'required' : ''} />`;
         }
@@ -501,7 +573,17 @@
             desiredDeliveryDate: document.getElementById('delivery-date')?.value || null,
             deliveryMode,
             deliveryAddress,
-            comments: document.getElementById('comments')?.value.trim() || ''
+            comments: document.getElementById('comments')?.value.trim() || '',
+            // Extended fields (shown only when configured visible by admin)
+            typeTravail:      document.getElementById('type-travail')?.value.trim() || undefined,
+            pagination:       document.getElementById('pagination')?.value ? parseInt(document.getElementById('pagination').value) : undefined,
+            encres:           document.getElementById('encres')?.value.trim() || undefined,
+            formatFeuille:    document.getElementById('format-feuille')?.value.trim() || undefined,
+            formeDecoupe:     document.getElementById('forme-decoupe')?.value.trim() || undefined,
+            faconnageBinding: document.getElementById('faconnage-binding')?.value || undefined,
+            numeroDossier:    document.getElementById('numero-dossier')?.value.trim() || undefined,
+            numeroAffaire:    document.getElementById('numero-affaire')?.value.trim() || undefined,
+            notes:            document.getElementById('notes')?.value.trim() || undefined
           })
         });
 

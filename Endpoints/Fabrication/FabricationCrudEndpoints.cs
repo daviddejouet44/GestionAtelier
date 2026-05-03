@@ -1865,10 +1865,13 @@ app.MapPut("/api/fabrication/event-time", async (HttpContext ctx) =>
         mpt[fieldNames.timeField] = newTime;
         mpt[fieldNames.dateField] = newDate;
 
-        // Also update the actual date field (source of truth) so that on reload the event stays at the new date
+        // Also update the actual date field (source of truth) so that on reload the event stays at the new date.
+        // IMPORTANT: treat newDate (YYYY-MM-DD) as already-UTC midnight to avoid a 1-day shift when the server
+        // timezone is UTC+1/+2 (France).  pd.Date.ToUniversalTime() on an Unspecified-kind DateTime subtracts
+        // the local offset and stores the previous day.  SpecifyKind avoids the conversion entirely.
         DateTime? parsedDate = null;
         if (DateTime.TryParse(newDate, out var pd))
-            parsedDate = pd.Date.ToUniversalTime();
+            parsedDate = DateTime.SpecifyKind(pd.Date, DateTimeKind.Utc);
 
         var updateDef = Builders<BsonDocument>.Update.Set("manualPlanningTimes", mpt);
         if (parsedDate.HasValue)
@@ -1942,7 +1945,8 @@ app.MapPut("/api/fabrication/key-date", async (HttpContext ctx) =>
 
         var fabCol = MongoDbHelper.GetFabricationsCollection();
         var filter = BuildFileNameFilter(fileName);
-        var update = Builders<BsonDocument>.Update.Set(field, new BsonDateTime(parsedDate.Date.ToUniversalTime()));
+        // Use SpecifyKind to avoid UTC offset shifting the date by 1 day (France = UTC+1/+2)
+        var update = Builders<BsonDocument>.Update.Set(field, new BsonDateTime(DateTime.SpecifyKind(parsedDate.Date, DateTimeKind.Utc)));
         fabCol.UpdateMany(filter, update);
 
         return Results.Json(new { ok = true });

@@ -1191,11 +1191,19 @@ async function handleSubmissionFiles(files) {
       if (xml) formData.append("xml", xml);
 
       try {
-        const r = await fetch("/api/soumission/upload-with-xml", {
+        const rawResp = await fetch("/api/soumission/upload-with-xml", {
           method: "POST",
           headers: { "Authorization": `Bearer ${authToken}` },
           body: formData
-        }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+        });
+        const r = await rawResp.json().catch(() => ({
+          ok: false,
+          error: rawResp.status === 405
+            ? "Méthode non autorisée (405) — vérifiez la configuration serveur"
+            : rawResp.status === 401
+              ? "Non authentifié — reconnectez-vous"
+              : `Erreur serveur ${rawResp.status}`
+        }));
 
         if (!r.ok) {
           uploadStatus.textContent = `❌ ${label}: ${r.error || "Erreur"}`;
@@ -1207,21 +1215,19 @@ async function handleSubmissionFiles(files) {
 
         if (hasPrefill && couplingCfg.mode === "prefill") {
           // Open fabrication form pre-filled
-          uploadStatus.textContent = `✅ ${label} — ouverture du formulaire pré-rempli`;
           successCount++;
 
           const firstPdf = (r.jobIds && r.jobIds.length > 0 && r.jobIds[0]?.fullPath)
             ? r.jobIds[0].fullPath : null;
 
-          // Show a badge in the upload zone
-          const badge = document.createElement("div");
-          badge.style.cssText = "display:inline-flex;gap:6px;align-items:center;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:4px 10px;font-size:12px;margin:4px 0;";
-          badge.innerHTML = `<span style="background:#ef4444;color:#fff;border-radius:4px;padding:2px 5px;font-weight:700;">PDF</span>
-            <span style="background:#3b82f6;color:#fff;border-radius:4px;padding:2px 5px;font-weight:700;">XML ✓</span>
-            <span style="color:#166534;">Formulaire pré-rempli prêt</span>`;
-          uploadZone.appendChild(badge);
-
-          if (firstPdf) openFabrication(firstPdf, r.fichePrefill);
+          if (firstPdf) {
+            uploadStatus.textContent = `✅ ${label} — ouverture du formulaire pré-rempli`;
+            openFabrication(firstPdf, r.fichePrefill);
+          } else {
+            // XML only — no PDF yet, show informative message
+            uploadStatus.textContent = `✅ XML analysé — Déposez maintenant le PDF correspondant pour créer le job`;
+            showNotification('✅ XML MasterPrint importé — déposez le PDF pour finaliser', 'success');
+          }
           await new Promise(resolve => setTimeout(resolve, 600));
         } else {
           uploadStatus.textContent = `✅ ${label}`;
@@ -1229,7 +1235,7 @@ async function handleSubmissionFiles(files) {
           await new Promise(resolve => setTimeout(resolve, 500));
         }
       } catch (err) {
-        uploadStatus.textContent = `❌ Erreur`;
+        uploadStatus.textContent = `❌ ${label}: ${err.message || 'Erreur réseau'}`;
         errorCount++;
       }
     }
@@ -1237,6 +1243,9 @@ async function handleSubmissionFiles(files) {
     uploadProgress.style.display = "none";
     uploadZone.style.opacity = "1";
     uploadZone.style.pointerEvents = "auto";
+
+    // Clear any inline badges added to the upload zone
+    uploadZone.querySelectorAll(':scope > div').forEach(el => el.remove());
 
     if (successCount > 0) {
       showNotification(`✅ ${successCount} envoi(s) réussi(s)`, "success");

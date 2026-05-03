@@ -13,6 +13,7 @@ const fabStageBanner = document.getElementById("fab-stage-banner");
 const fabHistory = document.getElementById("fab-history");
 const fabRemove = document.getElementById("fab-delivery-remove");
 const fabDynamicForm = document.getElementById("fab-dynamic-form");
+const fabSendBatClient = document.getElementById("fab-send-bat-client");
 
 // Nouveaux champs dates clés et production
 const fabDateReception = document.getElementById("fab-date-reception");
@@ -538,6 +539,49 @@ export function initFabrication() {
     if(typeof submissionCalendar!=='undefined'&&submissionCalendar)submissionCalendar.refetchEvents();
   };
   if(fabPrisma)fabPrisma.style.display='none';
+
+  // BAT send to client button
+  if(fabSendBatClient){
+    fabSendBatClient.onclick=async()=>{
+      if(!fabCurrentPath)return;
+      // Ask user to choose the BAT PDF to send
+      const pdfInput=document.createElement('input');
+      pdfInput.type='file';pdfInput.accept='.pdf';
+      pdfInput.onchange=async()=>{
+        const file=pdfInput.files[0];if(!file)return;
+        fabSendBatClient.disabled=true;fabSendBatClient.textContent='Envoi…';
+        try{
+          // First upload the BAT PDF
+          const fd=new FormData();fd.append('file',file);fd.append('fileName',fnKey(fabCurrentPath));
+          const upR=await fetch('/api/fabrication/import-mail-bat',{method:'POST',headers:{'Authorization':'Bearer '+authToken},body:fd}).then(r=>r.json());
+          if(!upR.ok){showNotification('❌ Upload BAT échoué : '+(upR.error||'Erreur'),'error');fabSendBatClient.disabled=false;fabSendBatClient.textContent='📤 Envoyer BAT client';return;}
+
+          // Find associated portal order by fileName
+          const fn=fnKey(fabCurrentPath);
+          const ordersR=await fetch('/api/admin/portal/orders',{headers:{'Authorization':'Bearer '+authToken}}).then(r=>r.json()).catch(()=>({ok:false}));
+          const orders=(ordersR.ok&&ordersR.orders)||[];
+          const matchOrder=orders.find(o=>o.fileName===fn||o.title===fn);
+
+          if(!matchOrder){
+            showNotification('⚠️ Aucune commande portail liée — BAT PDF importé mais non envoyé au client (créez d\'abord le lien portail)','error');
+            fabSendBatClient.disabled=false;fabSendBatClient.textContent='📤 Envoyer BAT client';return;
+          }
+
+          const sendR=await fetch('/api/admin/portal/orders/'+matchOrder.id+'/send-bat',{
+            method:'POST',
+            headers:{'Content-Type':'application/json','Authorization':'Bearer '+authToken},
+            body:JSON.stringify({batFilePath:upR.savedPath||'',batFileName:file.name})
+          }).then(r=>r.json());
+
+          if(sendR.ok){showNotification('✅ BAT envoyé au client','success');}
+          else{showNotification('❌ '+(sendR.error||'Erreur envoi BAT'),'error');}
+        }catch(err){showNotification('❌ Erreur réseau','error');}
+        fabSendBatClient.disabled=false;fabSendBatClient.textContent='📤 Envoyer BAT client';
+      };
+      pdfInput.click();
+    };
+    fabSendBatClient.style.display='inline-block';
+  }
 
   // Export button: show inline format picker then download
   const fabExport = document.getElementById('fab-export');

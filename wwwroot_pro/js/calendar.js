@@ -276,6 +276,48 @@ async function buildOperatorView(container) {
   }
 }
 
+// ======================================================
+// LIVRAISON CONFIRMATION POPUP
+// Returns: true (update all), false (livraison only), null (cancelled)
+// ======================================================
+function _showLivraisonConfirmPopup(newDate) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+
+    const panel = document.createElement('div');
+    panel.style.cssText = 'background:#fff;border-radius:12px;padding:24px;box-shadow:0 10px 40px rgba(0,0,0,.3);max-width:420px;width:90%;';
+    panel.innerHTML = `
+      <h3 style="margin:0 0 12px;font-size:16px;font-weight:700;color:#1e3a5f;">📦 Déplacer la livraison</h3>
+      <p style="font-size:13px;color:#4b5563;margin-bottom:16px;">
+        Nouvelle date : <strong>${newDate}</strong><br/>
+        Voulez-vous mettre à jour les autres plannings (dates clés liées) en conséquence ?
+      </p>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button id="_liv-yes" style="padding:10px 16px;background:#1d4ed8;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+          ✅ Oui, mettre à jour les autres plannings
+        </button>
+        <button id="_liv-no" style="padding:10px 16px;background:#f9fafb;color:#374151;border:1px solid #d1d5db;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+          Non, déplacer uniquement la livraison
+        </button>
+        <button id="_liv-cancel" style="padding:10px 16px;background:#fff;color:#6b7280;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;cursor:pointer;">
+          Annuler
+        </button>
+      </div>
+    `;
+
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    const cleanup = () => document.body.removeChild(overlay);
+
+    panel.querySelector('#_liv-yes').onclick = () => { cleanup(); resolve(true); };
+    panel.querySelector('#_liv-no').onclick  = () => { cleanup(); resolve(false); };
+    panel.querySelector('#_liv-cancel').onclick = () => { cleanup(); resolve(null); };
+    overlay.onclick = (e) => { if (e.target === overlay) { cleanup(); resolve(null); } };
+  });
+}
+
 export async function initCalendar() {
   const calendarEl = document.getElementById("calendar");
   if (calendar || !calendarEl || !window.FullCalendar) return;
@@ -540,23 +582,55 @@ export async function initCalendar() {
           if (!r.ok) throw new Error(r.error || "Erreur");
           showNotification(`✅ Planning mis à jour : ${newTime}`, "success");
         } else {
-          const r = await fetch("/api/delivery", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fullPath, fileName: fk, date: newDate, time: newTime })
-          }).then(r => r.json());
+          // For livraison view: show a confirmation popup asking whether to also update linked plannings
+          if (_planningViewMode === 'livraison') {
+            const confirmed = await _showLivraisonConfirmPopup(newDate);
+            if (confirmed === null) { info.revert(); return; } // user cancelled
 
-          if (!r.ok) throw new Error(r.error || "Erreur");
+            const r = await fetch("/api/delivery", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ fullPath, fileName: fk, date: newDate, time: newTime })
+            }).then(r => r.json());
+            if (!r.ok) throw new Error(r.error || "Erreur");
 
-          deliveriesByPath[fk] = newDate;
-          deliveriesByPath[fk + "_time"] = newTime;
+            deliveriesByPath[fk] = newDate;
+            deliveriesByPath[fk + "_time"] = newTime;
 
-          const { bg, bc, tc } = colorForEvent(fullPath, newDate);
-          info.event.setProp("backgroundColor", bg);
-          info.event.setProp("borderColor", bc);
-          info.event.setProp("textColor", tc);
+            if (confirmed === true) {
+              // "Oui" — also update dateReceptionSouhaitee (and via fabrication key-date endpoint any linked dates)
+              await fetch("/api/fabrication/key-date", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ fileName: fk, field: "dateReceptionSouhaitee", date: newDate, time: newTime })
+              }).catch(() => {});
+            }
 
-          showNotification(`✅ Planning mis à jour pour le ${newDate}`, "success");
+            const { bg, bc, tc } = colorForEvent(fullPath, newDate);
+            info.event.setProp("backgroundColor", bg);
+            info.event.setProp("borderColor", bc);
+            info.event.setProp("textColor", tc);
+
+            showNotification(`✅ Planning livraison mis à jour pour le ${newDate}`, "success");
+          } else {
+            const r = await fetch("/api/delivery", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ fullPath, fileName: fk, date: newDate, time: newTime })
+            }).then(r => r.json());
+
+            if (!r.ok) throw new Error(r.error || "Erreur");
+
+            deliveriesByPath[fk] = newDate;
+            deliveriesByPath[fk + "_time"] = newTime;
+
+            const { bg, bc, tc } = colorForEvent(fullPath, newDate);
+            info.event.setProp("backgroundColor", bg);
+            info.event.setProp("borderColor", bc);
+            info.event.setProp("textColor", tc);
+
+            showNotification(`✅ Planning mis à jour pour le ${newDate}`, "success");
+          }
         }
       } catch (err) {
         alert(err.message || "Impossible de déplacer");
