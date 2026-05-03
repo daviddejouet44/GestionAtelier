@@ -89,9 +89,9 @@ public static class SubmissionXmlEndpoints
                     {
                         return Results.Json(new { ok = false, error = $"Fichier XML invalide ({xmlFile.FileName}) : {xmlEx.Message}" });
                     }
-                    catch (Exception xmlEx)
+                    catch (Exception ex)
                     {
-                        return Results.Json(new { ok = false, error = $"Impossible de lire le fichier XML ({xmlFile.FileName}) : {xmlEx.Message}" });
+                        return Results.Json(new { ok = false, error = $"Impossible de lire le fichier XML ({xmlFile.FileName}) : {ex.Message}" });
                     }
 
                     // Support flat <Order>, <Commande>, <Job> and wrapped structures

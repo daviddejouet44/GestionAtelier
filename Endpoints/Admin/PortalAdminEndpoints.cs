@@ -745,8 +745,10 @@ public static class PortalAdminEndpoints
 
                 var client = PortalAuthEndpoints.DocToClient(doc);
 
-                // Generate invitation token (48h validity)
-                var token  = Guid.NewGuid().ToString("N");
+                // Generate invitation token (48h validity) with high-entropy random bytes
+                var tokenBytes = new byte[32];
+                System.Security.Cryptography.RandomNumberGenerator.Fill(tokenBytes);
+                var token  = Convert.ToHexString(tokenBytes).ToLowerInvariant();
                 var expiry = DateTime.UtcNow.AddHours(48);
 
                 col.UpdateOne(

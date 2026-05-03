@@ -31,18 +31,11 @@
     </div>
   </div>
 
-  <script>
+  <script type="module">
+    import { applyPortalTheme, storeToken, storeClient } from '/portal/js/portal-core.js';
+
     // Apply portal theme
-    fetch('/api/portal/config/theme').then(r => r.json()).then(d => {
-      if (!d.ok || !d.theme) return;
-      const t = d.theme;
-      const root = document.documentElement;
-      if (t.primaryColor)     root.style.setProperty('--color-primary',      t.primaryColor);
-      if (t.primaryDarkColor) root.style.setProperty('--color-primary-dark', t.primaryDarkColor);
-      if (t.backgroundColor)  root.style.setProperty('--color-bg',           t.backgroundColor);
-      if (t.textColor)        root.style.setProperty('--color-text',         t.textColor);
-      if (t.fontFamily)       root.style.setProperty('--font-family',        t.fontFamily);
-    }).catch(() => {});
+    applyPortalTheme();
 
     const params = new URLSearchParams(location.search);
     const token  = params.get('token') || '';
@@ -78,9 +71,9 @@
         }).then(r => r.json());
 
         if (r.ok) {
-          // Auto-login: store token and redirect to orders
-          localStorage.setItem('portal_token', r.token);
-          localStorage.setItem('portal_email', r.email);
+          // Store token using the shared portal-core helpers (consistent with login.html)
+          storeToken(r.token);
+          if (r.email) storeClient({ email: r.email });
           okEl.textContent = '✅ Compte activé ! Redirection en cours…';
           okEl.classList.remove('hidden');
           document.getElementById('activate-form').style.display = 'none';

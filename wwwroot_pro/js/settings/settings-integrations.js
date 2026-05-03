@@ -159,7 +159,7 @@ export async function renderSettingsIntegrations(panel) {
             : `✅ Fournisseur actif : ${activeProvider.toUpperCase()}`;
           // Re-render current tab so the enabled state reflects the change
           const activeTab = panel.querySelector('.settings-tab.active[data-itab]');
-          if (activeTab) showIntegTab(activeTab.dataset.itab);
+          if (activeTab && activeTab.dataset.itab) showIntegTab(activeTab.dataset.itab);
         } else {
           msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ ' + (r.error || 'Erreur');
           activeProvider = prev;
