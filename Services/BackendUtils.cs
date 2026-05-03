@@ -148,7 +148,7 @@ public static class BackendUtils
                     {
                         FullPath = fullPath,
                         FileName = fileName,
-                        Date     = d.Contains("date") ? d["date"].ToLocalTime() : DateTime.MinValue,
+                        Date     = d.Contains("date") ? d["date"].ToUniversalTime() : DateTime.MinValue,
                         Time     = d.Contains("time") ? d["time"].AsString : "09:00"
                     };
                 }
@@ -170,7 +170,7 @@ public static class BackendUtils
         {
             ["fullPath"] = item.FullPath,
             ["fileName"] = fileNameKey,
-            ["date"]     = item.Date,
+            ["date"]     = DateTime.SpecifyKind(item.Date.Date, DateTimeKind.Utc),
             ["time"]     = item.Time
         };
 

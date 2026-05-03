@@ -42,6 +42,7 @@ export async function initSettingsView() {
         <button class="settings-tab" data-tab="paths">Chemins d'accès</button>
         <button class="settings-tab" data-tab="preflight">Preflight</button>
         <button class="settings-tab" data-tab="kanban-columns">Tuiles</button>
+        <button class="settings-tab" data-tab="kanban-actions">Menu Action</button>
         <button class="settings-tab" data-tab="bat-config">Configuration BAT</button>
         <button class="settings-tab" data-tab="print-engines">Moteurs d'impression</button>
         <button class="settings-tab" data-tab="work-types">Types de travail</button>
@@ -70,6 +71,7 @@ export async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-paths"></div>
       <div class="settings-panel hidden" id="settings-panel-preflight"></div>
       <div class="settings-panel hidden" id="settings-panel-kanban-columns"></div>
+      <div class="settings-panel hidden" id="settings-panel-kanban-actions"></div>
       <div class="settings-panel hidden" id="settings-panel-bat-config"></div>
       <div class="settings-panel hidden" id="settings-panel-print-engines"></div>
       <div class="settings-panel hidden" id="settings-panel-work-types"></div>
@@ -120,6 +122,7 @@ export async function loadSettingsPanel(tabName, panelEl) {
     case "paths": await renderSettingsPaths(panelEl); break;
     case "preflight": await renderSettingsPreflight(panelEl); break;
     case "kanban-columns": await renderSettingsKanbanColumns(panelEl); break;
+    case "kanban-actions": await renderSettingsKanbanActions(panelEl); break;
     case "bat-config": await renderSettingsBatConfig(panelEl); break;
     case "print-engines": await renderSettingsPrintEngines(panelEl); break;
     case "work-types": await renderSettingsWorkTypes(panelEl); break;
@@ -278,5 +281,80 @@ async function renderSettingsPlanningColors(panel) {
       if (r.ok) { msgEl.style.color = '#16a34a'; msgEl.textContent = '✅ Couleurs enregistrées'; }
       else { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ ' + (r.error || 'Erreur'); }
     } catch(e) { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ Erreur réseau'; }
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Menu Action — configure which actions are shown in the Kanban dropdown
+// ──────────────────────────────────────────────────────────────────────────────
+async function renderSettingsKanbanActions(panel) {
+  const DEFAULT = [
+    { id: 'prismasync',    label: 'Envoyer vers PrismaSync',   enabled: true },
+    { id: 'prisma-prepare',label: 'Ouvrir dans PrismaPrepare', enabled: true },
+    { id: 'direct-print',  label: 'Impression directe',        enabled: true },
+    { id: 'fiery',         label: 'Envoyer dans Fiery',        enabled: true },
+  ];
+
+  let actions = DEFAULT;
+  try {
+    const r = await fetch('/api/settings/actions-config', {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    }).then(r => r.json());
+    if (r.ok && Array.isArray(r.actions) && r.actions.length) actions = r.actions;
+  } catch { /* use defaults */ }
+
+  panel.innerHTML = `
+    <h3>⚙️ Menu Action — actions disponibles</h3>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:20px;">
+      Cochez les actions qui doivent apparaître dans le menu <strong>Action</strong> de chaque tuile Kanban.
+      Décochez une action pour la masquer (elle reste configurée mais n'est plus proposée à l'opérateur).
+    </p>
+    <div class="settings-section-card">
+      <div id="actions-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;"></div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <button id="actions-save" class="btn btn-primary">Enregistrer</button>
+        <span id="actions-msg" style="font-size:13px;"></span>
+      </div>
+    </div>
+  `;
+
+  const listEl = panel.querySelector('#actions-list');
+  actions.forEach(a => {
+    const row = document.createElement('label');
+    row.className = 'actions-cfg-row';
+    row.dataset.id = a.id;
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:13px;color:#374151;';
+    row.innerHTML = `
+      <input type="checkbox" class="act-enabled" ${a.enabled !== false ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer;" />
+      <span class="act-label" style="font-weight:500;">${esc(a.label)}</span>
+      <span style="color:#9ca3af;font-size:11px;">(${esc(a.id)})</span>
+    `;
+    listEl.appendChild(row);
+  });
+
+  panel.querySelector('#actions-save').onclick = async () => {
+    const msgEl = panel.querySelector('#actions-msg');
+    msgEl.textContent = '';
+    const rows = Array.from(listEl.querySelectorAll('.actions-cfg-row'));
+    const updatedActions = rows.map(r => ({
+      id:      r.dataset.id,
+    label:   r.querySelector('span.act-label').textContent,
+      enabled: r.querySelector('.act-enabled').checked
+    }));
+    try {
+      const res = await fetch('/api/settings/actions-config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ actions: updatedActions })
+      }).then(r => r.json());
+      if (res.ok) {
+        msgEl.style.color = '#16a34a';
+        msgEl.textContent = '✓ Configuration enregistrée';
+        showNotification('Menu Action mis à jour', 'success');
+      } else {
+        msgEl.style.color = '#dc2626';
+        msgEl.textContent = res.error || 'Erreur';
+      }
+    } catch { msgEl.style.color = '#dc2626'; msgEl.textContent = 'Erreur réseau'; }
   };
 }
