@@ -368,6 +368,21 @@ async function buildBatView(_filterStatus, _sortField) {
       }).then(r => r.json()).catch(() => ({}));
     }));
 
+    // Load portal orders index (to detect web orders and enable portal BAT sending)
+    let portalOrders = [];
+    try {
+      const portalResp = await fetch("/api/admin/portal/orders", {
+        headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(r => r.json()).catch(() => ({ ok: false, orders: [] }));
+      if (portalResp.ok) portalOrders = portalResp.orders || [];
+    } catch(e) { /* ignore — portal orders not available */ }
+
+    // Build map: numeroDossier (lowercase) → portal order
+    const portalOrderMap = {};
+    portalOrders.forEach(o => {
+      if (o.orderNumber) portalOrderMap[o.orderNumber.toLowerCase()] = o;
+    });
+
     // Combine jobs with their status
     let items = jobs.map((job, i) => ({ job, status: statuses[i], fab: fabs[i] }));
 
@@ -515,6 +530,44 @@ async function buildBatView(_filterStatus, _sortField) {
       actionsDiv.appendChild(btnAcrobat);
       actionsDiv.appendChild(btnArchiver);
       actionsDiv.appendChild(btnFiche);
+
+      // Portal BAT send button — only for web orders (matched by numeroDossier)
+      const dossierKey = (fab && fab.numeroDossier ? fab.numeroDossier : lookupFn).toLowerCase();
+      const portalOrder = portalOrderMap[dossierKey];
+      if (portalOrder) {
+        const btnPortalBat = document.createElement("button");
+        btnPortalBat.className = "btn btn-sm";
+        btnPortalBat.style.cssText = "background:#f0fdf4;border:1px solid #86efac;color:#15803d;font-weight:600;";
+        const isAlreadySent = portalOrder.status === 'bat_pending' || portalOrder.status === 'bat_validated' || portalOrder.status === 'bat_refused';
+        btnPortalBat.innerHTML = isAlreadySent
+          ? `📤 Re-envoyer BAT (portail)`
+          : `📤 Envoyer BAT au client (portail)`;
+        btnPortalBat.title = `Commande portail : ${portalOrder.orderNumber}`;
+        btnPortalBat.onclick = async () => {
+          if (!confirm(`Envoyer ce BAT au client via le portail (commande ${portalOrder.orderNumber}) ?\nUn email sera envoyé au client.`)) return;
+          btnPortalBat.disabled = true;
+          btnPortalBat.textContent = '⏳ Envoi…';
+          try {
+            const r = await fetch(`/api/admin/portal/orders/${portalOrder.id}/send-bat`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+              body: JSON.stringify({ batFilePath: full, batFileName: job.name || '' })
+            }).then(r => r.json());
+            if (r.ok) {
+              showNotification('✅ BAT envoyé au client via le portail', 'success');
+              buildBatView();
+            } else {
+              showNotification('❌ Erreur : ' + (r.error || 'Erreur inconnue'), 'error');
+              btnPortalBat.disabled = false;
+              btnPortalBat.textContent = '📤 Envoyer BAT au client (portail)';
+            }
+          } catch(e) {
+            showNotification('❌ Erreur réseau', 'error');
+            btnPortalBat.disabled = false;
+          }
+        };
+        actionsDiv.appendChild(btnPortalBat);
+      }
 
       innerDiv.appendChild(thumbDiv);
       innerDiv.appendChild(bodyDiv);
@@ -1223,6 +1276,9 @@ async function handleSubmissionFiles(files) {
           if (firstPdf) {
             uploadStatus.textContent = `✅ ${label} — ouverture du formulaire pré-rempli`;
             openFabrication(firstPdf, r.fichePrefill);
+            // Refresh submission view so the new job appears in the kanban
+            await refreshSubmissionView();
+            if (submissionCalendar) submissionCalendar.refetchEvents();
           } else {
             // XML only — no PDF yet, show informative message
             uploadStatus.textContent = `✅ XML analysé — Déposez maintenant le PDF correspondant pour créer le job`;

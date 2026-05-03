@@ -131,6 +131,31 @@ public static class PortalAdminEndpoints
             catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
         });
 
+        // POST /api/admin/portal/smtp-test  — sends a test email to the logged-in admin
+        app.MapPost("/api/admin/portal/smtp-test", async (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            try
+            {
+                var smtp = MongoDbHelper.GetSettings<PortalSmtpSettings>("portalSmtp");
+                if (smtp == null || string.IsNullOrWhiteSpace(smtp.Host) || string.IsNullOrWhiteSpace(smtp.FromAddress))
+                    return Results.Json(new { ok = false, error = "SMTP non configuré (Host et FromAddress requis)" });
+
+                var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+                var toAddress = json.TryGetProperty("to", out var toEl) ? toEl.GetString() ?? "" : "";
+                if (string.IsNullOrWhiteSpace(toAddress))
+                    toAddress = !string.IsNullOrWhiteSpace(smtp.AtelierNotifyEmail) ? smtp.AtelierNotifyEmail : smtp.FromAddress;
+
+                PortalEmailHelper.SendEmail(
+                    toAddress,
+                    "✅ Test SMTP — GestionAtelier",
+                    $"Bonjour,\n\nCeci est un email de test envoyé depuis GestionAtelier pour vérifier la configuration SMTP.\n\nServeur : {smtp.Host}:{smtp.Port}\nExpéditeur : {smtp.FromAddress}\n\nSi vous recevez cet email, la configuration est correcte.\n\nCordialement,\nGestionAtelier");
+
+                return Results.Json(new { ok = true, sentTo = toAddress });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
         // =====================================================================
         // Client account management
         // =====================================================================
@@ -486,6 +511,51 @@ public static class PortalAdminEndpoints
             catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
         });
 
+        // GET /api/admin/portal/orders/by-job?numeroDossier=... — find portal order matching a job
+        app.MapGet("/api/admin/portal/orders/by-job", (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            var numeroDossier = ctx.Request.Query["numeroDossier"].ToString();
+            var fileName = ctx.Request.Query["fileName"].ToString();
+            if (string.IsNullOrWhiteSpace(numeroDossier) && string.IsNullOrWhiteSpace(fileName))
+                return Results.Json(new { ok = false, error = "numeroDossier ou fileName requis" });
+
+            var col = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
+            BsonDocument? orderDoc = null;
+
+            // Try to match by orderNumber first
+            if (!string.IsNullOrWhiteSpace(numeroDossier))
+            {
+                orderDoc = col.Find(Builders<BsonDocument>.Filter.Regex("orderNumber",
+                    new MongoDB.Bson.BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(numeroDossier), "i")))
+                    .FirstOrDefault();
+            }
+            // Fallback: try to match by title or job ID fragment from fileName
+            if (orderDoc == null && !string.IsNullOrWhiteSpace(fileName))
+            {
+                orderDoc = col.Find(Builders<BsonDocument>.Filter.Regex("orderNumber",
+                    new MongoDB.Bson.BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(fileName), "i")))
+                    .FirstOrDefault();
+            }
+
+            if (orderDoc == null)
+                return Results.Json(new { ok = true, found = false });
+
+            return Results.Json(new
+            {
+                ok = true,
+                found = true,
+                order = new
+                {
+                    id = orderDoc.Contains("id") ? orderDoc["id"].AsString : "",
+                    orderNumber = orderDoc.Contains("orderNumber") ? orderDoc["orderNumber"].AsString : "",
+                    title = orderDoc.Contains("title") ? orderDoc["title"].AsString : "",
+                    status = orderDoc.Contains("status") ? orderDoc["status"].AsString : "",
+                    clientAccountId = orderDoc.Contains("clientAccountId") ? orderDoc["clientAccountId"].AsString : ""
+                }
+            });
+        });
+
         // =====================================================================
         // Portal email templates
         // =====================================================================
@@ -591,18 +661,33 @@ public static class PortalAdminEndpoints
             new() { Id = "pagination",       Label = "Pagination (nombre de pages)",Type = "number",   Visible = false, Required = false, Critical = false, Order = 8 },
             new() { Id = "encres",           Label = "Encres",                   Type = "text",     Visible = false, Required = false, Critical = false, Order = 9 },
             new() { Id = "format-feuille",   Label = "Format feuille machine",   Type = "text",     Visible = false, Required = false, Critical = false, Order = 10 },
+            new() { Id = "format-fini",      Label = "Format fini",              Type = "text",     Visible = false, Required = false, Critical = false, Order = 11 },
+            new() { Id = "moteur-impression",Label = "Moteur d'impression",      Type = "select",   Visible = false, Required = false, Critical = false, Order = 12 },
             // ── Façonnage ──────────────────────────────────────────────────────
-            new() { Id = "forme-decoupe",    Label = "Forme de découpe",         Type = "text",     Visible = false, Required = false, Critical = false, Order = 11 },
-            new() { Id = "faconnage-binding",Label = "Type de reliure",          Type = "select",   Visible = false, Required = false, Critical = false, Order = 12 },
+            new() { Id = "forme-decoupe",    Label = "Forme de découpe",         Type = "text",     Visible = false, Required = false, Critical = false, Order = 13 },
+            new() { Id = "faconnage-binding",Label = "Type de reliure",          Type = "select",   Visible = false, Required = false, Critical = false, Order = 14 },
             // ── Planification / livraison ──────────────────────────────────────
-            new() { Id = "delivery-date",    Label = "Date de réception souhaitée", Type = "date",  Visible = true,  Required = false, Critical = false, Order = 13 },
-            new() { Id = "delivery-address", Label = "Adresse de livraison",     Type = "textarea", Visible = true,  Required = false, Critical = false, Order = 14 },
+            new() { Id = "delivery-date",    Label = "Date de réception souhaitée", Type = "date",  Visible = true,  Required = false, Critical = false, Order = 15 },
+            new() { Id = "date-envoi",       Label = "Date d'envoi (indicatif)", Type = "date",     Visible = false, Required = false, Critical = false, Order = 16 },
+            new() { Id = "date-impression",  Label = "Date d'impression (indicatif)", Type = "date", Visible = false, Required = false, Critical = false, Order = 17 },
+            new() { Id = "date-prod-finitions", Label = "Date production finitions", Type = "date", Visible = false, Required = false, Critical = false, Order = 18 },
+            new() { Id = "delivery-address", Label = "Adresse de livraison",     Type = "textarea", Visible = true,  Required = false, Critical = false, Order = 19 },
+            new() { Id = "quantite-justifs", Label = "Quantité justificatifs",   Type = "number",   Visible = false, Required = false, Critical = false, Order = 20 },
+            new() { Id = "adresse-justifs",  Label = "Adresse justificatifs",    Type = "textarea", Visible = false, Required = false, Critical = false, Order = 21 },
+            // ── Donneur d'ordre ────────────────────────────────────────────────
+            new() { Id = "donneur-nom",      Label = "Donneur d'ordre — Nom",    Type = "text",     Visible = false, Required = false, Critical = false, Order = 22 },
+            new() { Id = "donneur-prenom",   Label = "Donneur d'ordre — Prénom", Type = "text",     Visible = false, Required = false, Critical = false, Order = 23 },
+            new() { Id = "donneur-tel",      Label = "Donneur d'ordre — Téléphone", Type = "text",  Visible = false, Required = false, Critical = false, Order = 24 },
+            new() { Id = "donneur-email",    Label = "Donneur d'ordre — Email",  Type = "email",    Visible = false, Required = false, Critical = false, Order = 25 },
+            // ── Affectation ────────────────────────────────────────────────────
+            new() { Id = "operateur",        Label = "Opérateur",                Type = "text",     Visible = false, Required = false, Critical = false, Order = 26 },
+            new() { Id = "mail-validation-devis", Label = "Mail validation devis (fichier)", Type = "file", Visible = false, Required = false, Critical = false, Order = 27 },
             // ── Contacts ───────────────────────────────────────────────────────
-            new() { Id = "numero-dossier",   Label = "Référence / N° dossier",   Type = "text",     Visible = false, Required = false, Critical = false, Order = 15 },
-            new() { Id = "numero-affaire",   Label = "N° d'affaire",             Type = "text",     Visible = false, Required = false, Critical = false, Order = 16 },
+            new() { Id = "numero-dossier",   Label = "Référence / N° dossier",   Type = "text",     Visible = false, Required = false, Critical = false, Order = 28 },
+            new() { Id = "numero-affaire",   Label = "N° d'affaire",             Type = "text",     Visible = false, Required = false, Critical = false, Order = 29 },
             // ── Informations complémentaires ───────────────────────────────────
-            new() { Id = "notes",            Label = "Notes internes",           Type = "textarea", Visible = false, Required = false, Critical = false, Order = 17 },
-            new() { Id = "comments",         Label = "Commentaires (client)",    Type = "textarea", Visible = true,  Required = false, Critical = false, Order = 18 },
+            new() { Id = "notes",            Label = "Notes internes",           Type = "textarea", Visible = false, Required = false, Critical = false, Order = 30 },
+            new() { Id = "comments",         Label = "Commentaires (client)",    Type = "textarea", Visible = true,  Required = false, Critical = false, Order = 31 },
         };
 
         // GET /api/admin/portal/form-fields

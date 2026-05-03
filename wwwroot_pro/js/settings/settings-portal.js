@@ -108,6 +108,10 @@ export async function renderSettingsPortal(panel) {
           <input type="checkbox" id="smtp-ssl" ${smtp.useSsl !== false ? 'checked' : ''} />
           <label for="smtp-ssl" style="font-size:13px;color:#374151;">Connexion SSL/TLS</label>
         </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+          <button id="btn-smtp-test" class="btn btn-sm" style="background:#f0fdf4;border:1px solid #86efac;color:#15803d;">🧪 Tester la config SMTP</button>
+          <span id="smtp-test-msg" style="font-size:13px;"></span>
+        </div>
       </div>
 
       <button id="portal-save-settings" class="btn btn-primary" style="margin-top:8px;">Enregistrer la configuration</button>
@@ -351,6 +355,33 @@ export async function renderSettingsPortal(panel) {
       if (r.ok) { msgEl.style.color = '#16a34a'; msgEl.textContent = '✓ Configuration enregistrée'; showNotification('Configuration portail enregistrée', 'success'); }
       else { msgEl.style.color = '#dc2626'; msgEl.textContent = r.error || 'Erreur'; }
     } catch { msgEl.style.color = '#dc2626'; msgEl.textContent = 'Erreur réseau'; }
+  };
+
+  // ── SMTP test ─────────────────────────────────────────────────────────────
+  panel.querySelector('#btn-smtp-test').onclick = async () => {
+    const msgEl = panel.querySelector('#smtp-test-msg');
+    msgEl.style.color = '#6b7280';
+    msgEl.textContent = '⏳ Envoi en cours…';
+    try {
+      const toAddr = panel.querySelector('#smtp-atelier-email').value.trim()
+                  || panel.querySelector('#smtp-from').value.trim();
+      const r = await fetch('/api/admin/portal/smtp-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ to: toAddr })
+      }).then(r => r.json());
+      if (r.ok) {
+        msgEl.style.color = '#16a34a';
+        msgEl.textContent = `✅ Email de test envoyé à ${r.sentTo}`;
+      } else {
+        msgEl.style.color = '#dc2626';
+        msgEl.textContent = '❌ ' + (r.error || 'Erreur');
+      }
+    } catch(e) {
+      msgEl.style.color = '#dc2626';
+      msgEl.textContent = '❌ Erreur réseau';
+    }
+    setTimeout(() => { msgEl.textContent = ''; }, 8000);
   };
 
   // ── Save theme ────────────────────────────────────────────────────────────
