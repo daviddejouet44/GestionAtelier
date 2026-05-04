@@ -376,26 +376,32 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
                 let portalVars = {};
                 if (isWebOrder) {
                   try {
-                    const orderNum = jobFileName.includes('__') ? jobFileName.split('__')[0] : jobFileName.split('.')[0];
-                    const byJobResp = await fetch('/api/admin/portal/orders/by-job?numeroDossier=' + encodeURIComponent(orderNum), {
-                      headers: { 'Authorization': `Bearer ${authToken || ''}` }
-                    }).then(r => r.json()).catch(() => ({}));
-                    if (byJobResp.ok && byJobResp.found && byJobResp.order?.id) {
-                      const detailResp = await fetch('/api/admin/portal/orders/' + byJobResp.order.id + '/detail', {
+                    // Extract order number: WEB-YYYYMMDD-NNNN from filename (before '__' separator or file extension)
+                    let orderNum = jobFileName;
+                    if (orderNum.includes('__')) orderNum = orderNum.split('__')[0];
+                    else if (orderNum.includes('.')) orderNum = orderNum.substring(0, orderNum.lastIndexOf('.'));
+                    // Only proceed if we have a non-trivial string that looks like a portal order number
+                    if (orderNum && orderNum.length > 3) {
+                      const byJobResp = await fetch('/api/admin/portal/orders/by-job?numeroDossier=' + encodeURIComponent(orderNum), {
                         headers: { 'Authorization': `Bearer ${authToken || ''}` }
                       }).then(r => r.json()).catch(() => ({}));
-                      if (detailResp.ok) {
-                        const o = detailResp.order || {};
-                        portalClientEmail = detailResp.clientEmail || '';
-                        portalVars = {
-                          '{clientName}':   detailResp.clientDisplayName || '',
-                          '{orderNumber}':  o.orderNumber || '',
-                          '{orderTitle}':   o.title || '',
-                          '{companyName}':  detailResp.companyName || '',
-                          '{motif}':        '',
-                          '{batLink}':      '',
-                          '{batFileName}':  ''
-                        };
+                      if (byJobResp.ok && byJobResp.found && byJobResp.order?.id) {
+                        const detailResp = await fetch('/api/admin/portal/orders/' + byJobResp.order.id + '/detail', {
+                          headers: { 'Authorization': `Bearer ${authToken || ''}` }
+                        }).then(r => r.json()).catch(() => ({}));
+                        if (detailResp.ok) {
+                          const o = detailResp.order || {};
+                          portalClientEmail = detailResp.clientEmail || '';
+                          portalVars = {
+                            '{clientName}':   detailResp.clientDisplayName || '',
+                            '{orderNumber}':  o.orderNumber || '',
+                            '{orderTitle}':   o.title || '',
+                            '{companyName}':  detailResp.companyName || '',
+                            '{motif}':        '',
+                            '{batLink}':      '',
+                            '{batFileName}':  ''
+                          };
+                        }
                       }
                     }
                   } catch(_) { /* non-blocking */ }
@@ -417,9 +423,11 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
                     .replace(/\{\{dateProductionFinitions\}\}/g, fmtDate(f.dateProductionFinitions))
                     .replace(/\{\{dateLivraison\}\}/g, fmtDate(f.dateLivraison))
                     .replace(/\{\{dateCreation\}\}/g, fmtDate(f.dateCreation));
-                  // Single-brace variables (portal/web orders)
-                  for (const [varKey, varVal] of Object.entries(portalVars)) {
-                    result = result.split(varKey).join(varVal);
+                  // Single-brace variables (portal/web orders) — use regex for efficiency
+                  const portalKeys = Object.keys(portalVars);
+                  if (portalKeys.length > 0) {
+                    const pattern = new RegExp(portalKeys.map(k => k.replace(/[{}]/g, '\\$&')).join('|'), 'g');
+                    result = result.replace(pattern, (m) => portalVars[m] !== undefined ? portalVars[m] : m);
                   }
                   return result;
                 };
