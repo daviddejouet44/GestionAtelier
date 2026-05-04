@@ -121,6 +121,18 @@ export async function buildKanban() {
     counter.textContent = "0";
     title.appendChild(counter);
 
+    // Bouton "Agrandir" pour ouvrir la colonne en plein écran
+    const btnExpand = document.createElement("button");
+    btnExpand.className = "btn kanban-col-expand-btn";
+    btnExpand.title = "Agrandir cette colonne";
+    btnExpand.innerHTML = "🔍";
+    btnExpand.style.cssText = "font-size:11px;padding:1px 5px;flex-shrink:0;margin-left:4px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.35);color:inherit;border-radius:4px;";
+    btnExpand.onclick = (e) => {
+      e.stopPropagation();
+      _openKanbanColumnModal(cfg, col);
+    };
+    title.appendChild(btnExpand);
+
     col.appendChild(title);
 
     const drop = document.createElement("div");
@@ -421,4 +433,59 @@ export async function updateKanbanSummary() {
     `;
     summaryEl.style.display = "";
   } catch(e) { console.error("Erreur summary:", e); }
+}
+
+// ======================================================
+// EXPAND — Agrandir une colonne Kanban dans un modal
+// ======================================================
+export function _openKanbanColumnModal(cfg, sourceCol) {
+  const overlay = document.createElement("div");
+  overlay.id = "kanban-col-modal-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9900;display:flex;align-items:stretch;justify-content:center;overflow:hidden;";
+
+  const modal = document.createElement("div");
+  modal.style.cssText = "background:#f8fafc;border-radius:0;width:90vw;max-width:1100px;display:flex;flex-direction:column;overflow:hidden;margin:24px auto;border-radius:12px;";
+
+  // Header
+  const hdr = document.createElement("div");
+  hdr.style.cssText = `display:flex;justify-content:space-between;align-items:center;padding:14px 20px;background:linear-gradient(135deg,${cfg.color} 0%,${darkenColor(cfg.color,15)} 100%);border-radius:12px 12px 0 0;`;
+  const hdrTitle = document.createElement("div");
+  hdrTitle.style.cssText = `font-size:17px;font-weight:700;color:${isLight(cfg.color)?"#1d1d1f":"#fff"};`;
+  hdrTitle.textContent = `🔍 ${cfg.label}`;
+  const btnClose = document.createElement("button");
+  btnClose.style.cssText = "background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:14px;font-weight:600;color:inherit;";
+  btnClose.textContent = "✕ Fermer";
+  btnClose.onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  hdr.appendChild(hdrTitle);
+  hdr.appendChild(btnClose);
+
+  // Body: copy the drop zone content
+  const body = document.createElement("div");
+  body.style.cssText = "flex:1;overflow-y:auto;padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;";
+
+  // Clone cards from the original column
+  const srcDrop = sourceCol.querySelector(".kanban-col-operator__drop");
+  if (srcDrop) {
+    const cards = srcDrop.querySelectorAll(".kanban-card-operator");
+    if (cards.length === 0) {
+      body.innerHTML = '<p style="color:#9ca3af;text-align:center;grid-column:1/-1;padding:40px;">Aucun fichier dans cette colonne</p>';
+    } else {
+      cards.forEach(card => {
+        const clone = card.cloneNode(true);
+        clone.style.cursor = "default";
+        clone.draggable = false;
+        // Re-wire action buttons so they actually work
+        clone.querySelectorAll("button").forEach(btn => {
+          if (btn.className.includes("btn-assign")) btn.style.display = "none";
+        });
+        body.appendChild(clone);
+      });
+    }
+  }
+
+  modal.appendChild(hdr);
+  modal.appendChild(body);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
 }

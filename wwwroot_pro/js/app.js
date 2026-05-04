@@ -234,6 +234,8 @@ function showKanban() {
   // Show kanban-specific filter bar
   const filterBarEl = document.getElementById("kanban-filter-bar");
   if (filterBarEl) filterBarEl.style.display = "";
+  // Hide global-alert bar on kanban (the sidebar shows retard + BAT en attente instead)
+  if (globalAlert) globalAlert.style.display = "none";
   buildKanban();
   buildKanbanSidebar();
 }
@@ -345,7 +347,14 @@ async function buildBatView(_filterStatus, _sortField) {
   };
 
   try {
-    const jobs = await fetch("/api/jobs?folder=" + encodeURIComponent("BAT")).then(r => r.json()).catch(() => []);
+    // Load configured BAT alert delay (default 48h) in parallel with jobs list
+    const [jobs, batCfgResp] = await Promise.all([
+      fetch("/api/jobs?folder=" + encodeURIComponent("BAT")).then(r => r.json()).catch(() => []),
+      fetch("/api/config/bat-command").then(r => r.json()).catch(() => ({}))
+    ]);
+    const batAlertDelayHours = (batCfgResp && batCfgResp.ok && batCfgResp.batAlertDelayHours > 0)
+      ? batCfgResp.batAlertDelayHours : 48;
+
     if (!Array.isArray(jobs) || jobs.length === 0) {
       listEl.innerHTML = '<p style="color:#9ca3af;text-align:center;padding:60px 40px;">Aucun fichier en BAT</p>';
       return;
@@ -633,10 +642,16 @@ async function buildBatView(_filterStatus, _sortField) {
       if (status.sentAt && !status.validatedAt && !status.rejectedAt) {
         const MS_PER_HOUR = 3600000;
         const ageHours = (Date.now() - new Date(status.sentAt)) / MS_PER_HOUR;
-        if (ageHours >= 48) {
+        if (ageHours >= batAlertDelayHours) {
+          // Count calendar days (not elapsed hours) to avoid off-by-one near midnight
+          const sentDay = new Date(status.sentAt);
+          sentDay.setHours(0, 0, 0, 0);
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
+          const calDays = Math.round((todayStart - sentDay) / 86400000);
           const alertEl = document.createElement("div");
           alertEl.className = "bat-alert-j2";
-          alertEl.textContent = `⚠️ BAT envoyé depuis ${Math.floor(ageHours / 24)} jour(s) sans réponse !`;
+          alertEl.textContent = `⚠️ BAT envoyé depuis ${calDays} jour(s) sans réponse !`;
           bodyDiv.appendChild(alertEl);
         }
       }
@@ -761,33 +776,85 @@ async function buildRapportView() {
 // ======================================================
 // SIDEBAR KANBAN (panneau latéral)
 // ======================================================
+
+// Persistent collapsible state across refreshes
+const _sidebarCollapsed = {};
+
+function _makeSidebarSection(id, title, color, iconTc) {
+  const escH = (s) => (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const isCollapsed = !!_sidebarCollapsed[id];
+  const section = document.createElement("div");
+  section.className = "kanban-sidebar-section";
+  section.id = `kanban-sidebar-sec-${id}`;
+  const hdr = document.createElement("div");
+  hdr.style.cssText = "display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;margin-bottom:" + (isCollapsed ? "0" : "8px");
+  hdr.innerHTML = `<div style="font-size:12px;font-weight:700;color:${iconTc || '#374151'};text-transform:uppercase;letter-spacing:0.05em;">${escH(title)}</div>
+    <span id="kanban-sidebar-arrow-${id}" style="font-size:10px;color:#9ca3af;transition:transform 0.2s;">${isCollapsed ? '▶' : '▼'}</span>`;
+  const body = document.createElement("div");
+  body.id = `kanban-sidebar-${id}`;
+  body.style.cssText = isCollapsed ? "display:none;font-size:11px;" : "font-size:11px;";
+  body.innerHTML = '<div style="color:#9ca3af;">Chargement...</div>';
+  hdr.onclick = () => {
+    const collapsed = !_sidebarCollapsed[id];
+    _sidebarCollapsed[id] = collapsed;
+    body.style.display = collapsed ? "none" : "";
+    hdr.style.marginBottom = collapsed ? "0" : "8px";
+    const arrow = document.getElementById(`kanban-sidebar-arrow-${id}`);
+    if (arrow) arrow.textContent = collapsed ? '▶' : '▼';
+  };
+  section.appendChild(hdr);
+  section.appendChild(body);
+  return section;
+}
+
 async function buildKanbanSidebar() {
   const sidebar = document.getElementById("kanban-sidebar");
   if (!sidebar) return;
-  sidebar.innerHTML = '<div style="padding:12px;color:#6b7280;font-size:12px;">Chargement...</div>';
+  sidebar.innerHTML = '';
 
+  sidebar.appendChild(_makeSidebarSection("retard", "🚨 Retard de production", "", "#b91c1c"));
+  sidebar.appendChild(_makeSidebarSection("machine", "🖨️ Planning Machine", "", "#374151"));
+  sidebar.appendChild(_makeSidebarSection("bat-attente", "⏳ BAT en attente", "", "#92400e"));
+  sidebar.appendChild(_makeSidebarSection("bat-cours", "📋 BAT en cours", "", "#374151"));
+
+  // Load all sections asynchronously
+  loadRetardSidebar();
+  loadMachineSidebar();
+  loadBatAttenteSidebar();
+  loadBatSidebar();
+}
+
+async function loadRetardSidebar() {
+  const listEl = document.getElementById("kanban-sidebar-retard");
+  if (!listEl) return;
   try {
-    sidebar.innerHTML = `
-      <div class="kanban-sidebar-section">
-        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">🖨️ Planning Machine</div>
-        <div id="kanban-sidebar-machine-list" style="font-size:11px;color:#9ca3af;">Chargement...</div>
-      </div>
-      <div class="kanban-sidebar-section">
-        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">🖨 BAT en cours</div>
-        <div id="kanban-sidebar-bat-list" style="font-size:11px;color:#9ca3af;">Chargement...</div>
-      </div>
-    `;
-
-    // Load Machine planning and BAT sidebar asynchronously
-    loadMachineSidebar();
-    loadBatSidebar();
+    const resp = await fetch("/api/alerts/production-delay").then(r => r.json()).catch(() => ({ ok: false, groups: [] }));
+    const groups = (resp.ok && Array.isArray(resp.groups)) ? resp.groups : [];
+    if (groups.length === 0) {
+      listEl.innerHTML = '<div style="color:#9ca3af;">Aucun retard</div>';
+      return;
+    }
+    const escH = (s) => (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    listEl.innerHTML = groups.map(g => {
+      const jobs = Array.isArray(g.jobs) ? g.jobs : [];
+      return `<div style="padding:5px 0;border-bottom:1px solid #fee2e2;">
+        <div style="font-size:10px;font-weight:700;color:#b91c1c;margin-bottom:2px;">${escH(g.folder || '')} (${jobs.length})</div>
+        ${jobs.slice(0, 3).map(j => {
+          const label = j.numeroDossier ? `#${escH(j.numeroDossier)}` : escH(j.fileName || '—');
+          const retard = j.retardJours >= 1 ? ` — ${j.retardJours}j de retard` : '';
+          return `<div style="font-size:10px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escH(j.fileName || '')}${j.nomClient ? ' — ' + escH(j.nomClient) : ''}">${label}${escH(retard)}</div>`;
+        }).join('')}
+        ${jobs.length > 3 ? `<div style="font-size:10px;color:#9ca3af;">+${jobs.length - 3} autres</div>` : ''}
+      </div>`;
+    }).join('');
   } catch(e) {
-    sidebar.innerHTML = '<div style="padding:12px;color:#9ca3af;font-size:12px;">—</div>';
+    const el = document.getElementById("kanban-sidebar-retard");
+    if (el) el.innerHTML = '<div style="color:#9ca3af;">—</div>';
   }
 }
 
 async function loadMachineSidebar() {
-  const listEl = document.getElementById("kanban-sidebar-machine-list");
+  const listEl = document.getElementById("kanban-sidebar-machine");
   if (!listEl) return;
   try {
     const resp = await fetch("/api/fabrication/events", {
@@ -833,13 +900,41 @@ async function loadMachineSidebar() {
       listEl.innerHTML += `<div style="font-size:10px;color:#9ca3af;padding-top:4px;text-align:center;">+${machineEvents.length - 10} autres</div>`;
     }
   } catch(e) {
-    const el = document.getElementById("kanban-sidebar-machine-list");
+    const el = document.getElementById("kanban-sidebar-machine");
+    if (el) el.innerHTML = '<div style="color:#9ca3af;">—</div>';
+  }
+}
+
+async function loadBatAttenteSidebar() {
+  const listEl = document.getElementById("kanban-sidebar-bat-attente");
+  if (!listEl) return;
+  try {
+    const alerts = await fetch("/api/alerts/bat-pending").then(r => r.json()).catch(() => []);
+    if (!Array.isArray(alerts) || alerts.length === 0) {
+      listEl.innerHTML = '<div style="color:#9ca3af;">Aucun BAT en attente</div>';
+      return;
+    }
+    const escH = (s) => (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    listEl.innerHTML = alerts.slice(0, 8).map(a => {
+      const ageLabel = a.ageDays >= 1 ? `${a.ageDays}j` : `${a.ageHours}h`;
+      const name = a.fileName || "—";
+      const truncName = name.length > 20 ? name.substring(0, 18) + '…' : name;
+      return `<div style="padding:5px 0;border-bottom:1px solid #fef3c7;display:flex;justify-content:space-between;align-items:center;gap:4px;">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#92400e;font-size:10px;" title="${escH(name)}">${escH(truncName)}</span>
+        <span style="background:#fef9c3;color:#92400e;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;white-space:nowrap;">${escH(ageLabel)}</span>
+      </div>`;
+    }).join('');
+    if (alerts.length > 8) {
+      listEl.innerHTML += `<div style="font-size:10px;color:#9ca3af;padding-top:4px;text-align:center;">+${alerts.length - 8} autres</div>`;
+    }
+  } catch(e) {
+    const el = document.getElementById("kanban-sidebar-bat-attente");
     if (el) el.innerHTML = '<div style="color:#9ca3af;">—</div>';
   }
 }
 
 async function loadBatSidebar() {
-  const listEl = document.getElementById("kanban-sidebar-bat-list");
+  const listEl = document.getElementById("kanban-sidebar-bat-cours");
   if (!listEl) return;
   try {
     const batJobs = await fetch("/api/jobs?folder=" + encodeURIComponent("BAT"))
@@ -880,8 +975,8 @@ async function loadBatSidebar() {
         }).catch(() => {});
     }
   } catch(e) {
-    const listEl = document.getElementById("kanban-sidebar-bat-list");
-    if (listEl) listEl.innerHTML = '<div style="color:#9ca3af;">—</div>';
+    const el = document.getElementById("kanban-sidebar-bat-cours");
+    if (el) el.innerHTML = '<div style="color:#9ca3af;">—</div>';
   }
 }
 
@@ -1436,6 +1531,12 @@ async function refreshSubmissionView() {
       const header = document.createElement("div");
       header.className = "submission-card-header";
 
+      // Dossier number — loaded async, shown prominently
+      const dossierNumEl = document.createElement("div");
+      dossierNumEl.className = "submission-card-dossier";
+      dossierNumEl.style.cssText = "font-size:14px;font-weight:900;color:#111827;font-family:monospace;min-height:18px;margin-bottom:2px;";
+      header.appendChild(dossierNumEl);
+
       const title = document.createElement("div");
       title.className = "submission-card-title";
       title.textContent = job.name || "Sans nom";
@@ -1446,6 +1547,15 @@ async function refreshSubmissionView() {
       info.textContent = `${new Date(job.modified).toLocaleDateString("fr-FR")} · ${fmtBytes(job.size)}`;
       header.appendChild(info);
       body.appendChild(header);
+
+      // Async fetch of dossier number
+      fetch("/api/fabrication?fileName=" + encodeURIComponent(fnKey(full)), {
+        headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(r => r.json()).then(d => {
+        if (d && d.numeroDossier) {
+          dossierNumEl.textContent = "N° " + d.numeroDossier;
+        }
+      }).catch(() => {});
 
       const iso = deliveriesByPath[fnKey(full)];
       const status = document.createElement("div");

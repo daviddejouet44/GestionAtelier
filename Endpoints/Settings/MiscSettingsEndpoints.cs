@@ -1225,6 +1225,104 @@ app.MapPut("/api/settings/actions-config", async (HttpContext ctx) =>
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
+// ======================================================
+// SAUVEGARDE / RESTAURATION DES PARAMÈTRES
+// ======================================================
+
+app.MapGet("/api/admin/settings/export", async (HttpContext ctx) =>
+{
+    var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+    try { var d = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token)); var p = d.Split(':'); if (p.Length < 3 || p[2] != "3") return Results.Json(new { ok = false, error = "Admin only" }); }
+    catch { return Results.Json(new { ok = false, error = "Admin only" }); }
+
+    try
+    {
+        // Export all known settings collections
+        var settingsKeys = new[]
+        {
+            "paths", "schedule", "preflight", "kanbanColumns", "kanbanActionsConfig",
+            "batConfig", "batCommand", "printEngines", "workTypes",
+            "printRouting", "hotfolderRouting", "finitions", "reports",
+            "sheetFormats", "coverProducts", "sheetCalcRules", "deliveryDelay",
+            "passesConfig", "grammageTime", "jdfConfig", "formConfig",
+            "planningColors", "imapConfig", "emailTemplates", "integrations",
+            "portalSettings", "portalTheme", "portalFormFields"
+        };
+
+        var col = MongoDbHelper.GetCollection<BsonDocument>("settings");
+        var exportData = new Dictionary<string, object?>();
+
+        foreach (var key in settingsKeys)
+        {
+            var doc = col.Find(Builders<BsonDocument>.Filter.Eq("_id", key)).FirstOrDefault();
+            if (doc != null)
+            {
+                doc.Remove("_id");
+                exportData[key] = BsonTypeMapper.MapToDotNetValue(doc);
+            }
+        }
+
+        var export = new
+        {
+            version = 2,
+            exportedAt = DateTime.UtcNow,
+            exportedBy = ctx.Items.ContainsKey("currentUserLogin") ? ctx.Items["currentUserLogin"] : "admin",
+            settings = exportData
+        };
+
+        var json = JsonSerializer.Serialize(export, new JsonSerializerOptions { WriteIndented = true });
+        Console.WriteLine($"[SETTINGS] Export by {export.exportedBy} at {export.exportedAt:u}");
+        return Results.Text(json, "application/json; charset=utf-8");
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
+{
+    var tokenI = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+    try { var d = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(tokenI)); var p = d.Split(':'); if (p.Length < 3 || p[2] != "3") return Results.Json(new { ok = false, error = "Admin only" }); }
+    catch { return Results.Json(new { ok = false, error = "Admin only" }); }
+
+    try
+    {
+        var body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
+        var root = JsonDocument.Parse(body).RootElement;
+
+        if (!root.TryGetProperty("settings", out var settingsEl) || settingsEl.ValueKind != JsonValueKind.Object)
+            return Results.Json(new { ok = false, error = "Format invalide — propriété 'settings' manquante" });
+
+        int version = root.TryGetProperty("version", out var vEl) ? vEl.GetInt32() : 1;
+
+        var col = MongoDbHelper.GetCollection<BsonDocument>("settings");
+        int restored = 0;
+
+        foreach (var prop in settingsEl.EnumerateObject())
+        {
+            var key = prop.Name;
+            var value = prop.Value.GetRawText();
+            var doc = BsonDocument.Parse(value);
+            doc["_id"] = key;
+            col.ReplaceOne(
+                Builders<BsonDocument>.Filter.Eq("_id", key),
+                doc,
+                new ReplaceOptions { IsUpsert = true }
+            );
+            restored++;
+        }
+
+        var importedBy = ctx.Items.ContainsKey("currentUserLogin") ? ctx.Items["currentUserLogin"] : "admin";
+        Console.WriteLine($"[SETTINGS] Import v{version} by {importedBy}: {restored} sections restored");
+        return Results.Json(new { ok = true, restored, version });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
     }
 
     private static List<KanbanAction> DefaultKanbanActions() => new()

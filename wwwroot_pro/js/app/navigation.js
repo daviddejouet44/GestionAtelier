@@ -20,6 +20,9 @@ export function hideAllViews() {
   // Hide kanban-specific controls
   const filterBarEl = document.getElementById("kanban-filter-bar");
   if (filterBarEl) filterBarEl.style.display = "none";
+  // Restore global-alert visibility (was hidden on kanban, show on other views)
+  const globalAlert = document.getElementById("global-alert");
+  if (globalAlert) globalAlert.style.display = "";
   // Hide planning-specific controls (only visible in Planning tab)
   const planSwitcher = document.getElementById("planning-view-switcher");
   if (planSwitcher) planSwitcher.style.display = "none";
