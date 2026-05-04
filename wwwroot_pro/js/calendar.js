@@ -574,10 +574,55 @@ export async function initCalendar() {
         if (info.event.extendedProps.isFabEvent) {
           // Save manual time for fabrication key-date event
           const fabType = info.event.extendedProps.fabType;
+          const fileName = info.event.extendedProps.fabFileName || fk;
+
+          // Livraison view: reception events need popup + key-date update (not event-time)
+          if (fabType === 'reception') {
+            const confirmed = await _showLivraisonConfirmPopup(newDate);
+            if (confirmed === null) { info.revert(); return; }
+
+            // Always update dateReceptionSouhaitee
+            const r = await fetch("/api/fabrication/key-date", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ fileName, field: "dateReceptionSouhaitee", date: newDate, time: newTime })
+            }).then(r => r.json());
+            if (!r.ok) throw new Error(r.error || "Erreur");
+
+            if (confirmed === true) {
+              // Propagate to other key dates by shifting them the same delta
+              const MS_PER_DAY = 86400000;
+              const oldEventStart = info.oldEvent && info.oldEvent.start;
+              const oldDate = oldEventStart ? oldEventStart.toLocaleDateString('sv-SE') : newDate;
+              const deltaDays = Math.round((new Date(newDate) - new Date(oldDate)) / MS_PER_DAY);
+              if (deltaDays !== 0) {
+                const fab = await fetch('/api/fabrication?fileName=' + encodeURIComponent(fileName), {
+                  headers: { 'Authorization': `Bearer ${authToken}` }
+                }).then(r => r.json()).catch(() => ({}));
+                for (const field of ['dateEnvoi', 'dateImpression', 'dateProductionFinitions']) {
+                  const existing = fab && fab[field] ? fab[field] : null;
+                  if (existing) {
+                    try {
+                      const shifted = new Date(new Date(existing).getTime() + deltaDays * MS_PER_DAY);
+                      const shiftedDate = shifted.toLocaleDateString('sv-SE');
+                      await fetch("/api/fabrication/key-date", {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ fileName, field, date: shiftedDate, time: newTime })
+                      }).catch(() => {});
+                    } catch(e) { /* ignore */ }
+                  }
+                }
+              }
+            }
+
+            showNotification(`✅ Planning livraison mis à jour pour le ${newDate}`, "success");
+            return;
+          }
+
           const viewTypeMap = { envoi: 'global', impression: 'machine', finitions: 'finitions' };
           const viewType = viewTypeMap[fabType];
           if (!viewType) { info.revert(); return; }
-          const fileName = info.event.extendedProps.fabFileName || fk;
           const r = await fetch("/api/fabrication/event-time", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
