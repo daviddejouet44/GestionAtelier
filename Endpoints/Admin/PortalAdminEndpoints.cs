@@ -507,6 +507,82 @@ public static class PortalAdminEndpoints
             catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
         });
 
+        // GET /api/admin/portal/orders/{orderId}/detail -- full order details + client info for atelier prefill
+        app.MapGet("/api/admin/portal/orders/{orderId}/detail", (HttpContext ctx, string orderId) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            try
+            {
+                var col = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
+                var doc = col.Find(Builders<BsonDocument>.Filter.Eq("id", orderId)).FirstOrDefault();
+                if (doc == null) return Results.Json(new { ok = false, error = "Commande non trouvée" });
+
+                var order = PortalOrdersEndpoints.DocToOrder(doc);
+
+                string clientDisplayName = "", clientEmail = "";
+                try
+                {
+                    var clientCol = MongoDbHelper.GetCollection<BsonDocument>("client_accounts");
+                    var clientDoc = clientCol.Find(Builders<BsonDocument>.Filter.Eq("id", order.ClientAccountId)).FirstOrDefault();
+                    if (clientDoc != null)
+                    {
+                        clientDisplayName = clientDoc.Contains("displayName") ? clientDoc["displayName"].AsString : "";
+                        if (string.IsNullOrWhiteSpace(clientDisplayName))
+                            clientDisplayName = clientDoc.Contains("companyName") ? clientDoc["companyName"].AsString : "";
+                        clientEmail = clientDoc.Contains("email") ? clientDoc["email"].AsString : "";
+                    }
+                }
+                catch { /* non-blocking */ }
+
+                return Results.Json(new
+                {
+                    ok = true,
+                    order = new
+                    {
+                        id              = order.Id,
+                        orderNumber     = order.OrderNumber,
+                        title           = order.Title,
+                        quantity        = order.Quantity,
+                        format          = order.Format,
+                        paper           = order.Paper,
+                        recto           = order.Recto,
+                        finitions       = order.Finitions,
+                        desiredDeliveryDate      = order.DesiredDeliveryDate,
+                        deliveryMode    = order.DeliveryMode,
+                        deliveryAddress = order.DeliveryAddress,
+                        comments        = order.Comments,
+                        typeTravail     = order.TypeTravail,
+                        pagination      = order.Pagination,
+                        formatFeuille   = order.FormatFeuille,
+                        formeDecoupe    = order.FormeDecoupe,
+                        faconnageBinding = order.FaconnageBinding,
+                        notes           = order.Notes,
+                        bat             = order.Bat,
+                        quantiteJustifs = order.QuantiteJustifs,
+                        adresseJustifs  = order.AdresseJustifs,
+                        media1          = order.Media1,
+                        media2          = order.Media2,
+                        media3          = order.Media3,
+                        media4          = order.Media4,
+                        mediaCouverture = order.MediaCouverture,
+                        formatFini      = order.FormatFini,
+                        donneurOrdreNom        = order.DonneurOrdreNom,
+                        donneurOrdrePrenom     = order.DonneurOrdrePrenom,
+                        donneurOrdreTelephone  = order.DonneurOrdreTelephone,
+                        donneurOrdreEmail      = order.DonneurOrdreEmail,
+                        dateEnvoi              = order.DateEnvoi,
+                        dateImpression         = order.DateImpression,
+                        dateProductionFinitions = order.DateProductionFinitions,
+                        status          = order.Status,
+                        clientAccountId = order.ClientAccountId,
+                    },
+                    clientDisplayName,
+                    clientEmail
+                });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
         // PUT /api/admin/portal/orders/{orderId}/status  — update order status from atelier
         app.MapPut("/api/admin/portal/orders/{orderId}/status", async (HttpContext ctx, string orderId) =>
         {

@@ -57,7 +57,7 @@ public static class PortalOrdersEndpoints
         files = includeFiles ? o.Files.Select(f => new { fileName = f.FileName, uploadedAt = f.UploadedAt, size = f.Size }).ToList() : null,
     };
 
-    private static ClientOrder DocToOrder(BsonDocument d)
+    internal static ClientOrder DocToOrder(BsonDocument d)
     {
         var finitions = new List<string>();
         if (d.Contains("finitions") && d["finitions"].IsBsonArray)
