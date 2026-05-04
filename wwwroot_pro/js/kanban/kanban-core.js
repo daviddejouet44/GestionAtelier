@@ -13,7 +13,8 @@ export const state = {
   operatorFilter: "",    // was _kanbanOperatorFilter
   preflightColumnsHidden: false,  // was _preflightColumnsHidden
   columnCache: {},       // was _columnCache
-  visibleActionsMap: {}  // folder → string[] | null (null = show all)
+  visibleActionsMap: {}, // folder → string[] | null (null = show all)
+  emailTemplatesMap: {}  // folder → string[] | null (null = no extra templates)
 };
 
 // Default kanban columns (used as fallback if API fails)
@@ -54,13 +55,14 @@ export async function buildKanban() {
 
   // Build visible actions map: folder → string[] | null
   state.visibleActionsMap = {};
+  state.emailTemplatesMap = {};
   for (const c of allColumns) {
     if (Array.isArray(c.visibleActions)) {
-      // null means "show all" (retrocompat) — an array (even empty) restricts to listed actions
       state.visibleActionsMap[c.folder] = c.visibleActions;
     } else {
       state.visibleActionsMap[c.folder] = null; // null = show all (retrocompat)
     }
+    state.emailTemplatesMap[c.folder] = Array.isArray(c.emailTemplateKeys) ? c.emailTemplateKeys : null;
   }
 
   kanbanDiv.innerHTML = "";
@@ -436,8 +438,118 @@ export async function updateKanbanSummary() {
 }
 
 // ======================================================
-// EXPAND — Agrandir une colonne Kanban dans un modal
+// BAT DECISION POLLING — Operator popup notification
 // ======================================================
+let _batPollInterval = null;
+let _batPopupShown = false;
+
+export function startBatDecisionPolling(authToken) {
+  if (_batPollInterval) clearInterval(_batPollInterval);
+  _batPollInterval = setInterval(() => _pollBatDecisions(authToken), 7000);
+}
+
+export function stopBatDecisionPolling() {
+  if (_batPollInterval) { clearInterval(_batPollInterval); _batPollInterval = null; }
+}
+
+async function _pollBatDecisions(authToken) {
+  if (_batPopupShown) return; // wait for operator to dismiss existing popup
+  try {
+    const resp = await fetch("/api/admin/portal/bat/pending-decisions", {
+      headers: { "Authorization": "Bearer " + (authToken || "") }
+    }).then(r => r.json()).catch(() => null);
+
+    if (!resp || !resp.ok || !resp.decisions || resp.decisions.length === 0) return;
+
+    _batPopupShown = true;
+    _showBatDecisionPopup(resp.decisions, authToken);
+  } catch(e) { /* ignore polling errors */ }
+}
+
+function _showBatDecisionPopup(decisions, authToken) {
+  // Remove any existing popup
+  document.getElementById("bat-decision-popup-overlay")?.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "bat-decision-popup-overlay";
+  overlay.style.cssText = [
+    "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10100;",
+    "display:flex;align-items:center;justify-content:center;padding:20px;"
+  ].join("");
+
+  const modal = document.createElement("div");
+  modal.style.cssText = [
+    "background:white;border-radius:14px;padding:28px 24px;max-width:520px;width:100%;",
+    "box-shadow:0 20px 60px rgba(0,0,0,.35);max-height:80vh;overflow-y:auto;"
+  ].join("");
+
+  const title = document.createElement("div");
+  title.style.cssText = "font-size:18px;font-weight:700;color:#111827;margin-bottom:16px;";
+  title.textContent = "🔔 Décision(s) client sur BAT";
+  modal.appendChild(title);
+
+  decisions.forEach(d => {
+    const isValidated = d.action === "validated";
+    const bgColor = isValidated ? "#dcfce7" : "#fee2e2";
+    const borderColor = isValidated ? "#86efac" : "#fca5a5";
+    const textColor = isValidated ? "#15803d" : "#991b1b";
+    const icon = isValidated ? "✅" : "❌";
+    const actionLabel = isValidated ? "validé" : "refusé";
+
+    const dtStr = d.performedAt
+      ? new Date(d.performedAt).toLocaleDateString("fr-FR") + " à " +
+        new Date(d.performedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
+      : "";
+
+    const card = document.createElement("div");
+    card.style.cssText = [
+      `background:${bgColor};border:1px solid ${borderColor};border-radius:10px;`,
+      "padding:14px 16px;margin-bottom:12px;"
+    ].join("");
+
+    card.innerHTML = `
+      <div style="font-size:15px;font-weight:700;color:${textColor};margin-bottom:6px;">
+        ${icon} BAT ${actionLabel} — Commande ${d.orderNumber || d.orderId}
+      </div>
+      <div style="font-size:13px;color:#374151;margin-bottom:2px;">
+        <strong>Client :</strong> ${d.clientName || "—"}
+      </div>
+      ${d.orderTitle ? `<div style="font-size:13px;color:#374151;margin-bottom:2px;"><strong>Intitulé :</strong> ${d.orderTitle}</div>` : ""}
+      ${d.batFileName ? `<div style="font-size:13px;color:#374151;margin-bottom:2px;"><strong>Fichier :</strong> ${d.batFileName}</div>` : ""}
+      ${dtStr ? `<div style="font-size:12px;color:#6b7280;margin-top:4px;">${dtStr}</div>` : ""}
+      ${d.motif ? `<div style="font-size:13px;color:#374151;margin-top:6px;border-top:1px solid ${borderColor};padding-top:6px;"><strong>Motif :</strong> ${d.motif}</div>` : ""}
+    `;
+    modal.appendChild(card);
+  });
+
+  const btnAck = document.createElement("button");
+  btnAck.style.cssText = [
+    "width:100%;padding:14px;background:#1d4ed8;color:white;border:none;",
+    "border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;",
+    "transition:background 0.15s;"
+  ].join("");
+  btnAck.textContent = "✓ J'ai pris en compte — Fermer";
+  btnAck.onmouseenter = () => { btnAck.style.background = "#1e40af"; };
+  btnAck.onmouseleave = () => { btnAck.style.background = "#1d4ed8"; };
+  btnAck.onclick = async () => {
+    // Acknowledge all decisions shown
+    for (const d of decisions) {
+      try {
+        await fetch(`/api/admin/portal/bat/decisions/${d.batId}/acknowledge`, {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + (authToken || "") }
+        });
+      } catch(e) { /* ignore */ }
+    }
+    overlay.remove();
+    _batPopupShown = false;
+  };
+  modal.appendChild(btnAck);
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+}
+
 export function _openKanbanColumnModal(cfg, sourceCol) {
   const overlay = document.createElement("div");
   overlay.id = "kanban-col-modal-overlay";

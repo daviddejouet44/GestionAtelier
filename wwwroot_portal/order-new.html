@@ -411,6 +411,75 @@
               <input type="text" id="format-fini" class="form-control" placeholder="${esc(field.placeholder || 'Ex. : A5, 210x99mm…')}" />`;
             break;
 
+          case 'moteur-impression': {
+            const opts = (field.allowedValues && field.allowedValues.length ? field.allowedValues : (formOptions.moteurs || []));
+            group.className = 'form-group form-row-item';
+            if (opts.length) {
+              group.innerHTML = `<label for="moteur-impression">${labelText}</label>
+                <select id="moteur-impression" class="form-control">
+                  <option value="">— ${esc(field.placeholder || 'Sélectionner')} —</option>
+                  ${opts.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}
+                </select>`;
+            } else {
+              group.innerHTML = `<label for="moteur-impression">${labelText}</label>
+                <input type="text" id="moteur-impression" class="form-control" placeholder="${esc(field.placeholder || '')}" />`;
+            }
+            break;
+          }
+
+          case 'date-envoi':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="date-envoi">${labelText}</label>
+              <input type="date" id="date-envoi" class="form-control" />`;
+            break;
+
+          case 'date-impression':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="date-impression">${labelText}</label>
+              <input type="date" id="date-impression" class="form-control" />`;
+            break;
+
+          case 'date-prod-finitions':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="date-prod-finitions">${labelText}</label>
+              <input type="date" id="date-prod-finitions" class="form-control" />`;
+            break;
+
+          case 'donneur-nom':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="donneur-nom">${labelText}</label>
+              <input type="text" id="donneur-nom" class="form-control" placeholder="${esc(field.placeholder || 'Nom')}" />`;
+            break;
+
+          case 'donneur-prenom':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="donneur-prenom">${labelText}</label>
+              <input type="text" id="donneur-prenom" class="form-control" placeholder="${esc(field.placeholder || 'Prénom')}" />`;
+            break;
+
+          case 'donneur-tel':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="donneur-tel">${labelText}</label>
+              <input type="tel" id="donneur-tel" class="form-control" placeholder="${esc(field.placeholder || 'Ex. : 06 12 34 56 78')}" />`;
+            break;
+
+          case 'donneur-email':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="donneur-email">${labelText}</label>
+              <input type="email" id="donneur-email" class="form-control" placeholder="${esc(field.placeholder || 'email@example.com')}" />`;
+            break;
+
+          case 'operateur':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="operateur">${labelText}</label>
+              <input type="text" id="operateur" class="form-control" placeholder="${esc(field.placeholder || '')}" />`;
+            break;
+
+          case 'mail-validation-devis':
+            group.innerHTML = `<label for="mail-validation-devis">${labelText}</label>
+              <input type="file" id="mail-validation-devis" class="form-control" accept=".pdf,.eml,.msg" />`;
+            break;
+
           default:
             // Generic text field for any unknown field id
             group.innerHTML = `<label for="${esc(field.id)}">${labelText}</label>
@@ -674,7 +743,16 @@
             media3:           document.getElementById('media-3')?.value.trim() || undefined,
             media4:           document.getElementById('media-4')?.value.trim() || undefined,
             mediaCouverture:  document.getElementById('media-couverture')?.value.trim() || undefined,
-            formatFini:       document.getElementById('format-fini')?.value.trim() || undefined
+            formatFini:       document.getElementById('format-fini')?.value.trim() || undefined,
+            // Donneur d'ordre
+            donneurOrdreNom:       document.getElementById('donneur-nom')?.value.trim() || undefined,
+            donneurOrdrePrenom:    document.getElementById('donneur-prenom')?.value.trim() || undefined,
+            donneurOrdreTelephone: document.getElementById('donneur-tel')?.value.trim() || undefined,
+            donneurOrdreEmail:     document.getElementById('donneur-email')?.value.trim() || undefined,
+            // Indicative dates
+            dateEnvoi:            document.getElementById('date-envoi')?.value || undefined,
+            dateImpression:       document.getElementById('date-impression')?.value || undefined,
+            dateProductionFinitions: document.getElementById('date-prod-finitions')?.value || undefined
           })
         });
 

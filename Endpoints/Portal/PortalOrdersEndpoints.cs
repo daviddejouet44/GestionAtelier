@@ -43,6 +43,13 @@ public static class PortalOrdersEndpoints
         media4 = o.Media4,
         mediaCouverture = o.MediaCouverture,
         formatFini = o.FormatFini,
+        donneurOrdreNom = o.DonneurOrdreNom,
+        donneurOrdrePrenom = o.DonneurOrdrePrenom,
+        donneurOrdreTelephone = o.DonneurOrdreTelephone,
+        donneurOrdreEmail = o.DonneurOrdreEmail,
+        dateEnvoi = o.DateEnvoi,
+        dateImpression = o.DateImpression,
+        dateProductionFinitions = o.DateProductionFinitions,
         status = o.Status,
         createdAt = o.CreatedAt,
         updatedAt = o.UpdatedAt,
@@ -126,6 +133,13 @@ public static class PortalOrdersEndpoints
             Media4 = d.Contains("media4") && !d["media4"].IsBsonNull ? d["media4"].AsString : null,
             MediaCouverture = d.Contains("mediaCouverture") && !d["mediaCouverture"].IsBsonNull ? d["mediaCouverture"].AsString : null,
             FormatFini = d.Contains("formatFini") && !d["formatFini"].IsBsonNull ? d["formatFini"].AsString : null,
+            DonneurOrdreNom = d.Contains("donneurOrdreNom") && !d["donneurOrdreNom"].IsBsonNull ? d["donneurOrdreNom"].AsString : null,
+            DonneurOrdrePrenom = d.Contains("donneurOrdrePrenom") && !d["donneurOrdrePrenom"].IsBsonNull ? d["donneurOrdrePrenom"].AsString : null,
+            DonneurOrdreTelephone = d.Contains("donneurOrdreTelephone") && !d["donneurOrdreTelephone"].IsBsonNull ? d["donneurOrdreTelephone"].AsString : null,
+            DonneurOrdreEmail = d.Contains("donneurOrdreEmail") && !d["donneurOrdreEmail"].IsBsonNull ? d["donneurOrdreEmail"].AsString : null,
+            DateEnvoi = d.Contains("dateEnvoi") && !d["dateEnvoi"].IsBsonNull ? d["dateEnvoi"].ToUniversalTime() : null,
+            DateImpression = d.Contains("dateImpression") && !d["dateImpression"].IsBsonNull ? d["dateImpression"].ToUniversalTime() : null,
+            DateProductionFinitions = d.Contains("dateProductionFinitions") && !d["dateProductionFinitions"].IsBsonNull ? d["dateProductionFinitions"].ToUniversalTime() : null,
             Status = d.Contains("status") ? d["status"].AsString : "draft",
             AtelierJobPath = d.Contains("atelierJobPath") ? d["atelierJobPath"].AsString : "",
             CreatedAt = d.Contains("createdAt") ? d["createdAt"].ToUniversalTime() : DateTime.UtcNow,
@@ -243,7 +257,19 @@ public static class PortalOrdersEndpoints
                 string? mediaCouverture = json.TryGetProperty("mediaCouverture", out var mcEl) ? mcEl.GetString() : null;
                 string? formatFini = json.TryGetProperty("formatFini", out var fnEl) ? fnEl.GetString() : null;
 
-                // Validate deliveryAddress is required for livraison
+                // Donneur d'ordre
+                string? donneurOrdreNom     = json.TryGetProperty("donneurOrdreNom",     out var donNomEl)    ? donNomEl.GetString()    : null;
+                string? donneurOrdrePrenom  = json.TryGetProperty("donneurOrdrePrenom",  out var donPrenEl)   ? donPrenEl.GetString()   : null;
+                string? donneurOrdreTel     = json.TryGetProperty("donneurOrdreTelephone",out var donTelEl)   ? donTelEl.GetString()   : null;
+                string? donneurOrdreEmail   = json.TryGetProperty("donneurOrdreEmail",   out var donEmailEl)  ? donEmailEl.GetString()  : null;
+
+                // Indicative dates
+                DateTime? dateEnvoi = null;
+                if (json.TryGetProperty("dateEnvoi", out var deEl) && deEl.ValueKind == JsonValueKind.String && DateTime.TryParse(deEl.GetString(), out var deParsed)) dateEnvoi = DateTime.SpecifyKind(deParsed, DateTimeKind.Utc);
+                DateTime? dateImpression = null;
+                if (json.TryGetProperty("dateImpression", out var diEl) && diEl.ValueKind == JsonValueKind.String && DateTime.TryParse(diEl.GetString(), out var diParsed)) dateImpression = DateTime.SpecifyKind(diParsed, DateTimeKind.Utc);
+                DateTime? dateProductionFinitions = null;
+                if (json.TryGetProperty("dateProductionFinitions", out var dpfEl) && dpfEl.ValueKind == JsonValueKind.String && DateTime.TryParse(dpfEl.GetString(), out var dpfParsed)) dateProductionFinitions = DateTime.SpecifyKind(dpfParsed, DateTimeKind.Utc);
                 if (deliveryMode == "livraison" && string.IsNullOrWhiteSpace(deliveryAddress))
                     return Results.Json(new { ok = false, error = "L'adresse de livraison est obligatoire pour le mode Livraison" });
 
@@ -287,6 +313,13 @@ public static class PortalOrdersEndpoints
                     Media4 = media4,
                     MediaCouverture = mediaCouverture,
                     FormatFini = formatFini,
+                    DonneurOrdreNom = donneurOrdreNom,
+                    DonneurOrdrePrenom = donneurOrdrePrenom,
+                    DonneurOrdreTelephone = donneurOrdreTel,
+                    DonneurOrdreEmail = donneurOrdreEmail,
+                    DateEnvoi = dateEnvoi,
+                    DateImpression = dateImpression,
+                    DateProductionFinitions = dateProductionFinitions,
                     Status = "draft",
                     CreatedAt = now,
                     UpdatedAt = now,
@@ -700,6 +733,13 @@ public static class PortalOrdersEndpoints
         if (!string.IsNullOrWhiteSpace(o.Media4)) doc["media4"] = o.Media4;
         if (!string.IsNullOrWhiteSpace(o.MediaCouverture)) doc["mediaCouverture"] = o.MediaCouverture;
         if (!string.IsNullOrWhiteSpace(o.FormatFini)) doc["formatFini"] = o.FormatFini;
+        if (!string.IsNullOrWhiteSpace(o.DonneurOrdreNom)) doc["donneurOrdreNom"] = o.DonneurOrdreNom;
+        if (!string.IsNullOrWhiteSpace(o.DonneurOrdrePrenom)) doc["donneurOrdrePrenom"] = o.DonneurOrdrePrenom;
+        if (!string.IsNullOrWhiteSpace(o.DonneurOrdreTelephone)) doc["donneurOrdreTelephone"] = o.DonneurOrdreTelephone;
+        if (!string.IsNullOrWhiteSpace(o.DonneurOrdreEmail)) doc["donneurOrdreEmail"] = o.DonneurOrdreEmail;
+        if (o.DateEnvoi.HasValue) doc["dateEnvoi"] = o.DateEnvoi.Value;
+        if (o.DateImpression.HasValue) doc["dateImpression"] = o.DateImpression.Value;
+        if (o.DateProductionFinitions.HasValue) doc["dateProductionFinitions"] = o.DateProductionFinitions.Value;
 
         return doc;
     }

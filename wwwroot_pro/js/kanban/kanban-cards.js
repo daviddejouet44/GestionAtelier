@@ -320,6 +320,57 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         return btn;
       })();
 
+      // Dynamic email buttons from tile's configured emailTemplateKeys
+      const _buildEmailTemplateButtons = (folderName, jobFileName, job, fab) => {
+        const keys = state.emailTemplatesMap?.[folderName];
+        if (!keys || keys.length === 0) return [];
+        return keys.map(key => {
+          const btn = document.createElement("button");
+          btn.className = "btn btn-sm";
+          btn.style.cssText = "background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;";
+          // Shorten the key for display (remove prefix, title-case)
+          const label = key.replace(/^(client_|atelier_)/i, '').replace(/_/g, ' ');
+          btn.textContent = "✉️ " + label;
+          btn.title = `Envoyer email : ${key}`;
+          btn.onclick = async (e) => {
+            e.stopPropagation();
+            try {
+              const [tmplResp, fabData] = await Promise.all([
+                fetch(`/api/admin/portal/email-templates/${encodeURIComponent(key)}`, {
+                  headers: { "Authorization": `Bearer ${authToken || ""}` }
+                }).then(r => r.json()).catch(() => ({})),
+                (fab ? Promise.resolve(fab) : fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName)).then(r => r.json()).catch(() => ({})))
+              ]);
+              const tmpl = tmplResp?.template || null;
+              const f = fabData || {};
+              if (tmpl && (tmpl.subject || tmpl.body)) {
+                const fmtDate = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '';
+                const getClient = (fd) => fd.nomClient || fd.client || '';
+                const rv = (s) => (s || '')
+                  .replace(/\{\{numeroDossier\}\}/g, f.numeroDossier || '')
+                  .replace(/\{\{nomClient\}\}/g, getClient(f))
+                  .replace(/\{\{nomFichier\}\}/g, job.name || '')
+                  .replace(/\{\{typeTravail\}\}/g, f.typeTravail || '')
+                  .replace(/\{\{quantite\}\}/g, f.quantite || '')
+                  .replace(/\{\{operateur\}\}/g, f.operateur || '')
+                  .replace(/\{\{moteurImpression\}\}/g, f.moteurImpression || '')
+                  .replace(/\{\{dateReception\}\}/g, fmtDate(f.dateReception))
+                  .replace(/\{\{dateImpression\}\}/g, fmtDate(f.dateImpression))
+                  .replace(/\{\{dateEnvoi\}\}/g, fmtDate(f.dateEnvoi))
+                  .replace(/\{\{dateProductionFinitions\}\}/g, fmtDate(f.dateProductionFinitions))
+                  .replace(/\{\{dateLivraison\}\}/g, fmtDate(f.dateLivraison))
+                  .replace(/\{\{dateCreation\}\}/g, fmtDate(f.dateCreation));
+                const to = tmpl.to || f.mailClient || '';
+                window.open(`mailto:${to}?subject=${encodeURIComponent(rv(tmpl.subject))}&body=${encodeURIComponent(rv(tmpl.body))}`);
+              } else {
+                showNotification(`⚠️ Template "${key}" non configuré ou vide. Configurez-le dans Paramétrage > Templates email.`, "warning");
+              }
+            } catch(err) { showNotification("❌ " + err.message, "error"); }
+          };
+          return btn;
+        });
+      };
+
       if (folderName === "Début de production") {
         if (isActionVisible(folderName, "ouvrirFichier")) actions.appendChild(btnOpen);
         if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
@@ -924,6 +975,12 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       }
 
       infoStack.appendChild(actions);
+
+      // Dynamic email template buttons from tile configuration (multi-template per tile)
+      if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+        const extraEmailBtns = _buildEmailTemplateButtons(folderName, jobFileName, job, null);
+        extraEmailBtns.forEach(btn => actions.appendChild(btn));
+      }
 
       if (!readOnly) {
         card.addEventListener("dragstart", (e) => {

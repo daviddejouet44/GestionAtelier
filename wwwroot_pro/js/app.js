@@ -11,7 +11,7 @@ import {
   initLogin, logout
 } from './core.js';
 
-import { buildKanban, refreshKanban, openAssignDropdown } from './kanban.js';
+import { buildKanban, refreshKanban, openAssignDropdown, startBatDecisionPolling, stopBatDecisionPolling } from './kanban.js';
 import { openFabrication, initFabrication } from './fabrication.js';
 import { initCalendar, ensureCalendar, calendar, submissionCalendar, initSubmissionCalendar, colorForEvent, openPlanificationCalendar, refreshOperatorView } from './calendar.js';
 import { initDossiersView, loadDossiersList, openDossierDetail } from './dossiers.js';
@@ -245,6 +245,10 @@ function showKanban() {
   if (globalAlert) globalAlert.style.display = "none";
   buildKanban();
   buildKanbanSidebar();
+  // Start polling for BAT client decisions (operator notification popup)
+  if (currentUser && (currentUser.profile === 2 || currentUser.profile === 3)) {
+    startBatDecisionPolling(authToken);
+  }
 }
 
 async function showCalendar() {
