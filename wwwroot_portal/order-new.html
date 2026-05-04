@@ -396,7 +396,7 @@
             setTimeout(() => {
               const updateCoverVisibility = () => {
                 const tt = document.querySelector('#type-travail')?.value || '';
-                const coverTypes = /brochure|catalogue|magazine|livre|reliure|piqure/i;
+                const coverTypes = /brochure|catalogue|magazine|livre|reliure|piq[uû]re/i;
                 group.style.display = coverTypes.test(tt) ? 'block' : 'none';
               };
               document.querySelector('#type-travail')?.addEventListener('change', updateCoverVisibility);

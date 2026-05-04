@@ -1974,7 +1974,7 @@ app.MapPut("/api/fabrication/key-date", async (HttpContext ctx) =>
         return Builders<BsonDocument>.Filter.Or(
             Builders<BsonDocument>.Filter.Regex("fileName", new BsonRegularExpression("^" + escaped + "$", "i")),
             Builders<BsonDocument>.Filter.Eq("fullPath", fileName),
-            Builders<BsonDocument>.Filter.Regex("fullPath", new BsonRegularExpression("(^|[/\\\\\\\\])" + escaped + "$", "i"))
+            Builders<BsonDocument>.Filter.Regex("fullPath", new BsonRegularExpression("(^|[/\\\\])" + escaped + "$", "i"))
         );
     }
 }
