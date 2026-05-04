@@ -150,6 +150,39 @@ app.Use(async (ctx, next) =>
     catch (Exception logEx) { Console.WriteLine($"[WARN] MongoDB log failed: {logEx.Message}"); }
 });
 
+// One-time migration: copy legacy PortalClientStep.EmailTemplateKey → KanbanColumnConfig.EmailTemplateKeys
+try
+{
+    var stepsCfg  = MongoDbHelper.GetSettings<PortalClientStepsConfig>("portalClientSteps");
+    var kanbanCfg = MongoDbHelper.GetSettings<KanbanSettings>("kanbanColumns");
+    if (stepsCfg != null && kanbanCfg != null)
+    {
+        bool kanbanDirty = false;
+        bool stepsDirty  = false;
+        foreach (var step in stepsCfg.Steps)
+        {
+            if (string.IsNullOrWhiteSpace(step.EmailTemplateKey)) continue;
+            var col = kanbanCfg.Columns.FirstOrDefault(c =>
+                string.Equals(c.Folder, step.KanbanFolder, StringComparison.OrdinalIgnoreCase));
+            if (col != null)
+            {
+                col.EmailTemplateKeys ??= new List<string>();
+                if (!col.EmailTemplateKeys.Contains(step.EmailTemplateKey))
+                {
+                    col.EmailTemplateKeys.Add(step.EmailTemplateKey);
+                    kanbanDirty = true;
+                    Console.WriteLine($"[MIGRATION] Copied emailTemplateKey '{step.EmailTemplateKey}' from step '{step.KanbanFolder}' to KanbanColumnConfig.");
+                }
+            }
+            step.EmailTemplateKey = "";
+            stepsDirty = true;
+        }
+        if (kanbanDirty) MongoDbHelper.UpsertSettings("kanbanColumns", kanbanCfg);
+        if (stepsDirty)  MongoDbHelper.UpsertSettings("portalClientSteps", stepsCfg);
+    }
+}
+catch (Exception migEx) { Console.WriteLine($"[WARN] EmailTemplateKey migration failed: {migEx.Message}"); }
+
 // 4. Register all endpoint groups
 app.MapAuthEndpoints();
 app.MapRecycleEndpoints(recyclePath, recycleDays);
