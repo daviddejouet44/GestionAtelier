@@ -179,7 +179,7 @@
       </div>
       <div class="card decision-section" id="decision-section">
         <div class="decision-title">📋 Votre décision</div>
-        <div id="status-display" class="hidden"></div>
+        <div id="status-display" class="hidden" role="alert" aria-live="assertive"></div>
         <div id="decision-form">
           <p style="font-size:14px;color:#4b5563;margin-bottom:16px;">
             Après avoir consulté le BAT ci-dessus, veuillez indiquer votre décision.
@@ -202,7 +202,7 @@
     </div>
   </div>
 
-  <div id="toast" class="toast hidden"></div>
+    <div id="toast" class="toast hidden" role="alert" aria-live="assertive" aria-atomic="true"></div>
 
   <script>
     const params = new URLSearchParams(window.location.search);

@@ -442,10 +442,11 @@ export async function updateKanbanSummary() {
 // ======================================================
 let _batPollInterval = null;
 let _batPopupShown = false;
+const BAT_POLL_INTERVAL_MS = 7000; // Check for client BAT decisions every 7 seconds
 
 export function startBatDecisionPolling(authToken) {
   if (_batPollInterval) clearInterval(_batPollInterval);
-  _batPollInterval = setInterval(() => _pollBatDecisions(authToken), 7000);
+  _batPollInterval = setInterval(() => _pollBatDecisions(authToken), BAT_POLL_INTERVAL_MS);
 }
 
 export function stopBatDecisionPolling() {

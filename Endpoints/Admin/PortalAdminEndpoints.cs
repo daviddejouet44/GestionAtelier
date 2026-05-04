@@ -424,7 +424,7 @@ public static class PortalAdminEndpoints
             var batCol = MongoDbHelper.GetCollection<BsonDocument>("client_bat_actions");
             var filter = Builders<BsonDocument>.Filter.And(
                 Builders<BsonDocument>.Filter.In("action", new[] { "validated", "refused" }),
-                Builders<BsonDocument>.Filter.Ne("operatorNotificationAcknowledged", true)
+                Builders<BsonDocument>.Filter.Eq("operatorNotificationAcknowledged", false)
             );
             var docs = batCol.Find(filter).ToList();
             var ordersCol = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
