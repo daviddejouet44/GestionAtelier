@@ -25,6 +25,24 @@ public static class PortalOrdersEndpoints
         deliveryMode = o.DeliveryMode,
         deliveryAddress = o.DeliveryAddress,
         comments = o.Comments,
+        typeTravail = o.TypeTravail,
+        pagination = o.Pagination,
+        encres = o.Encres,
+        formatFeuille = o.FormatFeuille,
+        formeDecoupe = o.FormeDecoupe,
+        faconnageBinding = o.FaconnageBinding,
+        numeroDossier = o.NumeroDossier,
+        numeroAffaire = o.NumeroAffaire,
+        notes = o.Notes,
+        bat = o.Bat,
+        quantiteJustifs = o.QuantiteJustifs,
+        adresseJustifs = o.AdresseJustifs,
+        media1 = o.Media1,
+        media2 = o.Media2,
+        media3 = o.Media3,
+        media4 = o.Media4,
+        mediaCouverture = o.MediaCouverture,
+        formatFini = o.FormatFini,
         status = o.Status,
         createdAt = o.CreatedAt,
         updatedAt = o.UpdatedAt,
@@ -90,6 +108,24 @@ public static class PortalOrdersEndpoints
             DeliveryMode = d.Contains("deliveryMode") ? d["deliveryMode"].AsString : "retrait",
             DeliveryAddress = d.Contains("deliveryAddress") ? d["deliveryAddress"].AsString : "",
             Comments = d.Contains("comments") ? d["comments"].AsString : "",
+            TypeTravail = d.Contains("typeTravail") && !d["typeTravail"].IsBsonNull ? d["typeTravail"].AsString : null,
+            Pagination = d.Contains("pagination") && !d["pagination"].IsBsonNull ? d["pagination"].AsInt32 : null,
+            Encres = d.Contains("encres") && !d["encres"].IsBsonNull ? d["encres"].AsString : null,
+            FormatFeuille = d.Contains("formatFeuille") && !d["formatFeuille"].IsBsonNull ? d["formatFeuille"].AsString : null,
+            FormeDecoupe = d.Contains("formeDecoupe") && !d["formeDecoupe"].IsBsonNull ? d["formeDecoupe"].AsString : null,
+            FaconnageBinding = d.Contains("faconnageBinding") && !d["faconnageBinding"].IsBsonNull ? d["faconnageBinding"].AsString : null,
+            NumeroDossier = d.Contains("numeroDossier") && !d["numeroDossier"].IsBsonNull ? d["numeroDossier"].AsString : null,
+            NumeroAffaire = d.Contains("numeroAffaire") && !d["numeroAffaire"].IsBsonNull ? d["numeroAffaire"].AsString : null,
+            Notes = d.Contains("notes") && !d["notes"].IsBsonNull ? d["notes"].AsString : null,
+            Bat = d.Contains("bat") && !d["bat"].IsBsonNull ? d["bat"].AsString : null,
+            QuantiteJustifs = d.Contains("quantiteJustifs") && !d["quantiteJustifs"].IsBsonNull ? d["quantiteJustifs"].AsInt32 : null,
+            AdresseJustifs = d.Contains("adresseJustifs") && !d["adresseJustifs"].IsBsonNull ? d["adresseJustifs"].AsString : null,
+            Media1 = d.Contains("media1") && !d["media1"].IsBsonNull ? d["media1"].AsString : null,
+            Media2 = d.Contains("media2") && !d["media2"].IsBsonNull ? d["media2"].AsString : null,
+            Media3 = d.Contains("media3") && !d["media3"].IsBsonNull ? d["media3"].AsString : null,
+            Media4 = d.Contains("media4") && !d["media4"].IsBsonNull ? d["media4"].AsString : null,
+            MediaCouverture = d.Contains("mediaCouverture") && !d["mediaCouverture"].IsBsonNull ? d["mediaCouverture"].AsString : null,
+            FormatFini = d.Contains("formatFini") && !d["formatFini"].IsBsonNull ? d["formatFini"].AsString : null,
             Status = d.Contains("status") ? d["status"].AsString : "draft",
             AtelierJobPath = d.Contains("atelierJobPath") ? d["atelierJobPath"].AsString : "",
             CreatedAt = d.Contains("createdAt") ? d["createdAt"].ToUniversalTime() : DateTime.UtcNow,
@@ -185,6 +221,28 @@ public static class PortalOrdersEndpoints
                 if (json.TryGetProperty("finitions", out var finEl) && finEl.ValueKind == JsonValueKind.Array)
                     finitions = finEl.EnumerateArray().Select(v => v.GetString() ?? "").Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
 
+                // Extended fields
+                string? typeTravail = json.TryGetProperty("typeTravail", out var ttEl) ? ttEl.GetString() : null;
+                int? pagination = null;
+                if (json.TryGetProperty("pagination", out var pgEl) && pgEl.TryGetInt32(out var pgI)) pagination = pgI;
+                string? encres = json.TryGetProperty("encres", out var encEl) ? encEl.GetString() : null;
+                string? formatFeuille = json.TryGetProperty("formatFeuille", out var ffEl) ? ffEl.GetString() : null;
+                string? formeDecoupe = json.TryGetProperty("formeDecoupe", out var fdEl) ? fdEl.GetString() : null;
+                string? faconnageBinding = json.TryGetProperty("faconnageBinding", out var fbEl) ? fbEl.GetString() : null;
+                string? numeroDossier = json.TryGetProperty("numeroDossier", out var ndEl) ? ndEl.GetString() : null;
+                string? numeroAffaire = json.TryGetProperty("numeroAffaire", out var naEl) ? naEl.GetString() : null;
+                string? notes = json.TryGetProperty("notes", out var notEl) ? notEl.GetString() : null;
+                string? bat = json.TryGetProperty("bat", out var batEl) ? batEl.GetString() : null;
+                int? quantiteJustifs = null;
+                if (json.TryGetProperty("quantiteJustifs", out var qjEl) && qjEl.TryGetInt32(out var qjI)) quantiteJustifs = qjI;
+                string? adresseJustifs = json.TryGetProperty("adresseJustifs", out var ajEl) ? ajEl.GetString() : null;
+                string? media1 = json.TryGetProperty("media1", out var m1El) ? m1El.GetString() : null;
+                string? media2 = json.TryGetProperty("media2", out var m2El) ? m2El.GetString() : null;
+                string? media3 = json.TryGetProperty("media3", out var m3El) ? m3El.GetString() : null;
+                string? media4 = json.TryGetProperty("media4", out var m4El) ? m4El.GetString() : null;
+                string? mediaCouverture = json.TryGetProperty("mediaCouverture", out var mcEl) ? mcEl.GetString() : null;
+                string? formatFini = json.TryGetProperty("formatFini", out var fnEl) ? fnEl.GetString() : null;
+
                 // Validate deliveryAddress is required for livraison
                 if (deliveryMode == "livraison" && string.IsNullOrWhiteSpace(deliveryAddress))
                     return Results.Json(new { ok = false, error = "L'adresse de livraison est obligatoire pour le mode Livraison" });
@@ -211,6 +269,24 @@ public static class PortalOrdersEndpoints
                     DeliveryMode = deliveryMode == "livraison" ? "livraison" : "retrait",
                     DeliveryAddress = deliveryAddress,
                     Comments = comments,
+                    TypeTravail = typeTravail,
+                    Pagination = pagination,
+                    Encres = encres,
+                    FormatFeuille = formatFeuille,
+                    FormeDecoupe = formeDecoupe,
+                    FaconnageBinding = faconnageBinding,
+                    NumeroDossier = numeroDossier,
+                    NumeroAffaire = numeroAffaire,
+                    Notes = notes,
+                    Bat = bat,
+                    QuantiteJustifs = quantiteJustifs,
+                    AdresseJustifs = adresseJustifs,
+                    Media1 = media1,
+                    Media2 = media2,
+                    Media3 = media3,
+                    Media4 = media4,
+                    MediaCouverture = mediaCouverture,
+                    FormatFini = formatFini,
                     Status = "draft",
                     CreatedAt = now,
                     UpdatedAt = now,
@@ -516,12 +592,43 @@ public static class PortalOrdersEndpoints
         app.MapGet("/api/portal/config/form-options", () =>
         {
             var settings = MongoDbHelper.GetSettings<PortalSettings>("portalSettings") ?? new PortalSettings();
+            // Load work types from the same source used by the fabrication form
+            List<string> typesTravail = new();
+            try
+            {
+                var wtCol = MongoDbHelper.GetCollection<BsonDocument>("workTypes");
+                typesTravail = wtCol.Find(FilterDefinition<BsonDocument>.Empty).ToList()
+                    .Select(d => d.Contains("name") ? d["name"].AsString : "")
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .OrderBy(s => s)
+                    .ToList();
+            }
+            catch { /* ignore — fall back to empty list */ }
+
+            // Load all finitions (faconnage options) and filter out "Sortie"
+            List<string> finitionsAll = settings.AvailableFinitions;
+            if (!finitionsAll.Any())
+            {
+                try
+                {
+                    var facCol = MongoDbHelper.GetCollection<BsonDocument>("faconnageOptions");
+                    finitionsAll = facCol.Find(FilterDefinition<BsonDocument>.Empty).ToList()
+                        .Select(d => d.Contains("label") ? d["label"].AsString : "")
+                        .Where(s => !string.IsNullOrWhiteSpace(s))
+                        .ToList();
+                }
+                catch { /* ignore */ }
+            }
+            // Remove "Sortie" from client-facing finitions list
+            var finitions = finitionsAll.Where(f => !string.Equals(f, "Sortie", StringComparison.OrdinalIgnoreCase)).ToList();
+
             return Results.Json(new
             {
                 ok = true,
                 formats = settings.AvailableFormats,
                 papers = settings.AvailablePapers,
-                finitions = settings.AvailableFinitions,
+                finitions,
+                typesTravail,
                 maxUploadSizeMb = settings.MaxUploadSizeMb,
                 maxFilesPerOrder = settings.MaxFilesPerOrder,
                 welcomeText = settings.WelcomeText
@@ -573,6 +680,26 @@ public static class PortalOrdersEndpoints
             doc["desiredDeliveryDate"] = o.DesiredDeliveryDate.Value;
         else
             doc["desiredDeliveryDate"] = BsonNull.Value;
+
+        // Extended fields — stored only when not null/empty
+        if (!string.IsNullOrWhiteSpace(o.TypeTravail)) doc["typeTravail"] = o.TypeTravail;
+        if (o.Pagination.HasValue) doc["pagination"] = o.Pagination.Value;
+        if (!string.IsNullOrWhiteSpace(o.Encres)) doc["encres"] = o.Encres;
+        if (!string.IsNullOrWhiteSpace(o.FormatFeuille)) doc["formatFeuille"] = o.FormatFeuille;
+        if (!string.IsNullOrWhiteSpace(o.FormeDecoupe)) doc["formeDecoupe"] = o.FormeDecoupe;
+        if (!string.IsNullOrWhiteSpace(o.FaconnageBinding)) doc["faconnageBinding"] = o.FaconnageBinding;
+        if (!string.IsNullOrWhiteSpace(o.NumeroDossier)) doc["numeroDossier"] = o.NumeroDossier;
+        if (!string.IsNullOrWhiteSpace(o.NumeroAffaire)) doc["numeroAffaire"] = o.NumeroAffaire;
+        if (!string.IsNullOrWhiteSpace(o.Notes)) doc["notes"] = o.Notes;
+        if (!string.IsNullOrWhiteSpace(o.Bat)) doc["bat"] = o.Bat;
+        if (o.QuantiteJustifs.HasValue) doc["quantiteJustifs"] = o.QuantiteJustifs.Value;
+        if (!string.IsNullOrWhiteSpace(o.AdresseJustifs)) doc["adresseJustifs"] = o.AdresseJustifs;
+        if (!string.IsNullOrWhiteSpace(o.Media1)) doc["media1"] = o.Media1;
+        if (!string.IsNullOrWhiteSpace(o.Media2)) doc["media2"] = o.Media2;
+        if (!string.IsNullOrWhiteSpace(o.Media3)) doc["media3"] = o.Media3;
+        if (!string.IsNullOrWhiteSpace(o.Media4)) doc["media4"] = o.Media4;
+        if (!string.IsNullOrWhiteSpace(o.MediaCouverture)) doc["mediaCouverture"] = o.MediaCouverture;
+        if (!string.IsNullOrWhiteSpace(o.FormatFini)) doc["formatFini"] = o.FormatFini;
 
         return doc;
     }

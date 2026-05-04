@@ -1947,7 +1947,13 @@ app.MapPut("/api/fabrication/key-date", async (HttpContext ctx) =>
         var filter = BuildFileNameFilter(fileName);
         // Use SpecifyKind to avoid UTC offset shifting the date by 1 day (France = UTC+1/+2)
         var update = Builders<BsonDocument>.Update.Set(field, new BsonDateTime(DateTime.SpecifyKind(parsedDate.Date, DateTimeKind.Utc)));
-        fabCol.UpdateMany(filter, update);
+        var result = fabCol.UpdateMany(filter, update);
+        Console.WriteLine($"[key-date] fileName={fileName} field={field} date={dateStr} → modifiedCount={result.ModifiedCount}");
+        if (result.ModifiedCount == 0)
+        {
+            Console.WriteLine($"[key-date] ⚠️ Aucun document mis à jour pour fileName={fileName}");
+            return Results.Json(new { ok = false, error = $"Aucun document trouvé pour le fichier '{fileName}'. Vérifiez que la fiche existe." });
+        }
 
         return Results.Json(new { ok = true });
     }
@@ -1959,11 +1965,16 @@ app.MapPut("/api/fabrication/key-date", async (HttpContext ctx) =>
 
     }
 
-    // Helper: build a MongoDB filter to match a fabrication record by fileName or fullPath
-    static FilterDefinition<BsonDocument> BuildFileNameFilter(string fileName) =>
-        Builders<BsonDocument>.Filter.Or(
-            Builders<BsonDocument>.Filter.Eq("fileName", fileName.ToLowerInvariant()),
-            Builders<BsonDocument>.Filter.Eq("fileName", fileName),
-            Builders<BsonDocument>.Filter.Eq("fullPath", fileName)
+    // Helper: build a MongoDB filter to match a fabrication record by fileName or fullPath.
+    // Handles both new records (fileName stored lowercase) and legacy records (only fullPath stored).
+    static FilterDefinition<BsonDocument> BuildFileNameFilter(string fileName)
+    {
+        var escaped = System.Text.RegularExpressions.Regex.Escape(fileName);
+        // Match by fileName (case-insensitive), exact fullPath, or fullPath ending with /fileName or \fileName
+        return Builders<BsonDocument>.Filter.Or(
+            Builders<BsonDocument>.Filter.Regex("fileName", new BsonRegularExpression("^" + escaped + "$", "i")),
+            Builders<BsonDocument>.Filter.Eq("fullPath", fileName),
+            Builders<BsonDocument>.Filter.Regex("fullPath", new BsonRegularExpression("(^|[/\\\\])" + escaped + "$", "i"))
         );
+    }
 }

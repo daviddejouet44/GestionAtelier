@@ -462,7 +462,7 @@ export function _openKanbanColumnModal(cfg, sourceCol) {
 
   // Body: copy the drop zone content
   const body = document.createElement("div");
-  body.style.cssText = "flex:1;overflow-y:auto;padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;";
+  body.style.cssText = "flex:1;overflow-y:auto;padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;align-items:start;";
 
   // Clone cards from the original column
   const srcDrop = sourceCol.querySelector(".kanban-col-operator__drop");
