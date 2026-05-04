@@ -663,11 +663,20 @@ export async function openFabrication(fullPath, prefillData = null) {
     } catch(e) { /* non-blocking — prefill failure must not block fiche opening */ }
   }
 
-  // Merge prefill data over loaded data (prefill wins for non-empty values)
+  // Merge prefill data over loaded data (prefill wins for non-empty / non-null values)
   const effectivePrefill = autoPrefill || prefillData;
-  const d = effectivePrefill
-    ? Object.assign({}, (j&&j.ok===false)?{}:(j||{}), Object.fromEntries(Object.entries(effectivePrefill).filter(([,v])=>v!=null&&v!==''&&!(Array.isArray(v)&&v.length===0))))
-    : ((j&&j.ok===false)?{}:(j||{}));
+  const jBase = (j && j.ok !== false) ? (j || {}) : {};
+  let d;
+  if (effectivePrefill) {
+    const prefillEntries = Object.entries(effectivePrefill).filter(([, v]) => {
+      if (v == null || v === '') return false;
+      if (Array.isArray(v) && v.length === 0) return false;
+      return true;
+    });
+    d = Object.assign({}, jBase, Object.fromEntries(prefillEntries));
+  } else {
+    d = jBase;
+  }
   _coverProducts=Array.isArray(coverProducts)?coverProducts:[];
   _sheetCalcRules=(sheetCalcRulesResp&&sheetCalcRulesResp.rules)?sheetCalcRulesResp.rules:{};
   _deliveryDelayHours=(deliveryDelayResp&&deliveryDelayResp.delayHours)?deliveryDelayResp.delayHours:48;

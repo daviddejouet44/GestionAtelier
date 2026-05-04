@@ -507,7 +507,7 @@ public static class PortalAdminEndpoints
             catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
         });
 
-        // GET /api/admin/portal/orders/{orderId}/detail — full order details + client info for atelier prefill
+        // GET /api/admin/portal/orders/{orderId}/detail -- full order details + client info for atelier prefill
         app.MapGet("/api/admin/portal/orders/{orderId}/detail", (HttpContext ctx, string orderId) =>
         {
             if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
