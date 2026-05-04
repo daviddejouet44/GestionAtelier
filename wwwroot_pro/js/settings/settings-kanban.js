@@ -153,22 +153,27 @@ export async function renderSettingsKanbanColumns(panel) {
 
     actionsSection.appendChild(actionsGrid);
 
-    // Email templates section
-    if (availableEmailTemplates.length > 0) {
-      const tmplDivider = document.createElement("hr");
-      tmplDivider.style.cssText = "border:none;border-top:1px solid #e5e7eb;margin:12px 0;";
-      actionsSection.appendChild(tmplDivider);
+    // Email templates section — always shown (even if no templates configured yet)
+    const tmplDivider = document.createElement("hr");
+    tmplDivider.style.cssText = "border:none;border-top:1px solid #e5e7eb;margin:12px 0;";
+    actionsSection.appendChild(tmplDivider);
 
-      const tmplLabel = document.createElement("p");
-      tmplLabel.style.cssText = "font-size:12px;font-weight:600;color:#374151;margin:0 0 6px;";
-      tmplLabel.textContent = "Boutons email à afficher sur les cartes (templates) :";
-      actionsSection.appendChild(tmplLabel);
+    const tmplLabel = document.createElement("p");
+    tmplLabel.style.cssText = "font-size:12px;font-weight:600;color:#374151;margin:0 0 6px;";
+    tmplLabel.textContent = "Boutons email à afficher sur les cartes (templates) :";
+    actionsSection.appendChild(tmplLabel);
 
-      const tmplHint = document.createElement("p");
-      tmplHint.style.cssText = "font-size:11px;color:#6b7280;margin:0 0 8px;";
-      tmplHint.textContent = "Cochez les templates email qui doivent apparaître comme boutons sur les fiches de ce dossier. L'opérateur cliquera dessus pour ouvrir son client mail (mailto:).";
-      actionsSection.appendChild(tmplHint);
+    const tmplHint = document.createElement("p");
+    tmplHint.style.cssText = "font-size:11px;color:#6b7280;margin:0 0 8px;";
+    tmplHint.textContent = "Cochez les templates email qui doivent apparaître comme boutons sur les fiches de ce dossier. L'opérateur cliquera dessus pour ouvrir son client mail (mailto:).";
+    actionsSection.appendChild(tmplHint);
 
+    if (availableEmailTemplates.length === 0) {
+      const noTmplMsg = document.createElement("p");
+      noTmplMsg.style.cssText = "font-size:11px;color:#9ca3af;margin:0;font-style:italic;";
+      noTmplMsg.textContent = "ℹ️ Aucun template email portail configuré. Allez d'abord dans Paramétrage → Templates email portail pour en créer.";
+      actionsSection.appendChild(noTmplMsg);
+    } else {
       const currentTemplateKeys = Array.isArray(col.emailTemplateKeys) ? col.emailTemplateKeys : [];
       const tmplGrid = document.createElement("div");
       tmplGrid.style.cssText = "display:flex;flex-wrap:wrap;gap:6px 16px;";

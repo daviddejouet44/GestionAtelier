@@ -608,9 +608,65 @@ export async function openFabrication(fullPath, prefillData = null) {
     fetch('/api/settings/folds-options').then(r=>r.json()).catch(()=>({ok:false,options:[]})),
     fetch('/api/settings/output-options').then(r=>r.json()).catch(()=>({ok:false,options:[]}))
   ]);
+
+  // Auto-prefill from portal order when fiche is new and filename matches a web order (WEB-...)
+  // Only triggered when no existing fabrication data and no explicit prefillData provided
+  let autoPrefill = null;
+  const isNewSheet = !j || j.ok === false || (!j.numeroDossier && !j.client && !j.typeTravail);
+  if (isNewSheet && prefillData === null && fabCurrentFileName.toLowerCase().startsWith('web-')) {
+    try {
+      const orderNum = fabCurrentFileName.includes('__') ? fabCurrentFileName.split('__')[0] : fabCurrentFileName.split('.')[0];
+      const byJobResp = await fetch('/api/admin/portal/orders/by-job?numeroDossier=' + encodeURIComponent(orderNum), {
+        headers: { 'Authorization': 'Bearer ' + authToken }
+      }).then(r => r.json()).catch(() => ({}));
+      if (byJobResp.ok && byJobResp.found && byJobResp.order && byJobResp.order.id) {
+        const detailResp = await fetch('/api/admin/portal/orders/' + byJobResp.order.id + '/detail', {
+          headers: { 'Authorization': 'Bearer ' + authToken }
+        }).then(r => r.json()).catch(() => ({}));
+        if (detailResp.ok && detailResp.order) {
+          const o = detailResp.order;
+          const notesArr = [o.notes, o.comments].filter(Boolean);
+          autoPrefill = {
+            numeroDossier:          o.orderNumber || null,
+            client:                 detailResp.clientDisplayName || o.title || null,
+            quantite:               o.quantity || null,
+            typeTravail:            o.typeTravail || null,
+            format:                 o.formatFini || o.format || null,
+            rectoVerso:             o.recto || null,
+            faconnage:              Array.isArray(o.finitions) ? o.finitions : [],
+            retraitLivraison:       o.deliveryMode || null,
+            adresseLivraison:       o.deliveryAddress || null,
+            dateReception:          o.desiredDeliveryDate || null,
+            dateEnvoi:              o.dateEnvoi || null,
+            dateImpression:         o.dateImpression || null,
+            dateProductionFinitions: o.dateProductionFinitions || null,
+            donneurOrdreNom:        o.donneurOrdreNom || null,
+            donneurOrdrePrenom:     o.donneurOrdrePrenom || null,
+            donneurOrdreTelephone:  o.donneurOrdreTelephone || null,
+            donneurOrdreEmail:      o.donneurOrdreEmail || null,
+            media1:                 o.media1 || null,
+            media2:                 o.media2 || null,
+            media3:                 o.media3 || null,
+            media4:                 o.media4 || null,
+            mediaCouverture:        o.mediaCouverture || null,
+            bat:                    o.bat || null,
+            pagination:             o.pagination || null,
+            formatFeuille:          o.formatFeuille || null,
+            formeDecoupe:           o.formeDecoupe || null,
+            faconnageBinding:       o.faconnageBinding || null,
+            notes:                  notesArr.length > 0 ? notesArr.join('\n') : null,
+            justifsClientsQuantite: o.quantiteJustifs || null,
+            justifsClientsAdresse:  o.adresseJustifs || null,
+          };
+        }
+      }
+    } catch(e) { /* non-blocking — prefill failure must not block fiche opening */ }
+  }
+
   // Merge prefill data over loaded data (prefill wins for non-empty values)
-  const d = prefillData
-    ? Object.assign({}, (j&&j.ok===false)?{}:(j||{}), Object.fromEntries(Object.entries(prefillData).filter(([,v])=>v!=null&&v!=='')))
+  const effectivePrefill = autoPrefill || prefillData;
+  const d = effectivePrefill
+    ? Object.assign({}, (j&&j.ok===false)?{}:(j||{}), Object.fromEntries(Object.entries(effectivePrefill).filter(([,v])=>v!=null&&v!==''&&!(Array.isArray(v)&&v.length===0))))
     : ((j&&j.ok===false)?{}:(j||{}));
   _coverProducts=Array.isArray(coverProducts)?coverProducts:[];
   _sheetCalcRules=(sheetCalcRulesResp&&sheetCalcRulesResp.rules)?sheetCalcRulesResp.rules:{};
@@ -627,7 +683,12 @@ export async function openFabrication(fullPath, prefillData = null) {
   renderFabForm(config,{engines:Array.isArray(engines)?engines:[],types:Array.isArray(types)?types:[],papers:Array.isArray(papers)?papers:[],sheetFormats:Array.isArray(sheetFormats)?sheetFormats:[],faconnageOptions:Array.isArray(faconnageOptions)?faconnageOptions:[],bindingOptions:Array.isArray(bindingOptionsResp?.options)?bindingOptionsResp.options:[],foldsOptions:Array.isArray(foldsOptionsResp?.options)?foldsOptionsResp.options:[],outputOptions:Array.isArray(outputOptionsResp?.options)?outputOptionsResp.options:[]});
   populateFabForm(d,Array.isArray(faconnageOptions)?faconnageOptions:[]);
   // If prefill provided, show a banner
-  if(prefillData && Object.keys(prefillData).length > 0) {
+  if(autoPrefill) {
+    const banner = document.createElement('div');
+    banner.style.cssText = 'background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 14px;margin-bottom:12px;font-size:12px;color:#15803d;display:flex;align-items:center;gap:8px;';
+    banner.innerHTML = '🔗 <strong>Formulaire pré-rempli</strong> depuis la commande portail — vérifiez et complétez les champs avant d\'enregistrer.';
+    if(fabDynamicForm) fabDynamicForm.insertAdjacentElement('beforebegin', banner);
+  } else if(prefillData && Object.keys(prefillData).length > 0) {
     const banner = document.createElement('div');
     banner.style.cssText = 'background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:8px 14px;margin-bottom:12px;font-size:12px;color:#1e40af;display:flex;align-items:center;gap:8px;';
     banner.innerHTML = '🔗 <strong>Formulaire pré-rempli</strong> depuis XML ou ERP/W2P — vérifiez et complétez les champs avant d\'enregistrer.';

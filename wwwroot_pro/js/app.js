@@ -551,9 +551,21 @@ async function buildBatView(_filterStatus, _sortField) {
       actionsDiv.appendChild(btnArchiver);
       actionsDiv.appendChild(btnFiche);
 
-      // Portal BAT send button — only for web orders (matched by numeroDossier)
+      // Portal BAT send button — only for web orders (matched by numeroDossier or filename prefix)
       const dossierKey = (fab && fab.numeroDossier ? String(fab.numeroDossier) : (lookupFn || '')).toLowerCase();
-      const portalOrder = portalOrderMap[dossierKey];
+      let portalOrder = portalOrderMap[dossierKey];
+
+      // Fallback: match by filename prefix for portal orders (e.g. "WEB-YYYYMMDD-NNNN__..." files)
+      if (!portalOrder && lookupFn) {
+        const fn = lookupFn.toLowerCase();
+        for (const key of Object.keys(portalOrderMap)) {
+          if (fn.startsWith(key + '__') || fn === key) {
+            portalOrder = portalOrderMap[key];
+            break;
+          }
+        }
+      }
+
       if (portalOrder) {
         const btnPortalBat = document.createElement("button");
         btnPortalBat.className = "btn btn-sm";
