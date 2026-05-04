@@ -58,6 +58,13 @@ window._refreshOperatorView = () => refreshOperatorView().catch(() => {});
 async function updateGlobalAlert() {
   if (!globalAlert) return;
 
+  // On kanban tab the sidebar (right panel) already shows retard + BAT — never render top bandeaux
+  const isKanbanActive = !document.getElementById("kanban-layout")?.classList.contains("hidden");
+  if (isKanbanActive) {
+    globalAlert.style.display = "none";
+    return;
+  }
+
   const esc = (s) => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
   // Production delay alerts are only relevant when on the Production (kanban) tab
@@ -649,7 +656,7 @@ async function buildBatView(_filterStatus, _sortField) {
           sentDay.setHours(0, 0, 0, 0);
           const todayStart = new Date();
           todayStart.setHours(0, 0, 0, 0);
-          const calDays = Math.round((todayStart - sentDay) / MS_PER_DAY);
+          const calDays = Math.floor((todayStart - sentDay) / MS_PER_DAY);
           const alertEl = document.createElement("div");
           alertEl.className = "bat-alert-j2";
           alertEl.textContent = `⚠️ BAT envoyé depuis ${calDays} jour(s) sans réponse !`;

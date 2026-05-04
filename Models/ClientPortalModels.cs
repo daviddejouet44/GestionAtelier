@@ -88,6 +88,61 @@ public class ClientOrder
     [JsonPropertyName("comments")]
     public string Comments { get; set; } = "";
 
+    // Extended fields — shown in portal form when admin enables them
+    [JsonPropertyName("typeTravail")]
+    public string? TypeTravail { get; set; }
+
+    [JsonPropertyName("pagination")]
+    public int? Pagination { get; set; }
+
+    [JsonPropertyName("encres")]
+    public string? Encres { get; set; }
+
+    [JsonPropertyName("formatFeuille")]
+    public string? FormatFeuille { get; set; }
+
+    [JsonPropertyName("formeDecoupe")]
+    public string? FormeDecoupe { get; set; }
+
+    [JsonPropertyName("faconnageBinding")]
+    public string? FaconnageBinding { get; set; }
+
+    [JsonPropertyName("numeroDossier")]
+    public string? NumeroDossier { get; set; }
+
+    [JsonPropertyName("numeroAffaire")]
+    public string? NumeroAffaire { get; set; }
+
+    [JsonPropertyName("notes")]
+    public string? Notes { get; set; }
+
+    [JsonPropertyName("bat")]
+    public string? Bat { get; set; } // "avec" | "sans"
+
+    [JsonPropertyName("quantiteJustifs")]
+    public int? QuantiteJustifs { get; set; }
+
+    [JsonPropertyName("adresseJustifs")]
+    public string? AdresseJustifs { get; set; }
+
+    [JsonPropertyName("media1")]
+    public string? Media1 { get; set; }
+
+    [JsonPropertyName("media2")]
+    public string? Media2 { get; set; }
+
+    [JsonPropertyName("media3")]
+    public string? Media3 { get; set; }
+
+    [JsonPropertyName("media4")]
+    public string? Media4 { get; set; }
+
+    [JsonPropertyName("mediaCouverture")]
+    public string? MediaCouverture { get; set; }
+
+    [JsonPropertyName("formatFini")]
+    public string? FormatFini { get; set; }
+
     [JsonPropertyName("files")]
     public List<ClientOrderFile> Files { get; set; } = new();
 

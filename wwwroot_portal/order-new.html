@@ -329,6 +329,88 @@
               <textarea id="notes" class="form-control" rows="3" placeholder="${esc(field.placeholder || 'Notes pour l\'imprimeur…')}"></textarea>`;
             break;
 
+          case 'bat':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label>${labelText}</label>
+              <div class="radio-group" style="margin-top:8px;">
+                <label class="radio-option"><input type="radio" name="bat" value="sans" checked /> Sans BAT</label>
+                <label class="radio-option"><input type="radio" name="bat" value="avec" /> Avec BAT</label>
+              </div>`;
+            break;
+
+          case 'quantite-justifs':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="quantite-justifs">${labelText}</label>
+              <input type="number" id="quantite-justifs" class="form-control" min="0" placeholder="${esc(field.placeholder || 'Ex. : 2')}" />`;
+            setTimeout(() => {
+              const qj = document.getElementById('quantite-justifs');
+              if (qj) qj.addEventListener('input', () => {
+                const aj = document.getElementById('fg-adresse-justifs');
+                if (aj) aj.style.display = (parseInt(qj.value) > 0) ? 'block' : 'none';
+              });
+            }, 0);
+            break;
+
+          case 'adresse-justifs':
+            group.style.display = 'none'; // shown when quantite-justifs > 0
+            group.innerHTML = `<label for="adresse-justifs">${labelText}</label>
+              <textarea id="adresse-justifs" class="form-control" rows="2" placeholder="${esc(field.placeholder || 'Adresse d\'envoi des justificatifs…')}"></textarea>`;
+            break;
+
+          case 'media-1':
+          case 'media-2':
+          case 'media-3':
+          case 'media-4': {
+            const mediaNum = field.id.split('-')[1];
+            const paperOpts = (field.allowedValues && field.allowedValues.length ? field.allowedValues : (formOptions.papers || []));
+            group.className = 'form-group form-row-item';
+            if (paperOpts.length) {
+              group.innerHTML = `<label for="${esc(field.id)}">${labelText}</label>
+                <select id="${esc(field.id)}" class="form-control">
+                  <option value="">— ${esc(field.placeholder || 'Sélectionner un papier')} —</option>
+                  ${paperOpts.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}
+                </select>`;
+            } else {
+              group.innerHTML = `<label for="${esc(field.id)}">${labelText}</label>
+                <input type="text" id="${esc(field.id)}" class="form-control" placeholder="${esc(field.placeholder || 'Ex. : Couché mat 135g')}" />`;
+            }
+            break;
+          }
+
+          case 'media-couverture': {
+            const paperOpts = (field.allowedValues && field.allowedValues.length ? field.allowedValues : (formOptions.papers || []));
+            group.className = 'form-group form-row-item';
+            if (paperOpts.length) {
+              group.innerHTML = `<label for="media-couverture">${labelText}</label>
+                <select id="media-couverture" class="form-control">
+                  <option value="">— ${esc(field.placeholder || 'Sélectionner un papier couverture')} —</option>
+                  ${paperOpts.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}
+                </select>`;
+            } else {
+              group.innerHTML = `<label for="media-couverture">${labelText}</label>
+                <input type="text" id="media-couverture" class="form-control" placeholder="${esc(field.placeholder || 'Ex. : Couché brillant 300g')}" />`;
+            }
+            // Show only for work types that justify a cover (Brochure, Catalogue, Magazine, Livre…)
+            group.style.display = 'none';
+            group.dataset.coverField = 'true';
+            setTimeout(() => {
+              const updateCoverVisibility = () => {
+                const tt = document.querySelector('#type-travail')?.value || '';
+                const coverTypes = /brochure|catalogue|magazine|livre|reliure|piqure/i;
+                group.style.display = coverTypes.test(tt) ? 'block' : 'none';
+              };
+              document.querySelector('#type-travail')?.addEventListener('change', updateCoverVisibility);
+              updateCoverVisibility();
+            }, 0);
+            break;
+          }
+
+          case 'format-fini':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="format-fini">${labelText}</label>
+              <input type="text" id="format-fini" class="form-control" placeholder="${esc(field.placeholder || 'Ex. : A5, 210x99mm…')}" />`;
+            break;
+
           default:
             // Generic text field for any unknown field id
             group.innerHTML = `<label for="${esc(field.id)}">${labelText}</label>
@@ -583,7 +665,16 @@
             faconnageBinding: document.getElementById('faconnage-binding')?.value || undefined,
             numeroDossier:    document.getElementById('numero-dossier')?.value.trim() || undefined,
             numeroAffaire:    document.getElementById('numero-affaire')?.value.trim() || undefined,
-            notes:            document.getElementById('notes')?.value.trim() || undefined
+            notes:            document.getElementById('notes')?.value.trim() || undefined,
+            bat:              (() => { const el = document.querySelector('input[name="bat"]:checked'); return el ? el.value : undefined; })(),
+            quantiteJustifs:  (() => { const el = document.getElementById('quantite-justifs'); return el?.value ? parseInt(el.value) : undefined; })(),
+            adresseJustifs:   document.getElementById('adresse-justifs')?.value.trim() || undefined,
+            media1:           document.getElementById('media-1')?.value.trim() || undefined,
+            media2:           document.getElementById('media-2')?.value.trim() || undefined,
+            media3:           document.getElementById('media-3')?.value.trim() || undefined,
+            media4:           document.getElementById('media-4')?.value.trim() || undefined,
+            mediaCouverture:  document.getElementById('media-couverture')?.value.trim() || undefined,
+            formatFini:       document.getElementById('format-fini')?.value.trim() || undefined
           })
         });
 

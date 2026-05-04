@@ -686,11 +686,11 @@ public static class PortalAdminEndpoints
             new() { Id = "numero-dossier",   Label = "Référence / N° dossier",   Type = "text",     Visible = false, Required = false, Critical = false, Order = 28 },
             new() { Id = "numero-affaire",   Label = "N° d'affaire",             Type = "text",     Visible = false, Required = false, Critical = false, Order = 29 },
             // ── Fichiers médias ────────────────────────────────────────────────
-            new() { Id = "media-1",          Label = "Média 1 (fichier)",        Type = "file",     Visible = false, Required = false, Critical = false, Order = 30 },
-            new() { Id = "media-2",          Label = "Média 2 (fichier)",        Type = "file",     Visible = false, Required = false, Critical = false, Order = 31 },
-            new() { Id = "media-3",          Label = "Média 3 (fichier)",        Type = "file",     Visible = false, Required = false, Critical = false, Order = 32 },
-            new() { Id = "media-4",          Label = "Média 4 (fichier)",        Type = "file",     Visible = false, Required = false, Critical = false, Order = 33 },
-            new() { Id = "media-couverture", Label = "Média couverture",         Type = "file",     Visible = false, Required = false, Critical = false, Order = 34 },
+            new() { Id = "media-1",          Label = "Média 1",                  Type = "select",   Visible = false, Required = false, Critical = false, Order = 30 },
+            new() { Id = "media-2",          Label = "Média 2",                  Type = "select",   Visible = false, Required = false, Critical = false, Order = 31 },
+            new() { Id = "media-3",          Label = "Média 3",                  Type = "select",   Visible = false, Required = false, Critical = false, Order = 32 },
+            new() { Id = "media-4",          Label = "Média 4",                  Type = "select",   Visible = false, Required = false, Critical = false, Order = 33 },
+            new() { Id = "media-couverture", Label = "Média couverture",         Type = "select",   Visible = false, Required = false, Critical = false, Order = 34 },
             // ── BAT ───────────────────────────────────────────────────────────
             new() { Id = "bat",              Label = "BAT (Bon à tirer)",        Type = "radio",    Visible = false, Required = false, Critical = false, Order = 35 },
             // ── Informations complémentaires ───────────────────────────────────
@@ -703,7 +703,28 @@ public static class PortalAdminEndpoints
         {
             if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             var cfg = MongoDbHelper.GetSettings<PortalFormFieldsConfig>("portalFormFields");
-            var fields = (cfg == null || cfg.Fields.Count == 0) ? DefaultPortalFormFields() : cfg.Fields;
+            List<PortalFormFieldConfig> fields;
+            if (cfg == null || cfg.Fields.Count == 0)
+            {
+                fields = DefaultPortalFormFields();
+            }
+            else
+            {
+                // Merge: start from saved fields, then append any default fields missing from saved config.
+                // This ensures new fields added to DefaultPortalFormFields() appear in the admin UI
+                // even when the admin has previously saved a partial configuration.
+                fields = new List<PortalFormFieldConfig>(cfg.Fields);
+                var savedIds = new HashSet<string>(cfg.Fields.Select(f => f.Id), StringComparer.OrdinalIgnoreCase);
+                int nextOrder = fields.Count > 0 ? fields.Max(f => f.Order) + 1 : 0;
+                foreach (var def in DefaultPortalFormFields())
+                {
+                    if (!savedIds.Contains(def.Id))
+                    {
+                        def.Order = nextOrder++;
+                        fields.Add(def);
+                    }
+                }
+            }
             return Results.Json(new { ok = true, fields });
         });
 
@@ -755,7 +776,26 @@ public static class PortalAdminEndpoints
         app.MapGet("/api/portal/config/form-fields", () =>
         {
             var cfg = MongoDbHelper.GetSettings<PortalFormFieldsConfig>("portalFormFields");
-            var fields = (cfg == null || cfg.Fields.Count == 0) ? DefaultPortalFormFields() : cfg.Fields;
+            List<PortalFormFieldConfig> fields;
+            if (cfg == null || cfg.Fields.Count == 0)
+            {
+                fields = DefaultPortalFormFields();
+            }
+            else
+            {
+                // Merge saved fields with defaults so newly-added defaults are visible if admin has enabled them
+                fields = new List<PortalFormFieldConfig>(cfg.Fields);
+                var savedIds = new HashSet<string>(cfg.Fields.Select(f => f.Id), StringComparer.OrdinalIgnoreCase);
+                int nextOrder = fields.Count > 0 ? fields.Max(f => f.Order) + 1 : 0;
+                foreach (var def in DefaultPortalFormFields())
+                {
+                    if (!savedIds.Contains(def.Id))
+                    {
+                        def.Order = nextOrder++;
+                        fields.Add(def);
+                    }
+                }
+            }
             // Only return visible fields to clients, sorted by order
             var visible = fields.Where(f => f.Visible).OrderBy(f => f.Order).Select(f => new
             {
