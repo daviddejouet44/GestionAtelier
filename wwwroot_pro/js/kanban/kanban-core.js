@@ -475,10 +475,9 @@ export function _openKanbanColumnModal(cfg, sourceCol) {
         const clone = card.cloneNode(true);
         clone.style.cursor = "default";
         clone.draggable = false;
-        // Re-wire action buttons so they actually work
-        clone.querySelectorAll("button").forEach(btn => {
-          if (btn.className.includes("btn-assign")) btn.style.display = "none";
-        });
+        // Note: cloned DOM does not carry JS event handlers; buttons are visual only in this view.
+        // Hide assignment buttons which would be non-functional without drag context.
+        clone.querySelectorAll(".btn-assign").forEach(btn => { btn.style.display = "none"; });
         body.appendChild(clone);
       });
     }

@@ -641,6 +641,7 @@ async function buildBatView(_filterStatus, _sortField) {
 
       if (status.sentAt && !status.validatedAt && !status.rejectedAt) {
         const MS_PER_HOUR = 3600000;
+        const MS_PER_DAY = 86400000;
         const ageHours = (Date.now() - new Date(status.sentAt)) / MS_PER_HOUR;
         if (ageHours >= batAlertDelayHours) {
           // Count calendar days (not elapsed hours) to avoid off-by-one near midnight
@@ -648,7 +649,7 @@ async function buildBatView(_filterStatus, _sortField) {
           sentDay.setHours(0, 0, 0, 0);
           const todayStart = new Date();
           todayStart.setHours(0, 0, 0, 0);
-          const calDays = Math.round((todayStart - sentDay) / 86400000);
+          const calDays = Math.round((todayStart - sentDay) / MS_PER_DAY);
           const alertEl = document.createElement("div");
           alertEl.className = "bat-alert-j2";
           alertEl.textContent = `⚠️ BAT envoyé depuis ${calDays} jour(s) sans réponse !`;

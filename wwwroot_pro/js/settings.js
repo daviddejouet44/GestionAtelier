@@ -228,8 +228,8 @@ async function renderSettingsBackup(panel) {
     importStatus.textContent = "";
     try {
       const text = await fileInput.files[0].text();
-      // Validate JSON
-      JSON.parse(text);
+      // Validate JSON client-side before sending
+      try { JSON.parse(text); } catch(e) { throw new Error("Fichier JSON invalide : " + e.message); }
       const resp = await fetch("/api/admin/settings/import", {
         method: "POST",
         headers: { "Authorization": `Bearer ${authToken}`, "Content-Type": "application/json" },

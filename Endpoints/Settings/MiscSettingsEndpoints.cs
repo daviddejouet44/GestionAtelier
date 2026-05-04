@@ -1231,9 +1231,8 @@ app.MapPut("/api/settings/actions-config", async (HttpContext ctx) =>
 
 app.MapGet("/api/admin/settings/export", async (HttpContext ctx) =>
 {
-    var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-    try { var d = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token)); var p = d.Split(':'); if (p.Length < 3 || p[2] != "3") return Results.Json(new { ok = false, error = "Admin only" }); }
-    catch { return Results.Json(new { ok = false, error = "Admin only" }); }
+    if (!IsAdminTokenProfile3(ctx.Request.Headers["Authorization"].ToString()))
+        return Results.Json(new { ok = false, error = "Admin only" });
 
     try
     {
@@ -1282,9 +1281,8 @@ app.MapGet("/api/admin/settings/export", async (HttpContext ctx) =>
 
 app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
 {
-    var tokenI = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-    try { var d = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(tokenI)); var p = d.Split(':'); if (p.Length < 3 || p[2] != "3") return Results.Json(new { ok = false, error = "Admin only" }); }
-    catch { return Results.Json(new { ok = false, error = "Admin only" }); }
+    if (!IsAdminTokenProfile3(ctx.Request.Headers["Authorization"].ToString()))
+        return Results.Json(new { ok = false, error = "Admin only" });
 
     try
     {
@@ -1332,6 +1330,19 @@ app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
         new() { Id = "direct-print",  Label = "Impression directe",        Enabled = true },
         new() { Id = "fiery",         Label = "Envoyer dans Fiery",        Enabled = true },
     };
+
+    /// <summary>Returns true if the request bearer token belongs to an admin (profile 3).</summary>
+    private static bool IsAdminTokenProfile3(string authHeader)
+    {
+        try
+        {
+            var token = authHeader.Replace("Bearer ", "");
+            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            var parts = decoded.Split(':');
+            return parts.Length >= 3 && parts[2] == "3";
+        }
+        catch { return false; }
+    }
 
     private static async Task<object> SavePassesConfigAsync(HttpContext ctx)
     {
