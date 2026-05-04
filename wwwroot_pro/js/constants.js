@@ -26,7 +26,13 @@ export const STAGE_DISPLAY_LABELS = {
   "Corrections": "Preflight",
   "Corrections et fond perdu": "Preflight avec fond perdu",
   "Prêt pour impression": "En attente",
-  "Façonnage": "Finitions"
+  "PrismaPrepare": "PrismaPrepare",
+  "Fiery": "Fiery",
+  "Impression en cours": "Impression en cours",
+  "Façonnage": "Finitions",
+  "Fin de production": "Fin de production",
+  "Soumission": "Soumission",
+  "Rapport": "Rapport"
 };
 
 export function getStageLabelDisplay(stage, batStatus) {
@@ -34,9 +40,9 @@ export function getStageLabelDisplay(stage, batStatus) {
     if (batStatus === 'refuse') return 'BAT refusé';
     if (batStatus === 'valide') return 'BAT validé';
     if (batStatus === 'envoye') return 'BAT envoyé';
-    return 'BAT';
+    return 'BAT en attente';
   }
-  return STAGE_DISPLAY_LABELS[stage] || stage;
+  return STAGE_DISPLAY_LABELS[stage] || stage || '—';
 }
 
 // Ordre des étapes (du moins avancé au plus avancé)

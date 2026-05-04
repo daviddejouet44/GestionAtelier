@@ -685,9 +685,17 @@ public static class PortalAdminEndpoints
             // ── Contacts ───────────────────────────────────────────────────────
             new() { Id = "numero-dossier",   Label = "Référence / N° dossier",   Type = "text",     Visible = false, Required = false, Critical = false, Order = 28 },
             new() { Id = "numero-affaire",   Label = "N° d'affaire",             Type = "text",     Visible = false, Required = false, Critical = false, Order = 29 },
+            // ── Fichiers médias ────────────────────────────────────────────────
+            new() { Id = "media-1",          Label = "Média 1 (fichier)",        Type = "file",     Visible = false, Required = false, Critical = false, Order = 30 },
+            new() { Id = "media-2",          Label = "Média 2 (fichier)",        Type = "file",     Visible = false, Required = false, Critical = false, Order = 31 },
+            new() { Id = "media-3",          Label = "Média 3 (fichier)",        Type = "file",     Visible = false, Required = false, Critical = false, Order = 32 },
+            new() { Id = "media-4",          Label = "Média 4 (fichier)",        Type = "file",     Visible = false, Required = false, Critical = false, Order = 33 },
+            new() { Id = "media-couverture", Label = "Média couverture",         Type = "file",     Visible = false, Required = false, Critical = false, Order = 34 },
+            // ── BAT ───────────────────────────────────────────────────────────
+            new() { Id = "bat",              Label = "BAT (Bon à tirer)",        Type = "radio",    Visible = false, Required = false, Critical = false, Order = 35 },
             // ── Informations complémentaires ───────────────────────────────────
-            new() { Id = "notes",            Label = "Notes internes",           Type = "textarea", Visible = false, Required = false, Critical = false, Order = 30 },
-            new() { Id = "comments",         Label = "Commentaires (client)",    Type = "textarea", Visible = true,  Required = false, Critical = false, Order = 31 },
+            new() { Id = "notes",            Label = "Notes internes",           Type = "textarea", Visible = false, Required = false, Critical = false, Order = 36 },
+            new() { Id = "comments",         Label = "Commentaires (client)",    Type = "textarea", Visible = true,  Required = false, Critical = false, Order = 37 },
         };
 
         // GET /api/admin/portal/form-fields

@@ -64,6 +64,7 @@ export async function initSettingsView() {
         <button class="settings-tab" data-tab="email-templates">📧 Templates email</button>
         <button class="settings-tab" data-tab="integrations">🔌 Intégrations</button>
         <button class="settings-tab" data-tab="portal">🌐 Portail client</button>
+        <button class="settings-tab" data-tab="backup">💾 Sauvegarde</button>
         <button class="settings-tab" data-tab="logs">Logs</button>
       </div>
       <div class="settings-panel" id="settings-panel-accounts"></div>
@@ -93,6 +94,7 @@ export async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-email-templates"></div>
       <div class="settings-panel hidden" id="settings-panel-integrations"></div>
       <div class="settings-panel hidden" id="settings-panel-portal"></div>
+      <div class="settings-panel hidden" id="settings-panel-backup"></div>
       <div class="settings-panel hidden" id="settings-panel-logs"></div>
     </div>
   `;
@@ -146,9 +148,110 @@ export async function loadSettingsPanel(tabName, panelEl) {
     case "email-templates": await renderSettingsEmailTemplates(panelEl); break;
     case "integrations": await renderSettingsIntegrations(panelEl); break;
     case "portal": await renderSettingsPortal(panelEl); break;
+    case "backup": await renderSettingsBackup(panelEl); break;
     case "logs": await renderSettingsLogs(panelEl); break;
   }
   panelEl._loaded = true;
+}
+
+async function renderSettingsBackup(panel) {
+  panel.innerHTML = `
+    <h3>💾 Sauvegarde / Restauration des paramètres</h3>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:20px;">Exportez ou importez l'ensemble de la configuration (intégrations, templates email, colonnes Kanban, finitions, formulaires, etc.).<br>
+    <strong>Attention :</strong> l'import remplace la configuration existante. Les dossiers, fichiers et données clients ne sont pas inclus.</p>
+
+    <div class="settings-section-card" style="margin-bottom:20px;">
+      <h4>📤 Exporter les paramètres</h4>
+      <p style="font-size:13px;color:#374151;margin-bottom:12px;">Génère un fichier <code>settings-backup-AAAA-MM-JJ.json</code> contenant tous les paramètres actuels.</p>
+      <button id="btn-settings-export" class="btn btn-primary">📤 Télécharger la sauvegarde</button>
+      <span id="settings-export-status" style="margin-left:12px;font-size:13px;color:#6b7280;"></span>
+    </div>
+
+    <div class="settings-section-card">
+      <h4>📥 Importer des paramètres</h4>
+      <p style="font-size:13px;color:#374151;margin-bottom:12px;">Sélectionnez un fichier JSON exporté précédemment pour restaurer la configuration.</p>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <input type="file" id="settings-import-file" accept=".json" class="settings-input" style="max-width:320px;" />
+        <button id="btn-settings-import" class="btn btn-primary" disabled>📥 Importer</button>
+      </div>
+      <span id="settings-import-status" style="display:block;margin-top:8px;font-size:13px;color:#6b7280;"></span>
+    </div>
+  `;
+
+  const { authToken, showNotification } = await import('./core.js');
+
+  const btnExport = panel.querySelector("#btn-settings-export");
+  const exportStatus = panel.querySelector("#settings-export-status");
+
+  btnExport.onclick = async () => {
+    btnExport.disabled = true;
+    btnExport.textContent = "⏳ Chargement...";
+    exportStatus.textContent = "";
+    try {
+      const resp = await fetch("/api/admin/settings/export", {
+        headers: { "Authorization": `Bearer ${authToken}` }
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const today = new Date().toISOString().split("T")[0];
+      a.href = url;
+      a.download = `settings-backup-${today}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      exportStatus.textContent = "✅ Sauvegarde téléchargée";
+      exportStatus.style.color = "#16a34a";
+    } catch(err) {
+      exportStatus.textContent = "❌ " + err.message;
+      exportStatus.style.color = "#dc2626";
+    } finally {
+      btnExport.disabled = false;
+      btnExport.textContent = "📤 Télécharger la sauvegarde";
+    }
+  };
+
+  const fileInput = panel.querySelector("#settings-import-file");
+  const btnImport = panel.querySelector("#btn-settings-import");
+  const importStatus = panel.querySelector("#settings-import-status");
+
+  fileInput.onchange = () => {
+    btnImport.disabled = !fileInput.files?.length;
+    importStatus.textContent = "";
+  };
+
+  btnImport.onclick = async () => {
+    if (!fileInput.files?.length) return;
+    if (!confirm("⚠️ Cette action remplace tous les paramètres existants. Continuer ?")) return;
+    btnImport.disabled = true;
+    btnImport.textContent = "⏳ Import...";
+    importStatus.textContent = "";
+    try {
+      const text = await fileInput.files[0].text();
+      // Validate JSON client-side before sending
+      try { JSON.parse(text); } catch(e) { throw new Error("Fichier JSON invalide : " + e.message); }
+      const resp = await fetch("/api/admin/settings/import", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${authToken}`, "Content-Type": "application/json" },
+        body: text
+      });
+      const result = await resp.json();
+      if (result.ok) {
+        importStatus.textContent = `✅ ${result.restored} section(s) restaurée(s) (format v${result.version}). Rechargez la page pour voir les changements.`;
+        importStatus.style.color = "#16a34a";
+        showNotification(`✅ Paramètres restaurés (${result.restored} sections)`, "success");
+      } else {
+        throw new Error(result.error || "Erreur inconnue");
+      }
+    } catch(err) {
+      importStatus.textContent = "❌ " + err.message;
+      importStatus.style.color = "#dc2626";
+      showNotification("❌ Import échoué : " + err.message, "error");
+    } finally {
+      btnImport.disabled = false;
+      btnImport.textContent = "📥 Importer";
+    }
+  };
 }
 
 async function renderSettingsImapConfig(panel) {
