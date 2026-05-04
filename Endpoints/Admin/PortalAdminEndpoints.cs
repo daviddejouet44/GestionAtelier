@@ -635,15 +635,8 @@ public static class PortalAdminEndpoints
                             ["{portalLink}"]  = $"{portalUrl}/portal/order.html?id={orderId}"
                         };
 
-                        // Check if a step-specific email template is configured for this status
-                        var stepsCfg = MongoDbHelper.GetSettings<PortalClientStepsConfig>("portalClientSteps");
-                        var stepsMap = stepsCfg?.Steps.ToDictionary(
-                            s => s.KanbanFolder.ToLowerInvariant(),
-                            s => s.EmailTemplateKey) ?? new Dictionary<string, string>();
-                        stepsMap.TryGetValue(status.ToLowerInvariant(), out var mappedTemplate);
-                        var templateKey = !string.IsNullOrWhiteSpace(mappedTemplate)
-                            ? mappedTemplate
-                            : "client_order_status_changed";
+                        // Use default status-change template
+                        var templateKey = "client_order_status_changed";
 
                         var (subj, body) = PortalEmailHelper.RenderTemplate(templateKey,
                             "Mise à jour de votre commande — {orderNumber}",
@@ -989,8 +982,7 @@ public static class PortalAdminEndpoints
                         KanbanFolder     = c.Folder,
                         ClientLabel      = sv?.ClientLabel ?? c.Label,
                         Visible          = sv?.Visible ?? false,
-                        Order            = sv?.Order ?? i,
-                        EmailTemplateKey = sv?.EmailTemplateKey ?? ""
+                        Order            = sv?.Order ?? i
                     };
                 })
                 .OrderBy(s => s.Order)
@@ -1020,8 +1012,7 @@ public static class PortalAdminEndpoints
                         KanbanFolder     = folder,
                         ClientLabel      = s.TryGetProperty("clientLabel",      out var lEl)  ? lEl.GetString()  ?? "" : "",
                         Visible          = s.TryGetProperty("visible",          out var vEl)  ? vEl.GetBoolean() : false,
-                        Order            = s.TryGetProperty("order",            out var oEl)  ? oEl.GetInt32()   : idx,
-                        EmailTemplateKey = s.TryGetProperty("emailTemplateKey", out var etEl) ? etEl.GetString() ?? "" : ""
+                        Order            = s.TryGetProperty("order",            out var oEl)  ? oEl.GetInt32()   : idx
                     });
                     idx++;
                 }

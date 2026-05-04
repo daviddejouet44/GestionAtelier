@@ -114,8 +114,8 @@ export async function renderSettingsEmailTemplates(panel) {
   let batPapier     = { to: '', subject: 'BAT Papier — Dossier {{numeroDossier}}', body: 'Bonjour,\n\nVeuillez trouver ci-joint le BAT papier pour le dossier {{numeroDossier}}.\n\nCordialement,' };
   let prodStart     = { to: '', subject: 'Début de production — Dossier {{numeroDossier}}', body: 'Bonjour,\n\nLa production de votre dossier {{numeroDossier}} vient de démarrer.\n\nCordialement,' };
   let prodEnd       = { to: '', subject: 'Fin de production — Dossier {{numeroDossier}}', body: 'Bonjour,\n\nLa production de votre dossier {{numeroDossier}} est terminée.\n\nCordialement,' };
-  let portalSteps   = [];
-  let portalTplMap  = {}; // templateKey → [stepLabel, ...]
+  let kanbanColumns = []; // KanbanColumnConfig list for multi-template mapping
+  let portalTplMap  = {}; // templateKey → [tileLabel, ...]
   let portalTpls    = {}; // templateKey → { subject, body }
 
   // Portal template metadata (trigger labels for system templates)
@@ -145,26 +145,30 @@ export async function renderSettingsEmailTemplates(panel) {
   };
 
   try {
-    const [r1, r2, r3, r4, rSteps, rTpl] = await Promise.all([
+    const [r1, r2, r3, r4, rKanban, rTpl] = await Promise.all([
       fetch('/api/config/bat-mail-template', { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
       fetch('/api/config/mail-template-bat-papier', { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
       fetch('/api/config/mail-template-production-start', { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
       fetch('/api/config/mail-template-production-end', { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
-      fetch('/api/admin/portal/client-steps',    { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
+      fetch('/api/config/kanban-columns',        { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
       fetch('/api/admin/portal/email-templates', { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
     ]);
     if (r1.ok && r1.template) batComplet = r1.template;
     if (r2.ok && r2.template) batPapier  = r2.template;
     if (r3.ok && r3.template) prodStart  = r3.template;
     if (r4.ok && r4.template) prodEnd    = r4.template;
-    if (rSteps.ok) portalSteps = rSteps.steps || [];
+    if (rKanban.ok) kanbanColumns = rKanban.columns || [];
     if (rTpl.ok) {
-      // Load portal templates — use saved value or fall back to defaults
+      // Build portalTplMap from KanbanColumnConfig.emailTemplateKeys (multi-template per tile)
       const allTplKeys = Object.keys(rTpl.templates || {});
       allTplKeys.forEach(k => { portalTplMap[k] = []; });
-      portalSteps.forEach(s => {
-        if (s.emailTemplateKey && portalTplMap[s.emailTemplateKey] !== undefined) {
-          portalTplMap[s.emailTemplateKey].push(s.clientLabel || s.kanbanFolder || s.emailTemplateKey);
+      kanbanColumns.forEach(col => {
+        if (Array.isArray(col.emailTemplateKeys)) {
+          col.emailTemplateKeys.forEach(key => {
+            if (portalTplMap[key] !== undefined) {
+              portalTplMap[key].push(col.label || col.folder);
+            }
+          });
         }
       });
       // Merge saved templates with defaults
@@ -183,26 +187,22 @@ export async function renderSettingsEmailTemplates(panel) {
 
   // Build portal step mapping section HTML
   const _portalTplMappingHtml = () => {
-    const tplKeys = Object.keys(portalTplMap);
-    if (!tplKeys.length && !portalSteps.some(s => s.emailTemplateKey)) {
-      return `<p style="color:#9ca3af;font-size:13px;">Aucun template portail configuré. Définissez les mappings dans Paramétrage → Portail client → Étapes client.</p>`;
+    const tplKeys = Object.keys(portalTplMap).filter(k => portalTplMap[k].length > 0);
+    if (!tplKeys.length) {
+      return `<p style="color:#9ca3af;font-size:13px;">Aucun template portail associé à une tuile. Configurez les associations dans <strong>Paramétrage → Tuiles</strong>.</p>`;
     }
 
-    // Also include templates used by steps even if not in portalTplMap yet
-    const allUsedKeys = new Set(tplKeys);
-    portalSteps.forEach(s => { if (s.emailTemplateKey) allUsedKeys.add(s.emailTemplateKey); });
-
-    return Array.from(allUsedKeys).sort().map(key => {
-      const steps = portalTplMap[key] || portalSteps.filter(s => s.emailTemplateKey === key).map(s => s.clientLabel || s.kanbanFolder);
+    return tplKeys.sort().map(key => {
+      const tiles = portalTplMap[key];
       const meta  = PORTAL_TEMPLATE_META[key];
-      const stepsHtml = steps.length
-        ? steps.map(l => `<span style="background:#dbeafe;color:#1e40af;border-radius:4px;padding:2px 8px;font-size:12px;">${esc(l)}</span>`).join(' ')
+      const tilesHtml = tiles.length
+        ? tiles.map(l => `<span style="background:#dbeafe;color:#1e40af;border-radius:4px;padding:2px 8px;font-size:12px;">${esc(l)}</span>`).join(' ')
         : meta?.trigger
           ? `<span style="background:#f0fdf4;color:#166534;border-radius:4px;padding:2px 8px;font-size:12px;">⚡ ${esc(meta.trigger)}</span>`
-          : `<span style="color:#9ca3af;font-size:12px;">— aucune étape liée —</span>`;
+          : `<span style="color:#9ca3af;font-size:12px;">— aucune tuile liée —</span>`;
       return `<div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;">
         <code style="flex:0 0 200px;font-size:12px;color:#1d4ed8;">${esc(key)}</code>
-        <div style="display:flex;flex-wrap:wrap;gap:4px;">${stepsHtml}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">${tilesHtml}</div>
       </div>`;
     }).join('');
   };
@@ -220,10 +220,10 @@ export async function renderSettingsEmailTemplates(panel) {
     <h3>📧 Templates email</h3>
     <p style="color:#6b7280;font-size:13px;margin-bottom:24px;">Personnalisez les modèles d'email utilisés dans les différents workflows. Utilisez les variables pour insérer des données dynamiques.</p>
 
-    <!-- Portal step ↔ template mapping (inverse view) -->
+    <!-- Portal tile ↔ template mapping (inverse view) -->
     <div class="settings-section-card" style="margin-bottom:24px;">
-      <h4>🔗 Mapping Étapes client ↔ Templates portail</h4>
-      <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Vue inverse : pour chaque template portail, les étapes client qui l'utilisent. Pour modifier les associations, allez dans <strong>Portail client → Étapes client</strong>.</p>
+      <h4>🔗 Mapping Tuiles Kanban ↔ Templates portail</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Vue inverse : pour chaque template portail, les tuiles Kanban qui l'utilisent comme bouton email. Pour modifier les associations, allez dans <strong>Paramétrage → Tuiles</strong>.</p>
       <div style="display:flex;flex-direction:column;gap:6px;" id="et-portal-mapping">
         ${_portalTplMappingHtml()}
       </div>

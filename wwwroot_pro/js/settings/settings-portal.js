@@ -274,6 +274,9 @@ export async function renderSettingsPortal(panel) {
 
     <!-- STEPS TAB -->
     <div id="portal-tab-steps" class="portal-tab-content hidden">
+      <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#1e40af;">
+        💡 Pour configurer les boutons d'envoi d'email par étape, allez dans <strong>Paramétrage → Tuiles</strong> et cochez les templates voulus pour chaque tuile.
+      </div>
       <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
         Choisissez quelles tuiles Kanban sont affichées comme étapes d'avancement dans l'espace client,
         et personnalisez leur libellé côté client (indépendant du nom interne de la tuile).
@@ -766,14 +769,9 @@ async function loadPortalSteps(panel) {
   msgEl.textContent = '';
 
   let steps = [];
-  let emailTemplates = {};
   try {
-    const [rSteps, rTpl] = await Promise.all([
-      fetch('/api/admin/portal/client-steps',   { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
-      fetch('/api/admin/portal/email-templates', { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
-    ]);
+    const rSteps = await fetch('/api/admin/portal/client-steps', { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({}));
     if (rSteps.ok) steps = rSteps.steps || [];
-    if (rTpl.ok)   emailTemplates = rTpl.templates || {};
   } catch { /* ignore */ }
 
   if (!steps.length) {
@@ -781,20 +779,10 @@ async function loadPortalSteps(panel) {
     return;
   }
 
-  // Build template <option> list (key → label)
-  const templateOptions = [
-    { key: '', label: '— Aucun template —' },
-    ...Object.keys(emailTemplates).map(k => ({ key: k, label: k.replace(/_/g, ' ') }))
-  ];
-  const tplOptionsHtml = templateOptions.map(t =>
-    `<option value="${esc(t.key)}">${esc(t.label)}</option>`
-  ).join('');
-
   listEl.innerHTML = `
-    <div style="display:grid;grid-template-columns:180px 1fr 200px 80px 60px;gap:6px;font-size:12px;font-weight:600;color:#6b7280;padding:4px 8px;margin-bottom:4px;">
+    <div style="display:grid;grid-template-columns:180px 1fr 80px 60px;gap:6px;font-size:12px;font-weight:600;color:#6b7280;padding:4px 8px;margin-bottom:4px;">
       <span>Tuile Kanban (interne)</span>
       <span>Libellé client</span>
-      <span>📧 Template email à l'étape</span>
       <span>Visible</span>
       <span>Ordre</span>
     </div>
@@ -804,18 +792,11 @@ async function loadPortalSteps(panel) {
     const row = document.createElement('div');
     row.className = 'pcs-row';
     row.dataset.folder = step.kanbanFolder;
-    row.style.cssText = 'display:grid;grid-template-columns:180px 1fr 200px 80px 60px;gap:6px;align-items:center;padding:8px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;';
-
-    const selectedTpl = step.emailTemplateKey || '';
-    const tplSelectHtml = tplOptionsHtml.replace(
-      `value="${esc(selectedTpl)}"`,
-      `value="${esc(selectedTpl)}" selected`
-    );
+    row.style.cssText = 'display:grid;grid-template-columns:180px 1fr 80px 60px;gap:6px;align-items:center;padding:8px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;';
 
     row.innerHTML = `
       <span style="font-size:13px;font-weight:600;color:#374151;">${esc(step.kanbanFolder)}</span>
       <input type="text" class="settings-input pcs-label" placeholder="${esc(step.kanbanFolder)}" value="${esc(step.clientLabel || '')}" style="font-size:12px;" />
-      <select class="settings-input pcs-email-template" style="font-size:12px;">${tplSelectHtml}</select>
       <label style="display:flex;align-items:center;gap:4px;font-size:12px;justify-content:center;">
         <input type="checkbox" class="pcs-visible" ${step.visible ? 'checked' : ''} />
         Visible
@@ -843,7 +824,6 @@ async function loadPortalSteps(panel) {
     const stepsToSave = rows.map((r, i) => ({
       kanbanFolder:     r.dataset.folder,
       clientLabel:      r.querySelector('.pcs-label').value.trim(),
-      emailTemplateKey: r.querySelector('.pcs-email-template')?.value || '',
       visible:          r.querySelector('.pcs-visible').checked,
       order:            i
     }));

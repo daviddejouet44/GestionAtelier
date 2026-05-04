@@ -29,7 +29,7 @@
   </main>
 
   <script type="module">
-    import { requireAuth, renderHeader, statusBadge, fmtDate, fmtDateTime, fmtSize, esc, apiRequest, apiUpload, showToast, applyPortalTheme } from '/portal/js/portal-core.js';
+    import { requireAuth, renderHeader, statusBadge, fmtDate, fmtDateTime, fmtSize, esc, apiRequest, showToast, applyPortalTheme } from '/portal/js/portal-core.js';
 
     const params = new URLSearchParams(window.location.search);
     const orderId = params.get('id');
@@ -116,15 +116,6 @@
         </div>
       `;
 
-      // Attach BAT handlers if pending
-      if (pendingBat) {
-        document.getElementById('btn-bat-validate')?.addEventListener('click', () => handleValidate(pendingBat.id));
-        document.getElementById('btn-bat-refuse-show')?.addEventListener('click', () => {
-          document.getElementById('bat-refuse-form').classList.remove('hidden');
-          document.getElementById('btn-bat-refuse-show').classList.add('hidden');
-        });
-        document.getElementById('btn-bat-refuse-submit')?.addEventListener('click', () => handleRefuse(pendingBat.id));
-      }
     }
 
     function row(label, value) {
@@ -158,33 +149,14 @@
     }
 
     function renderBatBlock(bat) {
-      return `<div class="card" style="border-color:#fde68a;background:#fffbeb;">
-        <div class="card-header" style="background:#fef9c3;border-radius:6px 6px 0 0;margin:-20px -20px 16px;">
-          <span class="card-title">⚠️ BAT à valider</span>
+      return `<div class="card" style="border-color:#93c5fd;background:#eff6ff;">
+        <div class="card-header" style="background:#dbeafe;border-radius:6px 6px 0 0;margin:-20px -20px 16px;">
+          <span class="card-title">📧 BAT en attente de validation</span>
           <span class="badge badge-yellow">En attente de votre décision</span>
         </div>
-        <p class="text-sm" style="margin-bottom:12px;">Veuillez consulter le BAT ci-dessous et le valider ou le refuser.</p>
-        <p class="text-muted text-sm" style="margin-bottom:12px;">Fichier : <strong>${esc(bat.batFileName)}</strong></p>
-
-        <iframe class="bat-viewer" src="/api/portal/orders/${orderId}/bat/${esc(bat.id)}/file#toolbar=1&view=FitH"
-          title="Aperçu BAT"></iframe>
-
-        <div class="bat-actions" style="margin-top:16px;">
-          <button class="btn btn-success" id="btn-bat-validate">✅ Valider le BAT</button>
-          <button class="btn btn-danger" id="btn-bat-refuse-show">✗ Refuser le BAT</button>
-        </div>
-
-        <div class="bat-refuse-form hidden" id="bat-refuse-form">
-          <div class="form-group" style="margin-top:12px;">
-            <label for="refuse-motif">Motif du refus <span class="required">*</span></label>
-            <textarea id="refuse-motif" class="form-control" rows="4" placeholder="Décrivez les corrections à apporter…"></textarea>
-          </div>
-          <div class="form-group">
-            <label for="refuse-attachment">Fichier joint (optionnel)</label>
-            <input type="file" id="refuse-attachment" class="form-control" style="padding:6px;" />
-          </div>
-          <button class="btn btn-danger" id="btn-bat-refuse-submit">Confirmer le refus</button>
-        </div>
+        <p style="margin-bottom:8px;">Un email avec un lien sécurisé vous a été envoyé pour valider votre BAT.</p>
+        <p class="text-muted text-sm">Cliquez sur le lien dans le mail pour le consulter et valider ou refuser le BAT
+          <strong>${esc(bat.batFileName)}</strong>.</p>
       </div>`;
     }
 
@@ -206,32 +178,6 @@
       return `<div class="card"><div class="card-header"><span class="card-title">Historique des BAT</span></div><div class="file-list">${rows}</div></div>`;
     }
 
-    async function handleValidate(batId) {
-      const btn = document.getElementById('btn-bat-validate');
-      if (!btn) return;
-      btn.disabled = true; btn.textContent = 'Validation…';
-      try {
-        const r = await apiRequest(`/orders/${orderId}/bat/${batId}/validate`, { method: 'POST', body: '{}' });
-        if (r.ok) { showToast('BAT validé avec succès !', 'success'); setTimeout(() => loadOrder(), 800); }
-        else { showToast(r.error || 'Erreur', 'error'); btn.disabled = false; btn.textContent = '✅ Valider le BAT'; }
-      } catch { showToast('Erreur réseau', 'error'); btn.disabled = false; btn.textContent = '✅ Valider le BAT'; }
-    }
-
-    async function handleRefuse(batId) {
-      const motif = document.getElementById('refuse-motif')?.value.trim();
-      if (!motif) { showToast('Le motif de refus est obligatoire', 'error'); return; }
-      const btn = document.getElementById('btn-bat-refuse-submit');
-      btn.disabled = true; btn.textContent = 'Envoi…';
-      try {
-        const fd = new FormData();
-        fd.append('motif', motif);
-        const attachFile = document.getElementById('refuse-attachment')?.files[0];
-        if (attachFile) fd.append('attachment', attachFile);
-        const r = await apiUpload(`/orders/${orderId}/bat/${batId}/refuse`, fd);
-        if (r.ok) { showToast('Refus envoyé.', 'success'); setTimeout(() => loadOrder(), 800); }
-        else { showToast(r.error || 'Erreur', 'error'); btn.disabled = false; btn.textContent = 'Confirmer le refus'; }
-      } catch { showToast('Erreur réseau', 'error'); btn.disabled = false; btn.textContent = 'Confirmer le refus'; }
-    }
   </script>
 </body>
 </html>
