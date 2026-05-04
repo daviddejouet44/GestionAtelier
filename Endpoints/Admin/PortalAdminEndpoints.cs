@@ -334,6 +334,11 @@ public static class PortalAdminEndpoints
                 var batId = Guid.NewGuid().ToString("N");
                 var now = DateTime.UtcNow;
 
+                // Generate a secure token for this BAT (allows client to view without full login)
+                var tokenBytes = new byte[32];
+                System.Security.Cryptography.RandomNumberGenerator.Fill(tokenBytes);
+                var batToken = Convert.ToHexString(tokenBytes).ToLowerInvariant();
+
                 var batCol = MongoDbHelper.GetCollection<BsonDocument>("client_bat_actions");
                 batCol.InsertOne(new BsonDocument
                 {
@@ -348,7 +353,9 @@ public static class PortalAdminEndpoints
                     ["performedAt"] = BsonNull.Value,
                     ["performedByClientId"] = "",
                     ["sentAt"] = now,
-                    ["notificationEmailSent"] = false
+                    ["notificationEmailSent"] = false,
+                    ["batToken"] = batToken,
+                    ["operatorNotificationAcknowledged"] = true
                 });
 
                 // Update order status
@@ -364,7 +371,7 @@ public static class PortalAdminEndpoints
                             ["comment"] = "BAT envoyé au client"
                         }));
 
-                // Notify client
+                // Notify client with token-based link
                 try
                 {
                     var clientId = orderDoc["clientAccountId"].AsString;
@@ -378,7 +385,8 @@ public static class PortalAdminEndpoints
                         var clientName = clientDoc.Contains("displayName") ? clientDoc["displayName"].AsString : clientEmail;
                         var orderNumber = orderDoc.Contains("orderNumber") ? orderDoc["orderNumber"].AsString : orderId;
                         var orderTitle = orderDoc.Contains("title") ? orderDoc["title"].AsString : "";
-                        var batLink = $"{portalUrl}/portal/order.html?id={orderId}";
+                        // Token-based link: no auth required, direct access to this specific BAT
+                        var batLink = $"{portalUrl}/portal/bat-view.html?batId={batId}&token={batToken}";
 
                         var vars = new Dictionary<string, string>
                         {
@@ -386,11 +394,13 @@ public static class PortalAdminEndpoints
                             ["{orderNumber}"] = orderNumber,
                             ["{orderTitle}"] = orderTitle,
                             ["{batLink}"] = batLink,
-                            ["{portalLink}"] = portalUrl
+                            ["{portalLink}"] = portalUrl,
+                            ["{batId}"] = batId,
+                            ["{batFileName}"] = batFileName
                         };
                         var (subj, body) = PortalEmailHelper.RenderTemplate("client_bat_available",
                             "Un BAT est disponible — {orderNumber}",
-                            "Bonjour {clientName},\n\nUn BAT est disponible pour votre commande {orderNumber} — {orderTitle}.\n\nConnectez-vous pour le consulter et le valider ou refuser :\n{batLink}\n\nCordialement,",
+                            "Bonjour {clientName},\n\nUn BAT est disponible pour votre commande {orderNumber} — {orderTitle}.\n\nConsultez et validez (ou refusez) votre BAT en cliquant sur le lien ci-dessous :\n{batLink}\n\n(Lien sécurisé, valable jusqu'à décision)\n\nCordialement,",
                             vars);
                         PortalEmailHelper.SendEmail(clientEmail, subj, body);
 
@@ -406,7 +416,69 @@ public static class PortalAdminEndpoints
             catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
         });
 
-        // GET /api/admin/portal/orders — list all client portal orders (for kanban)
+        // GET /api/admin/portal/bat/pending-decisions
+        // Returns BAT decisions (validated/refused) that the operator has not yet acknowledged
+        app.MapGet("/api/admin/portal/bat/pending-decisions", (HttpContext ctx) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            var batCol = MongoDbHelper.GetCollection<BsonDocument>("client_bat_actions");
+            var filter = Builders<BsonDocument>.Filter.And(
+                Builders<BsonDocument>.Filter.In("action", new[] { "validated", "refused" }),
+                Builders<BsonDocument>.Filter.Eq("operatorNotificationAcknowledged", false)
+            );
+            var docs = batCol.Find(filter).ToList();
+            var ordersCol = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
+            var clientsCol = MongoDbHelper.GetCollection<BsonDocument>("client_accounts");
+
+            var decisions = docs.Select(b =>
+            {
+                var orderId = b.Contains("orderId") ? b["orderId"].AsString : "";
+                string orderNumber = "", orderTitle = "", clientName = "";
+                try
+                {
+                    var ord = ordersCol.Find(Builders<BsonDocument>.Filter.Eq("id", orderId)).FirstOrDefault();
+                    if (ord != null)
+                    {
+                        orderNumber = ord.Contains("orderNumber") ? ord["orderNumber"].AsString : orderId;
+                        orderTitle = ord.Contains("title") ? ord["title"].AsString : "";
+                        var cid = ord.Contains("clientAccountId") ? ord["clientAccountId"].AsString : "";
+                        var cli = clientsCol.Find(Builders<BsonDocument>.Filter.Eq("id", cid)).FirstOrDefault();
+                        if (cli != null)
+                            clientName = cli.Contains("displayName") ? cli["displayName"].AsString : (cli.Contains("email") ? cli["email"].AsString : "");
+                    }
+                }
+                catch { }
+                return new
+                {
+                    batId = b["id"].AsString,
+                    orderId,
+                    orderNumber,
+                    orderTitle,
+                    clientName,
+                    batFileName = b.Contains("batFileName") ? b["batFileName"].AsString : "",
+                    action = b.Contains("action") ? b["action"].AsString : "",
+                    motif = b.Contains("motif") ? b["motif"].AsString : "",
+                    performedAt = b.Contains("performedAt") && !b["performedAt"].IsBsonNull
+                        ? (DateTime?)b["performedAt"].ToUniversalTime() : null
+                };
+            }).ToList();
+
+            return Results.Json(new { ok = true, decisions });
+        });
+
+        // POST /api/admin/portal/bat/decisions/{batId}/acknowledge
+        // Marks a BAT decision as acknowledged by the operator (dismisses the popup)
+        app.MapPost("/api/admin/portal/bat/decisions/{batId}/acknowledge", (HttpContext ctx, string batId) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            var batCol = MongoDbHelper.GetCollection<BsonDocument>("client_bat_actions");
+            batCol.UpdateOne(
+                Builders<BsonDocument>.Filter.Eq("id", batId),
+                Builders<BsonDocument>.Update.Set("operatorNotificationAcknowledged", true));
+            return Results.Json(new { ok = true });
+        });
+
+
         app.MapGet("/api/admin/portal/orders", (HttpContext ctx) =>
         {
             try
@@ -561,7 +633,8 @@ public static class PortalAdminEndpoints
         // =====================================================================
         var portalTemplateKeys = new[] {
             "client_welcome", "client_invitation", "client_password_reset", "client_order_received",
-            "client_bat_available", "client_order_status_changed",
+            "client_bat_available", "client_bat_validated_confirmation", "client_bat_refused_confirmation",
+            "client_order_status_changed",
             "atelier_client_bat_validated", "atelier_client_bat_refused", "atelier_new_client_order"
         };
 
@@ -592,9 +665,14 @@ public static class PortalAdminEndpoints
             catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
         });
 
-        // =====================================================================
-        // Portal theme configuration
-        // =====================================================================
+        // GET /api/admin/portal/email-templates/{key} — Fetch a single template by key
+        app.MapGet("/api/admin/portal/email-templates/{key}", (HttpContext ctx, string key) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!portalTemplateKeys.Contains(key)) return Results.Json(new { ok = false, error = "Template inconnu" });
+            var tpl = MongoDbHelper.GetSettings<PortalEmailTemplate>($"portalEmailTemplate_{key}");
+            return Results.Json(new { ok = true, template = new { subject = tpl?.Subject ?? "", body = tpl?.Body ?? "" } });
+        });
 
         // GET /api/admin/portal/theme
         app.MapGet("/api/admin/portal/theme", (HttpContext ctx) =>

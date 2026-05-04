@@ -44,6 +44,21 @@ export async function renderSettingsKanbanColumns(panel) {
     }
   } catch(e) { /* use defaults */ }
 
+  // Load email templates available for the multi-template-per-tile feature
+  let availableEmailTemplates = [];
+  try {
+    const tplResp = await fetch("/api/admin/portal/email-templates", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json()).catch(() => ({}));
+    if (tplResp.ok && tplResp.templates && typeof tplResp.templates === 'object') {
+      // API returns { key: {subject, body}, ... } — convert to array of {key, label}
+      availableEmailTemplates = Object.keys(tplResp.templates).map(key => ({
+        key,
+        label: key.replace(/^(client_|atelier_)/i, '').replace(/_/g, ' ')
+      }));
+    }
+  } catch(e) { /* ignore */ }
+
   panel.innerHTML = `
     <h3>Tuiles</h3>
     <p style="font-size:13px;color:#6b7280;margin-bottom:20px;">
@@ -137,6 +152,41 @@ export async function renderSettingsKanbanColumns(panel) {
     });
 
     actionsSection.appendChild(actionsGrid);
+
+    // Email templates section
+    if (availableEmailTemplates.length > 0) {
+      const tmplDivider = document.createElement("hr");
+      tmplDivider.style.cssText = "border:none;border-top:1px solid #e5e7eb;margin:12px 0;";
+      actionsSection.appendChild(tmplDivider);
+
+      const tmplLabel = document.createElement("p");
+      tmplLabel.style.cssText = "font-size:12px;font-weight:600;color:#374151;margin:0 0 6px;";
+      tmplLabel.textContent = "Boutons email à afficher sur les cartes (templates) :";
+      actionsSection.appendChild(tmplLabel);
+
+      const tmplHint = document.createElement("p");
+      tmplHint.style.cssText = "font-size:11px;color:#6b7280;margin:0 0 8px;";
+      tmplHint.textContent = "Cochez les templates email qui doivent apparaître comme boutons sur les fiches de ce dossier. L'opérateur cliquera dessus pour ouvrir son client mail (mailto:).";
+      actionsSection.appendChild(tmplHint);
+
+      const currentTemplateKeys = Array.isArray(col.emailTemplateKeys) ? col.emailTemplateKeys : [];
+      const tmplGrid = document.createElement("div");
+      tmplGrid.style.cssText = "display:flex;flex-wrap:wrap;gap:6px 16px;";
+      availableEmailTemplates.forEach(tmpl => {
+        const lbl = document.createElement("label");
+        lbl.style.cssText = "display:flex;align-items:center;gap:4px;font-size:12px;color:#374151;white-space:nowrap;";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "kcol-email-tmpl-cb";
+        cb.dataset.tmplKey = tmpl.key;
+        cb.checked = currentTemplateKeys.includes(tmpl.key);
+        lbl.appendChild(cb);
+        lbl.appendChild(document.createTextNode(tmpl.label || tmpl.key));
+        tmplGrid.appendChild(lbl);
+      });
+      actionsSection.appendChild(tmplGrid);
+    }
+
     wrapper.appendChild(row);
     wrapper.appendChild(actionsSection);
 
@@ -165,6 +215,11 @@ export async function renderSettingsKanbanColumns(panel) {
       const checkedIds = allCbs.filter(cb => cb.checked).map(cb => cb.dataset.actionId);
       // If all are checked, store null (show all, retrocompat)
       const visibleActions = (checkedIds.length === ALL_ACTIONS.length) ? null : checkedIds;
+
+      const tmplCbs = Array.from(wrapper.querySelectorAll(".kcol-email-tmpl-cb"));
+      const checkedTmplKeys = tmplCbs.filter(cb => cb.checked).map(cb => cb.dataset.tmplKey);
+      const emailTemplateKeys = checkedTmplKeys.length > 0 ? checkedTmplKeys : null;
+
       return {
         folder:        row.querySelector(".kcol-folder")?.value.trim() || "",
         folderPath:    row.querySelector(".kcol-folderpath")?.value.trim() || "",
@@ -173,6 +228,7 @@ export async function renderSettingsKanbanColumns(panel) {
         visible:       row.querySelector(".kcol-visible")?.checked ?? true,
         order:         i,
         visibleActions,
+        emailTemplateKeys,
       };
     });
   };

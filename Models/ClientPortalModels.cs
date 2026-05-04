@@ -143,6 +143,29 @@ public class ClientOrder
     [JsonPropertyName("formatFini")]
     public string? FormatFini { get; set; }
 
+    // Donneur d'ordre
+    [JsonPropertyName("donneurOrdreNom")]
+    public string? DonneurOrdreNom { get; set; }
+
+    [JsonPropertyName("donneurOrdrePrenom")]
+    public string? DonneurOrdrePrenom { get; set; }
+
+    [JsonPropertyName("donneurOrdreTelephone")]
+    public string? DonneurOrdreTelephone { get; set; }
+
+    [JsonPropertyName("donneurOrdreEmail")]
+    public string? DonneurOrdreEmail { get; set; }
+
+    // Indicative dates (from production sheet)
+    [JsonPropertyName("dateEnvoi")]
+    public DateTime? DateEnvoi { get; set; }
+
+    [JsonPropertyName("dateImpression")]
+    public DateTime? DateImpression { get; set; }
+
+    [JsonPropertyName("dateProductionFinitions")]
+    public DateTime? DateProductionFinitions { get; set; }
+
     [JsonPropertyName("files")]
     public List<ClientOrderFile> Files { get; set; } = new();
 
@@ -226,6 +249,12 @@ public class ClientBatAction
 
     [JsonPropertyName("notificationEmailSent")]
     public bool NotificationEmailSent { get; set; } = false;
+
+    [JsonPropertyName("batToken")]
+    public string BatToken { get; set; } = "";
+
+    [JsonPropertyName("operatorNotificationAcknowledged")]
+    public bool OperatorNotificationAcknowledged { get; set; } = true; // true = no pending popup; false = popup needed
 }
 
 public class PortalSettings

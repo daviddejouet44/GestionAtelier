@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using MongoDB.Bson;
@@ -11,6 +12,228 @@ public static class PortalBatEndpoints
 {
     public static void MapPortalBatEndpoints(this WebApplication app)
     {
+        // ── Helper: send client confirmation email ───────────────────────────
+        static void SendClientBatConfirmation(string action, string motif,
+            ClientAccount client, string orderNumber, string orderTitle, string batFileName)
+        {
+            try
+            {
+                if (action == "validated")
+                {
+                    var vars = new Dictionary<string, string>
+                    {
+                        ["{clientName}"]  = client.DisplayName,
+                        ["{orderNumber}"] = orderNumber,
+                        ["{orderTitle}"]  = orderTitle,
+                        ["{batFileName}"] = batFileName
+                    };
+                    var (subj, body) = PortalEmailHelper.RenderTemplate("client_bat_validated_confirmation",
+                        "Votre BAT a bien été validé — {orderNumber}",
+                        "Bonjour {clientName},\n\nVous avez validé le BAT « {batFileName} » pour votre commande {orderNumber} — {orderTitle}.\n\nNous allons maintenant procéder à la mise en production.\n\nMerci pour votre confirmation.\n\nCordialement,",
+                        vars);
+                    PortalEmailHelper.SendEmail(client.Email, subj, body);
+                }
+                else if (action == "refused")
+                {
+                    var vars = new Dictionary<string, string>
+                    {
+                        ["{clientName}"]  = client.DisplayName,
+                        ["{orderNumber}"] = orderNumber,
+                        ["{orderTitle}"]  = orderTitle,
+                        ["{batFileName}"] = batFileName,
+                        ["{motif}"]       = motif
+                    };
+                    var (subj, body) = PortalEmailHelper.RenderTemplate("client_bat_refused_confirmation",
+                        "Votre refus du BAT a bien été enregistré — {orderNumber}",
+                        "Bonjour {clientName},\n\nVotre refus du BAT « {batFileName} » pour la commande {orderNumber} — {orderTitle} a bien été enregistré.\n\nMotif indiqué : {motif}\n\nNous allons traiter vos corrections et vous soumettre un nouveau BAT.\n\nCordialement,",
+                        vars);
+                    PortalEmailHelper.SendEmail(client.Email, subj, body);
+                }
+            }
+            catch (Exception ex) { Console.WriteLine($"[WARN] Client BAT confirmation email failed: {ex.Message}"); }
+        }
+
+        // ── Token-based endpoints (no auth required — for direct email links) ──
+        // (These must be registered before the authenticated order-specific endpoints)
+
+        // GET /api/portal/bat/view?token={token}
+        app.MapGet("/api/portal/bat/view", (HttpContext ctx) =>
+        {
+            var token = ctx.Request.Query["token"].ToString();
+            if (string.IsNullOrWhiteSpace(token))
+                return Results.Json(new { ok = false, error = "Token manquant" });
+
+            var batCol = MongoDbHelper.GetCollection<BsonDocument>("client_bat_actions");
+            var bat = batCol.Find(Builders<BsonDocument>.Filter.Eq("batToken", token)).FirstOrDefault();
+            if (bat == null)
+                return Results.Json(new { ok = false, error = "Lien invalide ou expiré" });
+
+            var ordersCol = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
+            var orderDoc = ordersCol.Find(Builders<BsonDocument>.Filter.Eq("id", bat["orderId"].AsString)).FirstOrDefault();
+
+            return Results.Json(new
+            {
+                ok = true,
+                bat = new
+                {
+                    id = bat["id"].AsString,
+                    orderId = bat["orderId"].AsString,
+                    batFileName = bat.Contains("batFileName") ? bat["batFileName"].AsString : "",
+                    action = bat.Contains("action") ? bat["action"].AsString : "pending",
+                    motif = bat.Contains("motif") ? bat["motif"].AsString : "",
+                    sentAt = bat.Contains("sentAt") ? bat["sentAt"].ToUniversalTime() : DateTime.UtcNow,
+                    performedAt = bat.Contains("performedAt") && !bat["performedAt"].IsBsonNull
+                        ? (DateTime?)bat["performedAt"].ToUniversalTime() : null
+                },
+                order = orderDoc == null ? null : new
+                {
+                    orderNumber = orderDoc.Contains("orderNumber") ? orderDoc["orderNumber"].AsString : "",
+                    title = orderDoc.Contains("title") ? orderDoc["title"].AsString : "",
+                    status = orderDoc.Contains("status") ? orderDoc["status"].AsString : ""
+                }
+            });
+        });
+
+        // GET /api/portal/bat/file?token={token}
+        app.MapGet("/api/portal/bat/file", (HttpContext ctx) =>
+        {
+            var token = ctx.Request.Query["token"].ToString();
+            if (string.IsNullOrWhiteSpace(token))
+                return Results.Json(new { ok = false, error = "Token manquant" });
+
+            var batCol = MongoDbHelper.GetCollection<BsonDocument>("client_bat_actions");
+            var bat = batCol.Find(Builders<BsonDocument>.Filter.Eq("batToken", token)).FirstOrDefault();
+            if (bat == null)
+                return Results.Json(new { ok = false, error = "Lien invalide" });
+
+            var filePath = bat.Contains("batFileRef") ? bat["batFileRef"].AsString : "";
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+                return Results.Json(new { ok = false, error = "Fichier BAT non trouvé" });
+
+            return Results.File(filePath, "application/pdf", Path.GetFileName(filePath));
+        });
+
+        // POST /api/portal/bat/decide?token={token}
+        // Client validates or refuses the BAT via the token link (no login required)
+        app.MapPost("/api/portal/bat/decide", async (HttpContext ctx) =>
+        {
+            try
+            {
+                var token = ctx.Request.Query["token"].ToString();
+                if (string.IsNullOrWhiteSpace(token))
+                    return Results.Json(new { ok = false, error = "Token manquant" });
+
+                string action, motif = "";
+                if (ctx.Request.ContentType?.Contains("application/json") == true)
+                {
+                    var jsonBody = await ctx.Request.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+                    action = jsonBody.TryGetProperty("action", out var aEl) ? aEl.GetString() ?? "" : "";
+                    motif  = jsonBody.TryGetProperty("motif",  out var mEl) ? mEl.GetString() ?? "" : "";
+                }
+                else
+                {
+                    var form = await ctx.Request.ReadFormAsync();
+                    action = form.TryGetValue("action", out var aVal) ? aVal.ToString() : "";
+                    motif  = form.TryGetValue("motif",  out var mVal) ? mVal.ToString().Trim() : "";
+                }
+
+                if (action != "validated" && action != "refused")
+                    return Results.Json(new { ok = false, error = "Action invalide (validated | refused)" });
+                if (action == "refused" && string.IsNullOrWhiteSpace(motif))
+                    return Results.Json(new { ok = false, error = "Le motif de refus est obligatoire" });
+
+                var batCol = MongoDbHelper.GetCollection<BsonDocument>("client_bat_actions");
+                var bat = batCol.Find(Builders<BsonDocument>.Filter.Eq("batToken", token)).FirstOrDefault();
+                if (bat == null)
+                    return Results.Json(new { ok = false, error = "Lien invalide ou expiré" });
+                if (bat["action"].AsString != "pending")
+                    return Results.Json(new { ok = false, error = "Ce BAT a déjà été traité" });
+
+                var batId       = bat["id"].AsString;
+                var orderId     = bat["orderId"].AsString;
+                var batFileName = bat.Contains("batFileName") ? bat["batFileName"].AsString : "";
+                var now = DateTime.UtcNow;
+                var clientIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "";
+
+                batCol.UpdateOne(
+                    Builders<BsonDocument>.Filter.Eq("id", batId),
+                    Builders<BsonDocument>.Update
+                        .Set("action", action)
+                        .Set("motif", motif)
+                        .Set("performedAt", now)
+                        .Set("performedByClientId", "token:" + clientIp)
+                        .Set("operatorNotificationAcknowledged", false));
+
+                var ordersCol = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
+                var orderDoc  = ordersCol.Find(Builders<BsonDocument>.Filter.Eq("id", orderId)).FirstOrDefault();
+                var newStatus = action == "validated" ? "in_production" : "bat_refused";
+                var comment   = action == "validated"
+                    ? "BAT validé par le client"
+                    : $"BAT refusé par le client. Motif : {motif}";
+
+                ordersCol.UpdateOne(
+                    Builders<BsonDocument>.Filter.Eq("id", orderId),
+                    Builders<BsonDocument>.Update
+                        .Set("status", newStatus)
+                        .Set("updatedAt", now)
+                        .Push("statusHistory", new BsonDocument
+                        {
+                            ["status"] = action == "validated" ? "bat_validated" : "bat_refused",
+                            ["timestamp"] = now,
+                            ["comment"] = comment
+                        }));
+
+                var clientId    = orderDoc?.Contains("clientAccountId") == true ? orderDoc["clientAccountId"].AsString : "";
+                var orderNumber = orderDoc?.Contains("orderNumber") == true ? orderDoc["orderNumber"].AsString : orderId;
+                var orderTitle  = orderDoc?.Contains("title") == true ? orderDoc["title"].AsString : "";
+
+                var clientsCol  = MongoDbHelper.GetCollection<BsonDocument>("client_accounts");
+                var clientDoc   = string.IsNullOrEmpty(clientId) ? null
+                    : clientsCol.Find(Builders<BsonDocument>.Filter.Eq("id", clientId)).FirstOrDefault();
+                ClientAccount? client = clientDoc != null ? PortalAuthEndpoints.DocToClient(clientDoc) : null;
+
+                // Confirmation email to client
+                if (client != null)
+                    SendClientBatConfirmation(action, motif, client, orderNumber, orderTitle, batFileName);
+
+                // Notify atelier
+                try
+                {
+                    var atelierVars = new Dictionary<string, string>
+                    {
+                        ["{clientName}"]  = client?.DisplayName ?? "Client",
+                        ["{companyName}"] = client?.CompanyName ?? "",
+                        ["{orderNumber}"] = orderNumber,
+                        ["{orderTitle}"]  = orderTitle,
+                        ["{motif}"]       = motif
+                    };
+                    if (action == "validated")
+                    {
+                        var (subj, body) = PortalEmailHelper.RenderTemplate("atelier_client_bat_validated",
+                            "BAT validé par le client — {orderNumber}",
+                            "Le client {clientName} ({companyName}) a validé le BAT pour la commande {orderNumber} — {orderTitle}.",
+                            atelierVars);
+                        PortalEmailHelper.SendAtelierNotification(subj, body);
+                    }
+                    else
+                    {
+                        var (subj, body) = PortalEmailHelper.RenderTemplate("atelier_client_bat_refused",
+                            "BAT refusé par le client — {orderNumber}",
+                            "Le client {clientName} ({companyName}) a refusé le BAT pour la commande {orderNumber} — {orderTitle}.\n\nMotif : {motif}",
+                            atelierVars);
+                        PortalEmailHelper.SendAtelierNotification(subj, body);
+                    }
+                }
+                catch (Exception ex) { Console.WriteLine($"[WARN] Atelier BAT email failed: {ex.Message}"); }
+
+                return Results.Json(new { ok = true, action });
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { ok = false, error = ex.Message });
+            }
+        });
+
         // GET /api/portal/orders/{id}/bat
         app.MapGet("/api/portal/orders/{id}/bat", (HttpContext ctx, string id) =>
         {
@@ -87,12 +310,14 @@ public static class PortalBatEndpoints
                 if (bat["action"].AsString != "pending") return Results.Json(new { ok = false, error = "Ce BAT a déjà été traité" });
 
                 var now = DateTime.UtcNow;
+                var batFileName = bat.Contains("batFileName") ? bat["batFileName"].AsString : "";
                 batCol.UpdateOne(
                     Builders<BsonDocument>.Filter.Eq("id", batId),
                     Builders<BsonDocument>.Update
                         .Set("action", "validated")
                         .Set("performedAt", now)
-                        .Set("performedByClientId", client.Id));
+                        .Set("performedByClientId", client.Id)
+                        .Set("operatorNotificationAcknowledged", false));
 
                 // Update order status
                 ordersCol.UpdateOne(
@@ -110,10 +335,12 @@ public static class PortalBatEndpoints
                 var orderNumber = orderDoc.Contains("orderNumber") ? orderDoc["orderNumber"].AsString : id;
                 var orderTitle = orderDoc.Contains("title") ? orderDoc["title"].AsString : "";
 
+                // Confirmation email to client
+                SendClientBatConfirmation("validated", "", client, orderNumber, orderTitle, batFileName);
+
                 // Notify atelier
                 try
                 {
-                    var settings = MongoDbHelper.GetSettings<PortalSettings>("portalSettings") ?? new PortalSettings();
                     var vars = new Dictionary<string, string>
                     {
                         ["{clientName}"] = client.DisplayName,
@@ -194,6 +421,11 @@ public static class PortalBatEndpoints
 
                 batCol.UpdateOne(Builders<BsonDocument>.Filter.Eq("id", batId), updateDef);
 
+                // Mark for operator notification
+                batCol.UpdateOne(
+                    Builders<BsonDocument>.Filter.Eq("id", batId),
+                    Builders<BsonDocument>.Update.Set("operatorNotificationAcknowledged", false));
+
                 // Update order status
                 ordersCol.UpdateOne(
                     Builders<BsonDocument>.Filter.Eq("id", id),
@@ -209,6 +441,10 @@ public static class PortalBatEndpoints
 
                 var orderNumber = orderDoc.Contains("orderNumber") ? orderDoc["orderNumber"].AsString : id;
                 var orderTitle = orderDoc.Contains("title") ? orderDoc["title"].AsString : "";
+                var batFileName = bat.Contains("batFileName") ? bat["batFileName"].AsString : "";
+
+                // Confirmation email to client
+                SendClientBatConfirmation("refused", motif, client, orderNumber, orderTitle, batFileName);
 
                 // Notify atelier
                 try

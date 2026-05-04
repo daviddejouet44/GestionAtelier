@@ -96,6 +96,9 @@ public class KanbanColumnConfig
 
     [JsonPropertyName("visibleActions")]
     public List<string>? VisibleActions { get; set; }
+
+    [JsonPropertyName("emailTemplateKeys")]
+    public List<string>? EmailTemplateKeys { get; set; }
 }
 
 public class KanbanSettings
