@@ -139,7 +139,18 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
 
       const dossierEl = document.createElement("div");
       dossierEl.className = "kanban-card-dossier";
-      dossierEl.textContent = "—";
+      // For web orders, pre-fill immediately from filename (fallback before async fab fetch)
+      if (isWebOrder) {
+        let webNum = _jfnLower;
+        if (webNum.startsWith('bat_')) webNum = webNum.substring(4);
+        const sepIdx = webNum.indexOf('__');
+        if (sepIdx > 0) webNum = webNum.substring(0, sepIdx);
+        const dotIdx = webNum.lastIndexOf('.');
+        if (dotIdx > 0) webNum = webNum.substring(0, dotIdx);
+        dossierEl.textContent = "N° " + webNum.toUpperCase();
+      } else {
+        dossierEl.textContent = "—";
+      }
       topRowMain.appendChild(dossierEl);
 
       const presseEl = document.createElement("div");
@@ -930,6 +941,18 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         };
         if (isActionVisible(folderName, "finitions")) actions.appendChild(btnFinitions);
 
+        // Bouton "Étiquettes livraison" — génère un PDF d'étiquettes pour ce dossier
+        const btnEtiquettes = document.createElement("button");
+        btnEtiquettes.className = "btn btn-sm";
+        btnEtiquettes.textContent = "🏷️ Étiquettes livraison";
+        btnEtiquettes.title = "Générer les étiquettes de livraison (adresses livraison + justificatifs)";
+        btnEtiquettes.onclick = (e) => {
+          e.stopPropagation();
+          const url = "/api/admin/jobs/delivery-labels-pdf?fileName=" + encodeURIComponent(jobFileName);
+          window.open(url, "_blank", "noopener");
+        };
+        actions.appendChild(btnEtiquettes);
+
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3 || currentUser.profile === 4)) {
           const btnTerminee = document.createElement("button");
           btnTerminee.className = "btn btn-sm btn-primary";
@@ -1051,6 +1074,40 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       }
 
       infoStack.appendChild(actions);
+
+      // For web orders: add "📄 Récapitulatif PDF" button (admin only)
+      if (isWebOrder && !readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+        const btnRecap = document.createElement("button");
+        btnRecap.className = "btn btn-sm";
+        btnRecap.textContent = "📄 Récapitulatif PDF";
+        btnRecap.title = "Télécharger le récapitulatif de la commande client";
+        btnRecap.onclick = async (e) => {
+          e.stopPropagation();
+          btnRecap.disabled = true;
+          try {
+            // Extract order number from filename (WEB-YYYYMMDD-NNNN)
+            let orderNum = jobFileName;
+            if (orderNum.startsWith('bat_')) orderNum = orderNum.substring(4);
+            const sep = orderNum.indexOf('__');
+            if (sep > 0) orderNum = orderNum.substring(0, sep);
+            const dot = orderNum.lastIndexOf('.');
+            if (dot > 0) orderNum = orderNum.substring(0, dot);
+            orderNum = orderNum.toUpperCase();
+            // Fetch portal order ID
+            const r = await fetch('/api/admin/portal/orders/by-job?numeroDossier=' + encodeURIComponent(orderNum), {
+              headers: { 'Authorization': 'Bearer ' + (authToken || '') }
+            }).then(res => res.json()).catch(() => ({ found: false }));
+            if (r.found && r.order?.id) {
+              window.open('/api/admin/portal/orders/' + encodeURIComponent(r.order.id) + '/recap-pdf', '_blank', 'noopener');
+            } else {
+              showNotification("❌ Commande portail introuvable", "error");
+            }
+          } finally {
+            btnRecap.disabled = false;
+          }
+        };
+        actions.appendChild(btnRecap);
+      }
 
       // Dynamic email template buttons from tile configuration (multi-template per tile)
       if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {

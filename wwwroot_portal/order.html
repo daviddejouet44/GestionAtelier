@@ -69,6 +69,7 @@
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             ${statusBadge(o.status)}
             <a href="/portal/order-new.html?reorder=${esc(o.id)}" class="btn btn-secondary btn-sm">Re-commander</a>
+            <a href="/api/portal/orders/${esc(o.id)}/recap-pdf" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">📄 Récapitulatif PDF</a>
             <a href="/portal/orders.html" class="btn btn-secondary btn-sm">← Retour</a>
           </div>
         </div>

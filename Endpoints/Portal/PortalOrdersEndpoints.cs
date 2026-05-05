@@ -1,10 +1,14 @@
 using System.Text.Json;
+using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using GestionAtelier.Models;
 using GestionAtelier.Services;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 
 namespace GestionAtelier.Endpoints.Portal;
 
@@ -667,6 +671,81 @@ public static class PortalOrdersEndpoints
                 welcomeText = settings.WelcomeText
             });
         });
+
+        // GET /api/portal/orders/{id}/recap-pdf
+        // Génère un PDF de récapitulatif de commande client (accessible par le client authentifié)
+        app.MapGet("/api/portal/orders/{id}/recap-pdf", (HttpContext ctx, string id) =>
+        {
+            try
+            {
+                var client = PortalAuthEndpoints.GetAuthenticatedClient(ctx);
+                if (client == null) return Results.Json(new { ok = false, error = "Non authentifié" });
+
+                var col = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
+                var doc = col.Find(Builders<BsonDocument>.Filter.Eq("id", id)).FirstOrDefault();
+                if (doc == null) return Results.Json(new { ok = false, error = "Commande non trouvée" });
+
+                var order = DocToOrder(doc);
+                if (order.ClientAccountId != client.Id)
+                    return Results.Json(new { ok = false, error = "Accès refusé" });
+
+                var theme = MongoDbHelper.GetSettings<PortalThemeConfig>("portalTheme") ?? new PortalThemeConfig();
+                var companyName = string.IsNullOrWhiteSpace(theme.CompanyName) ? "Gestion d'Atelier" : theme.CompanyName;
+
+                var pdfBytes = GenerateOrderRecapPdf(order, client, companyName);
+
+                ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"Recapitulatif-{order.OrderNumber}.pdf\"";
+                return Results.File(pdfBytes, "application/pdf");
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { ok = false, error = ex.Message });
+            }
+        });
+
+        // GET /api/admin/portal/orders/{id}/recap-pdf
+        // Même PDF accessible côté admin (opérateur)
+        app.MapGet("/api/admin/portal/orders/{id}/recap-pdf", (HttpContext ctx, string id) =>
+        {
+            try
+            {
+                if (!IsAdminAuth(ctx)) return Results.Json(new { ok = false, error = "Non autorisé" });
+
+                var col = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
+                var doc = col.Find(Builders<BsonDocument>.Filter.Eq("id", id)).FirstOrDefault();
+                if (doc == null) return Results.Json(new { ok = false, error = "Commande non trouvée" });
+
+                var order = DocToOrder(doc);
+
+                // Fetch client data for display
+                var clientAccCol = MongoDbHelper.GetCollection<BsonDocument>("client_accounts");
+                var clientDoc = clientAccCol.Find(Builders<BsonDocument>.Filter.Eq("id", order.ClientAccountId)).FirstOrDefault();
+                ClientAccount clientAcc = new();
+                if (clientDoc != null)
+                {
+                    clientAcc = new ClientAccount
+                    {
+                        Id = clientDoc.Contains("id") ? clientDoc["id"].AsString : "",
+                        Email = clientDoc.Contains("email") ? clientDoc["email"].AsString : "",
+                        DisplayName = clientDoc.Contains("displayName") ? clientDoc["displayName"].AsString : "",
+                        CompanyName = clientDoc.Contains("companyName") ? clientDoc["companyName"].AsString : "",
+                        ContactPhone = clientDoc.Contains("contactPhone") ? clientDoc["contactPhone"].AsString : ""
+                    };
+                }
+
+                var theme = MongoDbHelper.GetSettings<PortalThemeConfig>("portalTheme") ?? new PortalThemeConfig();
+                var companyName = string.IsNullOrWhiteSpace(theme.CompanyName) ? "Gestion d'Atelier" : theme.CompanyName;
+
+                var pdfBytes = GenerateOrderRecapPdf(order, clientAcc, companyName);
+
+                ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"Recapitulatif-{order.OrderNumber}.pdf\"";
+                return Results.File(pdfBytes, "application/pdf");
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { ok = false, error = ex.Message });
+            }
+        });
     }
 
     // BsonDocument builder ---------------------------------------------------
@@ -751,5 +830,152 @@ public static class PortalOrdersEndpoints
         var safe = System.Text.RegularExpressions.Regex.Replace(s, @"[^\w\-]", "_");
         if (safe.Length > 40) safe = safe[..40];
         return string.IsNullOrWhiteSpace(safe) ? "sans-titre" : safe;
+    }
+
+    // ── Admin auth helper ─────────────────────────────────────────────────────
+    private static bool IsAdminAuth(HttpContext ctx)
+    {
+        try
+        {
+            var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            var parts = decoded.Split(':');
+            // Accept profiles 2 (operator) and 3 (admin)
+            return parts.Length >= 3 && (parts[2] == "2" || parts[2] == "3");
+        }
+        catch { return false; }
+    }
+
+    // ── Récapitulatif commande PDF ────────────────────────────────────────────
+    private static byte[] GenerateOrderRecapPdf(ClientOrder order, ClientAccount client, string companyName)
+    {
+        var statusLabels = new Dictionary<string, string>
+        {
+            ["draft"] = "Brouillon", ["submitted"] = "Reçue", ["in_production"] = "En production",
+            ["bat_pending"] = "BAT en attente", ["completed"] = "Terminée", ["delivered"] = "Livrée"
+        };
+        var statusLabel = statusLabels.TryGetValue(order.Status, out var sl) ? sl : order.Status;
+
+        string? Val(string? v) => string.IsNullOrWhiteSpace(v) ? null : v;
+
+        var doc = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Margin(30);
+                page.Size(PageSizes.A4);
+                page.DefaultTextStyle(x => x.FontSize(11));
+
+                page.Header().Column(hdr =>
+                {
+                    hdr.Item().Row(row =>
+                    {
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text(companyName).FontSize(18).SemiBold();
+                            c.Item().Text("Récapitulatif de commande").FontSize(13).FontColor("#6b7280");
+                        });
+                        row.ConstantItem(150).AlignRight().Column(c =>
+                        {
+                            c.Item().Text($"N° {order.OrderNumber}").FontSize(14).SemiBold();
+                            c.Item().Text(order.CreatedAt.ToString("dd/MM/yyyy")).FontSize(11).FontColor("#6b7280");
+                        });
+                    });
+                    hdr.Item().PaddingVertical(6).LineHorizontal(2).LineColor("#1a1a2e");
+                });
+
+                page.Content().PaddingTop(10).Column(col =>
+                {
+                    void Section(string title)
+                    {
+                        col.Item().PaddingTop(14).PaddingBottom(4).Text(title).FontSize(13).SemiBold();
+                        col.Item().LineHorizontal(1).LineColor("#d1d5db");
+                    }
+
+                    void Row(string label, string? value)
+                    {
+                        if (value == null) return;
+                        col.Item().PaddingTop(3).Row(r =>
+                        {
+                            r.ConstantItem(160).Text(label + " :").FontColor("#6b7280").FontSize(10);
+                            r.RelativeItem().Text(value).FontSize(10);
+                        });
+                    }
+
+                    // Statut
+                    col.Item().PaddingBottom(8).Row(r =>
+                    {
+                        r.AutoItem().Text("Statut : ").FontSize(11);
+                        r.AutoItem().Text(statusLabel).FontSize(11).SemiBold()
+                            .FontColor(order.Status == "completed" || order.Status == "delivered" ? "#166534" : "#1e40af");
+                    });
+
+                    // Donneur d'ordre / client
+                    Section("Donneur d'ordre");
+                    Row("Nom", Val(order.DonneurOrdreNom) ?? Val(client.DisplayName));
+                    Row("Prénom", Val(order.DonneurOrdrePrenom));
+                    Row("Société", Val(client.CompanyName));
+                    Row("Téléphone", Val(order.DonneurOrdreTelephone) ?? Val(client.ContactPhone));
+                    Row("Email", Val(order.DonneurOrdreEmail) ?? Val(client.Email));
+
+                    // Détail produit
+                    Section("Détail du produit");
+                    Row("Intitulé", Val(order.Title));
+                    Row("Type de travail", Val(order.TypeTravail));
+                    Row("Format fini", Val(order.FormatFini) ?? Val(order.Format));
+                    Row("Quantité", order.Quantity > 0 ? order.Quantity.ToString("N0") : null);
+                    Row("Nb pages", order.Pagination.HasValue ? order.Pagination.Value.ToString() : null);
+                    Row("Papier", Val(order.Paper));
+                    Row("Recto / Verso", Val(order.Recto));
+                    if (!string.IsNullOrWhiteSpace(order.Media1)) Row("Média 1", order.Media1);
+                    if (!string.IsNullOrWhiteSpace(order.Media2)) Row("Média 2", order.Media2);
+                    if (!string.IsNullOrWhiteSpace(order.Media3)) Row("Média 3", order.Media3);
+                    if (!string.IsNullOrWhiteSpace(order.Media4)) Row("Média 4", order.Media4);
+                    if (!string.IsNullOrWhiteSpace(order.MediaCouverture)) Row("Couverture", order.MediaCouverture);
+                    if (order.Finitions.Count > 0) Row("Finitions", string.Join(", ", order.Finitions));
+                    Row("BAT", Val(order.Bat));
+
+                    // Livraison
+                    Section("Livraison");
+                    Row("Mode", Val(order.DeliveryMode));
+                    Row("Adresse", Val(order.DeliveryAddress));
+                    Row("Date souhaitée", order.DesiredDeliveryDate.HasValue ? order.DesiredDeliveryDate.Value.ToString("dd/MM/yyyy") : null);
+                    if (order.QuantiteJustifs.HasValue && order.QuantiteJustifs.Value > 0)
+                    {
+                        Row("Qté justificatifs", order.QuantiteJustifs.Value.ToString());
+                        Row("Adresse justifs", Val(order.AdresseJustifs));
+                    }
+
+                    // Notes
+                    if (!string.IsNullOrWhiteSpace(order.Comments))
+                    {
+                        Section("Commentaires");
+                        col.Item().PaddingTop(4).Text(order.Comments).FontSize(10);
+                    }
+
+                    // Historique statuts
+                    if (order.StatusHistory.Count > 0)
+                    {
+                        Section("Historique");
+                        foreach (var h in order.StatusHistory.OrderByDescending(h => h.Timestamp))
+                        {
+                            var hl = statusLabels.TryGetValue(h.Status, out var sl2) ? sl2 : h.Status;
+                            col.Item().PaddingTop(2).Text($"{h.Timestamp.ToString("dd/MM/yyyy HH:mm")} — {hl}{(string.IsNullOrWhiteSpace(h.Comment) ? "" : " — " + h.Comment)}")
+                                .FontSize(9).FontColor("#6b7280");
+                        }
+                    }
+                });
+
+                page.Footer().AlignRight().Text(t =>
+                {
+                    t.Span($"Généré le {DateTime.Now:dd/MM/yyyy à HH:mm} — ").FontSize(8).FontColor("#9ca3af");
+                    t.Span(companyName).FontSize(8).FontColor("#9ca3af").SemiBold();
+                });
+            });
+        });
+
+        using var ms = new MemoryStream();
+        doc.GeneratePdf(ms);
+        return ms.ToArray();
     }
 }
