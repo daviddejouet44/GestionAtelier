@@ -334,7 +334,7 @@ public static class PortalOrdersEndpoints
                 DateTime? dateProductionFinitions = null;
                 if (json.TryGetProperty("dateProductionFinitions", out var dpfEl) && dpfEl.ValueKind == JsonValueKind.String && DateTime.TryParse(dpfEl.GetString(), out var dpfParsed)) dateProductionFinitions = DateTime.SpecifyKind(dpfParsed, DateTimeKind.Utc);
                 if (deliveryMode == "livraison" && string.IsNullOrWhiteSpace(deliveryAddress) && deliveryPoints.Count == 0)
-                    return Results.Json(new { ok = false, error = "L'adresse de livraison est obligatoire pour le mode Livraison" });
+                    return Results.Json(new { ok = false, error = "Pour le mode Livraison, veuillez renseigner une adresse de livraison ou au moins un point de livraison" });
 
                 // Generate order number
                 var counter = MongoDbHelper.GetNextClientOrderNumber();
