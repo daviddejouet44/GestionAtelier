@@ -156,6 +156,29 @@ public class ClientOrder
     [JsonPropertyName("donneurOrdreEmail")]
     public string? DonneurOrdreEmail { get; set; }
 
+    [JsonPropertyName("donneurOrdreSociete")]
+    public string? DonneurOrdreSociete { get; set; }
+
+    // Finitions étendues
+    [JsonPropertyName("rainage")]
+    public bool? Rainage { get; set; }
+
+    [JsonPropertyName("vernisSelectif")]
+    public bool? VernisSelectif { get; set; }
+
+    [JsonPropertyName("dorureAChaud")]
+    public string? DorureAChaud { get; set; } // "" | "Dorure à chaud : Or" | "Dorure à chaud : Argent"
+
+    [JsonPropertyName("pelliculage")]
+    public List<string> Pelliculage { get; set; } = new();
+
+    [JsonPropertyName("plis")]
+    public string? Plis { get; set; }
+
+    // Multi-points de livraison
+    [JsonPropertyName("deliveryPoints")]
+    public List<DeliveryPoint> DeliveryPoints { get; set; } = new();
+
     // Indicative dates (from production sheet)
     [JsonPropertyName("dateEnvoi")]
     public DateTime? DateEnvoi { get; set; }
@@ -185,8 +208,22 @@ public class ClientOrder
     public List<ClientOrderStatusEntry> StatusHistory { get; set; } = new();
 }
 
-public class ClientOrderFile
+public class DeliveryPoint
 {
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+
+    [JsonPropertyName("address")]
+    public string Address { get; set; } = "";
+
+    [JsonPropertyName("quantity")]
+    public int Quantity { get; set; } = 0;
+
+    [JsonPropertyName("notes")]
+    public string? Notes { get; set; }
+}
+
+public class ClientOrderFile{
     [JsonPropertyName("fileName")]
     public string FileName { get; set; } = "";
 

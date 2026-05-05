@@ -630,6 +630,15 @@ export async function openFabrication(fullPath, prefillData = null) {
         if (detailResp.ok && detailResp.order) {
           const o = detailResp.order;
           const notesArr = [o.notes, o.comments].filter(Boolean);
+          // Build ennoblissement array from portal finition fields
+          const ennobArr = [];
+          if (o.vernisSelectif) ennobArr.push('Vernis sélectif');
+          if (o.dorureAChaud && o.dorureAChaud !== 'Non' && o.dorureAChaud !== '') ennobArr.push(o.dorureAChaud);
+          if (Array.isArray(o.pelliculage)) ennobArr.push(...o.pelliculage);
+          // Map delivery points to repartitions
+          const repartitions = Array.isArray(o.deliveryPoints) && o.deliveryPoints.length > 0
+            ? o.deliveryPoints.map(pt => ({ quantite: pt.quantity, adresse: pt.address }))
+            : null;
           autoPrefill = {
             numeroDossier:          o.orderNumber || null,
             client:                 detailResp.clientDisplayName || o.title || null,
@@ -638,7 +647,7 @@ export async function openFabrication(fullPath, prefillData = null) {
             format:                 o.formatFini || o.format || null,
             rectoVerso:             o.recto || null,
             faconnage:              Array.isArray(o.finitions) ? o.finitions : [],
-            retraitLivraison:       o.deliveryMode || null,
+            retraitLivraison:       o.deliveryMode === 'livraison' ? 'Livraison' : o.deliveryMode === 'retrait' ? 'Retrait imprimerie' : (o.deliveryMode || null),
             adresseLivraison:       o.deliveryAddress || null,
             dateReception:          o.desiredDeliveryDate || null,
             dateEnvoi:              o.dateEnvoi || null,
@@ -654,6 +663,9 @@ export async function openFabrication(fullPath, prefillData = null) {
             media4:                 o.media4 || null,
             mediaCouverture:        o.mediaCouverture || null,
             bat:                    (o.bat === 'avec' ? 'Numérique' : o.bat === 'sans' ? 'Non' : o.bat) || null,
+            rainage:                !!o.rainage,
+            ennoblissement:         ennobArr,
+            plis:                   o.plis || null,
             pagination:             o.pagination || null,
             formatFeuille:          o.formatFeuille || null,
             formeDecoupe:           o.formeDecoupe || null,
@@ -661,6 +673,7 @@ export async function openFabrication(fullPath, prefillData = null) {
             notes:                  notesArr.length > 0 ? notesArr.join('\n') : null,
             justifsClientsQuantite: o.quantiteJustifs || null,
             justifsClientsAdresse:  o.adresseJustifs || null,
+            repartitions:           repartitions,
           };
         }
       }

@@ -84,17 +84,26 @@
     let selectedFiles = [];
     let maxSizeMb = 500;
     let maxFiles = 10;
+    let portalMedias = []; // shared media list from paper catalog
 
     (async () => {
       const client = await requireAuth();
       if (!client) return;
       applyPortalTheme();
       renderHeader('orders');
-      await Promise.all([loadFormOptions(), loadFieldConfigs()]);
+      await Promise.all([loadFormOptions(), loadFieldConfigs(), loadPortalMedias()]);
       buildDynamicForm();
+      prefillDonneurOrdre();
       initUploadZone();
       handleReorder();
     })();
+
+    async function loadPortalMedias() {
+      try {
+        const r = await fetch('/api/portal/medias').then(r => r.json());
+        if (r.ok && Array.isArray(r.medias)) portalMedias = r.medias;
+      } catch { /* use empty list */ }
+    }
 
     async function loadFormOptions() {
       try {
@@ -112,6 +121,29 @@
         const r = await fetch('/api/portal/config/form-fields').then(r => r.json());
         if (r.ok && r.fields && r.fields.length) fieldConfigs = r.fields;
       } catch { /* use default layout */ }
+    }
+
+    async function prefillDonneurOrdre() {
+      try {
+        const r = await apiRequest('/me');
+        if (!r.ok || !r.client) return;
+        const c = r.client;
+        // Pre-fill only if field is empty
+        const fillIfEmpty = (id, val) => {
+          const el = document.getElementById(id);
+          if (el && !el.value && val) el.value = val;
+        };
+        // Parse displayName into first/last name if needed
+        const displayName = c.displayName || '';
+        const nameParts = displayName.trim().split(/\s+/);
+        fillIfEmpty('donneur-nom',    nameParts.length > 1 ? nameParts.slice(1).join(' ') : displayName);
+        fillIfEmpty('donneur-prenom', nameParts.length > 1 ? nameParts[0] : '');
+        fillIfEmpty('donneur-tel',    c.contactPhone || '');
+        fillIfEmpty('donneur-email',  c.email || '');
+        fillIfEmpty('donneur-societe',c.companyName || '');
+        // Also pre-fill delivery address
+        fillIfEmpty('delivery-address', c.defaultDeliveryAddress || '');
+      } catch {}
     }
 
     function buildDynamicForm() {
@@ -188,7 +220,7 @@
           }
 
           case 'paper': {
-            const opts = (field.allowedValues && field.allowedValues.length ? field.allowedValues : (formOptions.papers || []));
+            const opts = (field.allowedValues && field.allowedValues.length ? field.allowedValues : (portalMedias.length ? portalMedias : (formOptions.papers || [])));
             group.className = 'form-group form-row-item';
             group.innerHTML = `<label for="paper">${labelText}</label>
               <select id="paper" class="form-control">
@@ -362,7 +394,7 @@
           case 'media-3':
           case 'media-4': {
             const mediaNum = field.id.split('-')[1];
-            const paperOpts = (field.allowedValues && field.allowedValues.length ? field.allowedValues : (formOptions.papers || []));
+            const paperOpts = (field.allowedValues && field.allowedValues.length ? field.allowedValues : (portalMedias.length ? portalMedias : (formOptions.papers || [])));
             group.className = 'form-group form-row-item';
             if (paperOpts.length) {
               group.innerHTML = `<label for="${esc(field.id)}">${labelText}</label>
@@ -378,7 +410,7 @@
           }
 
           case 'media-couverture': {
-            const paperOpts = (field.allowedValues && field.allowedValues.length ? field.allowedValues : (formOptions.papers || []));
+            const paperOpts = (field.allowedValues && field.allowedValues.length ? field.allowedValues : (portalMedias.length ? portalMedias : (formOptions.papers || [])));
             group.className = 'form-group form-row-item';
             if (paperOpts.length) {
               group.innerHTML = `<label for="media-couverture">${labelText}</label>
@@ -469,6 +501,83 @@
               <input type="email" id="donneur-email" class="form-control" placeholder="${esc(field.placeholder || 'email@example.com')}" />`;
             break;
 
+          case 'donneur-societe':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="donneur-societe">${labelText}</label>
+              <input type="text" id="donneur-societe" class="form-control" placeholder="${esc(field.placeholder || 'Société / Organisation')}" />`;
+            break;
+
+          case 'rainage':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label>${labelText}</label>
+              <div class="radio-group" style="margin-top:8px;">
+                <label class="radio-option"><input type="radio" name="rainage" value="non" checked /> Non</label>
+                <label class="radio-option"><input type="radio" name="rainage" value="oui" /> Oui</label>
+              </div>`;
+            break;
+
+          case 'vernis-selectif':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label>${labelText}</label>
+              <div class="radio-group" style="margin-top:8px;">
+                <label class="radio-option"><input type="radio" name="vernis-selectif" value="non" checked /> Non</label>
+                <label class="radio-option"><input type="radio" name="vernis-selectif" value="oui" /> Oui</label>
+              </div>`;
+            break;
+
+          case 'dorure-a-chaud':
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label>${labelText}</label>
+              <div class="radio-group" style="margin-top:8px;">
+                <label class="radio-option"><input type="radio" name="dorure-a-chaud" value="" checked /> Non</label>
+                <label class="radio-option"><input type="radio" name="dorure-a-chaud" value="Dorure à chaud : Or" /> Or</label>
+                <label class="radio-option"><input type="radio" name="dorure-a-chaud" value="Dorure à chaud : Argent" /> Argent</label>
+              </div>`;
+            break;
+
+          case 'pelliculage': {
+            const pelliculageOpts = [
+              { value: 'Pelliculage : Mat recto',         label: 'Mat recto' },
+              { value: 'Pelliculage : Mat recto/verso',   label: 'Mat recto/verso' },
+              { value: 'Pelliculage : Brillant recto',    label: 'Brillant recto' },
+              { value: 'Pelliculage : Brillant recto/verso', label: 'Brillant recto/verso' },
+              { value: 'Pelliculage : Soft Touch recto',  label: 'Soft Touch recto' },
+              { value: 'Pelliculage : Soft Touch recto/verso', label: 'Soft Touch recto/verso' },
+            ];
+            group.innerHTML = `<label>${labelText}</label>
+              <div class="checkbox-group" id="pelliculage-group">
+                ${pelliculageOpts.map(o => `<label class="checkbox-option"><input type="checkbox" name="pelliculage" value="${esc(o.value)}" /> ${esc(o.label)}</label>`).join('')}
+              </div>`;
+            setTimeout(() => {
+              group.querySelectorAll('.checkbox-option input').forEach(cb => {
+                cb.onchange = (e) => cb.closest('.checkbox-option').classList.toggle('checked', e.target.checked);
+              });
+            }, 0);
+            break;
+          }
+
+          case 'plis': {
+            const plisOpts = (field.allowedValues && field.allowedValues.length ? field.allowedValues : (formOptions.plisOptions || ['Sans pli','Pli roulé','Pli accordéon','Pli fenêtre','Pli portefeuille','Pli roulé inversé']));
+            group.className = 'form-group form-row-item';
+            group.innerHTML = `<label for="plis">${labelText}</label>
+              <select id="plis" class="form-control">
+                <option value="">— Sélectionner —</option>
+                ${plisOpts.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}
+              </select>`;
+            break;
+          }
+
+          case 'delivery-points':
+            group.innerHTML = `<label>${labelText}</label>
+              <div id="delivery-points-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;"></div>
+              <button type="button" id="btn-add-delivery-point" class="btn btn-secondary btn-sm" style="align-self:flex-start;">➕ Ajouter un point de livraison</button>
+              <small id="delivery-points-qty-hint" style="color:#9ca3af;font-size:11px;margin-top:4px;"></small>`;
+            setTimeout(() => {
+              if (!document.querySelector('#delivery-points-list .dp-row')) addDeliveryPointRow();
+              document.getElementById('btn-add-delivery-point')?.addEventListener('click', () => addDeliveryPointRow());
+            }, 0);
+            break;
+
           case 'operateur':
             group.className = 'form-group form-row-item';
             group.innerHTML = `<label for="operateur">${labelText}</label>
@@ -531,7 +640,7 @@
             <label for="paper">Support / Papier</label>
             <select id="paper" class="form-control">
               <option value="">— Sélectionner —</option>
-              ${(formOptions.papers||[]).map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('')}
+              ${(portalMedias.length ? portalMedias : (formOptions.papers||[])).map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('')}
             </select>
           </div>
           <div class="form-group">
@@ -546,6 +655,41 @@
           <label>Finitions souhaitées</label>
           <div class="checkbox-group" id="finitions-group">
             ${(formOptions.finitions||[]).map(fin=>`<label class="checkbox-option"><input type="checkbox" value="${esc(fin)}" /> ${esc(fin)}</label>`).join('')}
+          </div>
+        </div>
+        <div class="form-row form-row-2">
+          <div class="form-group">
+            <label>Rainage</label>
+            <div class="radio-group" style="margin-top:8px;">
+              <label class="radio-option"><input type="radio" name="rainage" value="non" checked /> Non</label>
+              <label class="radio-option"><input type="radio" name="rainage" value="oui" /> Oui</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Vernis sélectif</label>
+            <div class="radio-group" style="margin-top:8px;">
+              <label class="radio-option"><input type="radio" name="vernis-selectif" value="non" checked /> Non</label>
+              <label class="radio-option"><input type="radio" name="vernis-selectif" value="oui" /> Oui</label>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Dorure à chaud</label>
+          <div class="radio-group" style="margin-top:8px;">
+            <label class="radio-option"><input type="radio" name="dorure-a-chaud" value="" checked /> Non</label>
+            <label class="radio-option"><input type="radio" name="dorure-a-chaud" value="Dorure à chaud : Or" /> Or</label>
+            <label class="radio-option"><input type="radio" name="dorure-a-chaud" value="Dorure à chaud : Argent" /> Argent</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Pelliculage <small style="font-weight:normal;color:#6b7280;">(plusieurs choix possibles)</small></label>
+          <div class="checkbox-group" id="pelliculage-group">
+            <label class="checkbox-option"><input type="checkbox" name="pelliculage" value="Pelliculage : Mat recto" /> Mat recto</label>
+            <label class="checkbox-option"><input type="checkbox" name="pelliculage" value="Pelliculage : Mat recto/verso" /> Mat recto/verso</label>
+            <label class="checkbox-option"><input type="checkbox" name="pelliculage" value="Pelliculage : Brillant recto" /> Brillant recto</label>
+            <label class="checkbox-option"><input type="checkbox" name="pelliculage" value="Pelliculage : Brillant recto/verso" /> Brillant recto/verso</label>
+            <label class="checkbox-option"><input type="checkbox" name="pelliculage" value="Pelliculage : Soft Touch recto" /> Soft Touch recto</label>
+            <label class="checkbox-option"><input type="checkbox" name="pelliculage" value="Pelliculage : Soft Touch recto/verso" /> Soft Touch recto/verso</label>
           </div>
         </div>
         <div class="form-row form-row-2">
@@ -565,6 +709,12 @@
           <label for="delivery-address">Adresse de livraison <span class="required">*</span></label>
           <textarea id="delivery-address" class="form-control" rows="3" placeholder="Nom, Adresse complète, Code postal, Ville"></textarea>
         </div>
+        <div class="form-group" id="delivery-points-section" style="display:none;">
+          <label>Points de livraison <small style="font-weight:normal;color:#6b7280;">(adresse + quantité par point)</small></label>
+          <div id="delivery-points-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;"></div>
+          <button type="button" id="btn-add-delivery-point" class="btn btn-secondary btn-sm" style="align-self:flex-start;">➕ Ajouter un point de livraison</button>
+          <small id="delivery-points-qty-hint" style="color:#9ca3af;font-size:11px;margin-top:4px;"></small>
+        </div>
         <div class="form-group">
           <label for="comments">Commentaires</label>
           <textarea id="comments" class="form-control" rows="3" placeholder="Informations complémentaires, demandes particulières…"></textarea>
@@ -580,20 +730,45 @@
           const isLiv = document.querySelector('input[name="delivery-mode"]:checked')?.value === 'livraison';
           const addrGroup = document.getElementById('delivery-address-group') || document.getElementById('fg-delivery-address');
           if (addrGroup) addrGroup.style.display = isLiv ? 'block' : 'none';
+          const dpSection = document.getElementById('delivery-points-section');
+          if (dpSection) {
+            dpSection.style.display = isLiv ? 'block' : 'none';
+            if (isLiv && !document.querySelector('#delivery-points-list .dp-row')) addDeliveryPointRow();
+          }
         });
       });
     }
 
-    // Pre-fill delivery address from account
-    (async () => {
-      try {
-        const r = await apiRequest('/me');
-        if (r.ok && r.client && r.client.defaultDeliveryAddress) {
-          const el = document.getElementById('delivery-address');
-          if (el) el.value = r.client.defaultDeliveryAddress;
-        }
-      } catch {}
-    })();
+    function addDeliveryPointRow(address='', quantity='') {
+      const list = document.getElementById('delivery-points-list');
+      if (!list) return;
+      const row = document.createElement('div');
+      row.className = 'dp-row';
+      row.style.cssText = 'display:flex;gap:8px;align-items:flex-start;';
+      row.innerHTML = `
+        <textarea class="form-control dp-address" rows="2" placeholder="Adresse complète, Code postal, Ville" style="flex:1;">${esc(address)}</textarea>
+        <input type="number" class="form-control dp-qty" min="1" placeholder="Qté" style="width:80px;" value="${esc(String(quantity))}" />
+        <button type="button" class="btn btn-sm dp-remove" title="Supprimer ce point" style="padding:6px 10px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;font-size:14px;">🗑️</button>
+      `;
+      row.querySelector('.dp-remove').onclick = () => { row.remove(); updateDeliveryPointsQtyHint(); };
+      row.querySelector('.dp-qty').oninput = updateDeliveryPointsQtyHint;
+      list.appendChild(row);
+      updateDeliveryPointsQtyHint();
+    }
+
+    function updateDeliveryPointsQtyHint() {
+      const hint = document.getElementById('delivery-points-qty-hint');
+      if (!hint) return;
+      const totalQty = parseInt(document.getElementById('quantity')?.value || '0') || 0;
+      const dpQty = Array.from(document.querySelectorAll('.dp-qty')).reduce((s, el) => s + (parseInt(el.value) || 0), 0);
+      if (totalQty > 0 && dpQty !== totalQty) {
+        hint.textContent = `⚠️ Total des quantités (${dpQty}) ≠ quantité totale (${totalQty})`;
+        hint.style.color = '#d97706';
+      } else {
+        hint.textContent = dpQty > 0 ? `Total : ${dpQty} exemplaires répartis` : '';
+        hint.style.color = '#9ca3af';
+      }
+    }
 
     // Upload zone
     function initUploadZone() {
@@ -750,6 +925,21 @@
             donneurOrdrePrenom:    document.getElementById('donneur-prenom')?.value.trim() || undefined,
             donneurOrdreTelephone: document.getElementById('donneur-tel')?.value.trim() || undefined,
             donneurOrdreEmail:     document.getElementById('donneur-email')?.value.trim() || undefined,
+            donneurOrdreSociete:   document.getElementById('donneur-societe')?.value.trim() || undefined,
+            // Finitions étendues
+            rainage:        (document.querySelector('input[name="rainage"]:checked')?.value === 'oui') || false,
+            vernisSelectif: (document.querySelector('input[name="vernis-selectif"]:checked')?.value === 'oui') || false,
+            dorureAChaud:   document.querySelector('input[name="dorure-a-chaud"]:checked')?.value || '',
+            pelliculage:    Array.from(document.querySelectorAll('input[name="pelliculage"]:checked')).map(cb => cb.value),
+            plis:           document.getElementById('plis')?.value || undefined,
+            // Multi-points de livraison
+            deliveryPoints: (() => {
+              const rows = Array.from(document.querySelectorAll('.dp-row'));
+              return rows.length > 0 ? rows.map(row => ({
+                address: row.querySelector('.dp-address')?.value.trim() || '',
+                quantity: parseInt(row.querySelector('.dp-qty')?.value || '0') || 0
+              })).filter(pt => pt.address || pt.quantity > 0) : [];
+            })(),
             // Indicative dates
             dateEnvoi:            document.getElementById('date-envoi')?.value || undefined,
             dateImpression:       document.getElementById('date-impression')?.value || undefined,
