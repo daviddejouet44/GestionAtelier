@@ -191,6 +191,7 @@ public static class PortalOrdersEndpoints
             {
                 id = b.Contains("id") ? b["id"].AsString : "",
                 batFileName = b.Contains("batFileName") ? b["batFileName"].AsString : "",
+                batToken = b.Contains("batToken") ? b["batToken"].AsString : "",
                 action = b.Contains("action") ? b["action"].AsString : "pending",
                 motif = b.Contains("motif") ? b["motif"].AsString : "",
                 attachmentName = b.Contains("attachmentName") ? b["attachmentName"].AsString : "",

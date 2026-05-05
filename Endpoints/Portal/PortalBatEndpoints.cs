@@ -94,7 +94,7 @@ public static class PortalBatEndpoints
             });
         });
 
-        // GET /api/portal/bat/file?token={token}
+        // GET /api/portal/bat/file?token={token}  — serve PDF inline (no download)
         app.MapGet("/api/portal/bat/file", (HttpContext ctx) =>
         {
             var token = ctx.Request.Query["token"].ToString();
@@ -110,7 +110,53 @@ public static class PortalBatEndpoints
             if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
                 return Results.Json(new { ok = false, error = "Fichier BAT non trouvé" });
 
-            return Results.File(filePath, "application/pdf", Path.GetFileName(filePath));
+            // Serve inline so the browser displays it rather than downloading
+            var fileName = Path.GetFileName(filePath);
+            ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"{fileName}\"";
+            return Results.File(filePath, "application/pdf");
+        });
+
+        // GET /api/portal/orders/by-bat-token?token={token}  — anonymous, no login required
+        // Returns the order + pending BAT so order.html can load in guest/token mode.
+        app.MapGet("/api/portal/orders/by-bat-token", (HttpContext ctx) =>
+        {
+            var token = ctx.Request.Query["token"].ToString();
+            if (string.IsNullOrWhiteSpace(token))
+                return Results.Json(new { ok = false, error = "Token manquant" });
+
+            var batCol = MongoDbHelper.GetCollection<BsonDocument>("client_bat_actions");
+            var bat = batCol.Find(Builders<BsonDocument>.Filter.Eq("batToken", token)).FirstOrDefault();
+            if (bat == null)
+                return Results.Json(new { ok = false, error = "Lien invalide ou expiré" });
+
+            var orderId = bat["orderId"].AsString;
+            var ordersCol = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
+            var orderDoc = ordersCol.Find(Builders<BsonDocument>.Filter.Eq("id", orderId)).FirstOrDefault();
+            if (orderDoc == null)
+                return Results.Json(new { ok = false, error = "Commande non trouvée" });
+
+            return Results.Json(new
+            {
+                ok = true,
+                order = new
+                {
+                    id = orderDoc.Contains("id") ? orderDoc["id"].AsString : "",
+                    orderNumber = orderDoc.Contains("orderNumber") ? orderDoc["orderNumber"].AsString : "",
+                    title = orderDoc.Contains("title") ? orderDoc["title"].AsString : "",
+                    status = orderDoc.Contains("status") ? orderDoc["status"].AsString : ""
+                },
+                batPending = new
+                {
+                    id = bat["id"].AsString,
+                    orderId,
+                    batFileName = bat.Contains("batFileName") ? bat["batFileName"].AsString : "",
+                    action = bat.Contains("action") ? bat["action"].AsString : "pending",
+                    motif = bat.Contains("motif") ? bat["motif"].AsString : "",
+                    sentAt = bat.Contains("sentAt") ? bat["sentAt"].ToUniversalTime() : DateTime.UtcNow,
+                    performedAt = bat.Contains("performedAt") && !bat["performedAt"].IsBsonNull
+                        ? (DateTime?)bat["performedAt"].ToUniversalTime() : null
+                }
+            });
         });
 
         // POST /api/portal/bat/decide?token={token}
@@ -287,7 +333,10 @@ public static class PortalBatEndpoints
             if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
                 return Results.Json(new { ok = false, error = "Fichier BAT non trouvé" });
 
-            return Results.File(filePath, "application/pdf", Path.GetFileName(filePath));
+            // Serve inline so the browser displays it rather than downloading
+            var fileName = Path.GetFileName(filePath);
+            ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"{fileName}\"";
+            return Results.File(filePath, "application/pdf");
         });
 
         // POST /api/portal/orders/{id}/bat/{batId}/validate

@@ -376,7 +376,7 @@ public static class PortalAdminEndpoints
                 // Resolve client info and build template variables for the frontend mailto:
                 var settings = MongoDbHelper.GetSettings<PortalSettings>("portalSettings") ?? new PortalSettings();
                 var portalUrl = PortalEmailHelper.SanitizePortalBaseUrl(settings.PortalUrl);
-                var batLink = $"{portalUrl}/portal/bat-view.html?batId={batId}&token={batToken}";
+                var batLink = $"{portalUrl}/portal/order.html?id={orderId}&batToken={batToken}";
 
                 string clientEmail = "", clientName = "", companyName = "";
                 try
