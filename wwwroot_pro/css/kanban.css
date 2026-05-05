@@ -159,7 +159,7 @@
 ========================================================= */
 .kanban-card-operator {
   background: var(--bg-card); border: 1px solid var(--border-light);
-  border-radius: var(--radius-md); padding: 10px; margin-bottom: 7px;
+  border-radius: var(--radius-md); padding: 8px; margin-bottom: 4px;
   transition: var(--transition); cursor: default; position: relative;
 }
 .kanban-card-operator:hover {
@@ -168,7 +168,7 @@
 /* Top row: dossier N° (left) + presse (right) */
 .kanban-card-top-row {
   display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 6px; gap: 4px;
+  margin-bottom: 4px; gap: 4px;
 }
 .kanban-card-dossier {
   font-size: 16px; font-weight: 900; color: #111827;
@@ -180,7 +180,7 @@
 }
 /* Main row: thumbnail + info */
 .kanban-card-operator-layout {
-  display: grid; grid-template-columns: 64px 1fr; gap: 9px; align-items: start;
+  display: grid; grid-template-columns: 64px 1fr; gap: 6px; align-items: start;
 }
 .kanban-card-operator-thumb, .thumb {
   width: 64px; height: 84px; background: var(--bg-subtle); border: 1px solid var(--border-light);

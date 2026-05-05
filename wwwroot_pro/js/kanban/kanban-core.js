@@ -610,6 +610,14 @@ export function _openKanbanColumnModal(cfg, sourceCol) {
         card.style.marginBottom = "0";
         card.draggable = false;
         card.style.cursor = "default";
+        // Always show action buttons in the zoom modal (they're hover-only in the main kanban)
+        const actionsEl = card.querySelector(".kanban-card-operator-actions");
+        if (actionsEl) {
+          actionsEl.style.maxHeight = "none";
+          actionsEl.style.overflow = "visible";
+          actionsEl.style.pointerEvents = "auto";
+          actionsEl.style.marginTop = "6px";
+        }
       });
     });
 }

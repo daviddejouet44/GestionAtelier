@@ -47,6 +47,37 @@ public static class PortalEmailHelper
         SendEmail(smtp.AtelierNotifyEmail, subject, body);
     }
 
+    /// <summary>
+    /// Sanitizes a portal base URL stored in settings.
+    /// Strips any trailing .html page path (e.g. if the operator saved the login page URL instead of the base URL).
+    /// Input:  "https://portail.example.com/portal/login.html"
+    /// Output: "https://portail.example.com"
+    /// </summary>
+    public static string SanitizePortalBaseUrl(string? rawUrl)
+    {
+        var trimmed = (rawUrl ?? "").TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(trimmed)) return trimmed;
+        // Strip any trailing .html file path — common misconfiguration where the operator pastes
+        // the login page URL into the PortalUrl setting instead of the bare origin.
+        if (trimmed.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var uri = new Uri(trimmed);
+                // Return just scheme://host[:port] (strip all path components)
+                return uri.GetLeftPart(UriPartial.Authority);
+            }
+            catch
+            {
+                // Fallback: strip the last /xxx.html segment
+                var lastSlash = trimmed.LastIndexOf('/');
+                if (lastSlash > 0)
+                    trimmed = trimmed.Substring(0, lastSlash).TrimEnd('/');
+            }
+        }
+        return trimmed;
+    }
+
     /// <summary>Resolves and renders a portal email template, replacing variables.</summary>
     public static (string subject, string body) RenderTemplate(
         string templateKey,

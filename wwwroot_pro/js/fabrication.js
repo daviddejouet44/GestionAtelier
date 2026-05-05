@@ -613,9 +613,13 @@ export async function openFabrication(fullPath, prefillData = null) {
   // Only triggered when no existing fabrication data and no explicit prefillData provided
   let autoPrefill = null;
   const isNewSheet = !j || j.ok === false || (!j.numeroDossier && !j.client && !j.typeTravail);
-  if (isNewSheet && prefillData === null && fabCurrentFileName.toLowerCase().startsWith('web-')) {
+  const _lcFileName = fabCurrentFileName.toLowerCase();
+  const _isWebFile = _lcFileName.startsWith('web-') || _lcFileName.startsWith('bat_web-');
+  if (isNewSheet && prefillData === null && _isWebFile) {
     try {
-      const orderNum = fabCurrentFileName.includes('__') ? fabCurrentFileName.split('__')[0] : fabCurrentFileName.split('.')[0];
+      // Strip BAT_ prefix if present, then extract order number
+      const _baseName = _lcFileName.startsWith('bat_') ? fabCurrentFileName.substring(4) : fabCurrentFileName;
+      const orderNum = _baseName.includes('__') ? _baseName.split('__')[0] : _baseName.split('.')[0];
       const byJobResp = await fetch('/api/admin/portal/orders/by-job?numeroDossier=' + encodeURIComponent(orderNum), {
         headers: { 'Authorization': 'Bearer ' + authToken }
       }).then(r => r.json()).catch(() => ({}));
