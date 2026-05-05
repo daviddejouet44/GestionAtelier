@@ -694,7 +694,8 @@ public static class PortalOrdersEndpoints
 
                 var pdfBytes = GenerateOrderRecapPdf(order, client, companyName);
 
-                ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"Recapitulatif-{order.OrderNumber}.pdf\"";
+                var safeOrderNum = System.Text.RegularExpressions.Regex.Replace(order.OrderNumber ?? "", @"[^\w\-]", "_");
+                ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"Recapitulatif-{safeOrderNum}.pdf\"";
                 return Results.File(pdfBytes, "application/pdf");
             }
             catch (Exception ex)
@@ -738,7 +739,8 @@ public static class PortalOrdersEndpoints
 
                 var pdfBytes = GenerateOrderRecapPdf(order, clientAcc, companyName);
 
-                ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"Recapitulatif-{order.OrderNumber}.pdf\"";
+                var safeOrderNum2 = System.Text.RegularExpressions.Regex.Replace(order.OrderNumber ?? "", @"[^\w\-]", "_");
+                ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"Recapitulatif-{safeOrderNum2}.pdf\"";
                 return Results.File(pdfBytes, "application/pdf");
             }
             catch (Exception ex)

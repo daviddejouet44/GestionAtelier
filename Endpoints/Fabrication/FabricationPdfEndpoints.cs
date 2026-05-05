@@ -188,7 +188,9 @@ app.MapGet("/api/admin/jobs/delivery-labels-pdf", (string? fileName, string? ful
         ms.Position = 0;
         var pdfBytes = ms.ToArray();
 
-        ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"EtiquettesLivraison-{numeroDossier}.pdf\"";
+        // Sanitize numeroDossier for use in Content-Disposition filename (strip quotes, newlines, etc.)
+        var safeNumDossier = System.Text.RegularExpressions.Regex.Replace(numeroDossier, @"[^\w\-]", "_");
+        ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"EtiquettesLivraison-{safeNumDossier}.pdf\"";
         return Results.File(pdfBytes, "application/pdf");
     }
     catch (Exception ex)
