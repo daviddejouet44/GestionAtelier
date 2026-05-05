@@ -47,6 +47,13 @@ public static class PortalOrdersEndpoints
         donneurOrdrePrenom = o.DonneurOrdrePrenom,
         donneurOrdreTelephone = o.DonneurOrdreTelephone,
         donneurOrdreEmail = o.DonneurOrdreEmail,
+        donneurOrdreSociete = o.DonneurOrdreSociete,
+        rainage = o.Rainage,
+        vernisSelectif = o.VernisSelectif,
+        dorureAChaud = o.DorureAChaud,
+        pelliculage = o.Pelliculage,
+        plis = o.Plis,
+        deliveryPoints = o.DeliveryPoints,
         dateEnvoi = o.DateEnvoi,
         dateImpression = o.DateImpression,
         dateProductionFinitions = o.DateProductionFinitions,
@@ -62,6 +69,29 @@ public static class PortalOrdersEndpoints
         var finitions = new List<string>();
         if (d.Contains("finitions") && d["finitions"].IsBsonArray)
             finitions = d["finitions"].AsBsonArray.Select(v => v.AsString).ToList();
+
+        var pelliculage = new List<string>();
+        if (d.Contains("pelliculage") && d["pelliculage"].IsBsonArray)
+            pelliculage = d["pelliculage"].AsBsonArray.Select(v => v.AsString).ToList();
+
+        var deliveryPoints = new List<DeliveryPoint>();
+        if (d.Contains("deliveryPoints") && d["deliveryPoints"].IsBsonArray)
+        {
+            foreach (var p in d["deliveryPoints"].AsBsonArray)
+            {
+                if (p.IsBsonDocument)
+                {
+                    var pd = p.AsBsonDocument;
+                    deliveryPoints.Add(new DeliveryPoint
+                    {
+                        Id = pd.Contains("id") ? pd["id"].AsString : Guid.NewGuid().ToString("N"),
+                        Address = pd.Contains("address") ? pd["address"].AsString : "",
+                        Quantity = pd.Contains("quantity") ? pd["quantity"].AsInt32 : 0,
+                        Notes = pd.Contains("notes") && !pd["notes"].IsBsonNull ? pd["notes"].AsString : null
+                    });
+                }
+            }
+        }
 
         var files = new List<ClientOrderFile>();
         if (d.Contains("files") && d["files"].IsBsonArray)
@@ -137,6 +167,13 @@ public static class PortalOrdersEndpoints
             DonneurOrdrePrenom = d.Contains("donneurOrdrePrenom") && !d["donneurOrdrePrenom"].IsBsonNull ? d["donneurOrdrePrenom"].AsString : null,
             DonneurOrdreTelephone = d.Contains("donneurOrdreTelephone") && !d["donneurOrdreTelephone"].IsBsonNull ? d["donneurOrdreTelephone"].AsString : null,
             DonneurOrdreEmail = d.Contains("donneurOrdreEmail") && !d["donneurOrdreEmail"].IsBsonNull ? d["donneurOrdreEmail"].AsString : null,
+            DonneurOrdreSociete = d.Contains("donneurOrdreSociete") && !d["donneurOrdreSociete"].IsBsonNull ? d["donneurOrdreSociete"].AsString : null,
+            Rainage = d.Contains("rainage") && !d["rainage"].IsBsonNull ? (bool?)d["rainage"].AsBoolean : null,
+            VernisSelectif = d.Contains("vernisSelectif") && !d["vernisSelectif"].IsBsonNull ? (bool?)d["vernisSelectif"].AsBoolean : null,
+            DorureAChaud = d.Contains("dorureAChaud") && !d["dorureAChaud"].IsBsonNull ? d["dorureAChaud"].AsString : null,
+            Pelliculage = pelliculage,
+            Plis = d.Contains("plis") && !d["plis"].IsBsonNull ? d["plis"].AsString : null,
+            DeliveryPoints = deliveryPoints,
             DateEnvoi = d.Contains("dateEnvoi") && !d["dateEnvoi"].IsBsonNull ? d["dateEnvoi"].ToUniversalTime() : null,
             DateImpression = d.Contains("dateImpression") && !d["dateImpression"].IsBsonNull ? d["dateImpression"].ToUniversalTime() : null,
             DateProductionFinitions = d.Contains("dateProductionFinitions") && !d["dateProductionFinitions"].IsBsonNull ? d["dateProductionFinitions"].ToUniversalTime() : null,
@@ -263,6 +300,32 @@ public static class PortalOrdersEndpoints
                 string? donneurOrdrePrenom  = json.TryGetProperty("donneurOrdrePrenom",  out var donPrenEl)   ? donPrenEl.GetString()   : null;
                 string? donneurOrdreTel     = json.TryGetProperty("donneurOrdreTelephone",out var donTelEl)   ? donTelEl.GetString()   : null;
                 string? donneurOrdreEmail   = json.TryGetProperty("donneurOrdreEmail",   out var donEmailEl)  ? donEmailEl.GetString()  : null;
+                string? donneurOrdreSociete = json.TryGetProperty("donneurOrdreSociete", out var donSocEl)    ? donSocEl.GetString()    : null;
+
+                // Finitions étendues
+                bool? rainage = null;
+                if (json.TryGetProperty("rainage", out var rainEl) && (rainEl.ValueKind == JsonValueKind.True || rainEl.ValueKind == JsonValueKind.False)) rainage = rainEl.GetBoolean();
+                bool? vernisSelectif = null;
+                if (json.TryGetProperty("vernisSelectif", out var vsEl) && (vsEl.ValueKind == JsonValueKind.True || vsEl.ValueKind == JsonValueKind.False)) vernisSelectif = vsEl.GetBoolean();
+                string? dorureAChaud = json.TryGetProperty("dorureAChaud", out var dorureEl) ? dorureEl.GetString() : null;
+                var pelliculage = new List<string>();
+                if (json.TryGetProperty("pelliculage", out var pelEl) && pelEl.ValueKind == JsonValueKind.Array)
+                    pelliculage = pelEl.EnumerateArray().Select(v => v.GetString() ?? "").Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+                string? plis = json.TryGetProperty("plis", out var plisEl) ? plisEl.GetString() : null;
+
+                // Multi-points de livraison
+                var deliveryPoints = new List<DeliveryPoint>();
+                if (json.TryGetProperty("deliveryPoints", out var dpEl) && dpEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var pt in dpEl.EnumerateArray())
+                    {
+                        var addr = pt.TryGetProperty("address", out var addrEl) ? addrEl.GetString() ?? "" : "";
+                        int ptQty = 0;
+                        if (pt.TryGetProperty("quantity", out var ptQEl)) ptQEl.TryGetInt32(out ptQty);
+                        var ptNotes = pt.TryGetProperty("notes", out var ptNEl) ? ptNEl.GetString() : null;
+                        deliveryPoints.Add(new DeliveryPoint { Address = addr, Quantity = ptQty, Notes = ptNotes });
+                    }
+                }
 
                 // Indicative dates
                 DateTime? dateEnvoi = null;
@@ -271,8 +334,8 @@ public static class PortalOrdersEndpoints
                 if (json.TryGetProperty("dateImpression", out var diEl) && diEl.ValueKind == JsonValueKind.String && DateTime.TryParse(diEl.GetString(), out var diParsed)) dateImpression = DateTime.SpecifyKind(diParsed, DateTimeKind.Utc);
                 DateTime? dateProductionFinitions = null;
                 if (json.TryGetProperty("dateProductionFinitions", out var dpfEl) && dpfEl.ValueKind == JsonValueKind.String && DateTime.TryParse(dpfEl.GetString(), out var dpfParsed)) dateProductionFinitions = DateTime.SpecifyKind(dpfParsed, DateTimeKind.Utc);
-                if (deliveryMode == "livraison" && string.IsNullOrWhiteSpace(deliveryAddress))
-                    return Results.Json(new { ok = false, error = "L'adresse de livraison est obligatoire pour le mode Livraison" });
+                if (deliveryMode == "livraison" && string.IsNullOrWhiteSpace(deliveryAddress) && deliveryPoints.Count == 0)
+                    return Results.Json(new { ok = false, error = "Pour le mode Livraison, veuillez renseigner une adresse de livraison ou au moins un point de livraison" });
 
                 // Generate order number
                 var counter = MongoDbHelper.GetNextClientOrderNumber();
@@ -318,6 +381,13 @@ public static class PortalOrdersEndpoints
                     DonneurOrdrePrenom = donneurOrdrePrenom,
                     DonneurOrdreTelephone = donneurOrdreTel,
                     DonneurOrdreEmail = donneurOrdreEmail,
+                    DonneurOrdreSociete = donneurOrdreSociete,
+                    Rainage = rainage,
+                    VernisSelectif = vernisSelectif,
+                    DorureAChaud = dorureAChaud,
+                    Pelliculage = pelliculage,
+                    Plis = plis,
+                    DeliveryPoints = deliveryPoints,
                     DateEnvoi = dateEnvoi,
                     DateImpression = dateImpression,
                     DateProductionFinitions = dateProductionFinitions,
@@ -668,6 +738,55 @@ public static class PortalOrdersEndpoints
                 welcomeText = settings.WelcomeText
             });
         });
+
+        // GET /api/portal/medias  — shared paper/media list (same source as fabrication form)
+        app.MapGet("/api/portal/medias", () =>
+        {
+            // Try to load from the same Paper Catalog XML used by the fabrication form
+            try
+            {
+                var searchPaths = new[]
+                {
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data", "Paper Catalog.xml"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "data", "Paper Catalog.xml"),
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Paper Catalog.xml"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "Paper Catalog.xml"),
+                    Path.Combine(BackendUtils.HotfoldersRoot(), "..", "Paper Catalog.xml"),
+                    "Paper Catalog.xml"
+                };
+                var xmlPath = searchPaths.FirstOrDefault(p => File.Exists(p));
+                if (xmlPath != null)
+                {
+                    var xmlSettings = new System.Xml.XmlReaderSettings { DtdProcessing = System.Xml.DtdProcessing.Prohibit, XmlResolver = null };
+                    System.Xml.Linq.XDocument xdoc;
+                    using (var xmlReader = System.Xml.XmlReader.Create(xmlPath, xmlSettings))
+                        xdoc = System.Xml.Linq.XDocument.Load(xmlReader);
+
+                    var names = xdoc.Descendants()
+                        .Where(el => el.Name.LocalName == "Media")
+                        .Select(el => (string?)(el.Attribute("DescriptiveName") ?? el.Attribute("descriptiveName")))
+                        .Where(n => !string.IsNullOrWhiteSpace(n))
+                        .Select(n => n!)
+                        .Distinct().OrderBy(n => n).ToList();
+
+                    if (!names.Any())
+                        names = xdoc.Descendants()
+                            .Where(el => el.Name.LocalName is "CatalogEntry" or "Paper" or "Entry")
+                            .Select(el => (string?)(el.Attribute("Name") ?? el.Attribute("name") ?? el.Attribute("mediaName") ?? el.Attribute("MediaName")))
+                            .Where(n => !string.IsNullOrWhiteSpace(n))
+                            .Select(n => n!)
+                            .Distinct().OrderBy(n => n).ToList();
+
+                    if (names.Any())
+                        return Results.Json(new { ok = true, medias = names });
+                }
+            }
+            catch { /* fall through to portal settings */ }
+
+            // Fall back to portal settings AvailablePapers
+            var settings = MongoDbHelper.GetSettings<PortalSettings>("portalSettings") ?? new PortalSettings();
+            return Results.Json(new { ok = true, medias = settings.AvailablePapers });
+        });
     }
 
     // BsonDocument builder ---------------------------------------------------
@@ -738,6 +857,22 @@ public static class PortalOrdersEndpoints
         if (!string.IsNullOrWhiteSpace(o.DonneurOrdrePrenom)) doc["donneurOrdrePrenom"] = o.DonneurOrdrePrenom;
         if (!string.IsNullOrWhiteSpace(o.DonneurOrdreTelephone)) doc["donneurOrdreTelephone"] = o.DonneurOrdreTelephone;
         if (!string.IsNullOrWhiteSpace(o.DonneurOrdreEmail)) doc["donneurOrdreEmail"] = o.DonneurOrdreEmail;
+        if (!string.IsNullOrWhiteSpace(o.DonneurOrdreSociete)) doc["donneurOrdreSociete"] = o.DonneurOrdreSociete;
+        if (o.Rainage.HasValue) doc["rainage"] = o.Rainage.Value;
+        if (o.VernisSelectif.HasValue) doc["vernisSelectif"] = o.VernisSelectif.Value;
+        if (!string.IsNullOrWhiteSpace(o.DorureAChaud)) doc["dorureAChaud"] = o.DorureAChaud;
+        if (o.Pelliculage.Count > 0) doc["pelliculage"] = new BsonArray(o.Pelliculage.Select(p => (BsonValue)p));
+        if (!string.IsNullOrWhiteSpace(o.Plis)) doc["plis"] = o.Plis;
+        if (o.DeliveryPoints.Count > 0)
+        {
+            doc["deliveryPoints"] = new BsonArray(o.DeliveryPoints.Select(pt => new BsonDocument
+            {
+                ["id"] = pt.Id,
+                ["address"] = pt.Address,
+                ["quantity"] = pt.Quantity,
+                ["notes"] = pt.Notes != null ? (BsonValue)pt.Notes : BsonNull.Value
+            }));
+        }
         if (o.DateEnvoi.HasValue) doc["dateEnvoi"] = o.DateEnvoi.Value;
         if (o.DateImpression.HasValue) doc["dateImpression"] = o.DateImpression.Value;
         if (o.DateProductionFinitions.HasValue) doc["dateProductionFinitions"] = o.DateProductionFinitions.Value;

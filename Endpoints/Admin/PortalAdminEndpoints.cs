@@ -598,6 +598,13 @@ public static class PortalAdminEndpoints
                         donneurOrdrePrenom     = order.DonneurOrdrePrenom,
                         donneurOrdreTelephone  = order.DonneurOrdreTelephone,
                         donneurOrdreEmail      = order.DonneurOrdreEmail,
+                        donneurOrdreSociete    = order.DonneurOrdreSociete,
+                        rainage                = order.Rainage,
+                        vernisSelectif         = order.VernisSelectif,
+                        dorureAChaud           = order.DorureAChaud,
+                        pelliculage            = order.Pelliculage,
+                        plis                   = order.Plis,
+                        deliveryPoints         = order.DeliveryPoints,
                         dateEnvoi              = order.DateEnvoi,
                         dateImpression         = order.DateImpression,
                         dateProductionFinitions = order.DateProductionFinitions,
@@ -869,9 +876,19 @@ public static class PortalAdminEndpoints
             new() { Id = "media-couverture", Label = "Média couverture",         Type = "select",   Visible = false, Required = false, Critical = false, Order = 34 },
             // ── BAT ───────────────────────────────────────────────────────────
             new() { Id = "bat",              Label = "BAT (Bon à tirer)",        Type = "radio",    Visible = false, Required = false, Critical = false, Order = 35 },
+            // ── Finitions étendues ─────────────────────────────────────────────
+            new() { Id = "rainage",          Label = "Rainage",                  Type = "radio",    Visible = true,  Required = false, Critical = false, Order = 36 },
+            new() { Id = "vernis-selectif",  Label = "Vernis sélectif",          Type = "radio",    Visible = true,  Required = false, Critical = false, Order = 37 },
+            new() { Id = "dorure-a-chaud",   Label = "Dorure à chaud",           Type = "radio",    Visible = true,  Required = false, Critical = false, Order = 38 },
+            new() { Id = "pelliculage",      Label = "Pelliculage",              Type = "checkbox", Visible = true,  Required = false, Critical = false, Order = 39 },
+            new() { Id = "plis",             Label = "Plis",                     Type = "select",   Visible = false, Required = false, Critical = false, Order = 40 },
+            // ── Multi-points de livraison ──────────────────────────────────────
+            new() { Id = "delivery-points",  Label = "Points de livraison supplémentaires", Type = "group", Visible = false, Required = false, Critical = false, Order = 41 },
+            // ── Donneur d'ordre (société) ──────────────────────────────────────
+            new() { Id = "donneur-societe",  Label = "Donneur d'ordre — Société", Type = "text",    Visible = false, Required = false, Critical = false, Order = 42 },
             // ── Informations complémentaires ───────────────────────────────────
-            new() { Id = "notes",            Label = "Notes internes",           Type = "textarea", Visible = false, Required = false, Critical = false, Order = 36 },
-            new() { Id = "comments",         Label = "Commentaires (client)",    Type = "textarea", Visible = true,  Required = false, Critical = false, Order = 37 },
+            new() { Id = "notes",            Label = "Notes internes",           Type = "textarea", Visible = false, Required = false, Critical = false, Order = 43 },
+            new() { Id = "comments",         Label = "Commentaires (client)",    Type = "textarea", Visible = true,  Required = false, Critical = false, Order = 44 },
         };
 
         // GET /api/admin/portal/form-fields
