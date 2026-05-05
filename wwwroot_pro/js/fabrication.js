@@ -649,7 +649,7 @@ export async function openFabrication(fullPath, prefillData = null) {
             media3:                 o.media3 || null,
             media4:                 o.media4 || null,
             mediaCouverture:        o.mediaCouverture || null,
-            bat:                    o.bat || null,
+            bat:                    (o.bat === 'avec' ? 'Numérique' : o.bat === 'sans' ? 'Non' : o.bat) || null,
             pagination:             o.pagination || null,
             formatFeuille:          o.formatFeuille || null,
             formeDecoupe:           o.formeDecoupe || null,

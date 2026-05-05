@@ -123,7 +123,10 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       const assignment = assignmentsByPath[jobFileName];
       const iso = deliveriesByPath[jobFileName];
 
-      // Top row: dossier N° + presse + operator (loaded async below)
+      // Detect portal/web orders by filename prefix (WEB-YYYYMMDD-NNNN...)
+      const isWebOrder = jobFileName.toLowerCase().startsWith('web-');
+
+      // Top row: dossier N° + presse + operator + web badge (loaded async below)
       const topRow = document.createElement("div");
       topRow.className = "kanban-card-top-row";
       topRow.style.cssText = "flex-direction:column;align-items:flex-start;gap:2px;";
@@ -140,6 +143,15 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       presseEl.className = "kanban-card-presse";
       presseEl.textContent = "";
       topRowMain.appendChild(presseEl);
+
+      // Web/Manuel badge
+      const orderBadge = document.createElement("span");
+      orderBadge.style.cssText = isWebOrder
+        ? "font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:#dbeafe;color:#1e40af;flex-shrink:0;"
+        : "font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;background:#f3f4f6;color:#6b7280;flex-shrink:0;";
+      orderBadge.textContent = isWebOrder ? "🌐 Web" : "⚙️ Manuel";
+      orderBadge.title = isWebOrder ? "Commande portail web" : "Commande manuelle";
+      topRowMain.appendChild(orderBadge);
 
       topRow.appendChild(topRowMain);
 
@@ -319,15 +331,27 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         };
         return btn;
       })();
+      // Hide manual-order mail buttons for web/portal orders
+      if (isWebOrder) { btnMailDebut.style.display = 'none'; btnMailFin.style.display = 'none'; }
 
       // Dynamic email buttons from tile's configured emailTemplateKeys
+      // - For web orders (WEB-*): only show client_* templates, substituting portal variables
+      // - For manual orders: only show non-client_* templates (atelier_* and custom)
       const _buildEmailTemplateButtons = (folderName, jobFileName, job, fab) => {
         const keys = state.emailTemplatesMap?.[folderName];
         if (!keys || keys.length === 0) return [];
-        return keys.map(key => {
+        // Filter keys by order type to avoid showing both sets on the same card
+        const filteredKeys = keys.filter(key => {
+          const isClientKey = key.startsWith('client_');
+          return isWebOrder ? isClientKey : !isClientKey;
+        });
+        if (filteredKeys.length === 0) return [];
+        return filteredKeys.map(key => {
           const btn = document.createElement("button");
           btn.className = "btn btn-sm";
-          btn.style.cssText = "background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;";
+          btn.style.cssText = isWebOrder
+            ? "background:#f0fdf4;border:1px solid #86efac;color:#15803d;"
+            : "background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;";
           // Shorten the key for display (remove prefix, title-case)
           const label = key.replace(/^(client_|atelier_)/i, '').replace(/_/g, ' ');
           btn.textContent = "✉️ " + label;
@@ -346,21 +370,68 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
               if (tmpl && (tmpl.subject || tmpl.body)) {
                 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('fr-FR') : '';
                 const getClient = (fd) => fd.nomClient || fd.client || '';
-                const rv = (s) => (s || '')
-                  .replace(/\{\{numeroDossier\}\}/g, f.numeroDossier || '')
-                  .replace(/\{\{nomClient\}\}/g, getClient(f))
-                  .replace(/\{\{nomFichier\}\}/g, job.name || '')
-                  .replace(/\{\{typeTravail\}\}/g, f.typeTravail || '')
-                  .replace(/\{\{quantite\}\}/g, f.quantite || '')
-                  .replace(/\{\{operateur\}\}/g, f.operateur || '')
-                  .replace(/\{\{moteurImpression\}\}/g, f.moteurImpression || '')
-                  .replace(/\{\{dateReception\}\}/g, fmtDate(f.dateReception))
-                  .replace(/\{\{dateImpression\}\}/g, fmtDate(f.dateImpression))
-                  .replace(/\{\{dateEnvoi\}\}/g, fmtDate(f.dateEnvoi))
-                  .replace(/\{\{dateProductionFinitions\}\}/g, fmtDate(f.dateProductionFinitions))
-                  .replace(/\{\{dateLivraison\}\}/g, fmtDate(f.dateLivraison))
-                  .replace(/\{\{dateCreation\}\}/g, fmtDate(f.dateCreation));
-                const to = tmpl.to || f.mailClient || '';
+
+                // For web orders, also fetch portal order data for single-brace variable substitution
+                let portalClientEmail = '';
+                let portalVars = {};
+                if (isWebOrder) {
+                  try {
+                    // Extract order number: WEB-YYYYMMDD-NNNN from filename (before '__' separator or file extension)
+                    let orderNum = jobFileName;
+                    if (orderNum.includes('__')) orderNum = orderNum.split('__')[0];
+                    else if (orderNum.includes('.')) orderNum = orderNum.substring(0, orderNum.lastIndexOf('.'));
+                    // Only proceed if we have a non-trivial string that looks like a portal order number
+                    if (orderNum && orderNum.length > 3) {
+                      const byJobResp = await fetch('/api/admin/portal/orders/by-job?numeroDossier=' + encodeURIComponent(orderNum), {
+                        headers: { 'Authorization': `Bearer ${authToken || ''}` }
+                      }).then(r => r.json()).catch(() => ({}));
+                      if (byJobResp.ok && byJobResp.found && byJobResp.order?.id) {
+                        const detailResp = await fetch('/api/admin/portal/orders/' + byJobResp.order.id + '/detail', {
+                          headers: { 'Authorization': `Bearer ${authToken || ''}` }
+                        }).then(r => r.json()).catch(() => ({}));
+                        if (detailResp.ok) {
+                          const o = detailResp.order || {};
+                          portalClientEmail = detailResp.clientEmail || '';
+                          portalVars = {
+                            '{clientName}':   detailResp.clientDisplayName || '',
+                            '{orderNumber}':  o.orderNumber || '',
+                            '{orderTitle}':   o.title || '',
+                            '{companyName}':  detailResp.companyName || '',
+                            '{motif}':        '',
+                            '{batLink}':      '',
+                            '{batFileName}':  ''
+                          };
+                        }
+                      }
+                    }
+                  } catch(_) { /* non-blocking */ }
+                }
+
+                const rv = (s) => {
+                  let result = (s || '')
+                    // Double-brace variables (manual orders)
+                    .replace(/\{\{numeroDossier\}\}/g, f.numeroDossier || '')
+                    .replace(/\{\{nomClient\}\}/g, getClient(f))
+                    .replace(/\{\{nomFichier\}\}/g, job.name || '')
+                    .replace(/\{\{typeTravail\}\}/g, f.typeTravail || '')
+                    .replace(/\{\{quantite\}\}/g, f.quantite || '')
+                    .replace(/\{\{operateur\}\}/g, f.operateur || '')
+                    .replace(/\{\{moteurImpression\}\}/g, f.moteurImpression || '')
+                    .replace(/\{\{dateReception\}\}/g, fmtDate(f.dateReception))
+                    .replace(/\{\{dateImpression\}\}/g, fmtDate(f.dateImpression))
+                    .replace(/\{\{dateEnvoi\}\}/g, fmtDate(f.dateEnvoi))
+                    .replace(/\{\{dateProductionFinitions\}\}/g, fmtDate(f.dateProductionFinitions))
+                    .replace(/\{\{dateLivraison\}\}/g, fmtDate(f.dateLivraison))
+                    .replace(/\{\{dateCreation\}\}/g, fmtDate(f.dateCreation));
+                  // Single-brace variables (portal/web orders) — use regex for efficiency
+                  const portalKeys = Object.keys(portalVars);
+                  if (portalKeys.length > 0) {
+                    const pattern = new RegExp(portalKeys.map(k => k.replace(/[{}]/g, '\\$&')).join('|'), 'g');
+                    result = result.replace(pattern, (m) => portalVars[m] !== undefined ? portalVars[m] : m);
+                  }
+                  return result;
+                };
+                const to = tmpl.to || portalClientEmail || f.mailClient || '';
                 window.open(`mailto:${to}?subject=${encodeURIComponent(rv(tmpl.subject))}&body=${encodeURIComponent(rv(tmpl.body))}`);
               } else {
                 showNotification(`⚠️ Template "${key}" non configuré ou vide. Configurez-le dans Paramétrage > Templates email.`, "warning");

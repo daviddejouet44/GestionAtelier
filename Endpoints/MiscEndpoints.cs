@@ -70,27 +70,7 @@ app.MapGet("/api/file-stage", (string fileName) =>
             return null;
         }
 
-        // Priority 1: look up currentStage from productionFolders MongoDB (set on every file move)
-        try
-        {
-            var pfCol = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
-            var pfDoc = pfCol.Find(
-                Builders<BsonDocument>.Filter.Regex("fileName",
-                    new BsonRegularExpression("^" + System.Text.RegularExpressions.Regex.Escape(safeFileName) + "$", "i"))
-            ).SortByDescending(x => x["createdAt"]).FirstOrDefault();
-
-            if (pfDoc != null && pfDoc.Contains("currentStage") && pfDoc["currentStage"] != BsonNull.Value
-                && pfDoc["currentStage"].BsonType == BsonType.String)
-            {
-                var stage = pfDoc["currentStage"].AsString;
-                var currentPath = pfDoc.Contains("currentFilePath") && pfDoc["currentFilePath"] != BsonNull.Value
-                    ? pfDoc["currentFilePath"].AsString : (string?)null;
-                var batStatus = (stage == "BAT") ? ResolveBatStatus(safeFileName) : null;
-                return Results.Json(new { ok = true, folder = stage, fullPath = currentPath, batStatus });
-            }
-        }
-        catch (Exception exPf) { Console.WriteLine($"[WARN] file-stage productionFolders lookup: {exPf.Message}"); }
-
+        // Priority 1: physical file scan (always accurate, reflects actual current tile)
         var root = BackendUtils.HotfoldersRoot();
         // Scan in order from most advanced to least advanced so the first match is the real current stage
         var folders = new[]
@@ -111,9 +91,39 @@ app.MapGet("/api/file-stage", (string fileName) =>
             if (File.Exists(path))
             {
                 var batStatus = (folder == "BAT") ? ResolveBatStatus(safeFileName) : null;
+                // Also update DB for consistency (non-blocking)
+                try
+                {
+                    var pfCol2 = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+                    pfCol2.UpdateMany(
+                        Builders<BsonDocument>.Filter.Eq("fileName", safeFileName),
+                        Builders<BsonDocument>.Update.Set("currentStage", folder).Set("currentFilePath", path));
+                }
+                catch { /* non-blocking */ }
                 return Results.Json(new { ok = true, folder, fullPath = path, batStatus });
             }
         }
+
+        // Priority 2: look up currentStage from productionFolders MongoDB (fallback when file not in standard hotfolders)
+        try
+        {
+            var pfCol = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+            var pfDoc = pfCol.Find(
+                Builders<BsonDocument>.Filter.Regex("fileName",
+                    new BsonRegularExpression("^" + System.Text.RegularExpressions.Regex.Escape(safeFileName) + "$", "i"))
+            ).SortByDescending(x => x["createdAt"]).FirstOrDefault();
+
+            if (pfDoc != null && pfDoc.Contains("currentStage") && pfDoc["currentStage"] != BsonNull.Value
+                && pfDoc["currentStage"].BsonType == BsonType.String)
+            {
+                var stage = pfDoc["currentStage"].AsString;
+                var currentPath = pfDoc.Contains("currentFilePath") && pfDoc["currentFilePath"] != BsonNull.Value
+                    ? pfDoc["currentFilePath"].AsString : (string?)null;
+                var batStatus = (stage == "BAT") ? ResolveBatStatus(safeFileName) : null;
+                return Results.Json(new { ok = true, folder = stage, fullPath = currentPath, batStatus });
+            }
+        }
+        catch (Exception exPf) { Console.WriteLine($"[WARN] file-stage productionFolders lookup: {exPf.Message}"); }
 
         return Results.Json(new { ok = false, folder = (string?)null, fullPath = (string?)null, batStatus = (string?)null });
     }

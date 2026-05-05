@@ -573,31 +573,43 @@ export function _openKanbanColumnModal(cfg, sourceCol) {
   hdr.appendChild(hdrTitle);
   hdr.appendChild(btnClose);
 
-  // Body: copy the drop zone content
+  // Body: fresh functional column (not cloned, so buttons are active)
   const body = document.createElement("div");
-  body.style.cssText = "flex:1;overflow-y:auto;padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;align-items:start;";
+  body.style.cssText = "flex:1;overflow-y:auto;padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;align-content:start;";
 
-  // Clone cards from the original column
-  const srcDrop = sourceCol.querySelector(".kanban-col-operator__drop");
-  if (srcDrop) {
-    const cards = srcDrop.querySelectorAll(".kanban-card-operator");
-    if (cards.length === 0) {
-      body.innerHTML = '<p style="color:#9ca3af;text-align:center;grid-column:1/-1;padding:40px;">Aucun fichier dans cette colonne</p>';
-    } else {
-      cards.forEach(card => {
-        const clone = card.cloneNode(true);
-        clone.style.cursor = "default";
-        clone.draggable = false;
-        // Note: cloned DOM does not carry JS event handlers; buttons are visual only in this view.
-        // Hide assignment buttons which would be non-functional without drag context.
-        clone.querySelectorAll(".btn-assign").forEach(btn => { btn.style.display = "none"; });
-        body.appendChild(clone);
-      });
-    }
-  }
+  // Create a mock kanban column container (refreshKanbanColumnOperator renders into it)
+  const fakeColWrapper = document.createElement("div");
+  fakeColWrapper.style.cssText = "display:contents;";
+  const fakeDropZone = document.createElement("div");
+  fakeDropZone.className = "kanban-col-operator__drop";
+  fakeDropZone.style.cssText = "display:contents;";
+  fakeColWrapper.appendChild(fakeDropZone);
+  body.appendChild(fakeColWrapper);
 
   modal.appendChild(hdr);
   modal.appendChild(body);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
+
+  // Force re-render by clearing cache for this column, then render with functional buttons
+  const q = (document.getElementById("searchInput") || {}).value || "";
+  const sort = (document.getElementById("sortBy") || {}).value || "modified_desc";
+  const cacheKey = (cfg.folder || "") + '|' + q + '|' + sort;
+  const savedCache = state.columnCache[cacheKey];
+  delete state.columnCache[cacheKey];
+
+  refreshKanbanColumnOperator(cfg.folder || "", q, sort, fakeColWrapper, false, cfg.folderPath || null)
+    .catch(() => {})
+    .finally(() => {
+      // Restore cache so main kanban doesn't re-render unnecessarily on next tick
+      if (savedCache !== undefined) state.columnCache[cacheKey] = savedCache;
+      // Override card CSS for compact modal display (no excessive vertical height)
+      // and disable drag & drop (zoom is for viewing + action buttons only)
+      body.querySelectorAll(".kanban-card-operator").forEach(card => {
+        card.style.minHeight = "auto";
+        card.style.marginBottom = "0";
+        card.draggable = false;
+        card.style.cursor = "default";
+      });
+    });
 }

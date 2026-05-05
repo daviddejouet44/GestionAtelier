@@ -315,9 +315,11 @@ public static class PortalAdminEndpoints
         // BAT sending from atelier to client
         // =====================================================================
 
-        // POST /api/admin/portal/orders/{orderId}/send-bat
-        // Called by the atelier when sending a BAT to the client
-        app.MapPost("/api/admin/portal/orders/{orderId}/send-bat", async (HttpContext ctx, string orderId) =>
+        // POST /api/admin/portal/orders/{orderId}/prepare-bat
+        // Generates a secure BAT token, persists the BAT record (status=bat_pending), and returns
+        // all data needed for the operator to open a mailto: in their mail client (Outlook, etc.).
+        // No email is sent automatically — the operator sends manually.
+        app.MapPost("/api/admin/portal/orders/{orderId}/prepare-bat", async (HttpContext ctx, string orderId) =>
         {
             if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
@@ -358,7 +360,7 @@ public static class PortalAdminEndpoints
                     ["operatorNotificationAcknowledged"] = true
                 });
 
-                // Update order status
+                // Update order status to bat_pending (operator will send the mail manually)
                 ordersCol.UpdateOne(
                     Builders<BsonDocument>.Filter.Eq("id", orderId),
                     Builders<BsonDocument>.Update
@@ -368,10 +370,15 @@ public static class PortalAdminEndpoints
                         {
                             ["status"] = "bat_pending",
                             ["timestamp"] = now,
-                            ["comment"] = "BAT envoyé au client"
+                            ["comment"] = "BAT préparé — envoi manuel par l'opérateur"
                         }));
 
-                // Notify client with token-based link
+                // Resolve client info and build template variables for the frontend mailto:
+                var settings = MongoDbHelper.GetSettings<PortalSettings>("portalSettings") ?? new PortalSettings();
+                var portalUrl = (settings.PortalUrl ?? "").TrimEnd('/');
+                var batLink = $"{portalUrl}/portal/bat-view.html?batId={batId}&token={batToken}";
+
+                string clientEmail = "", clientName = "", companyName = "";
                 try
                 {
                     var clientId = orderDoc["clientAccountId"].AsString;
@@ -379,41 +386,61 @@ public static class PortalAdminEndpoints
                     var clientDoc = clientCol.Find(Builders<BsonDocument>.Filter.Eq("id", clientId)).FirstOrDefault();
                     if (clientDoc != null)
                     {
-                        var settings = MongoDbHelper.GetSettings<PortalSettings>("portalSettings") ?? new PortalSettings();
-                        var portalUrl = (settings.PortalUrl ?? "").TrimEnd('/');
-                        var clientEmail = clientDoc["email"].AsString;
-                        var clientName = clientDoc.Contains("displayName") ? clientDoc["displayName"].AsString : clientEmail;
-                        var orderNumber = orderDoc.Contains("orderNumber") ? orderDoc["orderNumber"].AsString : orderId;
-                        var orderTitle = orderDoc.Contains("title") ? orderDoc["title"].AsString : "";
-                        // Token-based link: no auth required, direct access to this specific BAT
-                        var batLink = $"{portalUrl}/portal/bat-view.html?batId={batId}&token={batToken}";
-
-                        var vars = new Dictionary<string, string>
-                        {
-                            ["{clientName}"] = clientName,
-                            ["{orderNumber}"] = orderNumber,
-                            ["{orderTitle}"] = orderTitle,
-                            ["{batLink}"] = batLink,
-                            ["{portalLink}"] = portalUrl,
-                            ["{batId}"] = batId,
-                            ["{batFileName}"] = batFileName
-                        };
-                        var (subj, body) = PortalEmailHelper.RenderTemplate("client_bat_available",
-                            "Un BAT est disponible — {orderNumber}",
-                            "Bonjour {clientName},\n\nUn BAT est disponible pour votre commande {orderNumber} — {orderTitle}.\n\nConsultez et validez (ou refusez) votre BAT en cliquant sur le lien ci-dessous :\n{batLink}\n\n(Lien sécurisé, valable jusqu'à décision)\n\nCordialement,",
-                            vars);
-                        PortalEmailHelper.SendEmail(clientEmail, subj, body);
-
-                        batCol.UpdateOne(
-                            Builders<BsonDocument>.Filter.Eq("id", batId),
-                            Builders<BsonDocument>.Update.Set("notificationEmailSent", true));
+                        clientEmail = clientDoc.Contains("email") ? clientDoc["email"].AsString : "";
+                        clientName = clientDoc.Contains("displayName") ? clientDoc["displayName"].AsString : clientEmail;
+                        if (string.IsNullOrWhiteSpace(clientName))
+                            clientName = clientDoc.Contains("companyName") ? clientDoc["companyName"].AsString : clientEmail;
+                        companyName = clientDoc.Contains("companyName") ? clientDoc["companyName"].AsString : "";
                     }
                 }
-                catch (Exception ex) { Console.WriteLine($"[WARN] BAT notification email failed: {ex.Message}"); }
+                catch { /* non-blocking */ }
 
-                return Results.Json(new { ok = true, batId });
+                var orderNumber = orderDoc.Contains("orderNumber") ? orderDoc["orderNumber"].AsString : orderId;
+                var orderTitle = orderDoc.Contains("title") ? orderDoc["title"].AsString : "";
+
+                var vars = new Dictionary<string, string>
+                {
+                    ["{clientName}"] = clientName,
+                    ["{orderNumber}"] = orderNumber,
+                    ["{orderTitle}"] = orderTitle,
+                    ["{batLink}"] = batLink,
+                    ["{portalLink}"] = portalUrl,
+                    ["{batId}"] = batId,
+                    ["{batFileName}"] = batFileName,
+                    ["{companyName}"] = companyName
+                };
+                var (subj, body) = PortalEmailHelper.RenderTemplate("client_bat_available",
+                    "Un BAT est disponible — {orderNumber}",
+                    "Bonjour {clientName},\n\nUn BAT est disponible pour votre commande {orderNumber} — {orderTitle}.\n\nConsultez et validez (ou refusez) votre BAT en cliquant sur le lien ci-dessous :\n{batLink}\n\n(Lien sécurisé, valable jusqu'à décision)\n\nCordialement,",
+                    vars);
+
+                return Results.Json(new
+                {
+                    ok = true,
+                    batId,
+                    batToken,
+                    batLink,
+                    clientEmail,
+                    clientName,
+                    companyName,
+                    orderNumber,
+                    orderTitle,
+                    batFileName,
+                    emailSubject = subj,
+                    emailBody = body
+                });
             }
             catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // POST /api/admin/portal/orders/{orderId}/send-bat  (kept for reference, SMTP disabled)
+        // Replaced by prepare-bat — operator now sends manually via mailto:.
+        app.MapPost("/api/admin/portal/orders/{orderId}/send-bat", async (HttpContext ctx, string orderId) =>
+        {
+            // Redirect to prepare-bat logic (same behaviour, kept for backward compat without SMTP send)
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            ctx.Request.RouteValues["orderId"] = orderId;
+            return Results.Json(new { ok = false, error = "Endpoint remplacé par prepare-bat. Veuillez mettre à jour le frontend." });
         });
 
         // GET /api/admin/portal/bat/pending-decisions
@@ -519,7 +546,7 @@ public static class PortalAdminEndpoints
 
                 var order = PortalOrdersEndpoints.DocToOrder(doc);
 
-                string clientDisplayName = "", clientEmail = "";
+                string clientDisplayName = "", clientEmail = "", companyName = "";
                 try
                 {
                     var clientCol = MongoDbHelper.GetCollection<BsonDocument>("client_accounts");
@@ -530,6 +557,7 @@ public static class PortalAdminEndpoints
                         if (string.IsNullOrWhiteSpace(clientDisplayName))
                             clientDisplayName = clientDoc.Contains("companyName") ? clientDoc["companyName"].AsString : "";
                         clientEmail = clientDoc.Contains("email") ? clientDoc["email"].AsString : "";
+                        companyName = clientDoc.Contains("companyName") ? clientDoc["companyName"].AsString : "";
                     }
                 }
                 catch { /* non-blocking */ }
@@ -577,7 +605,8 @@ public static class PortalAdminEndpoints
                         clientAccountId = order.ClientAccountId,
                     },
                     clientDisplayName,
-                    clientEmail
+                    clientEmail,
+                    companyName
                 });
             }
             catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }

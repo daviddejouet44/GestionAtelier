@@ -572,26 +572,28 @@ async function buildBatView(_filterStatus, _sortField) {
         btnPortalBat.style.cssText = "background:#f0fdf4;border:1px solid #86efac;color:#15803d;font-weight:600;";
         const isAlreadySent = portalOrder.status === 'bat_pending' || portalOrder.status === 'bat_validated' || portalOrder.status === 'bat_refused';
         btnPortalBat.innerHTML = isAlreadySent
-          ? `📤 Re-envoyer BAT (portail)`
-          : `📤 Envoyer BAT au client (portail)`;
-        btnPortalBat.title = `Commande portail : ${portalOrder.orderNumber}`;
+          ? `📤 Re-envoyer BAT au client`
+          : `📤 Envoyer le BAT au client`;
+        btnPortalBat.title = `Commande portail : ${portalOrder.orderNumber} — Ouvre votre application mail`;
         btnPortalBat.onclick = async () => {
-          if (!confirm(`Envoyer ce BAT au client via le portail (commande ${portalOrder.orderNumber}) ?\nUn email sera envoyé au client.`)) return;
           btnPortalBat.disabled = true;
-          btnPortalBat.textContent = '⏳ Envoi…';
+          btnPortalBat.textContent = '⏳ Préparation…';
           try {
-            const r = await fetch(`/api/admin/portal/orders/${portalOrder.id}/send-bat`, {
+            const r = await fetch(`/api/admin/portal/orders/${portalOrder.id}/prepare-bat`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
               body: JSON.stringify({ batFilePath: full, batFileName: job.name || '' })
             }).then(r => r.json());
             if (r.ok) {
-              showNotification('✅ BAT envoyé au client via le portail', 'success');
+              // Open mailto: so the operator can review and send manually
+              const mailto = `mailto:${encodeURIComponent(r.clientEmail)}?subject=${encodeURIComponent(r.emailSubject)}&body=${encodeURIComponent(r.emailBody)}`;
+              window.open(mailto);
+              showNotification('✅ Statut BAT mis à jour — envoyez le mail depuis votre application mail', 'success');
               buildBatView();
             } else {
               showNotification('❌ Erreur : ' + (r.error || 'Erreur inconnue'), 'error');
               btnPortalBat.disabled = false;
-              btnPortalBat.textContent = '📤 Envoyer BAT au client (portail)';
+              btnPortalBat.innerHTML = isAlreadySent ? '📤 Re-envoyer BAT au client' : '📤 Envoyer le BAT au client';
             }
           } catch(e) {
             showNotification('❌ Erreur réseau', 'error');
@@ -607,35 +609,38 @@ async function buildBatView(_filterStatus, _sortField) {
       card.appendChild(innerDiv);
       listEl.appendChild(card);
 
-      // Tracking buttons
-      const btnSent = document.createElement("button");
-      btnSent.className = "bat-status-badge bat-sent" + (status.sentAt ? " active" : "");
-      const sentTs = status.sentAt ? fmtDT(status.sentAt) : null;
-      btnSent.innerHTML = status.sentAt
-        ? `✉️ Envoyé<span style="font-size:9px;font-weight:400;margin-left:4px;">${sentTs}</span>`
-        : "✉️ Marquer envoyé";
-      btnSent.onclick = async () => {
-        let tmpl = null;
-        try {
-          const tr = await fetch("/api/config/bat-mail-template").then(r => r.json()).catch(() => null);
-          if (tr && tr.ok && tr.template) tmpl = tr.template;
-        } catch(e) { /* ignore */ }
-        if (tmpl && (tmpl.subject || tmpl.body)) {
-          const replaceVars = (str) => (str || '')
-            .replace(/\{\{numeroDossier\}\}/g, fab.numeroDossier || '')
-            .replace(/\{\{nomClient\}\}/g, fab.nomClient || '')
-            .replace(/\{\{nomFichier\}\}/g, job.name || '')
-            .replace(/\{\{typeTravail\}\}/g, fab.typeTravail || '')
-            .replace(/\{\{operateur\}\}/g, fab.operateur || '');
-          const to = tmpl.to || fab.mailClient || '';
-          const mailto = `mailto:${to}?subject=${encodeURIComponent(replaceVars(tmpl.subject))}&body=${encodeURIComponent(replaceVars(tmpl.body))}`;
-          window.open(mailto);
-        }
-        fetch("/api/bat/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(() => buildBatView());
-      };
-
-      const sep1 = document.createElement("span");
-      sep1.className = "bat-tracking-sep";
+      // Tracking buttons — "Envoyé" button is hidden for portal orders (they use the portal BAT flow)
+      if (!portalOrder) {
+        const btnSent = document.createElement("button");
+        btnSent.className = "bat-status-badge bat-sent" + (status.sentAt ? " active" : "");
+        const sentTs = status.sentAt ? fmtDT(status.sentAt) : null;
+        btnSent.innerHTML = status.sentAt
+          ? `✉️ Envoyé<span style="font-size:9px;font-weight:400;margin-left:4px;">${sentTs}</span>`
+          : "✉️ Marquer envoyé";
+        btnSent.onclick = async () => {
+          let tmpl = null;
+          try {
+            const tr = await fetch("/api/config/bat-mail-template").then(r => r.json()).catch(() => null);
+            if (tr && tr.ok && tr.template) tmpl = tr.template;
+          } catch(e) { /* ignore */ }
+          if (tmpl && (tmpl.subject || tmpl.body)) {
+            const replaceVars = (str) => (str || '')
+              .replace(/\{\{numeroDossier\}\}/g, fab.numeroDossier || '')
+              .replace(/\{\{nomClient\}\}/g, fab.nomClient || '')
+              .replace(/\{\{nomFichier\}\}/g, job.name || '')
+              .replace(/\{\{typeTravail\}\}/g, fab.typeTravail || '')
+              .replace(/\{\{operateur\}\}/g, fab.operateur || '');
+            const to = tmpl.to || fab.mailClient || '';
+            const mailto = `mailto:${to}?subject=${encodeURIComponent(replaceVars(tmpl.subject))}&body=${encodeURIComponent(replaceVars(tmpl.body))}`;
+            window.open(mailto);
+          }
+          fetch("/api/bat/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(() => buildBatView());
+        };
+        trackingEl.appendChild(btnSent);
+        const sep1 = document.createElement("span");
+        sep1.className = "bat-tracking-sep";
+        trackingEl.appendChild(sep1);
+      }
 
       const btnValidate = document.createElement("button");
       btnValidate.className = "bat-status-badge bat-validated" + (status.validatedAt ? " active" : "");
@@ -656,8 +661,6 @@ async function buildBatView(_filterStatus, _sortField) {
         : "❌ Refuser";
       btnReject.onclick = () => fetch("/api/bat/reject", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullPath: full }) }).then(() => buildBatView());
 
-      trackingEl.appendChild(btnSent);
-      trackingEl.appendChild(sep1);
       trackingEl.appendChild(btnValidate);
       trackingEl.appendChild(sep2);
       trackingEl.appendChild(btnReject);
