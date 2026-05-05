@@ -5,6 +5,134 @@
   <title>Détail commande — Espace client</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="/portal/css/portal.css" />
+  <style>
+    /* BAT viewer section */
+    .bat-viewer-section {
+      background: #eff6ff;
+      border: 2px solid #93c5fd;
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .bat-viewer-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .bat-viewer-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1d4ed8;
+    }
+    .bat-pdf-frame {
+      width: 100%;
+      height: 80vh;
+      border: 1px solid #93c5fd;
+      border-radius: 6px;
+      background: #f9fafb;
+      display: block;
+    }
+    @media (max-width: 640px) {
+      .bat-pdf-frame { height: 60vh; }
+    }
+    .bat-decision-area {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid #bfdbfe;
+    }
+    .bat-btn-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .bat-btn {
+      padding: 14px 28px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      min-width: 160px;
+      touch-action: manipulation;
+    }
+    .bat-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .bat-btn-validate { background: #16a34a; color: white; }
+    .bat-btn-refuse  { background: #dc2626; color: white; }
+    .bat-btn-cancel  { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+    .bat-motif-area { display: none; margin-top: 12px; }
+    .bat-motif-area label { font-weight: 600; display: block; margin-bottom: 6px; font-size: 14px; }
+    .bat-motif-area textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      resize: vertical;
+      min-height: 80px;
+      font-family: inherit;
+    }
+    .bat-motif-area textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+    .bat-decision-result {
+      padding: 20px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .bat-decision-result.validated { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+    .bat-decision-result.refused   { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+    /* Confirm modal */
+    .bat-modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .bat-modal {
+      background: white;
+      border-radius: 12px;
+      padding: 28px 24px;
+      max-width: 420px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .bat-modal h3 { font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+    .bat-modal p  { font-size: 14px; color: #4b5563; margin-bottom: 20px; }
+    .bat-modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
+
+    /* Guest banner */
+    .guest-banner {
+      background: #fef9c3;
+      border: 1px solid #fde68a;
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      font-size: 14px;
+      color: #92400e;
+    }
+
+    /* Toast */
+    #bat-toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #111827;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      z-index: 9999;
+      pointer-events: none;
+    }
+  </style>
 </head>
 <body>
   <header class="portal-header">
@@ -28,23 +156,73 @@
     </div>
   </main>
 
+  <!-- Confirm validation modal -->
+  <div id="bat-confirm-modal" class="bat-modal-overlay hidden">
+    <div class="bat-modal">
+      <h3>✅ Confirmer la validation</h3>
+      <p>Confirmez-vous la validation de ce BAT ?<br/><strong>Cette action est définitive.</strong></p>
+      <div class="bat-modal-btns">
+        <button class="btn btn-secondary btn-sm" id="bat-modal-cancel">Annuler</button>
+        <button class="btn btn-sm" style="background:#16a34a;color:white;font-weight:600;" id="bat-modal-confirm">✅ Oui, valider</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="bat-toast" class="hidden"></div>
+
   <script type="module">
     import { requireAuth, renderHeader, statusBadge, fmtDate, fmtDateTime, fmtSize, esc, apiRequest, showToast, applyPortalTheme } from '/portal/js/portal-core.js';
 
     const params = new URLSearchParams(window.location.search);
-    const orderId = params.get('id');
+    const orderId  = params.get('id');
+    const batToken = params.get('batToken');
+    const guestMode = !!batToken;
+
+    // Token used for BAT decide/file calls (set when a viewer is rendered)
+    let currentBatToken = batToken || '';
 
     // Apply theme immediately
     applyPortalTheme();
 
+    // ── Decide mode: guest (batToken) vs authenticated ──────────────────────
     (async () => {
-      const client = await requireAuth();
-      if (!client) return;
-      renderHeader('orders');
-      if (!orderId) { document.getElementById('order-container').innerHTML = `<div class="alert alert-error">Identifiant de commande manquant</div>`; return; }
-      await loadOrder();
+      if (guestMode) {
+        // Guest / token mode — no login required
+        // Hide logout button and nav links (not relevant for guests)
+        const logoutBtn = document.getElementById('btn-portal-logout');
+        if (logoutBtn) logoutBtn.style.display = 'none';
+        await loadOrderByToken();
+      } else {
+        // Authenticated mode — normal flow
+        const client = await requireAuth();
+        if (!client) return;
+        renderHeader('orders');
+        if (!orderId) {
+          document.getElementById('order-container').innerHTML =
+            `<div class="alert alert-error">Identifiant de commande manquant</div>`;
+          return;
+        }
+        await loadOrder();
+      }
     })();
 
+    // ── Guest mode: load via token ────────────────────────────────────────
+    async function loadOrderByToken() {
+      const container = document.getElementById('order-container');
+      try {
+        const res = await fetch(`/api/portal/orders/by-bat-token?token=${encodeURIComponent(batToken)}`);
+        const data = await res.json();
+        if (!data.ok) {
+          container.innerHTML = `<div class="alert alert-error">❌ ${esc(data.error || 'Lien invalide ou expiré')}</div>`;
+          return;
+        }
+        renderOrderGuest(data.order, data.batPending);
+      } catch {
+        container.innerHTML = `<div class="alert alert-error">Erreur de chargement</div>`;
+      }
+    }
+
+    // ── Authenticated mode: load via API ──────────────────────────────────
     async function loadOrder() {
       const container = document.getElementById('order-container');
       try {
@@ -56,6 +234,30 @@
       }
     }
 
+    // ── Guest render ──────────────────────────────────────────────────────
+    function renderOrderGuest(o, bat) {
+      const container = document.getElementById('order-container');
+      container.innerHTML = `
+        <div class="guest-banner">
+          🔗 Vous consultez cette commande via un lien sécurisé.
+          <a href="/portal/login.html" style="margin-left:8px;color:#1d4ed8;font-weight:600;">Se connecter</a>
+        </div>
+
+        ${renderBatViewer(bat)}
+
+        <div class="card">
+          <div class="card-header"><span class="card-title">Résumé de la commande</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;">
+            ${row('N° de commande', esc(o.orderNumber))}
+            ${row('Intitulé', esc(o.title))}
+            ${row('Statut', statusBadge(o.status))}
+          </div>
+        </div>
+      `;
+      attachBatListeners();
+    }
+
+    // ── Authenticated render ──────────────────────────────────────────────
     function renderOrder(o, bats) {
       const pendingBat = bats.find(b => b.action === 'pending');
       const container = document.getElementById('order-container');
@@ -73,8 +275,8 @@
           </div>
         </div>
 
-        <!-- BAT BLOCK (shown when pending) -->
-        ${pendingBat ? renderBatBlock(pendingBat) : ''}
+        <!-- BAT VIEWER (shown when pending, for authenticated users) -->
+        ${pendingBat ? renderBatViewer(pendingBat) : ''}
 
         <!-- Order details -->
         <div class="card">
@@ -116,8 +318,193 @@
         </div>
       `;
 
+      if (pendingBat) attachBatListeners();
     }
 
+    // ── BAT viewer HTML ───────────────────────────────────────────────────
+    function renderBatViewer(bat) {
+      if (!bat) return '';
+
+      // Determine the token to use for this viewer
+      // In guest mode we use batToken from URL; in auth mode we use bat's own token stored in batToken field.
+      // For the authenticated flow the endpoint /api/portal/bat/file also accepts token param.
+      // When batToken URL param is set, use it. Otherwise use a per-bat token (not available in auth flow response).
+      // We use the global batToken variable (from URL param) when in guest mode.
+      const tokenParam = guestMode ? batToken : (bat.batToken || '');
+      // Store the active token so submitDecision can use it
+      currentBatToken = tokenParam;
+      const pdfSrc = tokenParam
+        ? `/api/portal/bat/file?token=${encodeURIComponent(tokenParam)}`
+        : '';
+
+      const alreadyDecided = bat.action === 'validated' || bat.action === 'refused';
+
+      let decisionHtml = '';
+      if (bat.action === 'validated') {
+        decisionHtml = `<div class="bat-decision-result validated">
+          ✅ Ce BAT a été validé${bat.performedAt ? ' le ' + new Date(bat.performedAt).toLocaleDateString('fr-FR') : ''}.
+        </div>`;
+      } else if (bat.action === 'refused') {
+        decisionHtml = `<div class="bat-decision-result refused">
+          ❌ Ce BAT a été refusé${bat.performedAt ? ' le ' + new Date(bat.performedAt).toLocaleDateString('fr-FR') : ''}.
+          ${bat.motif ? `<br/><em style="font-weight:400;">Motif : ${esc(bat.motif)}</em>` : ''}
+        </div>`;
+      } else {
+        decisionHtml = `
+          <div id="bat-decision-form">
+            <p style="font-size:14px;color:#4b5563;margin-bottom:16px;">
+              Après avoir consulté le BAT ci-dessus, indiquez votre décision.
+              <strong>Cette action est définitive.</strong>
+            </p>
+            <div class="bat-btn-row">
+              <button class="bat-btn bat-btn-validate" id="btn-bat-validate">✅ Valider le BAT</button>
+              <button class="bat-btn bat-btn-refuse"   id="btn-bat-show-refuse">❌ Refuser le BAT</button>
+            </div>
+            <div class="bat-motif-area" id="bat-motif-area">
+              <label for="bat-motif">Motif du refus <span style="color:#dc2626;">*</span></label>
+              <textarea id="bat-motif" placeholder="Décrivez précisément les corrections souhaitées…" rows="4"></textarea>
+              <div class="bat-btn-row" style="margin-top:12px;">
+                <button class="bat-btn bat-btn-refuse" id="btn-bat-confirm-refuse">❌ Confirmer le refus</button>
+                <button class="bat-btn bat-btn-cancel" id="btn-bat-cancel-refuse">Annuler</button>
+              </div>
+            </div>
+          </div>
+          <div id="bat-decision-result-area"></div>
+        `;
+      }
+
+      return `
+        <div class="bat-viewer-section" id="bat-viewer-section">
+          <div class="bat-viewer-header">
+            <span class="bat-viewer-title">🎨 BAT à valider</span>
+            <span class="badge badge-yellow">En attente de votre décision</span>
+          </div>
+          ${bat.batFileName ? `<p style="font-size:13px;color:#374151;margin-bottom:12px;">📄 <strong>${esc(bat.batFileName)}</strong></p>` : ''}
+          ${pdfSrc
+            ? `<iframe id="bat-pdf-frame" class="bat-pdf-frame" src="${pdfSrc}" title="BAT PDF" allowfullscreen></iframe>`
+            : `<div style="padding:20px;background:#f9fafb;border:1px dashed #ccc;border-radius:6px;text-align:center;color:#6b7280;">Aperçu PDF non disponible</div>`
+          }
+          <div class="bat-decision-area">
+            <div class="bat-decision-title" style="font-size:16px;font-weight:700;margin-bottom:16px;">📋 Votre décision</div>
+            ${decisionHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    // ── Attach button listeners for BAT decisions ─────────────────────────
+    function attachBatListeners() {
+      const btnValidate     = document.getElementById('btn-bat-validate');
+      const btnShowRefuse   = document.getElementById('btn-bat-show-refuse');
+      const btnConfirmRefuse= document.getElementById('btn-bat-confirm-refuse');
+      const btnCancelRefuse = document.getElementById('btn-bat-cancel-refuse');
+      const motifArea       = document.getElementById('bat-motif-area');
+      const decisionForm    = document.getElementById('bat-decision-form');
+      const resultArea      = document.getElementById('bat-decision-result-area');
+      const modal           = document.getElementById('bat-confirm-modal');
+      const modalCancel     = document.getElementById('bat-modal-cancel');
+      const modalConfirm    = document.getElementById('bat-modal-confirm');
+
+      if (!btnValidate) return; // already decided
+
+      btnValidate.addEventListener('click', () => {
+        modal.classList.remove('hidden');
+      });
+      modalCancel.addEventListener('click', () => {
+        modal.classList.add('hidden');
+      });
+      modalConfirm.addEventListener('click', async () => {
+        modal.classList.add('hidden');
+        await submitDecision('validated', '');
+      });
+
+      btnShowRefuse.addEventListener('click', () => {
+        motifArea.style.display = 'block';
+        btnValidate.style.display = 'none';
+        btnShowRefuse.style.display = 'none';
+        document.getElementById('bat-motif').focus();
+      });
+      btnCancelRefuse.addEventListener('click', () => {
+        motifArea.style.display = 'none';
+        btnValidate.style.display = '';
+        btnShowRefuse.style.display = '';
+        document.getElementById('bat-motif').value = '';
+      });
+      btnConfirmRefuse.addEventListener('click', async () => {
+        const motif = document.getElementById('bat-motif').value.trim();
+        if (!motif) {
+          batToast('⚠️ Le commentaire est obligatoire en cas de refus.', 'error');
+          document.getElementById('bat-motif').focus();
+          return;
+        }
+        await submitDecision('refused', motif);
+      });
+    }
+
+    async function submitDecision(action, motif) {
+      // Use the current BAT token (set during render — works in both guest and auth mode)
+      const token = currentBatToken;
+      if (!token) { batToast('❌ Token manquant', 'error'); return; }
+
+      setDecisionLoading(true);
+      try {
+        const res = await fetch(`/api/portal/bat/decide?token=${encodeURIComponent(token)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, motif })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          const decisionForm = document.getElementById('bat-decision-form');
+          const resultArea   = document.getElementById('bat-decision-result-area');
+          if (decisionForm) decisionForm.style.display = 'none';
+
+          // Also hide the PDF viewer after decision to clean up the page
+          const viewer = document.getElementById('bat-pdf-frame');
+          if (viewer) viewer.style.display = 'none';
+
+          // Update the section header badge
+          const badge = document.querySelector('.bat-viewer-section .badge');
+          if (badge) {
+            if (action === 'validated') {
+              badge.className = 'badge badge-green';
+              badge.textContent = 'Validé';
+            } else {
+              badge.className = 'badge badge-red';
+              badge.textContent = 'Refusé';
+            }
+          }
+
+          if (resultArea) {
+            if (action === 'validated') {
+              resultArea.innerHTML = `<div class="bat-decision-result validated">✅ BAT validé, merci ! Un email de confirmation vous a été envoyé.</div>`;
+            } else {
+              resultArea.innerHTML = `<div class="bat-decision-result refused">❌ BAT refusé. Votre commentaire a été transmis à l'atelier.</div>`;
+            }
+          }
+          batToast(action === 'validated' ? '✅ BAT validé avec succès' : '✅ Refus enregistré', 'success');
+        } else {
+          batToast('❌ ' + (data.error || 'Erreur'), 'error');
+        }
+      } catch {
+        batToast('❌ Erreur réseau', 'error');
+      }
+      setDecisionLoading(false);
+    }
+
+    function setDecisionLoading(on) {
+      document.querySelectorAll('.bat-btn').forEach(b => { b.disabled = on; });
+    }
+
+    function batToast(msg, type = 'info') {
+      const t = document.getElementById('bat-toast');
+      t.textContent = msg;
+      t.style.background = type === 'error' ? '#dc2626' : type === 'success' ? '#16a34a' : '#111827';
+      t.classList.remove('hidden');
+      setTimeout(() => t.classList.add('hidden'), 4000);
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────
     function row(label, value) {
       return `<div><span class="text-sm" style="color:var(--color-gray-500);">${label}</span><div style="font-size:14px;margin-top:2px;">${value}</div></div>`;
     }
@@ -145,18 +532,6 @@
               <a href="/api/portal/orders/${esc(oId)}/files/${encodeURIComponent(f.fileName)}" target="_blank" class="btn btn-secondary btn-sm" download>Télécharger</a>
             </div>`).join('')}
         </div>
-      </div>`;
-    }
-
-    function renderBatBlock(bat) {
-      return `<div class="card" style="border-color:#93c5fd;background:#eff6ff;">
-        <div class="card-header" style="background:#dbeafe;border-radius:6px 6px 0 0;margin:-20px -20px 16px;">
-          <span class="card-title">📧 BAT en attente de validation</span>
-          <span class="badge badge-yellow">En attente de votre décision</span>
-        </div>
-        <p style="margin-bottom:8px;">Un email avec un lien sécurisé vous a été envoyé pour valider votre BAT.</p>
-        <p class="text-muted text-sm">Cliquez sur le lien dans le mail pour le consulter et valider ou refuser le BAT
-          <strong>${esc(bat.batFileName)}</strong>.</p>
       </div>`;
     }
 
