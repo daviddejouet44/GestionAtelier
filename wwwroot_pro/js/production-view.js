@@ -492,7 +492,13 @@ export async function refreshKanbanColumnReadOnly(folderName, col) {
           if (!fab) return;
           if (fab.moteurImpression) card.dataset.machine = fab.moteurImpression;
           if (fab.operateur) card.dataset.operator = fab.operateur;
-          if (fab.statutProduction) renderProductionStatusBadge(statusBadgeEl, fab.statutProduction);
+          // Only show BAT status badge while the file is still in a BAT-relevant folder.
+          // Once the PDF moves to another folder (e.g. Finitions), the column title conveys
+          // the current stage — the stale BAT badge must not override it.
+          const BAT_BADGE_FOLDERS = new Set(["BAT", "Prêt pour impression"]);
+          if (fab.statutProduction && BAT_BADGE_FOLDERS.has(folderName)) {
+            renderProductionStatusBadge(statusBadgeEl, fab.statutProduction);
+          }
         }).catch(() => {});
 
       drop.appendChild(card);

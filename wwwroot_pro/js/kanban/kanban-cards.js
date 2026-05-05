@@ -123,8 +123,11 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       const assignment = assignmentsByPath[jobFileName];
       const iso = deliveriesByPath[jobFileName];
 
-      // Detect portal/web orders by filename prefix (WEB-YYYYMMDD-NNNN...)
-      const isWebOrder = jobFileName.toLowerCase().startsWith('web-');
+      // Detect portal/web orders by filename prefix (WEB-YYYYMMDD-NNNN...).
+      // Files that passed through the BAT folder keep the BAT_ prefix (e.g. BAT_WEB-...).
+      // jobFileName is already lowercased by fnKey(), but use explicit toLowerCase() for clarity.
+      const _jfnLower = jobFileName.toLowerCase();
+      const isWebOrder = _jfnLower.startsWith('web-') || _jfnLower.startsWith('bat_web-');
 
       // Top row: dossier N° + presse + operator + web badge (loaded async below)
       const topRow = document.createElement("div");
@@ -376,8 +379,10 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
                 let portalVars = {};
                 if (isWebOrder) {
                   try {
-                    // Extract order number: WEB-YYYYMMDD-NNNN from filename (before '__' separator or file extension)
-                    let orderNum = jobFileName;
+                    // Extract order number: WEB-YYYYMMDD-NNNN from filename.
+                    // Strip BAT_ prefix if present (files keep it after moving through the BAT folder).
+                    const _jfnLc = jobFileName.toLowerCase();
+                    let orderNum = _jfnLc.startsWith('bat_') ? _jfnLc.substring(4) : _jfnLc;
                     if (orderNum.includes('__')) orderNum = orderNum.split('__')[0];
                     else if (orderNum.includes('.')) orderNum = orderNum.substring(0, orderNum.lastIndexOf('.'));
                     // Only proceed if we have a non-trivial string that looks like a portal order number

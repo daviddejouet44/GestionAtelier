@@ -486,15 +486,18 @@ export async function renderSettingsPortal(panel) {
     msgEl.textContent = '';
     const clientId = panel.querySelector('#ci-client-select').value;
     if (!clientId) { errEl.textContent = 'Sélectionnez un client'; errEl.classList.remove('hidden'); return; }
-    msgEl.style.color = '#6b7280'; msgEl.textContent = '⏳ Envoi en cours…';
+    msgEl.style.color = '#6b7280'; msgEl.textContent = '⏳ Préparation…';
     try {
       const r = await fetch(`/api/admin/portal/clients/${clientId}/invite`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${authToken}` }
       }).then(r => r.json());
       if (r.ok) {
+        // Open the operator's mail client so they can review and send manually
+        const mailto = `mailto:${encodeURIComponent(r.email || '')}?subject=${encodeURIComponent(r.emailSubject || '')}&body=${encodeURIComponent(r.emailBody || '')}`;
+        window.open(mailto);
         msgEl.style.color = '#16a34a';
-        msgEl.textContent = `✅ Invitation envoyée à ${r.email || ''}`;
+        msgEl.textContent = `✅ Mail d'invitation ouvert pour ${r.email || ''} — envoyez depuis votre application mail`;
       } else {
         msgEl.style.color = '#dc2626';
         msgEl.textContent = '❌ ' + (r.error || 'Erreur');

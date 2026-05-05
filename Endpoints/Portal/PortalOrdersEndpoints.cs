@@ -345,7 +345,7 @@ public static class PortalOrdersEndpoints
                 // Send confirmation email to client
                 try
                 {
-                    var portalUrl = (settings.PortalUrl ?? "").TrimEnd('/');
+                    var portalUrl = PortalEmailHelper.SanitizePortalBaseUrl(settings.PortalUrl);
                     var vars = new Dictionary<string, string>
                     {
                         ["{clientName}"] = client.DisplayName,
