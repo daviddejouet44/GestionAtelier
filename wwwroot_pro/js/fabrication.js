@@ -617,8 +617,8 @@ export async function openFabrication(fullPath, prefillData = null) {
   const _isWebFile = _lcFileName.startsWith('web-') || _lcFileName.startsWith('bat_web-');
   if (isNewSheet && prefillData === null && _isWebFile) {
     try {
-      // Strip BAT_ prefix if present, then extract order number
-      const _baseName = _lcFileName.startsWith('bat_') ? fabCurrentFileName.substring(4) : fabCurrentFileName;
+      // Strip BAT_ prefix if present, then extract order number (all lowercase — server uses case-insensitive regex)
+      const _baseName = _lcFileName.startsWith('bat_') ? _lcFileName.substring(4) : _lcFileName;
       const orderNum = _baseName.includes('__') ? _baseName.split('__')[0] : _baseName.split('.')[0];
       const byJobResp = await fetch('/api/admin/portal/orders/by-job?numeroDossier=' + encodeURIComponent(orderNum), {
         headers: { 'Authorization': 'Bearer ' + authToken }

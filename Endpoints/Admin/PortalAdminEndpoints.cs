@@ -1065,13 +1065,13 @@ public static class PortalAdminEndpoints
         });
 
         // =====================================================================
-        // Client invitation (sends activation link by email)
+        // Client invitation — generates token + opens mailto: in the operator's mail client.
+        // No SMTP is sent automatically: the operator edits and sends manually.
         // =====================================================================
 
-        // POST /api/admin/portal/clients/{id}/invite
-        app.MapPost("/api/admin/portal/clients/{id}/invite", async (HttpContext ctx, string id) =>
+        // Shared logic: generate an invite token and return {email, activateLink, emailSubject, emailBody}
+        static IResult PrepareClientInvite(string id)
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var col = MongoDbHelper.GetCollection<BsonDocument>("client_accounts");
@@ -1080,7 +1080,6 @@ public static class PortalAdminEndpoints
 
                 var client = PortalAuthEndpoints.DocToClient(doc);
 
-                // Generate invitation token (48h validity) with high-entropy random bytes
                 var tokenBytes = new byte[32];
                 System.Security.Cryptography.RandomNumberGenerator.Fill(tokenBytes);
                 var token  = Convert.ToHexString(tokenBytes).ToLowerInvariant();
@@ -1093,8 +1092,8 @@ public static class PortalAdminEndpoints
                         .Set("inviteExpiry", expiry)
                         .Set("enabled",      true));
 
-                var settings   = MongoDbHelper.GetSettings<PortalSettings>("portalSettings") ?? new PortalSettings();
-                var portalUrl  = PortalEmailHelper.SanitizePortalBaseUrl(settings.PortalUrl);
+                var settings     = MongoDbHelper.GetSettings<PortalSettings>("portalSettings") ?? new PortalSettings();
+                var portalUrl    = PortalEmailHelper.SanitizePortalBaseUrl(settings.PortalUrl);
                 var activateLink = $"{portalUrl}/portal/activate.html?token={token}";
 
                 var vars = new Dictionary<string, string>
@@ -1110,71 +1109,23 @@ public static class PortalAdminEndpoints
                     "Bonjour {clientName},\n\nVous avez été invité à accéder à votre espace client.\n\nCliquez sur le lien ci-dessous pour activer votre accès et définir votre mot de passe (lien valable 48h) :\n{activateLink}\n\nEmail de connexion : {email}\n\nCordialement,",
                     vars);
 
-                // Do NOT send via SMTP — return data for frontend mailto: (operator sends manually)
-                return Results.Json(new
-                {
-                    ok = true,
-                    email = client.Email,
-                    activateLink,
-                    emailSubject = subj,
-                    emailBody = body
-                });
+                return Results.Json(new { ok = true, email = client.Email, activateLink, emailSubject = subj, emailBody = body });
             }
             catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        }
+
+        // POST /api/admin/portal/clients/{id}/invite
+        app.MapPost("/api/admin/portal/clients/{id}/invite", (HttpContext ctx, string id) =>
+        {
+            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            return PrepareClientInvite(id);
         });
 
-        // POST /api/admin/portal/clients/{id}/prepare-invite  — alias kept for clarity
-        // (same as /invite but explicitly named to highlight the mailto: workflow)
-        app.MapPost("/api/admin/portal/clients/{id}/prepare-invite", async (HttpContext ctx, string id) =>
+        // POST /api/admin/portal/clients/{id}/prepare-invite  — explicit alias for the mailto: workflow
+        app.MapPost("/api/admin/portal/clients/{id}/prepare-invite", (HttpContext ctx, string id) =>
         {
             if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
-            try
-            {
-                var col = MongoDbHelper.GetCollection<BsonDocument>("client_accounts");
-                var doc = col.Find(Builders<BsonDocument>.Filter.Eq("id", id)).FirstOrDefault();
-                if (doc == null) return Results.Json(new { ok = false, error = "Client non trouvé" });
-
-                var client = PortalAuthEndpoints.DocToClient(doc);
-
-                var tokenBytes = new byte[32];
-                System.Security.Cryptography.RandomNumberGenerator.Fill(tokenBytes);
-                var token  = Convert.ToHexString(tokenBytes).ToLowerInvariant();
-                var expiry = DateTime.UtcNow.AddHours(48);
-
-                col.UpdateOne(
-                    Builders<BsonDocument>.Filter.Eq("id", id),
-                    Builders<BsonDocument>.Update
-                        .Set("inviteToken",  token)
-                        .Set("inviteExpiry", expiry)
-                        .Set("enabled",      true));
-
-                var settings   = MongoDbHelper.GetSettings<PortalSettings>("portalSettings") ?? new PortalSettings();
-                var portalUrl  = PortalEmailHelper.SanitizePortalBaseUrl(settings.PortalUrl);
-                var activateLink = $"{portalUrl}/portal/activate.html?token={token}";
-
-                var vars = new Dictionary<string, string>
-                {
-                    ["{clientName}"]   = client.DisplayName.Length > 0 ? client.DisplayName : client.Email,
-                    ["{email}"]        = client.Email,
-                    ["{activateLink}"] = activateLink,
-                    ["{portalLink}"]   = portalUrl
-                };
-                var (subj, body) = PortalEmailHelper.RenderTemplate(
-                    "client_invitation",
-                    "Invitation à votre espace client",
-                    "Bonjour {clientName},\n\nVous avez été invité à accéder à votre espace client.\n\nCliquez sur le lien ci-dessous pour activer votre accès et définir votre mot de passe (lien valable 48h) :\n{activateLink}\n\nEmail de connexion : {email}\n\nCordialement,",
-                    vars);
-
-                return Results.Json(new
-                {
-                    ok = true,
-                    email = client.Email,
-                    activateLink,
-                    emailSubject = subj,
-                    emailBody = body
-                });
-            }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            return PrepareClientInvite(id);
         });
 
         // POST /api/portal/auth/activate  (public — client sets password via invite token)
