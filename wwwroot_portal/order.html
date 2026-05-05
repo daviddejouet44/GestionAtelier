@@ -325,11 +325,7 @@
     function renderBatViewer(bat) {
       if (!bat) return '';
 
-      // Determine the token to use for this viewer
-      // In guest mode we use batToken from URL; in auth mode we use bat's own token stored in batToken field.
-      // For the authenticated flow the endpoint /api/portal/bat/file also accepts token param.
-      // When batToken URL param is set, use it. Otherwise use a per-bat token (not available in auth flow response).
-      // We use the global batToken variable (from URL param) when in guest mode.
+      // In guest mode use URL token; in auth mode use bat's own token
       const tokenParam = guestMode ? batToken : (bat.batToken || '');
       // Store the active token so submitDecision can use it
       currentBatToken = tokenParam;
