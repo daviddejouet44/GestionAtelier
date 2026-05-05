@@ -317,11 +317,19 @@ app.MapGet("/api/production/summary", () =>
                 if (fName.StartsWith("BAT_", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                // Determine effective stage: if BAT_{fName} exists in the BAT folder, stage is BAT
+                // Determine effective stage: if BAT_{fName} exists in the BAT folder AND the file is
+                // still in a pre-BAT folder (Prêt pour impression / Corrections), mark stage as BAT.
+                // Once the file has progressed beyond BAT (e.g. to Façonnage or Fin de production)
+                // the BAT_ file is a historical artifact — do NOT override the actual current stage.
                 var effectiveStage = folder;
-                var batVariant = "BAT_" + fName;
-                if (batFilesInBatFolder.Contains(batVariant))
-                    effectiveStage = "BAT";
+                var preBatFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                    { "Prêt pour impression", "Corrections", "Corrections et fond perdu" };
+                if (preBatFolders.Contains(folder))
+                {
+                    var batVariant = "BAT_" + fName;
+                    if (batFilesInBatFolder.Contains(batVariant))
+                        effectiveStage = "BAT";
+                }
 
                 // Find matching fabrication by fileName or fullPath (guard against BsonNull values)
                 var fab = allFabs.FirstOrDefault(f =>
