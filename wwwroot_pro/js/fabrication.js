@@ -248,7 +248,7 @@ function updatePassesDisplay() {
   if(ennob.some(e=>e.includes('Pelliculage')&&e.includes('recto/verso'))&&_passesConfig.pelliculageRectoVerso>0) lines.push('Pelliculage recto/verso : +'+_passesConfig.pelliculageRectoVerso+' feuilles');
   else if(ennob.some(e=>e.includes('Pelliculage')&&e.includes('recto'))&&_passesConfig.pelliculageRecto>0) lines.push('Pelliculage recto : +'+_passesConfig.pelliculageRecto+' feuilles');
   if(rv&&_passesConfig.rainage>0) lines.push('Rainage : +'+_passesConfig.rainage+' feuilles');
-  if(ennob.some(e=>e.includes('Dorure'))&&_passesConfig.dorure>0) lines.push('Dorure : +'+_passesConfig.dorure+' feuilles');
+  if(ennob.some(e=>e.startsWith('Dorure à chaud :'))&&_passesConfig.dorure>0) lines.push('Dorure : +'+_passesConfig.dorure+' feuilles');
   if(fb==='Dos carré collé'&&_passesConfig.dosCarreColle>0) lines.push('Dos carré collé : +'+_passesConfig.dosCarreColle+' exemplaires');
   disp.innerHTML=lines.length>0
     ? lines.map(l=>'<span style="display:inline-block;background:#f3f4f6;padding:3px 8px;border-radius:4px;margin:2px;font-size:12px;">'+l+'</span>').join('')
@@ -263,7 +263,7 @@ function addRepartitionRow(quantite, adresse) {
   row.style.cssText='display:flex;gap:8px;align-items:flex-start;margin-bottom:6px;';
   row.innerHTML='<textarea class="fab-rep-adresse" placeholder="Adresse de livraison" rows="2" style="flex:1;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;resize:vertical;">'+adresse+'</textarea>'
     +'<input type="number" class="fab-rep-qte" placeholder="Qté" value="'+quantite+'" style="width:80px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" min="0" />'
-    +'<button class="fab-rep-remove btn" style="padding:4px 10px;font-size:12px;color:#ef4444;flex-shrink:0;">🗑️</button>';
+    +'<button class="fab-rep-remove btn" aria-label="Supprimer ce point de livraison" style="padding:4px 10px;font-size:12px;color:#ef4444;flex-shrink:0;">🗑️</button>';
   row.querySelector('.fab-rep-remove').onclick=()=>row.remove();
   container.appendChild(row);
 }
@@ -375,7 +375,7 @@ function renderFabForm(config, opts) {
           wrap.innerHTML='<label>'+field.label+calcNote+'</label><input id="'+elId+'" type="number" placeholder="auto" />';
         }
       } else if(field.type==='group'){
-        wrap.innerHTML='<label>'+field.label+'</label><div id="'+elId+'"></div><button id="fab-repartitions-add" class="btn" style="margin-top:8px;font-size:12px;padding:4px 12px;">➕ Ajouter un point de livraison</button>';
+        wrap.innerHTML='<label>'+field.label+'</label><div id="'+elId+'"></div><button id="fab-repartitions-add" class="btn" aria-label="Ajouter un point de livraison" style="margin-top:8px;font-size:12px;padding:4px 12px;">➕ Ajouter un point de livraison</button>';
       } else {
         wrap.innerHTML='<label>'+field.label+reqStar+'</label><input id="'+elId+'" type="text"'+roAttr+' />';
       }
@@ -474,7 +474,7 @@ function populateFabForm(d, faconnageOptions) {
     const vernisEl=ennob.querySelector('input[type="radio"][value="'+vernisVal+'"][name*="fab-ennob-vernis"]');
     if(vernisEl) vernisEl.checked=true;
     // Dorure à chaud (radio)
-    const dorureVal=chk.find(v=>v.startsWith('Dorure'))||'';
+    const dorureVal=chk.find(v=>v.startsWith('Dorure à chaud :'))||'';
     const dorureEl=ennob.querySelector('input[type="radio"][name*="fab-ennob-dorure"][value="'+dorureVal+'"]');
     if(dorureEl) dorureEl.checked=true;
     // Pelliculage (checkboxes)
