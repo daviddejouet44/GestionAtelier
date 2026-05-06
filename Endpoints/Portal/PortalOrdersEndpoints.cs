@@ -730,6 +730,15 @@ public static class PortalOrdersEndpoints
             // Remove "Sortie" from client-facing finitions list
             var finitions = finitionsAll.Where(f => !string.Equals(f, "Sortie", StringComparison.OrdinalIgnoreCase)).ToList();
 
+            // Load binding options from the same source used by the fabrication form
+            List<string> faconnageBindings = new();
+            try
+            {
+                var boCfg = MongoDbHelper.GetSettings<SimpleStringListSettings>("bindingOptions");
+                faconnageBindings = boCfg?.Items ?? new List<string> { "Aucune", "Piqûre 2 points", "Dos carré collé", "Spirale plastique", "Wire-O", "Reliure suisse", "Reliure cousue" };
+            }
+            catch { /* ignore — fall back to empty list */ }
+
             return Results.Json(new
             {
                 ok = true,
@@ -737,6 +746,7 @@ public static class PortalOrdersEndpoints
                 papers = settings.AvailablePapers,
                 finitions,
                 typesTravail,
+                faconnageBindings,
                 maxUploadSizeMb = settings.MaxUploadSizeMb,
                 maxFilesPerOrder = settings.MaxFilesPerOrder,
                 welcomeText = settings.WelcomeText

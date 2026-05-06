@@ -153,7 +153,7 @@ public static class FormConfigEndpoints
             new() { Id = "rainage",         Label = "Rainage",          Type = "checkbox",    Section = "Finitions", Order = order++, Visible = true, Width = "half" },
             new() { Id = "ennoblissement",  Label = "Ennoblissement",   Type = "multiselect", Section = "Finitions", Order = order++, Visible = true, Width = "full" },
             new() { Id = "faconnageBinding",Label = "Type de reliure",  Type = "select",      Section = "Finitions", Order = order++, Visible = true, Width = "half",
-                    Options = new List<string> { "2 piques métal","2 piques à plat","2 piques booklet","Dos carré collé","Dos carré piqué","2 piques calendrier (à l'italienne)","Wire'O" } },
+                    Options = new List<string> { "Aucune", "Piqûre 2 points", "Dos carré collé", "Spirale plastique", "Wire-O", "Reliure suisse", "Reliure cousue" } },
             new() { Id = "plis",    Label = "Plis",   Type = "select", Section = "Finitions", Order = order++, Visible = true, Width = "half",
                     Options = new List<string> { "Pli accordéon","Pli roulé","Pli fenêtre" } },
             new() { Id = "sortie",  Label = "Sortie", Type = "select", Section = "Finitions", Order = order++, Visible = true, Width = "half",
@@ -165,6 +165,15 @@ public static class FormConfigEndpoints
 
             // ── Section : Passes (regroupé dans Production) ───────────────
             new() { Id = "passes", Label = "Passes (feuilles supplémentaires)", Type = "calculated", Section = "Production", Order = order++, Visible = true, ReadOnly = true, Width = "full" },
+
+            // ── Process d'impression ──────────────────────────────────────
+            new() { Id = "process",  Label = "Process",  Type = "select", Section = "Production", Order = order++, Visible = true, Width = "half",
+                    Options = new List<string> { "Numérique", "Offset" } },
+            new() { Id = "bascule",  Label = "Bascule",  Type = "select", Section = "Production", Order = order++, Visible = true, Width = "half",
+                    Options = new List<string> { "Non", "In 8", "In 12" }, DependsOn = "process", DependsOnValue = "Offset" },
+            new() { Id = "couleurs", Label = "Couleurs", Type = "select", Section = "Production", Order = order++, Visible = true, Width = "half",
+                    Options = new List<string> { "1 couleur", "Bichromie", "Trichromie", "Quadri" } },
+            new() { Id = "couleursAccompagnement", Label = "Couleurs d'accompagnement", Type = "text", Section = "Production", Order = order++, Visible = true, Width = "half" },
 
             // ── Section : Livraison ───────────────────────────────────────
             new() { Id = "retraitLivraison", Label = "Retrait / livraison", Type = "select", Section = "Livraison", Order = order++, Visible = true, Width = "half",

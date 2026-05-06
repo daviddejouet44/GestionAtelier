@@ -99,6 +99,11 @@ const FIELD_HTML_IDS = {
   "dateProductionFinitions":    "fab-date-finitions",
   "dateImpression":             "fab-date-impression",
   "tempsProduitMinutes":        "fab-temps-produit",
+  // ── Process d'impression ─────────────────────────────────────────────────
+  "process":                    "fab-process",
+  "bascule":                    "fab-bascule",
+  "couleurs":                   "fab-couleurs",
+  "couleursAccompagnement":     "fab-couleurs-accompagnement",
 };
 function gElId(id) { return FIELD_HTML_IDS[id] || ('fab-' + id); }
 function gEl(id) { return document.getElementById(gElId(id)); }
@@ -137,8 +142,21 @@ function updateCouvertureVisibility() {
   const typeEl = gEl("typeTravail");
   const show = typeEl ? _coverProducts.includes(typeEl.value) : false;
   if (fabDynamicForm) {
-    fabDynamicForm.querySelectorAll('[data-depends-on="typeTravail"]').forEach(el => { el.style.display = show ? '' : 'none'; });
+    fabDynamicForm.querySelectorAll('[data-depends-on="typeTravail"]:not([data-depends-on-value])').forEach(el => { el.style.display = show ? '' : 'none'; });
   }
+}
+
+// Generic: show/hide fields that depend on a specific value from another field
+function updateDependsOnFields() {
+  if (!fabDynamicForm) return;
+  fabDynamicForm.querySelectorAll('[data-depends-on][data-depends-on-value]').forEach(wrap => {
+    const dep = wrap.dataset.dependsOn;
+    const depVal = wrap.dataset.dependsOnValue;
+    const el = gEl(dep);
+    if (!el) return;
+    const currentVal = el.value || '';
+    wrap.style.display = currentVal === depVal ? '' : 'none';
+  });
 }
 
 function updateNombreFeuilles() {
@@ -205,7 +223,19 @@ function updateTempsProduction() {
 
 function getEnnoblissementSelected() {
   const c=gEl("ennoblissement");
-  return c ? Array.from(c.querySelectorAll('.fab-ennob-cb:checked')).map(cb=>cb.value) : [];
+  if(!c) return [];
+  const arr=[];
+  // Vernis sélectif (radio)
+  const vernisEl=c.querySelector('input[type="radio"][value="Vernis sélectif"]:checked');
+  if(vernisEl) arr.push(vernisEl.value);
+  // Dorure à chaud (radio)
+  const dorureEl=c.querySelector('input[type="radio"][name*="fab-ennob-dorure"]:checked');
+  if(dorureEl&&dorureEl.value) arr.push(dorureEl.value);
+  // Pelliculage (checkboxes)
+  c.querySelectorAll('.fab-ennob-pelliculage:checked').forEach(cb=>arr.push(cb.value));
+  // Fallback: legacy flat checkboxes (e.g., older form configs still using fab-ennob-cb)
+  c.querySelectorAll('.fab-ennob-cb:checked').forEach(cb=>{ if(!arr.includes(cb.value)) arr.push(cb.value); });
+  return arr;
 }
 
 function updatePassesDisplay() {
@@ -218,7 +248,7 @@ function updatePassesDisplay() {
   if(ennob.some(e=>e.includes('Pelliculage')&&e.includes('recto/verso'))&&_passesConfig.pelliculageRectoVerso>0) lines.push('Pelliculage recto/verso : +'+_passesConfig.pelliculageRectoVerso+' feuilles');
   else if(ennob.some(e=>e.includes('Pelliculage')&&e.includes('recto'))&&_passesConfig.pelliculageRecto>0) lines.push('Pelliculage recto : +'+_passesConfig.pelliculageRecto+' feuilles');
   if(rv&&_passesConfig.rainage>0) lines.push('Rainage : +'+_passesConfig.rainage+' feuilles');
-  if(ennob.some(e=>e.includes('Dorure'))&&_passesConfig.dorure>0) lines.push('Dorure : +'+_passesConfig.dorure+' feuilles');
+  if(ennob.some(e=>e.startsWith('Dorure à chaud :'))&&_passesConfig.dorure>0) lines.push('Dorure : +'+_passesConfig.dorure+' feuilles');
   if(fb==='Dos carré collé'&&_passesConfig.dosCarreColle>0) lines.push('Dos carré collé : +'+_passesConfig.dosCarreColle+' exemplaires');
   disp.innerHTML=lines.length>0
     ? lines.map(l=>'<span style="display:inline-block;background:#f3f4f6;padding:3px 8px;border-radius:4px;margin:2px;font-size:12px;">'+l+'</span>').join('')
@@ -230,10 +260,10 @@ function addRepartitionRow(quantite, adresse) {
   const container=gEl("repartitions"); if(!container) return;
   const row=document.createElement('div');
   row.className='fab-repartition-row';
-  row.style.cssText='display:flex;gap:8px;align-items:center;margin-bottom:6px;';
-  row.innerHTML='<input type="number" class="fab-rep-qte" placeholder="Quantité" value="'+quantite+'" style="width:100px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" min="0" />'
-    +'<input type="text" class="fab-rep-adresse" placeholder="Adresse de répartition" value="'+adresse+'" style="flex:1;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" />'
-    +'<button class="fab-rep-remove btn" style="padding:4px 10px;font-size:12px;color:#ef4444;">×</button>';
+  row.style.cssText='display:flex;gap:8px;align-items:flex-start;margin-bottom:6px;';
+  row.innerHTML='<textarea class="fab-rep-adresse" placeholder="Adresse de livraison" rows="2" style="flex:1;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;resize:vertical;">'+adresse+'</textarea>'
+    +'<input type="number" class="fab-rep-qte" placeholder="Qté" value="'+quantite+'" style="width:80px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" min="0" />'
+    +'<button class="fab-rep-remove btn" aria-label="Supprimer ce point de livraison" style="padding:4px 10px;font-size:12px;color:#ef4444;flex-shrink:0;">🗑️</button>';
   row.querySelector('.fab-rep-remove').onclick=()=>row.remove();
   container.appendChild(row);
 }
@@ -275,7 +305,7 @@ function renderFabForm(config, opts) {
       const isFull=field.width==='full';
       const wrap=document.createElement('div');
       wrap.className='fab-form-group'+(isFull?' fab-full-width':'');
-      if(field.dependsOn){wrap.dataset.dependsOn=field.dependsOn;wrap.style.display='none';}
+      if(field.dependsOn){wrap.dataset.dependsOn=field.dependsOn;if(field.dependsOnValue)wrap.dataset.dependsOnValue=field.dependsOnValue;wrap.style.display='none';}
       const elId=gElId(field.id);
       const reqStar=field.required?' <span class="required-star">*</span>':'';
       const calcNote=field.calculationRule?' <small style="color:#9ca3af;font-size:10px;">(calculé)</small>':'';
@@ -301,8 +331,36 @@ function renderFabForm(config, opts) {
         else if(Array.isArray(field.options)) optHtml+=field.options.map(o=>'<option value="'+o+'">'+o+'</option>').join('');
         wrap.innerHTML='<label>'+field.label+reqStar+'</label><select id="'+elId+'"'+roSel+'>'+optHtml+'</select>';
       } else if(field.type==='multiselect'){
-        const cbHtml=ENNOBLISSEMENT_OPTIONS.map(o=>'<label style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;"><input type="checkbox" class="fab-ennob-cb" value="'+o+'" /> '+o+'</label>').join('');
-        wrap.innerHTML='<label>'+field.label+'</label><div id="'+elId+'" style="display:flex;flex-wrap:wrap;gap:8px;padding:6px 0;">'+cbHtml+'</div>';
+        // Structured finitions UI: Vernis sélectif (radio), Dorure à chaud (radio), Pelliculage (checkboxes)
+        const PELLICULAGE_OPTS = [
+          ['Pelliculage : Mat recto',           'Mat recto'],
+          ['Pelliculage : Mat recto/verso',     'Mat recto/verso'],
+          ['Pelliculage : Brillant recto',      'Brillant recto'],
+          ['Pelliculage : Brillant recto/verso','Brillant recto/verso'],
+          ['Pelliculage : Soft Touch recto',    'Soft Touch recto'],
+          ['Pelliculage : Soft Touch recto/verso','Soft Touch recto/verso'],
+        ];
+        const radioStyle='display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;';
+        const cbStyle='display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;';
+        const vernisHtml='<div style="margin-bottom:8px;">'
+          +'<span style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Vernis sélectif</span>'
+          +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+          +'<label style="'+radioStyle+'"><input type="radio" name="fab-ennob-vernis-'+elId+'" value="" checked /> Non</label>'
+          +'<label style="'+radioStyle+'"><input type="radio" name="fab-ennob-vernis-'+elId+'" value="Vernis sélectif" /> Oui</label>'
+          +'</div></div>';
+        const dorureHtml='<div style="margin-bottom:8px;">'
+          +'<span style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Dorure à chaud</span>'
+          +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+          +'<label style="'+radioStyle+'"><input type="radio" name="fab-ennob-dorure-'+elId+'" value="" checked /> Non</label>'
+          +'<label style="'+radioStyle+'"><input type="radio" name="fab-ennob-dorure-'+elId+'" value="Dorure à chaud : Or" /> Or</label>'
+          +'<label style="'+radioStyle+'"><input type="radio" name="fab-ennob-dorure-'+elId+'" value="Dorure à chaud : Argent" /> Argent</label>'
+          +'</div></div>';
+        const pellHtml='<div>'
+          +'<span style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Pelliculage <small style="font-weight:400;color:#6b7280;">(plusieurs choix possibles)</small></span>'
+          +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+          +PELLICULAGE_OPTS.map(([val,lbl])=>'<label style="'+cbStyle+'"><input type="checkbox" class="fab-ennob-pelliculage" value="'+val+'" /> '+lbl+'</label>').join('')
+          +'</div></div>';
+        wrap.innerHTML='<label>'+field.label+'</label><div id="'+elId+'" style="padding:6px 0;">'+vernisHtml+dorureHtml+pellHtml+'</div>';
       } else if(field.type==='checkbox'){
         wrap.innerHTML='<label>'+field.label+'</label><label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;"><input id="'+elId+'" type="checkbox" style="width:16px;height:16px;" /><span id="fab-rainage-label">Non</span></label>';
       } else if(field.type==='file-import'){
@@ -317,7 +375,7 @@ function renderFabForm(config, opts) {
           wrap.innerHTML='<label>'+field.label+calcNote+'</label><input id="'+elId+'" type="number" placeholder="auto" />';
         }
       } else if(field.type==='group'){
-        wrap.innerHTML='<div id="'+elId+'"></div><button id="fab-repartitions-add" class="btn" style="margin-top:8px;font-size:12px;padding:4px 12px;">+ Ajouter une adresse</button>';
+        wrap.innerHTML='<label>'+field.label+'</label><div id="'+elId+'"></div><button id="fab-repartitions-add" class="btn" aria-label="Ajouter un point de livraison" style="margin-top:8px;font-size:12px;padding:4px 12px;">➕ Ajouter un point de livraison</button>';
       } else {
         wrap.innerHTML='<label>'+field.label+reqStar+'</label><input id="'+elId+'" type="text"'+roAttr+' />';
       }
@@ -409,7 +467,21 @@ function populateFabForm(d, faconnageOptions) {
   const nfEl=gEl("nombreFeuilles");
   if(nfEl){nfEl.value=d.nombreFeuilles||'';nfEl._manuallyEdited=!!d.nombreFeuilles;}
   const ennob=gEl("ennoblissement");
-  if(ennob){const chk=Array.isArray(d.ennoblissement)?d.ennoblissement:[];ennob.querySelectorAll('.fab-ennob-cb').forEach(cb=>{cb.checked=chk.includes(cb.value);});}
+  if(ennob){
+    const chk=Array.isArray(d.ennoblissement)?d.ennoblissement:[];
+    // Vernis sélectif (radio)
+    const vernisVal=chk.includes('Vernis sélectif')?'Vernis sélectif':'';
+    const vernisEl=ennob.querySelector('input[type="radio"][value="'+vernisVal+'"][name*="fab-ennob-vernis"]');
+    if(vernisEl) vernisEl.checked=true;
+    // Dorure à chaud (radio)
+    const dorureVal=chk.find(v=>v.startsWith('Dorure à chaud :'))||'';
+    const dorureEl=ennob.querySelector('input[type="radio"][name*="fab-ennob-dorure"][value="'+dorureVal+'"]');
+    if(dorureEl) dorureEl.checked=true;
+    // Pelliculage (checkboxes)
+    ennob.querySelectorAll('.fab-ennob-pelliculage').forEach(cb=>{cb.checked=chk.includes(cb.value);});
+    // Legacy flat checkboxes fallback
+    ennob.querySelectorAll('.fab-ennob-cb').forEach(cb=>{cb.checked=chk.includes(cb.value);});
+  }
   const facCont=document.getElementById('fab-faconnage-container');
   if(facCont){
     let cFac=[];
@@ -440,6 +512,11 @@ function populateFabForm(d, faconnageOptions) {
     // Mark as manually-set if loaded from DB so updateTempsProduction() won't overwrite it
     if(d.tempsProduitMinutes!=null) tpEl.dataset.manual='1'; else delete tpEl.dataset.manual;
   }
+  // Process d'impression
+  set('process', d.process);
+  set('bascule', d.bascule);
+  set('couleurs', d.couleurs);
+  set('couleursAccompagnement', d.couleursAccompagnement);
   // If dateReception is set but calculated dates are missing, recalculate
   if(recEl&&recEl.value&&(!envEl||!envEl.value)) updateKeyDates();
 }
@@ -451,9 +528,12 @@ function attachFormHandlers(fabCurrentFileName) {
     if(id===gElId('couvertureMedia')){updateRainageAuto();updatePassesDisplay();}
     if(id===gElId('rainage')){const l=document.getElementById('fab-rainage-label');const r=gEl('rainage');if(l&&r)l.textContent=r.checked?'Oui':'Non';updatePassesDisplay();}
     if(id===gElId('typeTravail')){updateNombreFeuilles();updateCouvertureVisibility();}
-    if(id===gElId('faconnageBinding')||e.target.classList.contains('fab-ennob-cb'))updatePassesDisplay();
+    if(id===gElId('faconnageBinding')||e.target.classList.contains('fab-ennob-cb')
+       ||e.target.classList.contains('fab-ennob-pelliculage')
+       ||(e.target.type==='radio'&&e.target.name&&(e.target.name.includes('fab-ennob-vernis')||e.target.name.includes('fab-ennob-dorure'))))updatePassesDisplay();
     if(id===gElId('dateLivraison')){const el=gEl('dateLivraison');if(el)el._manuallyEdited=true;}
     if(id===gElId('nombreFeuilles')){const el=gEl('nombreFeuilles');if(el)el._manuallyEdited=true;}
+    if(id===gElId('process')) updateDependsOnFields();
   });
   fabDynamicForm.addEventListener('input',e=>{
     const id=e.target.id;
@@ -708,6 +788,7 @@ export async function openFabrication(fullPath, prefillData = null) {
   const config=formConfig||{fields:[],sections:[]};
   renderFabForm(config,{engines:Array.isArray(engines)?engines:[],types:Array.isArray(types)?types:[],papers:Array.isArray(papers)?papers:[],sheetFormats:Array.isArray(sheetFormats)?sheetFormats:[],faconnageOptions:Array.isArray(faconnageOptions)?faconnageOptions:[],bindingOptions:Array.isArray(bindingOptionsResp?.options)?bindingOptionsResp.options:[],foldsOptions:Array.isArray(foldsOptionsResp?.options)?foldsOptionsResp.options:[],outputOptions:Array.isArray(outputOptionsResp?.options)?outputOptionsResp.options:[]});
   populateFabForm(d,Array.isArray(faconnageOptions)?faconnageOptions:[]);
+  updateDependsOnFields(); // show/hide process-dependent fields (e.g. Bascule when Offset selected)
   // If prefill provided, show a banner
   if(autoPrefill) {
     const banner = document.createElement('div');
@@ -763,7 +844,6 @@ export async function saveFabrication() {
   const getN=id=>{const el=gEl(id);return el?(parseInt(el.value)||null):null;};
   const getCb=id=>{const el=gEl(id);return el?el.checked:null;};
   const facCont=document.getElementById('fab-faconnage-container');
-  const ennob=gEl('ennoblissement');
   const payload={
     fullPath:fabCurrentPath,fileName,
     moteurImpression:get('moteurImpression'),machine:get('moteurImpression'),
@@ -780,7 +860,7 @@ export async function saveFabrication() {
     media3Fabricant:get('media3Fabricant')||null,media4Fabricant:get('media4Fabricant')||null,
     mediaCouverture:get('couvertureMedia')||null,mediaCouvertureFabricant:get('couvertureFabricant')||null,
     rainage:getCb('rainage'),
-    ennoblissement:ennob?Array.from(ennob.querySelectorAll('.fab-ennob-cb:checked')).map(cb=>cb.value):[],
+    ennoblissement:getEnnoblissementSelected(),
     faconnageBinding:get('faconnageBinding')||null,plis:get('plis')||null,sortie:get('sortie')||null,
     nombreFeuilles:getN('nombreFeuilles'),dateDepart:get('dateDepart')||null,
     dateLivraison:get('dateLivraison')||null,planningMachine:get('planningMachine')||null,
@@ -792,7 +872,11 @@ export async function saveFabrication() {
     tempsProduitMinutes:(()=>{const el=document.getElementById('fab-temps-produit');return el&&el.value?parseInt(el.value)||null:null;})(),
     finitionsChecked:(()=>{const cont=document.getElementById('fab-finitions-checked-container');return cont?Array.from(cont.querySelectorAll('.fab-finitions-cb:checked')).map(cb=>cb.value):null;})(),
     justifsClientsQuantite:getN('justifsQuantite'),justifsClientsAdresse:get('justifsAdresse')||null,
-    repartitions:getRepartitions()
+    repartitions:getRepartitions(),
+    process:get('process')||null,
+    bascule:get('bascule')||null,
+    couleurs:get('couleurs')||null,
+    couleursAccompagnement:get('couleursAccompagnement')||null,
   };
   const r=await fetch('/api/fabrication',{method:'PUT',headers:{'Content-Type':'application/json','Authorization':'Bearer '+authToken},body:JSON.stringify(payload)}).then(r2=>r2.json());
   if(!r.ok){alert('Erreur : '+r.error);return false;}return true;
