@@ -118,6 +118,12 @@ public record FabricationSheet
 
     // ── Statut de production (validé/refusé par opérateur) ──
     public string? StatutProduction { get; init; }
+
+    // ── Process d'impression ─────────────────────────────────
+    public string? Process { get; init; }          // "Numérique" | "Offset"
+    public string? Bascule { get; init; }          // "Non" | "In 8" | "In 12" (visible si Offset)
+    public string? Couleurs { get; init; }         // "1 couleur" | "Bichromie" | "Trichromie" | "Quadri"
+    public string? CouleursAccompagnement { get; init; } // champ libre
 }
 
 public class FabricationInput
@@ -216,6 +222,12 @@ public class FabricationInput
     
     // ── Finitions (liste cochée) ─────────────────────────
     public List<string>? FinitionsChecked { get; set; }
+
+    // ── Process d'impression ─────────────────────────────────
+    public string? Process { get; set; }          // "Numérique" | "Offset"
+    public string? Bascule { get; set; }          // "Non" | "In 8" | "In 12" (visible si Offset)
+    public string? Couleurs { get; set; }         // "1 couleur" | "Bichromie" | "Trichromie" | "Quadri"
+    public string? CouleursAccompagnement { get; set; } // champ libre
 }
 
 // ======================================================

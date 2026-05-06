@@ -211,7 +211,7 @@ app.MapGet("/api/settings/binding-options", () =>
     try
     {
         var cfg = MongoDbHelper.GetSettings<SimpleStringListSettings>("bindingOptions");
-        var list = cfg?.Items ?? new List<string> { "2 piques métal","2 piques à plat","2 piques booklet","Dos carré collé","Dos carré piqué","2 piques calendrier (à l'italienne)","Wire'O" };
+        var list = cfg?.Items ?? new List<string> { "Aucune", "Piqûre 2 points", "Dos carré collé", "Spirale plastique", "Wire-O", "Reliure suisse", "Reliure cousue" };
         return Results.Json(new { ok = true, options = list });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }

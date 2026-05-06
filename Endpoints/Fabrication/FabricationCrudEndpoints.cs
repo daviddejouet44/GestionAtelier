@@ -206,6 +206,12 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             JustifsClientsAdresse  = input.JustifsClientsAdresse,
             Repartitions = input.Repartitions,
 
+            // ── Process d'impression ──────────────────────────────────
+            Process                = input.Process,
+            Bascule                = input.Bascule,
+            Couleurs               = input.Couleurs,
+            CouleursAccompagnement = input.CouleursAccompagnement,
+
             History = old?.History ?? new List<FabricationHistory>()
         };
 

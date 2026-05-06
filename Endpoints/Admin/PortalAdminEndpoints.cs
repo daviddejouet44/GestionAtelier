@@ -25,6 +25,21 @@ public static class PortalAdminEndpoints
         catch { return false; }
     }
 
+    // Validate any atelier user token (any profile > 0) ----------------------
+    // Used for read-only prefill endpoints accessible by all operators.
+    private static bool IsAtelierUser(HttpContext ctx)
+    {
+        try
+        {
+            var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+            if (string.IsNullOrWhiteSpace(token)) return false;
+            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            var parts = decoded.Split(':');
+            return parts.Length >= 3 && int.TryParse(parts[2], out var p) && p > 0;
+        }
+        catch { return false; }
+    }
+
     public static void MapPortalAdminEndpoints(this WebApplication app)
     {
         // =====================================================================
@@ -537,7 +552,7 @@ public static class PortalAdminEndpoints
         // GET /api/admin/portal/orders/{orderId}/detail -- full order details + client info for atelier prefill
         app.MapGet("/api/admin/portal/orders/{orderId}/detail", (HttpContext ctx, string orderId) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!IsAtelierUser(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
             try
             {
                 var col = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
@@ -691,7 +706,7 @@ public static class PortalAdminEndpoints
         // GET /api/admin/portal/orders/by-job?numeroDossier=... — find portal order matching a job
         app.MapGet("/api/admin/portal/orders/by-job", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!IsAtelierUser(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
             var numeroDossier = ctx.Request.Query["numeroDossier"].ToString();
             var fileName = ctx.Request.Query["fileName"].ToString();
             if (string.IsNullOrWhiteSpace(numeroDossier) && string.IsNullOrWhiteSpace(fileName))
