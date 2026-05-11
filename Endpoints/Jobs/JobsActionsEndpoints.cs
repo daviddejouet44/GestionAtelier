@@ -627,7 +627,7 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
         };
         var label = actionLabels.TryGetValue(action, out var lbl) ? lbl : action;
         var jdfMsg = jdfPath != null ? " (avec JDF)" : "";
-        return Results.Json(new { ok = true, message = $"Fichier {label}{jdfMsg} et déplacé dans la tuile \"{tileFolder}\"", destination = tileDest, jdfGenerated = jdfPath != null });
+        return Results.Json(new { ok = true, message = $"Fichier {label}{jdfMsg} et déplacé dans la tuile \"{tileFolder}\"", destination = tileDest, jdfGenerated = jdfPath });
     }
     catch (Exception ex)
     {

@@ -31,7 +31,7 @@ public static class JdfGenerator
             new XAttribute("Status", "Ready"),
             new XAttribute("Type", "Combined"),
             new XAttribute("Types", "LayoutPreparation Imposition Interpreting Rendering DigitalPrinting"),
-            new XAttribute("Version", "1.3"),
+            new XAttribute("Version", "1.6"),
             new XAttribute("Category", "DigitalPrinting"),
             new XAttribute("DescriptiveName", BuildDescription(sheet)));
 
@@ -106,12 +106,12 @@ public static class JdfGenerator
             new XAttribute("ComponentType", "FinalProduct")));
 
         // StitchingParams (binding)
-        if (HasBinding(sheet))
-            resPool.Add(BuildStitchingParams(sheet));
+        var stpEl = HasBinding(sheet) ? BuildStitchingParams(sheet) : null;
+        if (stpEl != null) resPool.Add(stpEl);
 
         // FoldingParams
-        if (HasFolding(sheet))
-            resPool.Add(BuildFoldingParams(sheet));
+        var fpEl = HasFolding(sheet) ? BuildFoldingParams(sheet) : null;
+        if (fpEl != null) resPool.Add(fpEl);
 
         root.Add(resPool);
 
@@ -207,12 +207,12 @@ public static class JdfGenerator
             new XAttribute("ComponentType", "FinalProduct")));
 
         // StitchingParams
-        if (HasBinding(sheet))
-            resPool.Add(BuildStitchingParams(sheet));
+        var stpEl2 = HasBinding(sheet) ? BuildStitchingParams(sheet) : null;
+        if (stpEl2 != null) resPool.Add(stpEl2);
 
         // FoldingParams
-        if (HasFolding(sheet))
-            resPool.Add(BuildFoldingParams(sheet));
+        var fpEl2 = HasFolding(sheet) ? BuildFoldingParams(sheet) : null;
+        if (fpEl2 != null) resPool.Add(fpEl2);
 
         // Comments (additional info for PrismaSync)
         if (!string.IsNullOrWhiteSpace(sheet.TypeTravail))
@@ -267,58 +267,81 @@ public static class JdfGenerator
 
     private static bool HasBinding(FabricationSheet sheet)
     {
-        return !string.IsNullOrWhiteSpace(sheet.FaconnageBinding)
-            && !sheet.FaconnageBinding.Equals("Aucune", StringComparison.OrdinalIgnoreCase);
+        return MapBinding(sheet.FaconnageBinding) != null;
     }
 
     private static bool HasFolding(FabricationSheet sheet)
     {
-        return !string.IsNullOrWhiteSpace(sheet.Plis);
+        return MapFoldCatalog(sheet.Plis) != null;
     }
 
-    private static XElement BuildStitchingParams(FabricationSheet sheet)
+    private static (string stitchType, int stitches, bool noOp)? MapBinding(string? faconnageBinding)
     {
+        if (string.IsNullOrWhiteSpace(faconnageBinding)) return null;
+        var binding = faconnageBinding.ToLowerInvariant();
+        if (binding == "aucune") return null;
+
+        if (binding.Contains("piqûre") || binding.Contains("piqure") || binding.Contains("2 points"))
+            return ("Saddle", 2, false);
+        if (binding.Contains("spirale") || binding.Contains("wire"))
+            return ("Side", 2, false);
+        if (binding.Contains("dos carré") || binding.Contains("collé"))
+            return ("Side", 0, true);
+        if (binding.Contains("cousue") || binding.Contains("cousu"))
+            return ("Saddle", 2, false);
+        if (binding.Contains("reliure suisse"))
+            return ("Side", 2, false);
+
+        return null;
+    }
+
+    private static string? MapFoldCatalog(string? plis)
+    {
+        if (string.IsNullOrWhiteSpace(plis)) return null;
+        var pli = plis.ToLowerInvariant();
+
+        if (pli.Contains("accordéon") || pli.Contains("accordeon"))
+            return "F6-1";
+        if (pli.Contains("roulé") || pli.Contains("roule"))
+            return "F6-2";
+        if (pli.Contains("fenêtre") || pli.Contains("fenetre"))
+            return "F8-4";
+
+        return null;
+    }
+
+    private static XElement? BuildStitchingParams(FabricationSheet sheet)
+    {
+        var mapped = MapBinding(sheet.FaconnageBinding);
+        if (mapped == null) return null;
+
         var stp = new XElement(Jdf + "StitchingParams",
             new XAttribute("ID", "STP1"),
             new XAttribute("Class", "Parameter"),
             new XAttribute("Status", "Available"));
 
-        var binding = (sheet.FaconnageBinding ?? "").ToLowerInvariant();
-        if (binding.Contains("piqûre") || binding.Contains("piqure") || binding.Contains("2 points"))
-        {
-            stp.Add(new XAttribute("StitchType", "Saddle"));
-            stp.Add(new XAttribute("NumberOfStitches", "2"));
-        }
-        else if (binding.Contains("spirale") || binding.Contains("wire"))
-        {
-            stp.Add(new XAttribute("StitchType", "Side"));
-            stp.Add(new XAttribute("NumberOfStitches", "2"));
-        }
-        else if (binding.Contains("dos carré") || binding.Contains("collé"))
+        if (mapped.Value.noOp)
         {
             stp.Add(new XAttribute("NoOp", "true"));
+        }
+        else
+        {
+            stp.Add(new XAttribute("StitchType", mapped.Value.stitchType));
+            stp.Add(new XAttribute("NumberOfStitches", mapped.Value.stitches.ToString()));
         }
 
         return stp;
     }
 
-    private static XElement BuildFoldingParams(FabricationSheet sheet)
+    private static XElement? BuildFoldingParams(FabricationSheet sheet)
     {
-        var fp = new XElement(Jdf + "FoldingParams",
+        var foldCatalog = MapFoldCatalog(sheet.Plis);
+        if (foldCatalog == null) return null;
+
+        return new XElement(Jdf + "FoldingParams",
             new XAttribute("ID", "FP1"),
             new XAttribute("Class", "Parameter"),
-            new XAttribute("Status", "Available"));
-
-        var pli = (sheet.Plis ?? "").ToLowerInvariant();
-        if (pli.Contains("accordéon") || pli.Contains("accordeon"))
-            fp.Add(new XAttribute("FoldCatalog", "F6-1"));
-        else if (pli.Contains("roulé") || pli.Contains("roule"))
-            fp.Add(new XAttribute("FoldCatalog", "F6-2"));
-        else if (pli.Contains("fenêtre") || pli.Contains("fenetre"))
-            fp.Add(new XAttribute("FoldCatalog", "F8-4"));
-        else
-            fp.Add(new XAttribute("FoldCatalog", "F4-1"));
-
-        return fp;
+            new XAttribute("Status", "Available"),
+            new XAttribute("FoldCatalog", foldCatalog));
     }
 }
