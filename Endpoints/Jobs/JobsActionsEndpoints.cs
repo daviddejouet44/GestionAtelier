@@ -580,6 +580,73 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
         File.Copy(fullPath, copyDest, overwrite: true);
         Console.WriteLine($"[ACTION] {action}: copié vers {copyDest}");
 
+        // Generate and send JDF alongside PDF for prismasync/fiery (if JDF enabled)
+        string? jdfPath = null;
+        if (action == "prismasync" || action == "fiery")
+        {
+            try
+            {
+                var jdfConfig = MongoDbHelper.GetSettings<JdfConfig>("jdfConfig") ?? new JdfConfig();
+                if (jdfConfig.Enabled && fabDoc != null)
+                {
+                    var sheet = BackendUtils.BsonDocToFabricationSheet(fabDoc);
+                    if (sheet != null)
+                    {
+                        var includedFields = jdfConfig.Fields.Where(f => f.Included).Select(f => f.FieldId).ToHashSet();
+                        var jobId = $"JDF_{sheet.NumeroDossier ?? "0"}_{DateTime.Now:yyyyMMddHHmmss}";
+                        var jdfEl = new System.Xml.Linq.XElement("JDF",
+                            new System.Xml.Linq.XAttribute("ID", jobId),
+                            new System.Xml.Linq.XAttribute("JobID", sheet.NumeroDossier ?? ""),
+                            new System.Xml.Linq.XAttribute("Type", "Product"),
+                            new System.Xml.Linq.XAttribute("Status", "Waiting"),
+                            new System.Xml.Linq.XAttribute("Version", "1.6"),
+                            new System.Xml.Linq.XAttribute(System.Xml.Linq.XNamespace.Xmlns + "xsi", "http://www.w3.org/2001/XMLSchema-instance"),
+                            new System.Xml.Linq.XElement("AuditPool",
+                                new System.Xml.Linq.XElement("Created",
+                                    new System.Xml.Linq.XAttribute("TimeStamp", DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")),
+                                    new System.Xml.Linq.XAttribute("AgentName", "GestionAtelier"),
+                                    new System.Xml.Linq.XAttribute("AgentVersion", "1.0"))));
+
+                        var resourcePool = new System.Xml.Linq.XElement("ResourcePool");
+                        if (includedFields.Contains("numeroDossier") || includedFields.Count == 0)
+                            resourcePool.Add(new System.Xml.Linq.XElement("RunList", new System.Xml.Linq.XAttribute("ID", "RL1"), new System.Xml.Linq.XAttribute("Class", "Parameter"), new System.Xml.Linq.XAttribute("Status", "Available"),
+                                new System.Xml.Linq.XElement("LayoutElement", new System.Xml.Linq.XElement("FileSpec", new System.Xml.Linq.XAttribute("URL", Path.GetFileName(fullPath))))));
+                        if (includedFields.Contains("quantite") || includedFields.Count == 0)
+                            resourcePool.Add(new System.Xml.Linq.XElement("Component", new System.Xml.Linq.XAttribute("ID", "C1"), new System.Xml.Linq.XAttribute("Class", "Quantity"), new System.Xml.Linq.XAttribute("Status", "Available"), new System.Xml.Linq.XAttribute("Amount", sheet.Quantite?.ToString() ?? "0")));
+
+                        var nodeInfo = new System.Xml.Linq.XElement("NodeInfo", new System.Xml.Linq.XAttribute("JobPriority", "50"));
+                        if ((includedFields.Contains("numeroDossier") || includedFields.Count == 0) && !string.IsNullOrEmpty(sheet.NumeroDossier))
+                            nodeInfo.Add(new System.Xml.Linq.XElement("Comment", new System.Xml.Linq.XAttribute("Name", "NumeroDossier"), sheet.NumeroDossier));
+                        if ((includedFields.Contains("client") || includedFields.Count == 0) && !string.IsNullOrEmpty(sheet.Client))
+                            nodeInfo.Add(new System.Xml.Linq.XElement("Comment", new System.Xml.Linq.XAttribute("Name", "Client"), sheet.Client));
+                        if ((includedFields.Contains("nombreFeuilles") || includedFields.Count == 0) && sheet.NombreFeuilles.HasValue)
+                            nodeInfo.Add(new System.Xml.Linq.XElement("Comment", new System.Xml.Linq.XAttribute("Name", "NombreFeuilles"), sheet.NombreFeuilles.Value.ToString()));
+                        if ((includedFields.Contains("formatFeuilleMachine") || includedFields.Count == 0) && !string.IsNullOrEmpty(sheet.FormatFeuille))
+                            nodeInfo.Add(new System.Xml.Linq.XElement("Comment", new System.Xml.Linq.XAttribute("Name", "FormatFeuilleMachine"), sheet.FormatFeuille));
+                        if ((includedFields.Contains("rectoVerso") || includedFields.Count == 0) && !string.IsNullOrEmpty(sheet.RectoVerso))
+                            nodeInfo.Add(new System.Xml.Linq.XElement("Comment", new System.Xml.Linq.XAttribute("Name", "RectoVerso"), sheet.RectoVerso));
+                        if ((includedFields.Contains("moteurImpression") || includedFields.Count == 0) && !string.IsNullOrEmpty(sheet.MoteurImpression ?? sheet.Machine))
+                            nodeInfo.Add(new System.Xml.Linq.XElement("Comment", new System.Xml.Linq.XAttribute("Name", "MoteurImpression"), sheet.MoteurImpression ?? sheet.Machine ?? ""));
+                        if ((includedFields.Contains("typeTravail") || includedFields.Count == 0) && !string.IsNullOrEmpty(sheet.TypeTravail))
+                            nodeInfo.Add(new System.Xml.Linq.XElement("Comment", new System.Xml.Linq.XAttribute("Name", "TypeTravail"), sheet.TypeTravail));
+
+                        jdfEl.Add(resourcePool);
+                        jdfEl.Add(nodeInfo);
+
+                        var xdoc = new System.Xml.Linq.XDocument(new System.Xml.Linq.XDeclaration("1.0", "UTF-8", null), jdfEl);
+                        var jdfFileName = Path.GetFileNameWithoutExtension(fullPath) + ".jdf";
+                        jdfPath = Path.Combine(copyDestPath, jdfFileName);
+                        File.WriteAllText(jdfPath, xdoc.ToString(System.Xml.Linq.SaveOptions.None), System.Text.Encoding.UTF8);
+                        Console.WriteLine($"[ACTION] {action}: JDF généré → {jdfPath}");
+                    }
+                }
+            }
+            catch (Exception jdfEx)
+            {
+                Console.WriteLine($"[WARN] JDF generation in send-to-action failed: {jdfEx.Message}");
+            }
+        }
+
         // Move original to the target tile folder
         var hotRoot2 = BackendUtils.HotfoldersRoot();
         var tileDir = Path.Combine(hotRoot2, tileFolder);
@@ -596,7 +663,8 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
             ["fiery"] = "envoyé dans Fiery"
         };
         var label = actionLabels.TryGetValue(action, out var lbl) ? lbl : action;
-        return Results.Json(new { ok = true, message = $"Fichier {label} et déplacé dans la tuile \"{tileFolder}\"", destination = tileDest });
+        var jdfMsg = jdfPath != null ? " (avec JDF)" : "";
+        return Results.Json(new { ok = true, message = $"Fichier {label}{jdfMsg} et déplacé dans la tuile \"{tileFolder}\"", destination = tileDest, jdfGenerated = jdfPath != null });
     }
     catch (Exception ex)
     {
