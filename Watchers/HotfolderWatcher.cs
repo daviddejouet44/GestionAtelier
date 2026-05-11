@@ -36,6 +36,142 @@ public static class HotfolderWatcherExtensions
 
                 await Task.Delay(BackendUtils.FileSystemSettleDelayMs); // slight delay to let the file system settle
 
+                // XML+PDF coupling in Soumission: when an XML arrives, look for matching PDF(s) and apply mapping
+                var folder = Path.GetFileName(Path.GetDirectoryName(newPath)) ?? "";
+                if (folder.Equals("Soumission", StringComparison.OrdinalIgnoreCase)
+                    && fileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        await Task.Delay(2000); // extra delay to let paired PDF arrive
+                        var dir = Path.GetDirectoryName(newPath)!;
+                        var xmlBaseName = Path.GetFileNameWithoutExtension(fileName);
+                        var matchingPdfs = Directory.GetFiles(dir, "*.pdf")
+                            .Where(f => Path.GetFileNameWithoutExtension(f)
+                                .StartsWith(xmlBaseName, StringComparison.OrdinalIgnoreCase))
+                            .ToList();
+
+                        // Load mapping config
+                        var intCfg = MongoDbHelper.GetSettings<GestionAtelier.Endpoints.Settings.IntegrationsFullConfig>("integrations_full_config")
+                                     ?? new GestionAtelier.Endpoints.Settings.IntegrationsFullConfig();
+                        var mapping = intCfg.XmlImport?.Mapping ?? new Dictionary<string, string>();
+
+                        System.Xml.Linq.XDocument? xmlDoc = null;
+                        try
+                        {
+                            using var stream = File.OpenRead(newPath);
+                            xmlDoc = GestionAtelier.Services.XmlParserHelper.LoadSafely(stream);
+                        }
+                        catch { xmlDoc = null; }
+
+                        if (xmlDoc != null)
+                        {
+                            var fichePrefill = new Dictionary<string, string>();
+                            if (GestionAtelier.Services.XmlParserHelper.IsMasterPrint(xmlDoc))
+                            {
+                                var commandeEl = xmlDoc.Descendants("Commande").FirstOrDefault();
+                                if (commandeEl != null)
+                                    fichePrefill = GestionAtelier.Services.XmlParserHelper.ParseMasterPrintCommande(commandeEl);
+                            }
+
+                            // Apply user mapping
+                            var orderEl = GestionAtelier.Services.XmlParserHelper.IsMasterPrint(xmlDoc)
+                                ? xmlDoc.Descendants("Commande").FirstOrDefault()
+                                : (xmlDoc.Descendants("Order")
+                                       .Concat(xmlDoc.Descendants("Commande"))
+                                       .Concat(xmlDoc.Descendants("Job"))
+                                       .FirstOrDefault() ?? xmlDoc.Root);
+                            if (orderEl != null && mapping.Any())
+                            {
+                                foreach (var kv in mapping)
+                                {
+                                    try
+                                    {
+                                        var ficheField = GestionAtelier.Endpoints.Settings.IntegrationsEndpoints.NormalizeFicheFieldKey(kv.Key);
+                                        var xmlTag = kv.Value;
+                                        if (string.IsNullOrWhiteSpace(xmlTag)) continue;
+                                        var el = orderEl.Element(xmlTag) ?? orderEl.Descendants(xmlTag).FirstOrDefault();
+                                        if (el != null && !string.IsNullOrWhiteSpace(el.Value))
+                                            fichePrefill[ficheField] = el.Value;
+                                    }
+                                    catch { }
+                                }
+                            }
+
+                            // Save prefill to fabrication for each matching PDF
+                            if (fichePrefill.Count > 0)
+                            {
+                                var fabCol = MongoDbHelper.GetFabricationsCollection();
+                                foreach (var pdfPath in matchingPdfs)
+                                {
+                                    var pdfName = Path.GetFileName(pdfPath).ToLowerInvariant();
+                                    var fiche = new BsonDocument();
+                                    foreach (var kv in fichePrefill)
+                                        fiche[kv.Key] = kv.Value;
+                                    fiche["fileName"] = pdfName;
+                                    fiche["fullPath"] = pdfPath;
+                                    fiche["importedAt"] = DateTime.UtcNow.ToString("O");
+                                    fiche["importSource"] = "hotfolder-xml";
+
+                                    var existing = fabCol.Find(MongoDB.Driver.Builders<BsonDocument>.Filter.Eq("fileName", pdfName)).FirstOrDefault();
+                                    if (existing != null)
+                                    {
+                                        foreach (var kv in fichePrefill)
+                                            fiche[kv.Key] = kv.Value;
+                                        fabCol.UpdateOne(
+                                            MongoDB.Driver.Builders<BsonDocument>.Filter.Eq("_id", existing["_id"]),
+                                            new BsonDocument("$set", fiche));
+                                    }
+                                    else
+                                        fabCol.InsertOne(fiche);
+
+                                    Console.WriteLine($"[FSW] XML coupling: {fileName} → {pdfName} ({fichePrefill.Count} fields)");
+                                }
+
+                                // Delete the XML after processing
+                                try { File.Delete(newPath); } catch { }
+                            }
+                        }
+                    }
+                    catch (Exception exXml) { Console.WriteLine($"[FSW][WARN] XML hotfolder coupling: {exXml.Message}"); }
+                    return;
+                }
+
+                // PrismaPrepare: rename files back to original name (PrismaPrepare often adds suffixes)
+                if (folder.Equals("PrismaPrepare", StringComparison.OrdinalIgnoreCase)
+                    && fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        await Task.Delay(3000); // wait for PrismaPrepare to finish writing
+                        if (!File.Exists(newPath)) return;
+
+                        // Look up the original filename from fabrications collection
+                        var fabCol2 = MongoDbHelper.GetFabricationsCollection();
+                        var allFabs = fabCol2.Find(new BsonDocument()).ToList();
+                        var baseName = Path.GetFileNameWithoutExtension(fileName);
+
+                        foreach (var doc in allFabs)
+                        {
+                            var origFn = doc.Contains("fileName") && doc["fileName"] != BsonNull.Value ? doc["fileName"].AsString : "";
+                            if (string.IsNullOrEmpty(origFn)) continue;
+                            var origBase = Path.GetFileNameWithoutExtension(origFn);
+                            // If the current filename starts with the original name but has extra chars appended
+                            if (baseName.StartsWith(origBase, StringComparison.OrdinalIgnoreCase) && baseName.Length > origBase.Length)
+                            {
+                                var originalPath = Path.Combine(Path.GetDirectoryName(newPath)!, origFn.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ? origFn : origFn + ".pdf");
+                                if (!string.Equals(newPath, originalPath, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    File.Move(newPath, originalPath, overwrite: true);
+                                    Console.WriteLine($"[FSW] PrismaPrepare rename: {fileName} → {Path.GetFileName(originalPath)}");
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    catch (Exception exPP) { Console.WriteLine($"[FSW][WARN] PrismaPrepare rename: {exPP.Message}"); }
+                }
+
                 // Reconcile assignments
                 try
                 {

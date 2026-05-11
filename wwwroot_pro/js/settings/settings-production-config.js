@@ -64,29 +64,37 @@ export async function renderSettingsSheetCalcRules(panel) {
   panel.innerHTML = `<h3>Règles de calcul — Nombre de feuilles</h3><p style="color:#6b7280;">Chargement...</p>`;
 
   let rules = {};
+  let workTypes = [];
   try {
-    const r = await fetch("/api/settings/sheet-calculation-rules", {
-      headers: { "Authorization": `Bearer ${authToken}` }
-    }).then(r => r.json()).catch(() => ({ rules: {} }));
-    rules = r.rules || {};
+    const [rulesResp, typesResp] = await Promise.all([
+      fetch("/api/settings/sheet-calculation-rules", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ rules: {} })),
+      fetch("/api/config/work-types").then(r => r.json()).catch(() => [])
+    ]);
+    rules = rulesResp.rules || {};
+    workTypes = Array.isArray(typesResp) ? typesResp : [];
   } catch(e) { /* ignore */ }
 
   const rulesHtml = Object.entries(rules).map(([type, divisor]) =>
-    `<tr><td style="padding:4px 8px;">${esc(type)}</td><td style="padding:4px 8px;">${divisor}</td></tr>`
-  ).join("") || '<tr><td colspan="2" style="color:#9ca3af;font-size:13px;padding:8px;">Aucune règle définie</td></tr>';
+    `<tr><td style="padding:4px 8px;">${esc(type)}</td><td style="padding:4px 8px;">${divisor}</td><td style="padding:4px 8px;"><button class="btn btn-sm calc-rule-delete" data-type="${esc(type)}" style="color:#ef4444;border-color:#ef4444;font-size:11px;">✕</button></td></tr>`
+  ).join("") || '<tr><td colspan="3" style="color:#9ca3af;font-size:13px;padding:8px;">Aucune règle définie</td></tr>';
+
+  const typeOptions = workTypes.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
 
   panel.innerHTML = `
     <h3>Règles de calcul — Nombre de feuilles</h3>
     <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
-      Formule : <code>Nombre de feuilles = Quantité ÷ Diviseur</code> (arrondi au supérieur)
+      Formule : <code>Nombre de feuilles = (Quantité + Justifs) ÷ Diviseur + Passes</code> (arrondi au supérieur)
     </p>
-    <table style="width:100%;max-width:500px;border-collapse:collapse;margin-bottom:16px;font-size:13px;">
-      <thead><tr><th style="text-align:left;padding:6px 8px;background:#f3f4f6;">Type de travail</th><th style="text-align:left;padding:6px 8px;background:#f3f4f6;">Diviseur</th></tr></thead>
+    <table style="width:100%;max-width:600px;border-collapse:collapse;margin-bottom:16px;font-size:13px;">
+      <thead><tr><th style="text-align:left;padding:6px 8px;background:#f3f4f6;">Type de travail</th><th style="text-align:left;padding:6px 8px;background:#f3f4f6;">Diviseur</th><th style="width:40px;padding:6px 8px;background:#f3f4f6;"></th></tr></thead>
       <tbody id="calc-rules-tbody">${rulesHtml}</tbody>
     </table>
     <h4 style="margin-bottom:8px;">Modifier / ajouter une règle</h4>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
-      <input type="text" id="calc-rule-type" placeholder="Type de travail" class="settings-input" style="flex:1;max-width:220px;" />
+      <select id="calc-rule-type" class="settings-input" style="flex:1;max-width:220px;">
+        <option value="">— Sélectionner un type —</option>
+        ${typeOptions}
+      </select>
       <input type="number" id="calc-rule-divisor" placeholder="Diviseur" class="settings-input" style="width:80px;" min="1" />
       <button id="calc-rule-add" class="btn btn-primary">Ajouter / Modifier</button>
     </div>

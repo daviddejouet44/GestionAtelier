@@ -151,16 +151,16 @@ app.MapGet("/api/admin/jobs/delivery-labels-pdf", (string? fileName, string? ful
                     page.Margin(12, QuestPDF.Infrastructure.Unit.Millimetre);
                     page.DefaultTextStyle(x => x.FontSize(11));
 
-                    page.Content().Border(2).BorderColor("#111827").Padding(10).Column(col =>
+                    page.Content().Border(2).BorderColor(Colors.Grey.Darken4).Padding(10).Column(col =>
                     {
                         // Header: expediteur + dossier N°
                         col.Item().Row(row =>
                         {
-                            row.RelativeItem().Text(expediteur).FontSize(9).FontColor("#6b7280");
-                            row.AutoItem().AlignRight().Text($"N° {numeroDossier}").FontSize(9).FontColor("#6b7280");
+                            row.RelativeItem().Text(expediteur).FontSize(9).FontColor(Colors.Grey.Medium);
+                            row.AutoItem().AlignRight().Text($"N° {numeroDossier}").FontSize(9).FontColor(Colors.Grey.Medium);
                         });
 
-                        col.Item().PaddingVertical(4).LineHorizontal(1).LineColor("#d1d5db");
+                        col.Item().PaddingVertical(4).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
 
                         // Destination address (large)
                         col.Item().PaddingTop(6).Text(adresse.Trim()).FontSize(13).SemiBold().LineHeight(1.4f);
@@ -175,8 +175,8 @@ app.MapGet("/api/admin/jobs/delivery-labels-pdf", (string? fileName, string? ful
                             else
                                 row.RelativeItem();
                             if (isJustif)
-                                row.AutoItem().AlignRight().AlignBottom().Background("#dc2626").Padding(3)
-                                    .Text("JUSTIFICATIF").FontSize(9).FontColor("white");
+                                row.AutoItem().AlignRight().AlignBottom().Background(Colors.Red.Darken1).Padding(3)
+                                    .Text("JUSTIFICATIF").FontSize(9).FontColor(Colors.White);
                         });
                     });
                 });
