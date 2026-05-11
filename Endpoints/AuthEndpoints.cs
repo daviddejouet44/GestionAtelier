@@ -56,7 +56,24 @@ app.MapPost("/api/auth/login", async (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = "Identifiants invalides" });
         }
 
-        // Générer un token avec session unique pour empêcher les connexions multiples
+        // Check if account is already in use (active session within last 5 minutes)
+        try
+        {
+            var usersCol = MongoDbHelper.GetUsersCollection();
+            var userDoc = usersCol.Find(Builders<BsonDocument>.Filter.Eq("id", user.Id)).FirstOrDefault();
+            if (userDoc != null && userDoc.Contains("activeSessionId") && userDoc["activeSessionId"] != BsonNull.Value
+                && userDoc.Contains("lastActivityAt") && userDoc["lastActivityAt"] != BsonNull.Value)
+            {
+                var lastActivity = userDoc["lastActivityAt"].ToUniversalTime();
+                if ((DateTime.UtcNow - lastActivity).TotalMinutes < OnlineThresholdMinutes)
+                {
+                    return Results.Json(new { ok = false, error = "Ce compte est déjà utilisé sur un autre poste. Déconnectez-vous de l'autre session ou attendez 5 minutes." });
+                }
+            }
+        }
+        catch { /* non-fatal — allow login if check fails */ }
+
+        // Générer un token avec session unique
         var sessionId = Guid.NewGuid().ToString("N")[..16];
         var token = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{user.Id}:{user.Login}:{user.Profile}:{sessionId}"));
 
@@ -65,7 +82,9 @@ app.MapPost("/api/auth/login", async (HttpContext ctx) =>
         {
             var usersCol = MongoDbHelper.GetUsersCollection();
             var filter = Builders<BsonDocument>.Filter.Eq("id", user.Id);
-            var update = Builders<BsonDocument>.Update.Set("activeSessionId", sessionId);
+            var update = Builders<BsonDocument>.Update
+                .Set("activeSessionId", sessionId)
+                .Set("lastActivityAt", DateTime.UtcNow);
             usersCol.UpdateOne(filter, update);
         }
         catch { /* non-fatal */ }
