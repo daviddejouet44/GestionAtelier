@@ -580,6 +580,36 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
         File.Copy(fullPath, copyDest, overwrite: true);
         Console.WriteLine($"[ACTION] {action}: copié vers {copyDest}");
 
+        // Generate JDF for prismasync/fiery if JDF enabled
+        string? jdfPath = null;
+        if (action == "prismasync" || action == "fiery")
+        {
+            try
+            {
+                var jdfConfig = MongoDbHelper.GetSettings<JdfConfig>("jdfConfig") ?? new JdfConfig();
+                if (jdfConfig.Enabled && fabDoc != null)
+                {
+                    var sheet = BackendUtils.BsonDocToFabricationSheet(fabDoc);
+                    if (sheet != null)
+                    {
+                        var pdfName = Path.GetFileName(fullPath);
+                        string jdfContent = action == "fiery"
+                            ? JdfGenerator.GenerateFieryJdf(sheet, pdfName)
+                            : JdfGenerator.GeneratePrismaSyncJdf(sheet, pdfName);
+
+                        var jdfFileName = Path.GetFileNameWithoutExtension(fullPath) + ".jdf";
+                        jdfPath = Path.Combine(copyDestPath, jdfFileName);
+                        File.WriteAllText(jdfPath, jdfContent, System.Text.Encoding.UTF8);
+                        Console.WriteLine($"[ACTION] {action}: JDF ({(action == "fiery" ? "Fiery EFI" : "PrismaSync Canon")}) → {jdfPath}");
+                    }
+                }
+            }
+            catch (Exception jdfEx)
+            {
+                Console.WriteLine($"[WARN] JDF generation failed: {jdfEx.Message}");
+            }
+        }
+
         // Move original to the target tile folder
         var hotRoot2 = BackendUtils.HotfoldersRoot();
         var tileDir = Path.Combine(hotRoot2, tileFolder);
@@ -596,7 +626,8 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
             ["fiery"] = "envoyé dans Fiery"
         };
         var label = actionLabels.TryGetValue(action, out var lbl) ? lbl : action;
-        return Results.Json(new { ok = true, message = $"Fichier {label} et déplacé dans la tuile \"{tileFolder}\"", destination = tileDest });
+        var jdfMsg = jdfPath != null ? " (avec JDF)" : "";
+        return Results.Json(new { ok = true, message = $"Fichier {label}{jdfMsg} et déplacé dans la tuile \"{tileFolder}\"", destination = tileDest, jdfGenerated = jdfPath != null });
     }
     catch (Exception ex)
     {
