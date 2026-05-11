@@ -756,11 +756,24 @@ public static class PortalOrdersEndpoints
 
         // GET /api/portal/orders/{id}/recap-pdf
         // Génère un PDF de récapitulatif de commande client (accessible par le client authentifié)
+        // Accepts token via Authorization header OR ?token= query parameter (for direct links)
         app.MapGet("/api/portal/orders/{id}/recap-pdf", (HttpContext ctx, string id) =>
         {
             try
             {
                 var client = PortalAuthEndpoints.GetAuthenticatedClient(ctx);
+                // Fallback: accept token from query parameter (for <a href> links that can't set headers)
+                if (client == null && ctx.Request.Query.ContainsKey("token"))
+                {
+                    var qToken = ctx.Request.Query["token"].ToString();
+                    var parsed = PortalAuthEndpoints.ParsePortalToken(qToken);
+                    if (parsed != null)
+                    {
+                        var col2 = MongoDbHelper.GetCollection<BsonDocument>("client_accounts");
+                        var doc2 = col2.Find(Builders<BsonDocument>.Filter.Eq("id", parsed.Value.clientId)).FirstOrDefault();
+                        if (doc2 != null) client = PortalAuthEndpoints.DocToClient(doc2);
+                    }
+                }
                 if (client == null) return Results.Json(new { ok = false, error = "Non authentifié" });
 
                 var col = MongoDbHelper.GetCollection<BsonDocument>("client_orders");

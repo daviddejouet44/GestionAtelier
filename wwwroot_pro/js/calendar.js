@@ -629,7 +629,34 @@ export async function initCalendar() {
             body: JSON.stringify({ fileName, viewType, newDate, newTime })
           }).then(r => r.json());
           if (!r.ok) throw new Error(r.error || "Erreur");
-          showNotification(`✅ Planning mis à jour : ${newTime}`, "success");
+
+          // Cascade: moving impression should also move finition by the same delta
+          let cascadeOk = true;
+          if (fabType === 'impression' && info.oldEvent && info.oldEvent.start) {
+            const MS_PER_DAY = 86400000;
+            const oldDate = info.oldEvent.start.toLocaleDateString('sv-SE');
+            const deltaDays = Math.round((new Date(newDate) - new Date(oldDate)) / MS_PER_DAY);
+            if (deltaDays !== 0) {
+              const fab = await fetch('/api/fabrication?fileName=' + encodeURIComponent(fileName), {
+                headers: { 'Authorization': `Bearer ${authToken}` }
+              }).then(r2 => r2.json()).catch(() => ({}));
+              if (fab && fab.dateProductionFinitions) {
+                try {
+                  const shifted = new Date(new Date(fab.dateProductionFinitions).getTime() + deltaDays * MS_PER_DAY);
+                  const shiftedDate = shifted.toLocaleDateString('sv-SE');
+                  const cr = await fetch("/api/fabrication/key-date", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ fileName, field: "dateProductionFinitions", date: shiftedDate, time: newTime })
+                  }).then(r2 => r2.json());
+                  if (!cr.ok) { console.error('[Calendar] Cascade finition failed:', cr.error); cascadeOk = false; }
+                } catch(e) { console.error('[Calendar] Cascade finition error:', e); cascadeOk = false; }
+              }
+            }
+          }
+
+          if (cascadeOk) showNotification(`✅ Planning mis à jour : ${newTime}`, "success");
+          else showNotification(`⚠️ Impression déplacée mais la mise à jour de la finition a échoué`, "error");
         } else {
           // For livraison view: show a confirmation popup asking whether to also update linked plannings
           if (_planningViewMode === 'livraison') {

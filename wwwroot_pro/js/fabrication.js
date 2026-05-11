@@ -161,8 +161,22 @@ function updateDependsOnFields() {
 
 function updateNombreFeuilles() {
   const typeEl=gEl("typeTravail"); const qteEl=gEl("quantite"); const nfEl=gEl("nombreFeuilles");
+  const justifEl=gEl("justifsQuantite");
   const type=typeEl?typeEl.value:''; const qte=parseInt(qteEl?qteEl.value:'0')||0;
-  if(type && _sheetCalcRules[type] && qte>0 && nfEl && !nfEl._manuallyEdited) nfEl.value=Math.ceil(qte/_sheetCalcRules[type]);
+  const justifQte=parseInt(justifEl?justifEl.value:'0')||0;
+  if(type && _sheetCalcRules[type] && qte>0 && nfEl && !nfEl._manuallyEdited) {
+    let sheets=Math.ceil((qte+justifQte)/_sheetCalcRules[type]);
+    // Add passes from current selections
+    const ennob=getEnnoblissementSelected();
+    const fb=(gEl("faconnageBinding")||{value:""}).value;
+    const rv=(gEl("rainage")||{checked:false}).checked;
+    if(fb && _passesConfig.faconnage>0) sheets+=_passesConfig.faconnage;
+    if(ennob.some(e=>e.includes('Pelliculage')&&e.includes('recto/verso'))&&_passesConfig.pelliculageRectoVerso>0) sheets+=_passesConfig.pelliculageRectoVerso;
+    else if(ennob.some(e=>e.includes('Pelliculage')&&e.includes('recto'))&&_passesConfig.pelliculageRecto>0) sheets+=_passesConfig.pelliculageRecto;
+    if(rv&&_passesConfig.rainage>0) sheets+=_passesConfig.rainage;
+    if(ennob.some(e=>e.startsWith('Dorure à chaud :'))&&_passesConfig.dorure>0) sheets+=_passesConfig.dorure;
+    nfEl.value=sheets;
+  }
 }
 
 function updateDateLivraison() {

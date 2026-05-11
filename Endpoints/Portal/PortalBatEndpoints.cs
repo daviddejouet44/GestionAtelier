@@ -387,6 +387,25 @@ public static class PortalBatEndpoints
                 // Confirmation email to client
                 SendClientBatConfirmation("validated", "", client, orderNumber, orderTitle, batFileName);
 
+                // Auto-validate internal BAT status: mark pending BAT decisions as validated
+                try
+                {
+                    var pendingFilter = Builders<BsonDocument>.Filter.And(
+                        Builders<BsonDocument>.Filter.Eq("orderId", id),
+                        Builders<BsonDocument>.Filter.Eq("action", "pending"));
+                    var autoResult = batCol.UpdateMany(pendingFilter, Builders<BsonDocument>.Update
+                        .Set("action", "validated")
+                        .Set("performedAt", now)
+                        .Set("performedByClientId", client.Id)
+                        .Set("operatorNotificationAcknowledged", false));
+                    if (autoResult.MatchedCount > 0)
+                        Console.WriteLine($"[BAT] Auto-validated {autoResult.ModifiedCount}/{autoResult.MatchedCount} pending BATs for order {id}");
+                }
+                catch (Exception exAuto)
+                {
+                    Console.WriteLine($"[WARN] BAT auto-validate failed for order {id}: {exAuto.Message}");
+                }
+
                 // Notify atelier
                 try
                 {
