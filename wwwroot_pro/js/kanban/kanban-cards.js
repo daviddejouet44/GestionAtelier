@@ -648,6 +648,24 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         };
         if (isActionVisible(folderName, "prismaPrepare")) actions.appendChild(btnPrisma);
 
+        const btnOpenPrisma = document.createElement("button");
+        btnOpenPrisma.className = "btn btn-sm";
+        btnOpenPrisma.textContent = "🖥️ Ouvrir dans PrismaPrepare";
+        btnOpenPrisma.onclick = async (e) => {
+          e.stopPropagation();
+          btnOpenPrisma.disabled = true;
+          try {
+            const r = await fetch("/api/jobs/open-in-prismaprepare", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (authToken || "") },
+              body: JSON.stringify({ fileName: jobFileName, fullPath: full })
+            }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+            if (r.ok) showNotification("✅ PrismaPrepare ouvert", "success");
+            else showNotification("❌ " + (r.error || "Erreur"), "error");
+          } finally { btnOpenPrisma.disabled = false; }
+        };
+        if (isActionVisible(folderName, "ouvrirPrismaPrepare")) actions.appendChild(btnOpenPrisma);
+
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
           const btnImpressionLancee = document.createElement("button");
           btnImpressionLancee.className = "btn btn-sm btn-primary";
@@ -982,7 +1000,9 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
       } else if (folderName === "Fin de production") {
+        if (isActionVisible(folderName, "ouvrirFichier")) actions.appendChild(btnOpen);
         if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
+        if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
           const btnTermine = document.createElement("button");

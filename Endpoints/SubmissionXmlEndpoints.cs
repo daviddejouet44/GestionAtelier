@@ -103,31 +103,39 @@ public static class SubmissionXmlEndpoints
                         return Results.Json(new { ok = false, error = $"Impossible de lire le fichier XML ({xmlFile.FileName}) : {ex.Message}" });
                     }
 
-                    // MasterPrint format: dedicated structured parser
+                    // MasterPrint format: dedicated structured parser as base
                     if (XmlParserHelper.IsMasterPrint(doc))
                     {
                         var commandeEl = doc.Descendants("Commande").FirstOrDefault();
                         if (commandeEl != null)
                             fichePrefill = XmlParserHelper.ParseMasterPrintCommande(commandeEl);
                     }
-                    else
-                    {
-                        // Generic: support flat <Order>, <Commande>, <Job> and wrapped structures
-                        var orderEl = doc.Descendants("Order")
-                                         .Concat(doc.Descendants("Commande"))
-                                         .Concat(doc.Descendants("Job"))
-                                         .FirstOrDefault()
-                                      ?? doc.Root;
 
-                        if (orderEl != null)
+                    // Always apply user-configured mapping (overrides/extends hardcoded values)
+                    {
+                        var orderEl = XmlParserHelper.IsMasterPrint(doc)
+                            ? doc.Descendants("Commande").FirstOrDefault()
+                            : (doc.Descendants("Order")
+                                   .Concat(doc.Descendants("Commande"))
+                                   .Concat(doc.Descendants("Job"))
+                                   .FirstOrDefault()
+                                ?? doc.Root);
+
+                        if (orderEl != null && mapping.Count > 0)
                         {
-                            // Apply configured mapping first
                             foreach (var kv in mapping)
                             {
+                                var ficheField = IntegrationsEndpoints.NormalizeFicheFieldKey(kv.Key);
                                 var xmlTag = kv.Value;
+                                if (string.IsNullOrWhiteSpace(xmlTag)) continue;
                                 var el = orderEl.Element(xmlTag) ?? orderEl.Descendants(xmlTag).FirstOrDefault();
-                                if (el != null) fichePrefill[kv.Key] = el.Value;
+                                if (el != null && !string.IsNullOrWhiteSpace(el.Value))
+                                    fichePrefill[ficheField] = el.Value;
                             }
+                        }
+
+                        if (!XmlParserHelper.IsMasterPrint(doc) && orderEl != null)
+                        {
                             // Fallback: map direct child tag names (simple scalar elements only)
                             foreach (var el in orderEl.Elements())
                             {
