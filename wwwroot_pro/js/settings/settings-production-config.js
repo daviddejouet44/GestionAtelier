@@ -68,7 +68,7 @@ export async function renderSettingsSheetCalcRules(panel) {
   try {
     const [rulesResp, typesResp] = await Promise.all([
       fetch("/api/settings/sheet-calculation-rules", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ rules: {} })),
-      fetch("/api/config/work-types").then(r => r.json()).catch(() => [])
+      fetch("/api/config/work-types", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => [])
     ]);
     rules = rulesResp.rules || {};
     workTypes = Array.isArray(typesResp) ? typesResp : [];
@@ -104,16 +104,28 @@ export async function renderSettingsSheetCalcRules(panel) {
 
   let currentRules = { ...rules };
 
+  function renderRulesTable() {
+    const tbody = panel.querySelector("#calc-rules-tbody");
+    tbody.innerHTML = Object.entries(currentRules).map(([t, d]) =>
+      `<tr><td style="padding:4px 8px;">${esc(t)}</td><td style="padding:4px 8px;">${d}</td><td style="padding:4px 8px;"><button class="btn btn-sm calc-rule-delete" data-key="${esc(t)}" style="color:#ef4444;border-color:#ef4444;font-size:11px;">✕</button></td></tr>`
+    ).join("") || '<tr><td colspan="3" style="color:#9ca3af;font-size:13px;padding:8px;">Aucune règle définie</td></tr>';
+    tbody.querySelectorAll(".calc-rule-delete").forEach(btn => {
+      btn.onclick = () => { delete currentRules[btn.dataset.key]; renderRulesTable(); };
+    });
+  }
+
   panel.querySelector("#calc-rule-add").onclick = () => {
     const type = panel.querySelector("#calc-rule-type").value.trim();
     const divisor = parseInt(panel.querySelector("#calc-rule-divisor").value);
     if (!type || !divisor || divisor < 1) return;
     currentRules[type] = divisor;
-    const tbody = panel.querySelector("#calc-rules-tbody");
-    tbody.innerHTML = Object.entries(currentRules).map(([t, d]) =>
-      `<tr><td style="padding:4px 8px;">${esc(t)}</td><td style="padding:4px 8px;">${d}</td></tr>`
-    ).join("");
+    renderRulesTable();
   };
+
+  // Attach delete handlers on initial render
+  panel.querySelectorAll(".calc-rule-delete").forEach(btn => {
+    btn.onclick = () => { delete currentRules[btn.dataset.key]; renderRulesTable(); };
+  });
 
   panel.querySelector("#calc-rules-save").onclick = async () => {
     const msgEl = panel.querySelector("#calc-rules-msg");

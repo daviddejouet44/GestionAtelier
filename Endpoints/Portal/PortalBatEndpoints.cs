@@ -393,13 +393,18 @@ public static class PortalBatEndpoints
                     var pendingFilter = Builders<BsonDocument>.Filter.And(
                         Builders<BsonDocument>.Filter.Eq("orderId", id),
                         Builders<BsonDocument>.Filter.Eq("action", "pending"));
-                    batCol.UpdateMany(pendingFilter, Builders<BsonDocument>.Update
+                    var autoResult = batCol.UpdateMany(pendingFilter, Builders<BsonDocument>.Update
                         .Set("action", "validated")
                         .Set("performedAt", now)
                         .Set("performedByClientId", client.Id)
                         .Set("operatorNotificationAcknowledged", false));
+                    if (autoResult.MatchedCount > 0)
+                        Console.WriteLine($"[BAT] Auto-validated {autoResult.ModifiedCount}/{autoResult.MatchedCount} pending BATs for order {id}");
                 }
-                catch { /* non-blocking */ }
+                catch (Exception exAuto)
+                {
+                    Console.WriteLine($"[WARN] BAT auto-validate failed for order {id}: {exAuto.Message}");
+                }
 
                 // Notify atelier
                 try

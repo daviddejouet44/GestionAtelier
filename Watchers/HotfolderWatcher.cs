@@ -47,8 +47,7 @@ public static class HotfolderWatcherExtensions
                         var dir = Path.GetDirectoryName(newPath)!;
                         var xmlBaseName = Path.GetFileNameWithoutExtension(fileName);
                         var matchingPdfs = Directory.GetFiles(dir, "*.pdf")
-                            .Where(f => Path.GetFileNameWithoutExtension(f)
-                                .StartsWith(xmlBaseName, StringComparison.OrdinalIgnoreCase))
+                            .Where(f => string.Equals(Path.GetFileNameWithoutExtension(f), xmlBaseName, StringComparison.OrdinalIgnoreCase))
                             .ToList();
 
                         // Load mapping config
@@ -98,7 +97,7 @@ public static class HotfolderWatcherExtensions
                                 }
                             }
 
-                            // Save prefill to fabrication for each matching PDF
+                            // Save prefill to fabrication for each matching PDF (upsert)
                             if (fichePrefill.Count > 0)
                             {
                                 var fabCol = MongoDbHelper.GetFabricationsCollection();
@@ -113,17 +112,9 @@ public static class HotfolderWatcherExtensions
                                     fiche["importedAt"] = DateTime.UtcNow.ToString("O");
                                     fiche["importSource"] = "hotfolder-xml";
 
-                                    var existing = fabCol.Find(MongoDB.Driver.Builders<BsonDocument>.Filter.Eq("fileName", pdfName)).FirstOrDefault();
-                                    if (existing != null)
-                                    {
-                                        foreach (var kv in fichePrefill)
-                                            fiche[kv.Key] = kv.Value;
-                                        fabCol.UpdateOne(
-                                            MongoDB.Driver.Builders<BsonDocument>.Filter.Eq("_id", existing["_id"]),
-                                            new BsonDocument("$set", fiche));
-                                    }
-                                    else
-                                        fabCol.InsertOne(fiche);
+                                    var pdfFilter = MongoDB.Driver.Builders<BsonDocument>.Filter.Eq("fileName", pdfName);
+                                    fabCol.UpdateOne(pdfFilter, new BsonDocument("$set", fiche),
+                                        new MongoDB.Driver.UpdateOptions { IsUpsert = true });
 
                                     Console.WriteLine($"[FSW] XML coupling: {fileName} → {pdfName} ({fichePrefill.Count} fields)");
                                 }
@@ -146,26 +137,49 @@ public static class HotfolderWatcherExtensions
                         await Task.Delay(3000); // wait for PrismaPrepare to finish writing
                         if (!File.Exists(newPath)) return;
 
-                        // Look up the original filename from fabrications collection
                         var fabCol2 = MongoDbHelper.GetFabricationsCollection();
-                        var allFabs = fabCol2.Find(new BsonDocument()).ToList();
                         var baseName = Path.GetFileNameWithoutExtension(fileName);
 
-                        foreach (var doc in allFabs)
+                        // Find best match: longest origBase that is a prefix of baseName
+                        var filter = Builders<BsonDocument>.Filter.And(
+                            Builders<BsonDocument>.Filter.Exists("fileName"),
+                            Builders<BsonDocument>.Filter.Ne("fileName", BsonNull.Value));
+                        string? bestOrigFn = null;
+                        int bestLen = 0;
+                        using (var cursor = fabCol2.Find(filter).ToCursor())
                         {
-                            var origFn = doc.Contains("fileName") && doc["fileName"] != BsonNull.Value ? doc["fileName"].AsString : "";
-                            if (string.IsNullOrEmpty(origFn)) continue;
-                            var origBase = Path.GetFileNameWithoutExtension(origFn);
-                            // If the current filename starts with the original name but has extra chars appended
-                            if (baseName.StartsWith(origBase, StringComparison.OrdinalIgnoreCase) && baseName.Length > origBase.Length)
+                            while (cursor.MoveNext())
                             {
-                                var originalPath = Path.Combine(Path.GetDirectoryName(newPath)!, origFn.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ? origFn : origFn + ".pdf");
-                                if (!string.Equals(newPath, originalPath, StringComparison.OrdinalIgnoreCase))
+                                foreach (var doc in cursor.Current)
                                 {
-                                    File.Move(newPath, originalPath, overwrite: true);
-                                    Console.WriteLine($"[FSW] PrismaPrepare rename: {fileName} → {Path.GetFileName(originalPath)}");
+                                    var origFn = doc["fileName"].AsString;
+                                    if (string.IsNullOrEmpty(origFn)) continue;
+                                    var origBase = Path.GetFileNameWithoutExtension(origFn);
+                                    if (baseName.StartsWith(origBase, StringComparison.OrdinalIgnoreCase)
+                                        && baseName.Length > origBase.Length
+                                        && origBase.Length > bestLen)
+                                    {
+                                        bestOrigFn = origFn;
+                                        bestLen = origBase.Length;
+                                    }
                                 }
-                                break;
+                            }
+                        }
+
+                        if (bestOrigFn != null)
+                        {
+                            var targetName = bestOrigFn.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ? bestOrigFn : bestOrigFn + ".pdf";
+                            var originalPath = Path.Combine(Path.GetDirectoryName(newPath)!, targetName);
+                            if (!string.Equals(newPath, originalPath, StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (File.Exists(originalPath))
+                                {
+                                    var backupPath = originalPath + $".bak_{DateTime.Now:yyyyMMddHHmmss}";
+                                    File.Move(originalPath, backupPath);
+                                    Console.WriteLine($"[FSW] PrismaPrepare: backup existing {Path.GetFileName(originalPath)} → {Path.GetFileName(backupPath)}");
+                                }
+                                File.Move(newPath, originalPath);
+                                Console.WriteLine($"[FSW] PrismaPrepare rename: {fileName} → {Path.GetFileName(originalPath)}");
                             }
                         }
                     }
