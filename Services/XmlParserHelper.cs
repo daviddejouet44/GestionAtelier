@@ -103,7 +103,7 @@ public static class XmlParserHelper
         MapSimple(commande, "Codeproduit",  "codeproduit",       d);
         MapSimple(commande, "Quantite",     "quantite",          d);
         MapSimple(commande, "Devis",        "devis",             d);
-        MapSimple(commande, "Dossier",      "dossier",           d);
+        MapSimple(commande, "Dossier",      "numeroDossier",     d);
         MapSimple(commande, "OF",           "of",                d);
 
         // ── Delivery date: JJ/MM/AAAA → YYYY-MM-DD ──────────────────────────
@@ -154,11 +154,13 @@ public static class XmlParserHelper
         var firstItem  = composants?.Elements("Item").FirstOrDefault();
         if (firstItem != null)
         {
-            MapSimple(firstItem, "Machine",   "machine",    d);
-            MapSimple(firstItem, "Impression","impression", d);
-            MapSimple(firstItem, "Process",   "process",    d);
-            MapSimple(firstItem, "Pagination","pagination", d);
-            MapSimple(firstItem, "Bascule",   "bascule",    d);
+            MapSimple(firstItem, "Machine",   "machine",           d);
+            MapSimple(firstItem, "Machine",   "moteurImpression",  d);
+            MapSimple(firstItem, "Impression","impression",        d);
+            MapSimple(firstItem, "Impression","couleurs",          d);
+            MapSimple(firstItem, "Process",   "process",           d);
+            MapSimple(firstItem, "Pagination","pagination",        d);
+            MapSimple(firstItem, "Bascule",   "bascule",           d);
             MapSimple(firstItem, "PliJDF",    "pliJDF",     d);
 
             // Format fini: WidthxHeight mm

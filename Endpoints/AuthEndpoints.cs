@@ -351,6 +351,35 @@ app.MapDelete("/api/auth/users/{userId}", (HttpContext ctx, string userId) =>
     }
 });
 
+app.MapPost("/api/auth/users/{userId}/force-disconnect", (HttpContext ctx, string userId) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var usersCol = MongoDbHelper.GetUsersCollection();
+        var filter = Builders<BsonDocument>.Filter.Eq("id", userId);
+        var update = Builders<BsonDocument>.Update
+            .Unset("activeSessionId")
+            .Unset("lastActivityAt");
+        var result = usersCol.UpdateOne(filter, update);
+
+        if (result.MatchedCount == 0)
+            return Results.Json(new { ok = false, error = "Utilisateur non trouvé" });
+
+        return Results.Json(new { ok = true, message = "Session déconnectée" });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
 
     }
 }
