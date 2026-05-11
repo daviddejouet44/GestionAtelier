@@ -7,7 +7,7 @@ namespace GestionAtelier.Services;
 
 public static class PortalEmailHelper
 {
-    /// <summary>Sends a plain-text email using SMTP settings stored in MongoDB.</summary>
+    /// <summary>Sends an email (HTML with plain-text fallback) using SMTP settings stored in MongoDB.</summary>
     public static void SendEmail(string toAddress, string subject, string body)
     {
         var smtp = MongoDbHelper.GetSettings<PortalSmtpSettings>("portalSmtp");
@@ -19,11 +19,19 @@ public static class PortalEmailHelper
 
         try
         {
+            Console.WriteLine($"[EMAIL] Sending to {toAddress} via {smtp.Host}:{(smtp.Port > 0 ? smtp.Port : 587)} (SSL={smtp.UseSsl})");
+
             var message = new MimeMessage();
             message.From.Add(new MailboxAddress(smtp.FromName ?? "Portail Client", smtp.FromAddress));
             message.To.Add(MailboxAddress.Parse(toAddress));
             message.Subject = subject;
-            message.Body = new TextPart("plain") { Text = body };
+
+            // Send as multipart with HTML + plain text fallback
+            var htmlBody = body.Contains("<") ? body : body.Replace("\n", "<br/>");
+            var multipart = new MimeKit.Multipart("alternative");
+            multipart.Add(new TextPart("plain") { Text = body });
+            multipart.Add(new TextPart("html") { Text = htmlBody });
+            message.Body = multipart;
 
             using var client = new SmtpClient();
             var secureOption = smtp.UseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
@@ -32,10 +40,13 @@ public static class PortalEmailHelper
                 client.Authenticate(smtp.Username, smtp.Password ?? "");
             client.Send(message);
             client.Disconnect(true);
+
+            Console.WriteLine($"[EMAIL] Successfully sent to {toAddress}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[WARN] Portal email send failed to {toAddress}: {ex.Message}");
+            Console.WriteLine($"[ERROR] Portal email send failed to {toAddress}: {ex.Message}");
+            Console.WriteLine($"[ERROR] Stack: {ex.StackTrace}");
         }
     }
 

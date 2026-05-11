@@ -406,6 +406,35 @@ public static class PortalBatEndpoints
                     Console.WriteLine($"[WARN] BAT auto-validate failed for order {id}: {exAuto.Message}");
                 }
 
+                // Sync operator BAT tab: update batStatus for the BAT file so the operator sees "Validé"
+                try
+                {
+                    if (!string.IsNullOrEmpty(batFileName))
+                    {
+                        var batStatusCol = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
+                        var hotRoot = BackendUtils.HotfoldersRoot();
+                        var batFullPath = Path.Combine(hotRoot, "BAT", batFileName);
+                        // Also try with BAT_ prefix if batFileName doesn't start with it
+                        var searchPaths = new List<string> { batFullPath };
+                        if (!batFileName.StartsWith("BAT_", StringComparison.OrdinalIgnoreCase))
+                            searchPaths.Add(Path.Combine(hotRoot, "BAT", "BAT_" + batFileName));
+
+                        foreach (var sp in searchPaths)
+                        {
+                            var statusFilter = Builders<BsonDocument>.Filter.Eq("fullPath", sp);
+                            batStatusCol.UpdateOne(statusFilter, Builders<BsonDocument>.Update
+                                .Set("status", "validated")
+                                .Set("validatedAt", now),
+                                new UpdateOptions { IsUpsert = true });
+                        }
+                        Console.WriteLine($"[BAT] Synced batStatus → validated for {batFileName}");
+                    }
+                }
+                catch (Exception exSync)
+                {
+                    Console.WriteLine($"[WARN] BAT status sync failed: {exSync.Message}");
+                }
+
                 // Notify atelier
                 try
                 {

@@ -1069,9 +1069,9 @@ function setupProfileUI() {
   if (btnRecycle) btnRecycle.style.display = "inline-block";
   if (btnDossiers) btnDossiers.style.display = "inline-block";
   if (btnDashboard) btnDashboard.style.display = currentUser.profile === 3 ? "inline-block" : "none";
-  // Profile 1: no Rapport in menu
+  // Profile 1 (Soumission): no Rapport, no BAT
   if (btnRapport) btnRapport.style.display = currentUser.profile === 1 ? "none" : "inline-block";
-  if (btnBat) btnBat.style.display = "inline-block";
+  if (btnBat) btnBat.style.display = currentUser.profile === 1 ? "none" : "inline-block";
 
   // Vue production globale visible pour les profils 1, 2, 3
   const btnGlobalProd = document.getElementById("btnViewGlobalProd");
