@@ -26,6 +26,11 @@ public static class IntegrationsEndpoints
         ["couvertureFabricant"] = "mediaCouvertureFabricant",
         ["faconnageBinding"] = "faconnageBinding",
         ["formatFeuilleMachine"] = "formatFeuille",
+        ["moteurImpression"] = "moteurImpression",
+        ["donneurOrdreNom"] = "donneurOrdreNom",
+        ["donneurOrdrePrenom"] = "donneurOrdrePrenom",
+        ["donneurOrdreTelephone"] = "donneurOrdreTelephone",
+        ["donneurOrdreEmail"] = "donneurOrdreEmail",
     };
 
     internal static string NormalizeFicheFieldKey(string fieldId)

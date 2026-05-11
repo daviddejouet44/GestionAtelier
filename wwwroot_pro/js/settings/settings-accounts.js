@@ -158,10 +158,22 @@ export async function refreshSettingsUsersList(panel) {
           <small style="display: block; color: #6b7280;">Profil ${u.profile} — ${PROFILE_LABELS[u.profile] || u.profile}</small>
         </div>
         <button class="btn btn-sm sa-edit-btn" data-id="${esc(u.id)}">Modifier</button>
+        <button class="btn btn-sm sa-disconnect-btn" data-id="${esc(u.id)}" data-login="${esc(u.login)}" style="color: #f59e0b; border-color: #f59e0b;" title="Forcer la déconnexion de cet utilisateur">⛔ Déconnecter</button>
         <button class="btn btn-sm sa-delete-btn" data-id="${esc(u.id)}" data-login="${esc(u.login)}" style="color: #ef4444; border-color: #ef4444;">Supprimer</button>
       `;
       div.querySelector(".sa-edit-btn").onclick = () => {
         if (resolvedPanel._openEditModal) resolvedPanel._openEditModal(u);
+      };
+      div.querySelector(".sa-disconnect-btn").onclick = async () => {
+        if (!confirm(`Forcer la déconnexion de "${u.login}" ?`)) return;
+        const r = await fetch(`/api/auth/users/${u.id}/force-disconnect`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${authToken}` }
+        }).then(r => r.json()).catch(() => ({ ok: false }));
+        if (r.ok) showNotification("✅ Utilisateur déconnecté", "success");
+        else showNotification("❌ " + (r.error || "Erreur"), "error");
+        const p = resolvedPanel || document.getElementById("settings-panel-accounts");
+        if (p) { p._loaded = false; await renderSettingsAccounts(p); }
       };
       div.querySelector(".sa-delete-btn").onclick = async () => {
         if (!confirm(`Supprimer l'utilisateur "${u.login}" ?`)) return;
