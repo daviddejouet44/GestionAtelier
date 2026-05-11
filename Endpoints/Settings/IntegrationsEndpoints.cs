@@ -279,12 +279,16 @@ public static class IntegrationsEndpoints
                     {
                         foreach (var kv in mapping)
                         {
-                            var ficheField = NormalizeFicheFieldKey(kv.Key);
-                            var xmlTag = kv.Value;
-                            if (string.IsNullOrWhiteSpace(xmlTag)) continue;
-                            var el = order.Element(xmlTag) ?? order.Descendants(xmlTag).FirstOrDefault();
-                            if (el != null && !string.IsNullOrWhiteSpace(el.Value))
-                                fiche[ficheField] = el.Value;
+                            try
+                            {
+                                var ficheField = NormalizeFicheFieldKey(kv.Key);
+                                var xmlTag = kv.Value;
+                                if (string.IsNullOrWhiteSpace(xmlTag)) continue;
+                                var el = order.Element(xmlTag) ?? order.Descendants(xmlTag).FirstOrDefault();
+                                if (el != null && !string.IsNullOrWhiteSpace(el.Value))
+                                    fiche[ficheField] = el.Value;
+                            }
+                            catch { /* skip invalid mapping entries */ }
                         }
                     }
 
