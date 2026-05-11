@@ -664,7 +664,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             else showNotification("❌ " + (r.error || "Erreur"), "error");
           } finally { btnOpenPrisma.disabled = false; }
         };
-        if (isActionVisible(folderName, "ouvrirPrismaPrepare")) actions.appendChild(btnOpenPrisma);
+        actions.appendChild(btnOpenPrisma);
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
           const btnImpressionLancee = document.createElement("button");

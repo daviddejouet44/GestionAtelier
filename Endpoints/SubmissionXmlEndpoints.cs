@@ -125,12 +125,16 @@ public static class SubmissionXmlEndpoints
                         {
                             foreach (var kv in mapping)
                             {
-                                var ficheField = IntegrationsEndpoints.NormalizeFicheFieldKey(kv.Key);
-                                var xmlTag = kv.Value;
-                                if (string.IsNullOrWhiteSpace(xmlTag)) continue;
-                                var el = orderEl.Element(xmlTag) ?? orderEl.Descendants(xmlTag).FirstOrDefault();
-                                if (el != null && !string.IsNullOrWhiteSpace(el.Value))
-                                    fichePrefill[ficheField] = el.Value;
+                                try
+                                {
+                                    var ficheField = IntegrationsEndpoints.NormalizeFicheFieldKey(kv.Key);
+                                    var xmlTag = kv.Value;
+                                    if (string.IsNullOrWhiteSpace(xmlTag)) continue;
+                                    var el = orderEl.Element(xmlTag) ?? orderEl.Descendants(xmlTag).FirstOrDefault();
+                                    if (el != null && !string.IsNullOrWhiteSpace(el.Value))
+                                        fichePrefill[ficheField] = el.Value;
+                                }
+                                catch { /* skip invalid mapping entries */ }
                             }
                         }
 
