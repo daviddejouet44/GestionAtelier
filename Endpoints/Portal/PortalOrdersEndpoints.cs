@@ -271,7 +271,8 @@ public static class PortalOrdersEndpoints
                 var comments = json.TryGetProperty("comments", out var cEl) ? cEl.GetString() ?? "" : "";
                 DateTime? desiredDate = null;
                 if (json.TryGetProperty("desiredDeliveryDate", out var ddEl) && ddEl.ValueKind == JsonValueKind.String)
-                    if (DateTime.TryParse(ddEl.GetString(), out var ddParsed)) desiredDate = ddParsed;
+                    if (DateTime.TryParse(ddEl.GetString(), out var ddParsed))
+                        desiredDate = DateTime.SpecifyKind(ddParsed.Date, DateTimeKind.Utc);
 
                 var finitions = new List<string>();
                 if (json.TryGetProperty("finitions", out var finEl) && finEl.ValueKind == JsonValueKind.Array)

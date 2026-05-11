@@ -1137,6 +1137,20 @@ app.MapPost("/api/bat/simple", async (HttpContext ctx) =>
         };
         System.Diagnostics.Process.Start(psi);
 
+        // Copy PDF to BAT folder so it appears in the BAT tile with standard BAT buttons
+        try
+        {
+            var batFolder = Path.Combine(BackendUtils.HotfoldersRoot(), "BAT");
+            Directory.CreateDirectory(batFolder);
+            var destPath = Path.Combine(batFolder, Path.GetFileName(fullPath));
+            File.Copy(fullPath, destPath, overwrite: true);
+            Console.WriteLine($"[BAT Simple] Copié vers {destPath}");
+        }
+        catch (Exception copyEx)
+        {
+            Console.WriteLine($"[WARN] BAT Simple copy failed: {copyEx.Message}");
+        }
+
         return Results.Json(new { ok = true });
     }
     catch (Exception ex)
@@ -1558,7 +1572,11 @@ app.MapGet("/api/fabrication/events", () =>
             var client = doc.Contains("client") && doc["client"] != BsonNull.Value ? doc["client"].AsString : "";
             var moteurImpression = doc.Contains("moteurImpression") && doc["moteurImpression"] != BsonNull.Value ? doc["moteurImpression"].AsString : "";
             var operateur = doc.Contains("operateur") && doc["operateur"] != BsonNull.Value ? doc["operateur"].AsString : "";
-            var title = !string.IsNullOrWhiteSpace(numeroDossier) ? $"#{numeroDossier} {client}" : fileName;
+            var titleParts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(numeroDossier)) titleParts.Add($"#{numeroDossier}");
+            if (!string.IsNullOrWhiteSpace(client)) titleParts.Add(client);
+            if (!string.IsNullOrWhiteSpace(fileName)) titleParts.Add(fileName);
+            var title = titleParts.Count > 0 ? string.Join(" — ", titleParts) : fileName;
             int tempsProduitMinutes = 0;
             try {
                 if (doc.Contains("tempsProduitMinutes") && doc["tempsProduitMinutes"] != BsonNull.Value)
@@ -1584,28 +1602,28 @@ app.MapGet("/api/fabrication/events", () =>
             {
                 try {
                     var dt = doc["dateEnvoi"].ToUniversalTime();
-                    events.Add(new { type = "envoi", date = dt.ToString("yyyy-MM-dd"), title = $"📤 Envoi: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeGlobal, locked });
+                    events.Add(new { type = "envoi", date = dt.ToString("yyyy-MM-dd"), title = $"📤 {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeGlobal, locked });
                 } catch { }
             }
             if (doc.Contains("dateImpression") && doc["dateImpression"] != BsonNull.Value)
             {
                 try {
                     var dt = doc["dateImpression"].ToUniversalTime();
-                    events.Add(new { type = "impression", date = dt.ToString("yyyy-MM-dd"), title = $"🖨️ Impression: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeMachine, locked });
+                    events.Add(new { type = "impression", date = dt.ToString("yyyy-MM-dd"), title = $"🖨️ {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeMachine, locked });
                 } catch { }
             }
             if (doc.Contains("dateProductionFinitions") && doc["dateProductionFinitions"] != BsonNull.Value)
             {
                 try {
                     var dt = doc["dateProductionFinitions"].ToUniversalTime();
-                    events.Add(new { type = "finitions", date = dt.ToString("yyyy-MM-dd"), title = $"✂️ Finitions: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeFinitions, locked });
+                    events.Add(new { type = "finitions", date = dt.ToString("yyyy-MM-dd"), title = $"✂️ {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeFinitions, locked });
                 } catch { }
             }
             if (doc.Contains("dateReceptionSouhaitee") && doc["dateReceptionSouhaitee"] != BsonNull.Value)
             {
                 try {
                     var dt = doc["dateReceptionSouhaitee"].ToUniversalTime();
-                    events.Add(new { type = "reception", date = dt.ToString("yyyy-MM-dd"), title = $"📥 Réception: {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = (string?)null, locked });
+                    events.Add(new { type = "reception", date = dt.ToString("yyyy-MM-dd"), title = $"📥 {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = (string?)null, locked });
                 } catch { }
             }
         }

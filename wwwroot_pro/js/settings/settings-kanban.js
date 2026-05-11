@@ -19,6 +19,7 @@ const ALL_ACTIONS = [
   { id: "verrouiller",          label: "Verrouiller (Terminé)" },
   { id: "archiver",             label: "Archiver" },
   { id: "supprimer",            label: "Supprimer" },
+  { id: "ouvrirPrismaPrepare",  label: "Ouvrir dans PrismaPrepare" },
 ];
 
 export async function renderSettingsKanbanColumns(panel) {

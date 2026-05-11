@@ -56,8 +56,19 @@ app.MapPost("/api/auth/login", async (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = "Identifiants invalides" });
         }
 
-        // Générer un token simple
-        var token = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{user.Id}:{user.Login}:{user.Profile}"));
+        // Générer un token avec session unique pour empêcher les connexions multiples
+        var sessionId = Guid.NewGuid().ToString("N")[..16];
+        var token = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{user.Id}:{user.Login}:{user.Profile}:{sessionId}"));
+
+        // Store active session ID on the user record
+        try
+        {
+            var usersCol = MongoDbHelper.GetUsersCollection();
+            var filter = Builders<BsonDocument>.Filter.Eq("id", user.Id);
+            var update = Builders<BsonDocument>.Update.Set("activeSessionId", sessionId);
+            usersCol.UpdateOne(filter, update);
+        }
+        catch { /* non-fatal */ }
 
         Console.WriteLine($"[DEBUG] Login successful for {user.Login}");
 
@@ -169,6 +180,21 @@ app.MapPost("/api/auth/heartbeat", (HttpContext ctx) =>
         var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
         var parts = decoded.Split(':');
         if (parts.Length < 2) return Results.Json(new { ok = false });
+
+        // Validate session: reject if another session has taken over
+        if (parts.Length >= 4)
+        {
+            var sessionId = parts[3];
+            var usersCol = MongoDbHelper.GetUsersCollection();
+            var userDoc = usersCol.Find(Builders<BsonDocument>.Filter.Eq("id", parts[0])).FirstOrDefault();
+            if (userDoc != null && userDoc.Contains("activeSessionId") && userDoc["activeSessionId"] != BsonNull.Value)
+            {
+                var activeSession = userDoc["activeSessionId"].AsString;
+                if (activeSession != sessionId)
+                    return Results.Json(new { ok = false, error = "session_expired", message = "Votre session a été déconnectée car un autre appareil s'est connecté avec ce compte." });
+            }
+        }
+
         BackendUtils.UpdateUserActivity(parts[1]);
         return Results.Json(new { ok = true });
     }

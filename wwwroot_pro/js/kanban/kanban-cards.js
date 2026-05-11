@@ -648,6 +648,24 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         };
         if (isActionVisible(folderName, "prismaPrepare")) actions.appendChild(btnPrisma);
 
+        const btnOpenPrisma = document.createElement("button");
+        btnOpenPrisma.className = "btn btn-sm";
+        btnOpenPrisma.textContent = "🖥️ Ouvrir dans PrismaPrepare";
+        btnOpenPrisma.onclick = async (e) => {
+          e.stopPropagation();
+          btnOpenPrisma.disabled = true;
+          try {
+            const r = await fetch("/api/jobs/open-in-prismaprepare", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (authToken || "") },
+              body: JSON.stringify({ fileName: jobFileName, fullPath: full })
+            }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+            if (r.ok) showNotification("✅ PrismaPrepare ouvert", "success");
+            else showNotification("❌ " + (r.error || "Erreur"), "error");
+          } finally { btnOpenPrisma.disabled = false; }
+        };
+        if (isActionVisible(folderName, "ouvrirPrismaPrepare")) actions.appendChild(btnOpenPrisma);
+
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
           const btnImpressionLancee = document.createElement("button");
           btnImpressionLancee.className = "btn btn-sm btn-primary";
@@ -982,7 +1000,9 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
       } else if (folderName === "Fin de production") {
+        if (isActionVisible(folderName, "ouvrirFichier")) actions.appendChild(btnOpen);
         if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
+        if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
           const btnTermine = document.createElement("button");
@@ -1075,39 +1095,6 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
 
       infoStack.appendChild(actions);
 
-      // For web orders: add "📄 Récapitulatif PDF" button (admin only)
-      if (isWebOrder && !readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
-        const btnRecap = document.createElement("button");
-        btnRecap.className = "btn btn-sm";
-        btnRecap.textContent = "📄 Récapitulatif PDF";
-        btnRecap.title = "Télécharger le récapitulatif de la commande client";
-        btnRecap.onclick = async (e) => {
-          e.stopPropagation();
-          btnRecap.disabled = true;
-          try {
-            // Extract order number from filename (WEB-YYYYMMDD-NNNN)
-            let orderNum = jobFileName;
-            if (orderNum.startsWith('bat_')) orderNum = orderNum.substring(4);
-            const sep = orderNum.indexOf('__');
-            if (sep > 0) orderNum = orderNum.substring(0, sep);
-            const dot = orderNum.lastIndexOf('.');
-            if (dot > 0) orderNum = orderNum.substring(0, dot);
-            orderNum = orderNum.toUpperCase();
-            // Fetch portal order ID
-            const r = await fetch('/api/admin/portal/orders/by-job?numeroDossier=' + encodeURIComponent(orderNum), {
-              headers: { 'Authorization': 'Bearer ' + (authToken || '') }
-            }).then(res => res.json()).catch(() => ({ found: false }));
-            if (r.found && r.order?.id) {
-              window.open('/api/admin/portal/orders/' + encodeURIComponent(r.order.id) + '/recap-pdf', '_blank', 'noopener');
-            } else {
-              showNotification("❌ Commande portail introuvable", "error");
-            }
-          } finally {
-            btnRecap.disabled = false;
-          }
-        };
-        actions.appendChild(btnRecap);
-      }
 
       // Dynamic email template buttons from tile configuration (multi-template per tile)
       if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {

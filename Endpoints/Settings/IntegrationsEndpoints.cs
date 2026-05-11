@@ -19,6 +19,22 @@ namespace GestionAtelier.Endpoints.Settings;
 
 public static class IntegrationsEndpoints
 {
+    private static readonly Dictionary<string, string> FieldIdToBsonKey = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["formatFini"] = "format",
+        ["couvertureMedia"] = "mediaCouverture",
+        ["couvertureFabricant"] = "mediaCouvertureFabricant",
+        ["faconnageBinding"] = "faconnageBinding",
+        ["formatFeuilleMachine"] = "formatFeuille",
+    };
+
+    internal static string NormalizeFicheFieldKey(string fieldId)
+    {
+        if (FieldIdToBsonKey.TryGetValue(fieldId, out var bsonKey))
+            return bsonKey;
+        return fieldId;
+    }
+
     public static void MapIntegrationsEndpoints(this WebApplication app)
     {
         // ── Auth helpers ──────────────────────────────────────────────────────
@@ -252,23 +268,28 @@ public static class IntegrationsEndpoints
 
                     if (isMasterPrint)
                     {
-                        // Use the dedicated MasterPrint parser
+                        // Use the dedicated MasterPrint parser as base
                         var parsed = GestionAtelier.Services.XmlParserHelper.ParseMasterPrintCommande(order);
                         foreach (var kv in parsed)
                             fiche[kv.Key] = kv.Value;
                     }
-                    else
+
+                    // Always apply user-configured mapping (overrides hardcoded values if present)
+                    if (mapping.Count > 0)
                     {
-                        // Apply configured mapping: ficheField (kv.Key) → xmlTagName (kv.Value)
                         foreach (var kv in mapping)
                         {
-                            var ficheField = kv.Key;
+                            var ficheField = NormalizeFicheFieldKey(kv.Key);
                             var xmlTag = kv.Value;
+                            if (string.IsNullOrWhiteSpace(xmlTag)) continue;
                             var el = order.Element(xmlTag) ?? order.Descendants(xmlTag).FirstOrDefault();
-                            if (el != null)
+                            if (el != null && !string.IsNullOrWhiteSpace(el.Value))
                                 fiche[ficheField] = el.Value;
                         }
+                    }
 
+                    if (!isMasterPrint)
+                    {
                         // Also try direct field names as fallback (scalar elements only)
                         foreach (var el in order.Elements())
                         {
