@@ -46,7 +46,9 @@ public static class HotfolderWatcherExtensions
                         await Task.Delay(2000); // extra delay to let paired PDF arrive
                         var dir = Path.GetDirectoryName(newPath)!;
                         // Apply XML to ALL PDFs currently in Soumission (same behavior as web upload)
-                        var matchingPdfs = Directory.GetFiles(dir, "*.pdf").ToList();
+                        var matchingPdfs = Directory.EnumerateFiles(dir)
+                            .Where(f => Path.GetExtension(f).Equals(".pdf", StringComparison.OrdinalIgnoreCase))
+                            .ToList();
 
                         // Load mapping config
                         var intCfg = MongoDbHelper.GetSettings<GestionAtelier.Endpoints.Settings.IntegrationsFullConfig>("integrations_full_config")
