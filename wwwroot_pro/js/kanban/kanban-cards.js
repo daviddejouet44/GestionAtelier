@@ -1075,39 +1075,6 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
 
       infoStack.appendChild(actions);
 
-      // For web orders: add "📄 Récapitulatif PDF" button (admin only)
-      if (isWebOrder && !readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
-        const btnRecap = document.createElement("button");
-        btnRecap.className = "btn btn-sm";
-        btnRecap.textContent = "📄 Récapitulatif PDF";
-        btnRecap.title = "Télécharger le récapitulatif de la commande client";
-        btnRecap.onclick = async (e) => {
-          e.stopPropagation();
-          btnRecap.disabled = true;
-          try {
-            // Extract order number from filename (WEB-YYYYMMDD-NNNN)
-            let orderNum = jobFileName;
-            if (orderNum.startsWith('bat_')) orderNum = orderNum.substring(4);
-            const sep = orderNum.indexOf('__');
-            if (sep > 0) orderNum = orderNum.substring(0, sep);
-            const dot = orderNum.lastIndexOf('.');
-            if (dot > 0) orderNum = orderNum.substring(0, dot);
-            orderNum = orderNum.toUpperCase();
-            // Fetch portal order ID
-            const r = await fetch('/api/admin/portal/orders/by-job?numeroDossier=' + encodeURIComponent(orderNum), {
-              headers: { 'Authorization': 'Bearer ' + (authToken || '') }
-            }).then(res => res.json()).catch(() => ({ found: false }));
-            if (r.found && r.order?.id) {
-              window.open('/api/admin/portal/orders/' + encodeURIComponent(r.order.id) + '/recap-pdf', '_blank', 'noopener');
-            } else {
-              showNotification("❌ Commande portail introuvable", "error");
-            }
-          } finally {
-            btnRecap.disabled = false;
-          }
-        };
-        actions.appendChild(btnRecap);
-      }
 
       // Dynamic email template buttons from tile configuration (multi-template per tile)
       if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
