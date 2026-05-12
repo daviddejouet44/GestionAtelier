@@ -10,6 +10,31 @@ namespace GestionAtelier.Endpoints.Portal;
 
 public static class PortalBatEndpoints
 {
+    private static void SyncBatStatusValidated(string? batFileName, DateTime now)
+    {
+        if (string.IsNullOrEmpty(batFileName)) return;
+        try
+        {
+            var batStatusCol = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
+            var hotRoot = BackendUtils.HotfoldersRoot();
+            var paths = new List<string> { System.IO.Path.Combine(hotRoot, "BAT", batFileName) };
+            if (!batFileName.StartsWith("BAT_", StringComparison.OrdinalIgnoreCase))
+                paths.Add(System.IO.Path.Combine(hotRoot, "BAT", "BAT_" + batFileName));
+            foreach (var sp in paths)
+            {
+                batStatusCol.UpdateOne(
+                    Builders<BsonDocument>.Filter.Eq("fullPath", sp),
+                    Builders<BsonDocument>.Update.Set("status", "validated").Set("validatedAt", now),
+                    new UpdateOptions { IsUpsert = true });
+            }
+            Console.WriteLine($"[BAT] Synced batStatus → validated for {batFileName}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[WARN] BAT status sync failed: {ex.Message}");
+        }
+    }
+
     public static void MapPortalBatEndpoints(this WebApplication app)
     {
         // ── Helper: send client confirmation email ───────────────────────────
@@ -238,6 +263,10 @@ public static class PortalBatEndpoints
                     : clientsCol.Find(Builders<BsonDocument>.Filter.Eq("id", clientId)).FirstOrDefault();
                 ClientAccount? client = clientDoc != null ? PortalAuthEndpoints.DocToClient(clientDoc) : null;
 
+                // Sync operator BAT tab for validated decisions
+                if (action == "validated")
+                    SyncBatStatusValidated(batFileName, now);
+
                 // Confirmation email to client
                 if (client != null)
                     SendClientBatConfirmation(action, motif, client, orderNumber, orderTitle, batFileName);
@@ -405,6 +434,9 @@ public static class PortalBatEndpoints
                 {
                     Console.WriteLine($"[WARN] BAT auto-validate failed for order {id}: {exAuto.Message}");
                 }
+
+                // Sync operator BAT tab: update batStatus so the operator sees "Validé"
+                SyncBatStatusValidated(batFileName, now);
 
                 // Notify atelier
                 try

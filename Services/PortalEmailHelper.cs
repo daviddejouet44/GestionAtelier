@@ -7,23 +7,39 @@ namespace GestionAtelier.Services;
 
 public static class PortalEmailHelper
 {
-    /// <summary>Sends a plain-text email using SMTP settings stored in MongoDB.</summary>
+    private static string MaskEmail(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email)) return "***";
+        var at = email.IndexOf('@');
+        if (at <= 1) return "***@" + (at >= 0 ? email[(at + 1)..] : "***");
+        return email[0] + new string('*', at - 1) + email[at..];
+    }
+
+    /// <summary>Sends an email (HTML with plain-text fallback) using SMTP settings stored in MongoDB.</summary>
     public static void SendEmail(string toAddress, string subject, string body)
     {
         var smtp = MongoDbHelper.GetSettings<PortalSmtpSettings>("portalSmtp");
         if (smtp == null || string.IsNullOrWhiteSpace(smtp.Host) || string.IsNullOrWhiteSpace(smtp.FromAddress))
         {
-            Console.WriteLine($"[WARN] Portal SMTP not configured — email not sent to {toAddress}");
+            Console.WriteLine($"[WARN] Portal SMTP not configured — email not sent to {MaskEmail(toAddress)}");
             return;
         }
 
         try
         {
+            Console.WriteLine($"[EMAIL] Sending to {MaskEmail(toAddress)} via {smtp.Host}:{(smtp.Port > 0 ? smtp.Port : 587)} (SSL={smtp.UseSsl})");
+
             var message = new MimeMessage();
             message.From.Add(new MailboxAddress(smtp.FromName ?? "Portail Client", smtp.FromAddress));
             message.To.Add(MailboxAddress.Parse(toAddress));
             message.Subject = subject;
-            message.Body = new TextPart("plain") { Text = body };
+
+            // Build safe HTML: encode body then convert newlines to <br/>
+            var encodedBody = System.Net.WebUtility.HtmlEncode(body).Replace("&#10;", "<br/>").Replace("\n", "<br/>");
+            var multipart = new MimeKit.Multipart("alternative");
+            multipart.Add(new TextPart("plain") { Text = body });
+            multipart.Add(new TextPart("html") { Text = encodedBody });
+            message.Body = multipart;
 
             using var client = new SmtpClient();
             var secureOption = smtp.UseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
@@ -32,10 +48,12 @@ public static class PortalEmailHelper
                 client.Authenticate(smtp.Username, smtp.Password ?? "");
             client.Send(message);
             client.Disconnect(true);
+
+            Console.WriteLine($"[EMAIL] Successfully sent to {MaskEmail(toAddress)}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[WARN] Portal email send failed to {toAddress}: {ex.Message}");
+            Console.WriteLine($"[ERROR] Email send failed to {MaskEmail(toAddress)}: {ex.Message}");
         }
     }
 

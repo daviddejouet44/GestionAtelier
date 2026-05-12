@@ -452,7 +452,7 @@ app.MapDelete("/api/header-banner", (HttpContext ctx) =>
 // ======================================================
 // IMAGE DASHBOARD
 // ======================================================
-app.MapGet("/api/dashboard-image", (HttpContext ctx) =>
+IResult DashboardImageHandler(HttpContext ctx)
 {
     var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
     string? found = null;
@@ -465,8 +465,15 @@ app.MapGet("/api/dashboard-image", (HttpContext ctx) =>
     var provider = new FileExtensionContentTypeProvider();
     if (!provider.TryGetContentType(found, out var ct)) ct = "image/jpeg";
     ctx.Response.Headers["Cache-Control"] = "no-cache, no-store";
+    if (ctx.Request.Method == "HEAD")
+    {
+        ctx.Response.ContentType = ct;
+        return Results.Ok();
+    }
     return Results.File(File.OpenRead(found), ct);
-});
+}
+app.MapGet("/api/dashboard-image", DashboardImageHandler);
+app.MapMethods("/api/dashboard-image", new[] { "HEAD" }, DashboardImageHandler);
 
 app.MapPost("/api/dashboard-image", async (HttpContext ctx) =>
 {
