@@ -271,7 +271,7 @@
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             ${statusBadge(o.status)}
             <a href="/portal/order-new.html?reorder=${esc(o.id)}" class="btn btn-secondary btn-sm">Re-commander</a>
-            <button class="btn btn-secondary btn-sm" onclick="(async()=>{const t=localStorage.getItem('portalToken');if(!t){alert('Non authentifié');return;}try{const r=await fetch('/api/portal/orders/${esc(o.id)}/recap-pdf',{headers:{'Authorization':'Bearer '+t}});if(!r.ok){const e=await r.json().catch(()=>({}));alert(e.error||'Erreur');return;}const b=await r.blob();const u=URL.createObjectURL(b);window.open(u,'_blank');setTimeout(()=>URL.revokeObjectURL(u),60000);}catch(e){alert('Erreur réseau');}})()">📄 Récapitulatif PDF</button>
+            <button class="btn btn-secondary btn-sm" data-order-id="${esc(o.id)}" onclick="(async()=>{const t=localStorage.getItem('portalToken');if(!t){alert('Non authentifié');return;}const oid=encodeURIComponent(this.dataset.orderId);try{const r=await fetch('/api/portal/orders/'+oid+'/recap-pdf',{headers:{'Authorization':'Bearer '+t}});if(!r.ok){const e=await r.json().catch(()=>({}));alert(e.error||'Erreur');return;}const b=await r.blob();const u=URL.createObjectURL(b);window.open(u,'_blank');setTimeout(()=>URL.revokeObjectURL(u),60000);}catch(e){alert('Erreur réseau');}})()">📄 Récapitulatif PDF</button>
             <a href="/portal/orders.html" class="btn btn-secondary btn-sm">← Retour</a>
           </div>
         </div>
