@@ -243,6 +243,14 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       const actions = document.createElement("div");
       actions.className = "kanban-card-operator-actions";
 
+      // Profile 1 (Soumission): no action buttons, no dragging
+      if (currentUser?.profile === 1) {
+        card.draggable = false;
+        infoStack.appendChild(actions);
+        drop.appendChild(card);
+        continue;
+      }
+
       const btnOpen = document.createElement("button");
       btnOpen.className = "btn btn-sm";
       btnOpen.textContent = "Ouvrir";

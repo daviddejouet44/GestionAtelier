@@ -271,7 +271,7 @@
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             ${statusBadge(o.status)}
             <a href="/portal/order-new.html?reorder=${esc(o.id)}" class="btn btn-secondary btn-sm">Re-commander</a>
-            <button class="btn btn-secondary btn-sm" onclick="(async()=>{const t=localStorage.getItem('portal_token');if(!t){alert('Non authentifié');return;}try{const r=await fetch('/api/portal/orders/${esc(o.id)}/recap-pdf',{headers:{'Authorization':'Bearer '+t}});if(!r.ok){const e=await r.json().catch(()=>({}));alert(e.error||'Erreur');return;}const b=await r.blob();const u=URL.createObjectURL(b);window.open(u,'_blank');setTimeout(()=>URL.revokeObjectURL(u),60000);}catch(e){alert('Erreur réseau');}})()">📄 Récapitulatif PDF</button>
+            <button class="btn btn-secondary btn-sm" data-order-id="${esc(o.id)}" onclick="(async()=>{const t=localStorage.getItem('portalToken');if(!t){alert('Non authentifié');return;}const oid=encodeURIComponent(this.dataset.orderId);try{const r=await fetch('/api/portal/orders/'+oid+'/recap-pdf',{headers:{'Authorization':'Bearer '+t}});if(!r.ok){const e=await r.json().catch(()=>({}));alert(e.error||'Erreur');return;}const b=await r.blob();const u=URL.createObjectURL(b);window.open(u,'_blank');setTimeout(()=>URL.revokeObjectURL(u),60000);}catch(e){alert('Erreur réseau');}})()">📄 Récapitulatif PDF</button>
             <a href="/portal/orders.html" class="btn btn-secondary btn-sm">← Retour</a>
           </div>
         </div>
@@ -371,18 +371,23 @@
       }
 
       return `
-        <div class="bat-viewer-section" id="bat-viewer-section">
-          <div class="bat-viewer-header">
-            <span class="bat-viewer-title">🎨 BAT à valider</span>
-            <span class="badge badge-yellow">En attente de votre décision</span>
+        <div class="bat-viewer-section" id="bat-viewer-section" style="display:flex;flex-direction:column;gap:0;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background:#fff;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#f9fafb;border-bottom:1px solid #e5e7eb;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:16px;font-weight:700;color:#111827;">🎨 BAT à valider</span>
+              <span class="badge badge-yellow">En attente de votre décision</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              ${bat.batFileName ? `<span style="font-size:12px;color:#6b7280;">📄 ${esc(bat.batFileName)}</span>` : ''}
+              ${pdfSrc ? `<button onclick="document.getElementById('bat-pdf-frame').requestFullscreen().catch(()=>window.open('${pdfSrc}','_blank'))" class="btn btn-secondary btn-sm" title="Plein écran">⛶ Plein écran</button>` : ''}
+            </div>
           </div>
-          ${bat.batFileName ? `<p style="font-size:13px;color:#374151;margin-bottom:12px;">📄 <strong>${esc(bat.batFileName)}</strong></p>` : ''}
           ${pdfSrc
-            ? `<iframe id="bat-pdf-frame" class="bat-pdf-frame" src="${pdfSrc}" title="BAT PDF" allowfullscreen></iframe>`
-            : `<div style="padding:20px;background:#f9fafb;border:1px dashed #ccc;border-radius:6px;text-align:center;color:#6b7280;">Aperçu PDF non disponible</div>`
+            ? `<iframe id="bat-pdf-frame" src="${pdfSrc}" title="BAT PDF" allowfullscreen style="width:100%;height:calc(100vh - 280px);min-height:500px;border:none;background:#525659;"></iframe>`
+            : `<div style="padding:40px;background:#f9fafb;text-align:center;color:#6b7280;">Aperçu PDF non disponible</div>`
           }
-          <div class="bat-decision-area">
-            <div class="bat-decision-title" style="font-size:16px;font-weight:700;margin-bottom:16px;">📋 Votre décision</div>
+          <div style="padding:20px 24px;border-top:1px solid #e5e7eb;background:#fff;">
+            <div style="font-size:15px;font-weight:700;margin-bottom:12px;">📋 Votre décision</div>
             ${decisionHtml}
           </div>
         </div>
