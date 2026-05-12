@@ -243,6 +243,13 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       const actions = document.createElement("div");
       actions.className = "kanban-card-operator-actions";
 
+      // Profile 1 (Soumission): no action buttons in Kanban tiles
+      if (currentUser?.profile === 1) {
+        infoStack.appendChild(actions);
+        drop.appendChild(card);
+        continue;
+      }
+
       const btnOpen = document.createElement("button");
       btnOpen.className = "btn btn-sm";
       btnOpen.textContent = "Ouvrir";
