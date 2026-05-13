@@ -132,13 +132,31 @@ public static class PortalBatEndpoints
                 return Results.Json(new { ok = false, error = "Lien invalide" });
 
             var filePath = bat.Contains("batFileRef") ? bat["batFileRef"].AsString : "";
-            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
-                return Results.Json(new { ok = false, error = "Fichier BAT non trouvé" });
+            if (string.IsNullOrWhiteSpace(filePath))
+                return Results.Json(new { ok = false, error = "Référence fichier BAT manquante" });
 
-            // Serve inline so the browser displays it rather than downloading
-            var fileName = Path.GetFileName(filePath);
-            ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"{fileName}\"";
-            return Results.File(filePath, "application/pdf");
+            // Normalize path and check existence
+            filePath = Path.GetFullPath(filePath);
+            if (!File.Exists(filePath))
+            {
+                Console.WriteLine($"[BAT] File not found: {filePath}");
+                return Results.Json(new { ok = false, error = $"Fichier BAT non trouvé sur le serveur" });
+            }
+
+            // Read bytes to avoid path encoding issues with accented characters
+            try
+            {
+                var pdfBytes = File.ReadAllBytes(filePath);
+                var safeName = System.Text.RegularExpressions.Regex.Replace(
+                    Path.GetFileName(filePath), @"[^\w\.\-]", "_");
+                ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"{safeName}\"";
+                return Results.File(pdfBytes, "application/pdf");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[BAT] Error reading file {filePath}: {ex.Message}");
+                return Results.Json(new { ok = false, error = "Erreur lors de la lecture du fichier BAT" });
+            }
         });
 
         // GET /api/portal/orders/by-bat-token?token={token}  — anonymous, no login required
