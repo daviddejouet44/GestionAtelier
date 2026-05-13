@@ -42,8 +42,12 @@ public static class PortalEmailHelper
             message.Body = multipart;
 
             using var client = new SmtpClient();
-            var secureOption = smtp.UseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
-            client.Connect(smtp.Host, smtp.Port > 0 ? smtp.Port : 587, secureOption);
+            var port = smtp.Port > 0 ? smtp.Port : 587;
+            // Port 465 = SSL direct, Port 587 = STARTTLS, other = auto-detect
+            var secureOption = port == 465 ? SecureSocketOptions.SslOnConnect
+                             : port == 587 ? SecureSocketOptions.StartTls
+                             : (smtp.UseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable);
+            client.Connect(smtp.Host, port, secureOption);
             if (!string.IsNullOrWhiteSpace(smtp.Username))
                 client.Authenticate(smtp.Username, smtp.Password ?? "");
             client.Send(message);

@@ -104,6 +104,7 @@ const FIELD_HTML_IDS = {
   "bascule":                    "fab-bascule",
   "couleurs":                   "fab-couleurs",
   "couleursAccompagnement":     "fab-couleurs-accompagnement",
+  "certification":              "fab-certification",
 };
 function gElId(id) { return FIELD_HTML_IDS[id] || ('fab-' + id); }
 function gEl(id) { return document.getElementById(gElId(id)); }
@@ -531,6 +532,7 @@ function populateFabForm(d, faconnageOptions) {
   set('bascule', d.bascule);
   set('couleurs', d.couleurs);
   set('couleursAccompagnement', d.couleursAccompagnement);
+  set('certification', d.certification);
   // If dateReception is set but calculated dates are missing, recalculate
   if(recEl&&recEl.value&&(!envEl||!envEl.value)) updateKeyDates();
 }
@@ -891,6 +893,7 @@ export async function saveFabrication() {
     bascule:get('bascule')||null,
     couleurs:get('couleurs')||null,
     couleursAccompagnement:get('couleursAccompagnement')||null,
+    certification:get('certification')||null,
   };
   const r=await fetch('/api/fabrication',{method:'PUT',headers:{'Content-Type':'application/json','Authorization':'Bearer '+authToken},body:JSON.stringify(payload)}).then(r2=>r2.json());
   if(!r.ok){alert('Erreur : '+r.error);return false;}return true;
