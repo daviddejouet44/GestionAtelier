@@ -52,7 +52,7 @@ public static class PdfUtils
                     });
                     if (!string.IsNullOrWhiteSpace(s.NumeroDossier))
                         hdr.Item().AlignCenter().Text(s.NumeroDossier).FontSize(16).SemiBold();
-                    hdr.Item().PaddingVertical(6).LineHorizontal(2).LineColor("#1a1a2e");
+                    hdr.Item().PaddingVertical(6).LineHorizontal(2).LineColor(Colors.Grey.Darken4);
                 });
 
                 page.Content().Column(col =>
@@ -82,7 +82,7 @@ public static class PdfUtils
                         }
                         if (!sectionHasContent) continue;
 
-                        col.Item().PaddingVertical(10).LineHorizontal(1).LineColor("#d1d5db");
+                        col.Item().PaddingVertical(10).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
                         col.Item().PaddingBottom(8).Text(section).FontSize(13).SemiBold();
 
                         // Special rendering for multiselect / group / calculated/passes
@@ -110,7 +110,7 @@ public static class PdfUtils
                                 });
                                 void Row(string lbl, string? val, bool bold = false)
                                 {
-                                    table.Cell().PaddingBottom(4).Text(lbl + " :").FontColor("#6b7280").FontSize(10);
+                                    table.Cell().PaddingBottom(4).Text(lbl + " :").FontColor(Colors.Grey.Medium).FontSize(10);
                                     var v = table.Cell().PaddingBottom(4).Text(val ?? "—");
                                     if (bold) v.SemiBold();
                                 }
@@ -127,17 +127,17 @@ public static class PdfUtils
                     // ── Historique — always shown ─────────────────────────
                     if (historyOrdered.Count > 0)
                     {
-                        col.Item().PaddingVertical(10).LineHorizontal(1).LineColor("#d1d5db");
+                        col.Item().PaddingVertical(10).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
                         col.Item().PaddingBottom(4).Text("Historique").FontSize(13).SemiBold();
                         foreach (var h in historyOrdered)
-                            col.Item().Text($"{h.Date:dd/MM/yyyy HH:mm} — {h.User} — {h.Action}").FontSize(9).FontColor("#6b7280");
+                            col.Item().Text($"{h.Date:dd/MM/yyyy HH:mm} — {h.User} — {h.Action}").FontSize(9).FontColor(Colors.Grey.Medium);
                     }
                 });
 
                 page.Footer().AlignRight().Text(t =>
                 {
-                    t.Span($"Généré le {DateTime.Now:dd/MM/yyyy à HH:mm} — ").FontSize(8).FontColor("#9ca3af");
-                    t.Span("Gestion d'Atelier").FontSize(8).FontColor("#9ca3af").SemiBold();
+                    t.Span($"Généré le {DateTime.Now:dd/MM/yyyy à HH:mm} — ").FontSize(8).FontColor(Colors.Grey.Lighten1);
+                    t.Span("Gestion d'Atelier").FontSize(8).FontColor(Colors.Grey.Lighten1).SemiBold();
                 });
             });
         });
@@ -148,7 +148,7 @@ public static class PdfUtils
         col.Item().Table(table =>
         {
             table.ColumnsDefinition(c => { c.RelativeColumn(1); c.RelativeColumn(2); c.RelativeColumn(1); c.RelativeColumn(2); });
-            void Row(string lbl, string? val) { table.Cell().PaddingBottom(4).Text(lbl + " :").FontColor("#6b7280").FontSize(10); table.Cell().PaddingBottom(4).Text(val ?? "—"); }
+            void Row(string lbl, string? val) { table.Cell().PaddingBottom(4).Text(lbl + " :").FontColor(Colors.Grey.Medium).FontSize(10); table.Cell().PaddingBottom(4).Text(val ?? "—"); }
 
             foreach (var f in fields)
             {
@@ -164,7 +164,7 @@ public static class PdfUtils
             {
                 foreach (var e in s.Ennoblissement)
                 {
-                    row.AutoItem().Border(1).BorderColor("#d1d5db").Padding(4).Text("✓ " + e).FontSize(10);
+                    row.AutoItem().Border(1).BorderColor(Colors.Grey.Lighten2).Padding(4).Text("✓ " + e).FontSize(10);
                     row.AutoItem().Width(6);
                 }
             });
@@ -176,7 +176,7 @@ public static class PdfUtils
         col.Item().Table(table =>
         {
             table.ColumnsDefinition(c => { c.RelativeColumn(1); c.RelativeColumn(2); c.RelativeColumn(1); c.RelativeColumn(2); });
-            void Row(string lbl, string? val) { table.Cell().PaddingBottom(4).Text(lbl + " :").FontColor("#6b7280").FontSize(10); table.Cell().PaddingBottom(4).Text(val ?? "—"); }
+            void Row(string lbl, string? val) { table.Cell().PaddingBottom(4).Text(lbl + " :").FontColor(Colors.Grey.Medium).FontSize(10); table.Cell().PaddingBottom(4).Text(val ?? "—"); }
             foreach (var f in fields.Where(f => f.Id != "repartitions"))
             {
                 var v = GetFieldPdfValue(s, f.Id);
@@ -191,8 +191,8 @@ public static class PdfUtils
                 table.ColumnsDefinition(c => { c.RelativeColumn(1); c.RelativeColumn(3); });
                 table.Header(h =>
                 {
-                    h.Cell().Background("#f3f4f6").Padding(4).Text("Quantité").FontSize(10).SemiBold();
-                    h.Cell().Background("#f3f4f6").Padding(4).Text("Adresse").FontSize(10).SemiBold();
+                    h.Cell().Background(Colors.Grey.Lighten4).Padding(4).Text("Quantité").FontSize(10).SemiBold();
+                    h.Cell().Background(Colors.Grey.Lighten4).Padding(4).Text("Adresse").FontSize(10).SemiBold();
                 });
                 foreach (var r in s.Repartitions)
                 {

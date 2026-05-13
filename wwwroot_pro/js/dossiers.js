@@ -181,7 +181,7 @@ export async function loadDossiersList() {
       const table = document.createElement("div");
       table.style.cssText = "width:100%;";
       const header = document.createElement("div");
-      header.style.cssText = "display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;padding:10px 16px;background:#f3f4f6;border-radius:8px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;";
+      header.style.cssText = "display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;padding:10px 16px;background:#f3f4f6;border-radius:8px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;";
 
       const colNom = document.createElement("span");
       colNom.textContent = "📁 Nom";
@@ -198,18 +198,14 @@ export async function loadDossiersList() {
       colSize.style.cursor = "pointer";
       colSize.onclick = () => { document.getElementById("dossiers-sort").value = "size_desc"; document.getElementById("dossiers-sort").dispatchEvent(new Event("change")); };
 
-      const colEtape = document.createElement("span");
-      colEtape.textContent = "Étape";
-
       header.appendChild(colNom);
       header.appendChild(colDate);
       header.appendChild(colSize);
-      header.appendChild(colEtape);
       table.appendChild(header);
 
       for (const item of allItems) {
         const row = document.createElement("div");
-        row.style.cssText = "display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;padding:10px 16px;background:white;border:1px solid #f3f4f6;border-radius:8px;margin-bottom:4px;align-items:center;cursor:pointer;transition:background 0.15s;";
+        row.style.cssText = "display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;padding:10px 16px;background:white;border:1px solid #f3f4f6;border-radius:8px;margin-bottom:4px;align-items:center;cursor:pointer;transition:background 0.15s;";
         row.onmouseenter = () => { row.style.background = "#f9fafb"; };
         row.onmouseleave = () => { row.style.background = "white"; };
 
@@ -223,7 +219,6 @@ export async function loadDossiersList() {
             <span style="font-size:13px;font-weight:600;color:#111827;font-family:monospace;">${item.numeroDossier} <span style="color:#9ca3af;font-weight:400;font-size:11px;">(${item.items.length} fichier(s))</span></span>
             <span style="font-size:12px;color:#6b7280;">${item.date ? new Date(item.date).toLocaleDateString("fr-FR") : '—'}</span>
             <span style="font-size:12px;color:#6b7280;">${item.size ? fmtBytes(item.size) : '—'}</span>
-            <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;">${getStageLabelDisplay(globalStage, globalBatStatus)}</span>
           `;
           row.onclick = () => openGroupedDossierDetail(item.numeroDossier, item.items);
         } else {
@@ -231,7 +226,6 @@ export async function loadDossiersList() {
             <span style="font-size:13px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.folder.fileName || '—'}</span>
             <span style="font-size:12px;color:#6b7280;">${item.date ? new Date(item.date).toLocaleDateString("fr-FR") : '—'}</span>
             <span style="font-size:12px;color:#6b7280;">${item.size ? fmtBytes(item.size) : '—'}</span>
-            <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;">${getStageLabelDisplay(item.realStage, item.batStatus)}</span>
           `;
           row.onclick = (e) => { if (e.target.closest(".btn-danger")) return; openDossierDetail(item.folder._id || item.folder.id); };
         }
