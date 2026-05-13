@@ -752,10 +752,9 @@ public static class PortalAdminEndpoints
         // Portal email templates
         // =====================================================================
         var portalTemplateKeys = new[] {
-            "client_welcome", "client_invitation", "client_password_reset", "client_order_received",
+            "client_invitation", "client_password_reset", "client_order_received",
             "client_bat_available", "client_bat_validated_confirmation", "client_bat_refused_confirmation",
-            "client_order_status_changed",
-            "atelier_client_bat_validated", "atelier_client_bat_refused", "atelier_new_client_order"
+            "client_production_started", "client_production_completed"
         };
 
         app.MapGet("/api/admin/portal/email-templates", (HttpContext ctx) =>

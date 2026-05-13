@@ -144,10 +144,16 @@
           method: 'POST',
           body: JSON.stringify({ email })
         });
-        forgotSuccess.textContent = 'Si cet email est enregistré, vous recevrez un lien de réinitialisation.';
+        if (r.ok && r.atelierEmail) {
+          const mailto = `mailto:${encodeURIComponent(r.atelierEmail)}?subject=${encodeURIComponent(r.subject || 'Réinitialisation mot de passe')}&body=${encodeURIComponent(r.body || '')}`;
+          window.location.href = mailto;
+          forgotSuccess.textContent = 'Un email va s\'ouvrir dans votre messagerie. Envoyez-le pour demander la réinitialisation.';
+        } else {
+          forgotSuccess.textContent = 'Contactez votre imprimerie pour réinitialiser votre mot de passe.';
+        }
         forgotSuccess.classList.remove('hidden');
       } catch { showErr(forgotError, 'Erreur réseau'); }
-      btn.disabled = false; btn.textContent = 'Envoyer le lien';
+      btn.disabled = false; btn.textContent = 'Envoyer la demande';
     };
 
     // Reset password (from email link)

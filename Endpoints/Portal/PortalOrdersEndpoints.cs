@@ -447,11 +447,20 @@ public static class PortalOrdersEndpoints
                         ["{orderTitle}"] = title,
                         ["{companyName}"] = client.CompanyName
                     };
-                    var (subj, body) = PortalEmailHelper.RenderTemplate("atelier_new_client_order",
-                        "Nouvelle commande client — {orderNumber}",
-                        "Une nouvelle commande a été déposée sur le portail client.\n\nClient : {clientName} ({companyName})\nCommande : {orderNumber} — {orderTitle}",
-                        vars);
-                    PortalEmailHelper.SendAtelierNotification(subj, body);
+                    // Create in-app notification (popup) for profiles 2 and 3 instead of email
+                    var notifCol = MongoDbHelper.GetCollection<BsonDocument>("notifications");
+                    var users = BackendUtils.LoadUsers();
+                    foreach (var u in users.Where(u => u.Profile == 2 || u.Profile == 3))
+                    {
+                        notifCol.InsertOne(new BsonDocument
+                        {
+                            ["type"] = "new_web_order",
+                            ["recipientLogin"] = u.Login,
+                            ["message"] = $"📦 Nouvelle commande web : {orderNumber} — {title} (Client : {client.DisplayName})",
+                            ["read"] = false,
+                            ["timestamp"] = DateTime.UtcNow
+                        });
+                    }
                 }
                 catch { /* non-blocking */ }
 
@@ -787,7 +796,16 @@ public static class PortalOrdersEndpoints
                 var theme = MongoDbHelper.GetSettings<PortalThemeConfig>("portalTheme") ?? new PortalThemeConfig();
                 var companyName = string.IsNullOrWhiteSpace(theme.CompanyName) ? "Gestion d'Atelier" : theme.CompanyName;
 
-                var pdfBytes = GenerateOrderRecapPdf(order, client, companyName);
+                byte[] pdfBytes;
+                try
+                {
+                    pdfBytes = GenerateOrderRecapPdf(order, client, companyName);
+                }
+                catch (Exception pdfEx)
+                {
+                    Console.WriteLine($"[ERROR] Recap PDF generation failed: {pdfEx.Message}");
+                    return Results.Json(new { ok = false, error = $"Erreur génération PDF : {pdfEx.Message}" });
+                }
 
                 var safeOrderNum = System.Text.RegularExpressions.Regex.Replace(order.OrderNumber ?? "", @"[^\w\-]", "_");
                 ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"Recapitulatif-{safeOrderNum}.pdf\"";
@@ -795,6 +813,7 @@ public static class PortalOrdersEndpoints
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"[ERROR] Recap PDF endpoint failed: {ex.Message}");
                 return Results.Json(new { ok = false, error = ex.Message });
             }
         });
