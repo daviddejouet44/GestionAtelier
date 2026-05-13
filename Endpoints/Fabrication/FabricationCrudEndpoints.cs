@@ -211,6 +211,7 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             Bascule                = input.Bascule,
             Couleurs               = input.Couleurs,
             CouleursAccompagnement = input.CouleursAccompagnement,
+            Certification = input.Certification,
 
             History = old?.History ?? new List<FabricationHistory>()
         };

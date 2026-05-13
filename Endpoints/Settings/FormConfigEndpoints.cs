@@ -115,6 +115,8 @@ public static class FormConfigEndpoints
             new() { Id = "formatFini",      Label = "Format fini",             Type = "text",   Section = "Informations générales", Order = order++, Visible = true,  Width = "half" },
             new() { Id = "quantite",        Label = "Quantité",                Type = "number", Section = "Informations générales", Order = order++, Visible = true,  Width = "half" },
             new() { Id = "moteurImpression",Label = "Moteur d'impression",     Type = "select", Section = "Informations générales", Order = order++, Visible = true,  Width = "half" },
+            new() { Id = "certification",   Label = "Certification",           Type = "select", Section = "Informations générales", Order = order++, Visible = true,  Width = "half",
+                    Options = new List<string> { "Aucun", "FSC", "PEFC" } },
 
             // ── Section : Donneur d'ordre ────────────────────────────────
             new() { Id = "donneurOrdreNom",       Label = "Nom",       Type = "text", Section = "Donneur d'ordre", Order = order++, Visible = true, Width = "half" },

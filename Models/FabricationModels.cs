@@ -124,6 +124,9 @@ public record FabricationSheet
     public string? Bascule { get; init; }          // "Non" | "In 8" | "In 12" (visible si Offset)
     public string? Couleurs { get; init; }         // "1 couleur" | "Bichromie" | "Trichromie" | "Quadri"
     public string? CouleursAccompagnement { get; init; } // champ libre
+
+    // ── Certification ──────────────────────────────────────
+    public string? Certification { get; init; }    // "Aucun" | "FSC" | "PEFC"
 }
 
 public class FabricationInput
@@ -228,6 +231,9 @@ public class FabricationInput
     public string? Bascule { get; set; }          // "Non" | "In 8" | "In 12" (visible si Offset)
     public string? Couleurs { get; set; }         // "1 couleur" | "Bichromie" | "Trichromie" | "Quadri"
     public string? CouleursAccompagnement { get; set; } // champ libre
+
+    // ── Certification ──────────────────────────────────────
+    public string? Certification { get; set; }
 }
 
 // ======================================================
