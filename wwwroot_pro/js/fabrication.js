@@ -357,25 +357,25 @@ function renderFabForm(config, opts) {
         ];
         const radioStyle='display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;';
         const cbStyle='display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#f3f4f6;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid #e5e7eb;';
-        const vernisHtml='<div style="margin-bottom:8px;">'
+        const vernisHtml='<div>'
           +'<span style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Vernis sélectif</span>'
           +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
           +'<label style="'+radioStyle+'"><input type="radio" name="fab-ennob-vernis-'+elId+'" value="" checked /> Non</label>'
           +'<label style="'+radioStyle+'"><input type="radio" name="fab-ennob-vernis-'+elId+'" value="Vernis sélectif" /> Oui</label>'
           +'</div></div>';
-        const dorureHtml='<div style="margin-bottom:8px;">'
+        const dorureHtml='<div>'
           +'<span style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Dorure à chaud</span>'
           +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
           +'<label style="'+radioStyle+'"><input type="radio" name="fab-ennob-dorure-'+elId+'" value="" checked /> Non</label>'
           +'<label style="'+radioStyle+'"><input type="radio" name="fab-ennob-dorure-'+elId+'" value="Dorure à chaud : Or" /> Or</label>'
           +'<label style="'+radioStyle+'"><input type="radio" name="fab-ennob-dorure-'+elId+'" value="Dorure à chaud : Argent" /> Argent</label>'
           +'</div></div>';
-        const pellHtml='<div>'
+        const pellHtml='<div style="margin-top:8px;">'
           +'<span style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Pelliculage <small style="font-weight:400;color:#6b7280;">(plusieurs choix possibles)</small></span>'
           +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
           +PELLICULAGE_OPTS.map(([val,lbl])=>'<label style="'+cbStyle+'"><input type="checkbox" class="fab-ennob-pelliculage" value="'+val+'" /> '+lbl+'</label>').join('')
           +'</div></div>';
-        wrap.innerHTML='<label>'+field.label+'</label><div id="'+elId+'" style="padding:6px 0;">'+vernisHtml+dorureHtml+pellHtml+'</div>';
+        wrap.innerHTML='<label>'+field.label+'</label><div id="'+elId+'" style="padding:6px 0;"><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">'+vernisHtml+dorureHtml+'</div>'+pellHtml+'</div>';
       } else if(field.type==='checkbox'){
         wrap.innerHTML='<label>'+field.label+'</label><label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;"><input id="'+elId+'" type="checkbox" style="width:16px;height:16px;" /><span id="fab-rainage-label">Non</span></label>';
       } else if(field.type==='file-import'){

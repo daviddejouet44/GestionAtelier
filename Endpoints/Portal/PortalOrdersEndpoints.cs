@@ -1035,15 +1035,15 @@ public static class PortalOrdersEndpoints
                         row.RelativeItem().Column(c =>
                         {
                             c.Item().Text(companyName).FontSize(18).SemiBold();
-                            c.Item().Text("Récapitulatif de commande").FontSize(13).FontColor("#6b7280");
+                            c.Item().Text("Récapitulatif de commande").FontSize(13).FontColor(Colors.Grey.Medium);
                         });
                         row.ConstantItem(150).AlignRight().Column(c =>
                         {
                             c.Item().Text($"N° {order.OrderNumber}").FontSize(14).SemiBold();
-                            c.Item().Text(order.CreatedAt.ToString("dd/MM/yyyy")).FontSize(11).FontColor("#6b7280");
+                            c.Item().Text(order.CreatedAt.ToString("dd/MM/yyyy")).FontSize(11).FontColor(Colors.Grey.Medium);
                         });
                     });
-                    hdr.Item().PaddingVertical(6).LineHorizontal(2).LineColor("#1a1a2e");
+                    hdr.Item().PaddingVertical(6).LineHorizontal(2).LineColor(Colors.Grey.Darken4);
                 });
 
                 page.Content().PaddingTop(10).Column(col =>
@@ -1051,7 +1051,7 @@ public static class PortalOrdersEndpoints
                     void Section(string title)
                     {
                         col.Item().PaddingTop(14).PaddingBottom(4).Text(title).FontSize(13).SemiBold();
-                        col.Item().LineHorizontal(1).LineColor("#d1d5db");
+                        col.Item().LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
                     }
 
                     void Row(string label, string? value)
@@ -1059,7 +1059,7 @@ public static class PortalOrdersEndpoints
                         if (value == null) return;
                         col.Item().PaddingTop(3).Row(r =>
                         {
-                            r.ConstantItem(160).Text(label + " :").FontColor("#6b7280").FontSize(10);
+                            r.ConstantItem(160).Text(label + " :").FontColor(Colors.Grey.Medium).FontSize(10);
                             r.RelativeItem().Text(value).FontSize(10);
                         });
                     }
@@ -1069,7 +1069,7 @@ public static class PortalOrdersEndpoints
                     {
                         r.AutoItem().Text("Statut : ").FontSize(11);
                         r.AutoItem().Text(statusLabel).FontSize(11).SemiBold()
-                            .FontColor(order.Status == "completed" || order.Status == "delivered" ? "#166534" : "#1e40af");
+                            .FontColor(order.Status == "completed" || order.Status == "delivered" ? Colors.Green.Darken3 : Colors.Blue.Darken3);
                     });
 
                     // Donneur d'ordre / client
@@ -1123,15 +1123,15 @@ public static class PortalOrdersEndpoints
                         {
                             var hl = statusLabels.TryGetValue(h.Status, out var sl2) ? sl2 : h.Status;
                             col.Item().PaddingTop(2).Text($"{h.Timestamp.ToString("dd/MM/yyyy HH:mm")} — {hl}{(string.IsNullOrWhiteSpace(h.Comment) ? "" : " — " + h.Comment)}")
-                                .FontSize(9).FontColor("#6b7280");
+                                .FontSize(9).FontColor(Colors.Grey.Medium);
                         }
                     }
                 });
 
                 page.Footer().AlignRight().Text(t =>
                 {
-                    t.Span($"Généré le {DateTime.Now:dd/MM/yyyy à HH:mm} — ").FontSize(8).FontColor("#9ca3af");
-                    t.Span(companyName).FontSize(8).FontColor("#9ca3af").SemiBold();
+                    t.Span($"Généré le {DateTime.Now:dd/MM/yyyy à HH:mm} — ").FontSize(8).FontColor(Colors.Grey.Lighten1);
+                    t.Span(companyName).FontSize(8).FontColor(Colors.Grey.Lighten1).SemiBold();
                 });
             });
         });
