@@ -760,11 +760,30 @@ public static class PortalAdminEndpoints
         app.MapGet("/api/admin/portal/email-templates", (HttpContext ctx) =>
         {
             if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            var defaultSubjects = new Dictionary<string, string>
+            {
+                ["client_invitation"] = "Votre accès au portail client",
+                ["client_password_reset"] = "Demande de réinitialisation de mot de passe",
+                ["client_order_received"] = "Commande reçue — {orderNumber}",
+                ["client_bat_available"] = "BAT disponible — {orderNumber}",
+                ["client_bat_validated_confirmation"] = "BAT validé — {orderNumber}",
+                ["client_bat_refused_confirmation"] = "BAT refusé — {orderNumber}",
+                ["client_production_started"] = "Début de production — {orderNumber}",
+                ["client_production_completed"] = "Fin de production — {orderNumber}"
+            };
+            var defaultBodies = new Dictionary<string, string>
+            {
+                ["client_production_started"] = "Bonjour {clientName},\n\nVotre commande {orderNumber} — {orderTitle} est entrée en production.\n\nCordialement,",
+                ["client_production_completed"] = "Bonjour {clientName},\n\nVotre commande {orderNumber} — {orderTitle} est terminée.\n\nCordialement,"
+            };
             var templates = new Dictionary<string, object>();
             foreach (var key in portalTemplateKeys)
             {
                 var tpl = MongoDbHelper.GetSettings<PortalEmailTemplate>($"portalEmailTemplate_{key}");
-                templates[key] = new { subject = tpl?.Subject ?? "", body = tpl?.Body ?? "" };
+                templates[key] = new {
+                    subject = tpl?.Subject ?? (defaultSubjects.TryGetValue(key, out var ds) ? ds : ""),
+                    body = tpl?.Body ?? (defaultBodies.TryGetValue(key, out var db) ? db : "")
+                };
             }
             return Results.Json(new { ok = true, templates });
         });
