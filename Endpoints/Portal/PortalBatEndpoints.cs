@@ -122,40 +122,48 @@ public static class PortalBatEndpoints
         // GET /api/portal/bat/file?token={token}  — serve PDF inline (no download)
         app.MapGet("/api/portal/bat/file", (HttpContext ctx) =>
         {
-            var token = ctx.Request.Query["token"].ToString();
-            if (string.IsNullOrWhiteSpace(token))
-                return Results.Json(new { ok = false, error = "Token manquant" });
-
-            var batCol = MongoDbHelper.GetCollection<BsonDocument>("client_bat_actions");
-            var bat = batCol.Find(Builders<BsonDocument>.Filter.Eq("batToken", token)).FirstOrDefault();
-            if (bat == null)
-                return Results.Json(new { ok = false, error = "Lien invalide" });
-
-            var filePath = bat.Contains("batFileRef") ? bat["batFileRef"].AsString : "";
-            if (string.IsNullOrWhiteSpace(filePath))
-                return Results.Json(new { ok = false, error = "Référence fichier BAT manquante" });
-
-            // Normalize path and check existence
-            filePath = Path.GetFullPath(filePath);
-            if (!File.Exists(filePath))
-            {
-                Console.WriteLine($"[BAT] File not found: {filePath}");
-                return Results.Json(new { ok = false, error = $"Fichier BAT non trouvé sur le serveur" });
-            }
-
-            // Read bytes to avoid path encoding issues with accented characters
             try
             {
-                var pdfBytes = File.ReadAllBytes(filePath);
-                var safeName = System.Text.RegularExpressions.Regex.Replace(
-                    Path.GetFileName(filePath), @"[^\w\.\-]", "_");
-                ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"{safeName}\"";
-                return Results.File(pdfBytes, "application/pdf");
+                var token = ctx.Request.Query["token"].ToString();
+                if (string.IsNullOrWhiteSpace(token))
+                    return Results.Json(new { ok = false, error = "Token manquant" });
+
+                var batCol = MongoDbHelper.GetCollection<BsonDocument>("client_bat_actions");
+                var bat = batCol.Find(Builders<BsonDocument>.Filter.Eq("batToken", token)).FirstOrDefault();
+                if (bat == null)
+                    return Results.Json(new { ok = false, error = "Lien invalide" });
+
+                var filePath = bat.Contains("batFileRef") ? bat["batFileRef"].AsString : "";
+                if (string.IsNullOrWhiteSpace(filePath))
+                    return Results.Json(new { ok = false, error = "Référence fichier BAT manquante" });
+
+                Console.WriteLine($"[BAT] Serving file: {filePath}");
+
+                // Try the stored path first, then search in BAT folder by filename
+                if (!File.Exists(filePath))
+                {
+                    var batFolder = Path.Combine(BackendUtils.HotfoldersRoot(), "BAT");
+                    var justName = Path.GetFileName(filePath);
+                    var altPath = Path.Combine(batFolder, justName);
+                    if (File.Exists(altPath))
+                        filePath = altPath;
+                }
+
+                if (!File.Exists(filePath))
+                {
+                    Console.WriteLine($"[BAT] File not found: {filePath}");
+                    return Results.Json(new { ok = false, error = "Fichier BAT non trouvé sur le serveur" });
+                }
+
+                // Stream the file directly using FileStream (handles Unicode paths on Windows)
+                var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                ctx.Response.Headers["Content-Disposition"] = "inline; filename=\"BAT.pdf\"";
+                return Results.File(stream, "application/pdf");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[BAT] Error reading file {filePath}: {ex.Message}");
-                return Results.Json(new { ok = false, error = "Erreur lors de la lecture du fichier BAT" });
+                Console.WriteLine($"[BAT] Error: {ex.Message}");
+                return Results.Json(new { ok = false, error = ex.Message });
             }
         });
 

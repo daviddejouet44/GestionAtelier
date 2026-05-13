@@ -153,6 +153,7 @@ public static class PortalAuthEndpoints
         });
 
         // POST /api/portal/auth/forgot-password
+        // Returns admin contact info so the client can email the company to request a password reset
         app.MapPost("/api/portal/auth/forgot-password", async (HttpContext ctx) =>
         {
             try
@@ -162,42 +163,17 @@ public static class PortalAuthEndpoints
                 if (string.IsNullOrWhiteSpace(email))
                     return Results.Json(new { ok = false, error = "Email requis" });
 
-                var col = MongoDbHelper.GetCollection<BsonDocument>("client_accounts");
-                var doc = col.Find(Builders<BsonDocument>.Filter.Eq("email", email.ToLowerInvariant())).FirstOrDefault();
-                if (doc == null)
-                    // Do not reveal whether the account exists
-                    return Results.Json(new { ok = true });
+                // Get atelier contact email from SMTP config (FROM address)
+                var smtp = MongoDbHelper.GetSettings<PortalSmtpSettings>("portalSmtp");
+                var atelierEmail = smtp?.FromAddress ?? "";
+                var atelierName = smtp?.FromName ?? "Imprimerie";
 
-                var client = DocToClient(doc);
-                var token = Guid.NewGuid().ToString("N");
-                var expiry = DateTime.UtcNow.AddHours(2);
+                var tpl = MongoDbHelper.GetSettings<PortalEmailTemplate>("portalEmailTemplate_password_reset");
+                var subject = tpl?.Subject ?? "Demande de réinitialisation de mot de passe";
+                var body = (tpl?.Body ?? "Bonjour,\n\nJe souhaite réinitialiser mon mot de passe pour le portail client.\n\nMon adresse email : {clientEmail}\n\nCordialement,")
+                    .Replace("{clientEmail}", email);
 
-                col.UpdateOne(
-                    Builders<BsonDocument>.Filter.Eq("id", client.Id),
-                    Builders<BsonDocument>.Update
-                        .Set("passwordResetToken", token)
-                        .Set("passwordResetExpiry", expiry));
-
-                // Send email
-                try
-                {
-                    var settings = MongoDbHelper.GetSettings<PortalSettings>("portalSettings") ?? new PortalSettings();
-                    var portalUrl = string.IsNullOrWhiteSpace(settings.PortalUrl) ? "" : settings.PortalUrl.TrimEnd('/');
-                    var resetLink = $"{portalUrl}/portal/login.html?token={token}";
-                    var tpl = MongoDbHelper.GetSettings<PortalEmailTemplate>("portalEmailTemplate_password_reset");
-                    var subject = tpl?.Subject ?? "Réinitialisation de votre mot de passe";
-                    var body = (tpl?.Body ?? "Bonjour {clientName},\n\nVoici le lien pour réinitialiser votre mot de passe (valable 2h) :\n{resetLink}\n\nCordialement,")
-                        .Replace("{clientName}", client.DisplayName)
-                        .Replace("{resetLink}", resetLink)
-                        .Replace("{portalLink}", portalUrl);
-                    PortalEmailHelper.SendEmail(client.Email, subject, body);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[WARN] Portal password reset email failed: {ex.Message}");
-                }
-
-                return Results.Json(new { ok = true });
+                return Results.Json(new { ok = true, atelierEmail, atelierName, subject, body });
             }
             catch (Exception ex)
             {

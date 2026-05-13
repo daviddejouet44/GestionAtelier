@@ -1152,7 +1152,6 @@ async function initSubmissionView() {
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <h3 style="margin: 0;">Fichiers soumis</h3>
             <div style="display: flex; gap: 8px;">
-              <button id="btnImportFromMail" class="btn btn-sm">📧 Importer depuis un mail</button>
               <button id="btnSelectAll" class="btn btn-sm">Sélectionner tout</button>
               <button id="btnSendAnalysis" class="btn btn-primary btn-sm">Envoyer en production</button>
             </div>
