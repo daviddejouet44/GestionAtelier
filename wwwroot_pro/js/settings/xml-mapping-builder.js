@@ -6,6 +6,7 @@ import { authToken, showNotification, esc } from '../core.js';
  */
 
 let _draggedElement = null; // Track dragged XML element for D&D
+let _currentXmlDoc = null;  // Store current XML document for reference
 
 /**
  * Parse XML file and display its structure as a tree for drag-and-drop mapping
@@ -53,12 +54,12 @@ export async function renderXmlMappingBuilder(panel, cfg, ficheFields) {
           <div id="xml-mapping-zones" style="display:flex;flex-direction:column;gap:8px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:12px;min-height:300px;overflow-y:auto;max-height:500px;">
             ${ficheFields.map(f => `
               <div class="xml-drop-zone" data-field="${esc(f.key)}" 
-                style="background:white;border:2px dashed #1e40af;border-radius:4px;padding:10px;cursor:grab;min-height:40px;display:flex;align-items:center;justify-content:space-between;">
+                style="background:white;border:2px dashed #1e40af;border-radius:4px;padding:10px;cursor:grab;min-height:40px;display:flex;align-items:center;justify-content:space-between;transition:all 0.2s ease;">
                 <div style="flex:1;min-width:0;">
                   <div style="font-weight:600;color:#374151;word-break:break-word;">${esc(f.key)}</div>
                   <div style="font-size:11px;color:#6b7280;">${esc(f.label)}</div>
                 </div>
-                <div class="xml-field-value" style="flex:0 0 auto;margin-left:8px;padding:4px 8px;background:#eff6ff;border:1px solid #bae6fd;border-radius:3px;font-size:11px;color:#0369a1;word-break:break-all;max-width:150px;">
+                <div class="xml-field-value" style="flex:0 0 auto;margin-left:8px;padding:4px 8px;background:#eff6ff;border:1px solid #bae6fd;border-radius:3px;font-size:11px;color:#0369a1;word-break:break-all;max-width:150px;overflow:hidden;text-overflow:ellipsis;">
                   ${esc(mapping[f.key] || '—')}
                 </div>
               </div>
@@ -70,14 +71,15 @@ export async function renderXmlMappingBuilder(panel, cfg, ficheFields) {
       <!-- Current mapping review -->
       <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:12px;margin-bottom:16px;">
         <h5 style="margin:0 0 10px;font-size:13px;font-weight:600;color:#166534;">✅ Mapping actuel</h5>
-        <div id="xml-mapping-review" style="font-size:12px;color:#166534;">
+        <div id="xml-mapping-review" style="font-size:12px;color:#166534;max-height:200px;overflow-y:auto;">
           ${Object.keys(mapping).length === 0 
             ? '<p style="margin:0;color:#9ca3af;">Aucun mapping défini</p>'
             : Object.entries(mapping).map(([k, v]) => 
-              `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #86efac;">
-                <code style="color:#059669;">${esc(k)}</code>
-                <span>→ <code style="color:#0d9488;">${esc(v)}</code></span>
-              </div>`
+              `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #86efac;gap:10px;">
+                 <code style="color:#059669;word-break:break-all;flex:1;">${esc(k)}</code>
+                 <span style="flex-shrink:0;">→</span>
+                 <code style="color:#0d9488;word-break:break-all;flex:1;">${esc(v)}</code>
+               </div>`
             ).join('')
           }
         </div>
@@ -125,15 +127,28 @@ export async function renderXmlMappingBuilder(panel, cfg, ficheFields) {
 
     try {
       const file = fileInput.files[0];
-      const text = await file.text();
+      
+      // Use FileReader for better compatibility
+      const text = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = (e) => reject(new Error('Erreur de lecture du fichier'));
+        reader.readAsText(file);
+      });
+
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(text, 'text/xml');
 
-      if (xmlDoc.parseError) {
+      // Check for XML parsing errors
+      if (xmlDoc.getElementsByTagName('parsererror').length > 0) {
+        const error = xmlDoc.getElementsByTagName('parsererror')[0];
         msgEl.style.color = '#ef4444';
-        msgEl.textContent = '❌ XML invalide : ' + xmlDoc.parseError;
+        msgEl.textContent = '❌ XML invalide : ' + error.textContent;
         return;
       }
+
+      // Store the parsed document for reference
+      _currentXmlDoc = xmlDoc;
 
       // Render XML tree
       const treeContainer = document.getElementById('xml-tree');
@@ -147,6 +162,7 @@ export async function renderXmlMappingBuilder(panel, cfg, ficheFields) {
     } catch (e) {
       msgEl.style.color = '#ef4444';
       msgEl.textContent = '❌ Erreur : ' + e.message;
+      console.error('XML loading error:', e);
     }
   };
 
@@ -169,7 +185,7 @@ export async function renderXmlMappingBuilder(panel, cfg, ficheFields) {
     msgEl.textContent = '⏳ Enregistrement…';
 
     try {
-      const r = await fetch('/api/config/integrations', {
+      const response = await fetch('/api/config/integrations', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -182,7 +198,9 @@ export async function renderXmlMappingBuilder(panel, cfg, ficheFields) {
             mapping: newMapping
           }
         })
-      }).then(r => r.json());
+      });
+
+      const r = await response.json();
 
       if (r.ok) {
         msgEl.style.color = '#16a34a';
@@ -192,11 +210,12 @@ export async function renderXmlMappingBuilder(panel, cfg, ficheFields) {
         setTimeout(() => { msgEl.textContent = ''; }, 2000);
       } else {
         msgEl.style.color = '#ef4444';
-        msgEl.textContent = '❌ ' + (r.error || 'Erreur');
+        msgEl.textContent = '❌ ' + (r.error || 'Erreur inconnue');
       }
     } catch (e) {
       msgEl.style.color = '#ef4444';
       msgEl.textContent = '❌ Erreur réseau : ' + e.message;
+      console.error('Save error:', e);
     }
   };
 
@@ -228,7 +247,7 @@ export async function renderXmlMappingBuilder(panel, cfg, ficheFields) {
       <div style="margin-left:${depth * 16}px;padding:4px 0;">
         <div class="xml-tree-element" id="${elemId}" draggable="true"
           data-path="${esc(fullPath)}"
-          style="background:#fff;border:1px solid #e5e7eb;border-radius:3px;padding:6px;margin-bottom:4px;cursor:grab;user-select:none;font-size:11px;">
+          style="background:#fff;border:1px solid #e5e7eb;border-radius:3px;padding:6px;margin-bottom:4px;cursor:grab;user-select:none;font-size:11px;transition:all 0.15s ease;">
           <span style="color:#1e40af;font-weight:600;">&lt;${esc(tagName)}&gt;</span>
           ${textContent && !hasChildren ? `<span style="color:#6b7280;margin-left:4px;">"${esc(textContent)}"</span>` : ''}
         </div>
@@ -251,17 +270,23 @@ export async function renderXmlMappingBuilder(panel, cfg, ficheFields) {
   function getXmlPath(node) {
     const parts = [];
     let current = node;
+    
     while (current && current.nodeType === 1) {
       let index = 1;
-      let sibling = current.previousElementSibling;
+      let sibling = current.previousSibling;
+      
       while (sibling) {
-        if (sibling.nodeName === current.nodeName) index++;
-        sibling = sibling.previousElementSibling;
+        if (sibling.nodeType === 1 && sibling.nodeName === current.nodeName) {
+          index++;
+        }
+        sibling = sibling.previousSibling;
       }
+      
       const nodeName = current.nodeName.toLowerCase();
       parts.unshift(`${nodeName}[${index}]`);
       current = current.parentElement;
     }
+    
     return '/' + parts.join('/');
   }
 
@@ -277,6 +302,11 @@ export async function renderXmlMappingBuilder(panel, cfg, ficheFields) {
         };
         e.dataTransfer.effectAllowed = 'copy';
         e.dataTransfer.setData('text/plain', elem.dataset.path);
+        elem.style.opacity = '0.6';
+      });
+
+      elem.addEventListener('dragend', (e) => {
+        elem.style.opacity = '1';
       });
     });
 
@@ -288,19 +318,39 @@ export async function renderXmlMappingBuilder(panel, cfg, ficheFields) {
         zone.style.borderColor = '#0284c7';
       });
 
-      zone.addEventListener('dragleave', () => {
-        zone.style.background = 'white';
-        zone.style.borderColor = '#1e40af';
+      zone.addEventListener('dragleave', (e) => {
+        // Only reset if leaving the zone itself, not child elements
+        if (e.target === zone) {
+          zone.style.background = 'white';
+          zone.style.borderColor = '#1e40af';
+        }
       });
 
       zone.addEventListener('drop', (e) => {
         e.preventDefault();
+        e.stopPropagation();
+        
         zone.style.background = 'white';
         zone.style.borderColor = '#1e40af';
 
         if (_draggedElement) {
-          zone.querySelector('.xml-field-value').textContent = _draggedElement.path;
+          const valueEl = zone.querySelector('.xml-field-value');
+          valueEl.textContent = _draggedElement.path;
+          valueEl.title = _draggedElement.path; // Show full path on hover
+          
+          // Collect all current mappings and update review
+          const allMappings = {};
+          document.querySelectorAll('.xml-drop-zone').forEach(z => {
+            const fieldKey = z.dataset.field;
+            const val = z.querySelector('.xml-field-value')?.textContent?.trim();
+            if (val && val !== '—') {
+              allMappings[fieldKey] = val;
+            }
+          });
+          updateMappingReview(allMappings);
         }
+        
+        _draggedElement = null;
       });
     });
   }
@@ -315,9 +365,10 @@ export async function renderXmlMappingBuilder(panel, cfg, ficheFields) {
     } else {
       reviewEl.innerHTML = Object.entries(mapping)
         .map(([k, v]) => `
-          <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #86efac;">
-            <code style="color:#059669;">${esc(k)}</code>
-            <span>→ <code style="color:#0d9488;">${esc(v)}</code></span>
+          <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #86efac;gap:10px;">
+            <code style="color:#059669;word-break:break-all;flex:1;">${esc(k)}</code>
+            <span style="flex-shrink:0;">→</span>
+            <code style="color:#0d9488;word-break:break-all;flex:1;">${esc(v)}</code>
           </div>
         `).join('');
     }
