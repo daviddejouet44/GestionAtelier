@@ -2,6 +2,7 @@
 // Gestion des imports automatiques (XML, ERP, Pressero, MDSF) et exports (XML, CSV, ERP, Pressero, MDSF)
 import { authToken, showNotification, esc } from '../core.js';
 import { renderSettingsOrderSources } from './settings-order-sources.js';
+import { renderXmlMappingBuilder } from './xml-mapping-builder.js';
 
 const API = {
   config:    '/api/settings/integrations-config',
@@ -231,16 +232,7 @@ async function renderXmlImportTab(panel, cfg) {
       </div>
     </div>
 
-    <div class="settings-section-card">
-      <h4>Mapping des champs XML → Fiche</h4>
-      <p style="color:#6b7280;font-size:13px;margin-bottom:14px;">
-        Associez les balises XML de votre export ERP/W2P aux champs de la fiche.<br>
-        Laissez vide pour ignorer un champ.
-      </p>
-      <div id="xml-mapping-rows" style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;max-width:700px;"></div>
-      <button id="xml-mapping-save" class="btn btn-primary" style="margin-top:16px;">💾 Enregistrer le mapping</button>
-      <div id="xml-mapping-msg" style="margin-top:8px;font-size:13px;"></div>
-    </div>
+    <div id="xml-builder-container"></div>
 
     <div class="settings-section-card">
       <h4>Clé de déduplication</h4>
@@ -253,38 +245,9 @@ async function renderXmlImportTab(panel, cfg) {
     </div>
   `;
 
-  // Build mapping rows
-  const rowsEl = panel.querySelector('#xml-mapping-rows');
-  ficheFields.forEach(f => {
-    const sid = safeDomId(f.key);
-    rowsEl.innerHTML += `
-      <div style="display:flex;flex-direction:column;gap:4px;">
-        <label style="font-size:12px;font-weight:600;color:#374151;">${esc(f.key)}<span style="font-weight:400;color:#6b7280;margin-left:4px;">— ${esc(f.label)}</span></label>
-        <input type="text" id="xml-map-${sid}" placeholder="Balise XML source" class="settings-input"
-          value="${esc(mapping[f.key] || '')}" style="font-size:12px;padding:5px 8px;" />
-      </div>`;
-  });
-
-  // Save mapping
-  panel.querySelector('#xml-mapping-save').onclick = async () => {
-    const newMapping = {};
-    ficheFields.forEach(f => {
-      const v = panel.querySelector(`#xml-map-${safeDomId(f.key)}`)?.value?.trim();
-      if (v) newMapping[f.key] = v;
-    });
-    const msgEl = panel.querySelector('#xml-mapping-msg');
-    try {
-      const r = await fetch(API.config, {
-        method: 'PUT',
-        headers: authJsonH(),
-        body: JSON.stringify({ section: 'xmlImport', data: { ...cfg.xmlImport, mapping: newMapping } })
-      }).then(r => r.json());
-      if (r.ok) {
-        msgEl.style.color = '#16a34a'; msgEl.textContent = '✅ Mapping enregistré';
-        cfg.xmlImport = { ...cfg.xmlImport, mapping: newMapping };
-      } else { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ ' + (r.error || 'Erreur'); }
-    } catch(e) { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ Erreur réseau'; }
-  };
+  // Render the interactive XML mapping builder
+  const builderContainer = panel.querySelector('#xml-builder-container');
+  await renderXmlMappingBuilder(builderContainer, cfg, ficheFields);
 
   // Save dedup key
   panel.querySelector('#xml-dedup-save').onclick = async () => {
@@ -507,7 +470,7 @@ function renderPresseroTab(panel, cfg, activeProvider = 'none') {
     const msgEl = panel.querySelector('#pressero-msg');
     msgEl.style.color='#6b7280'; msgEl.textContent='⏳ Test de connexion Pressero…';
     try {
-      const r = await fetch(API.testConn, { method:'POST', headers: authJsonH(), body: JSON.stringify({ source:'pressero', url: panel.querySelector('#pressero-url').value.trim(), apiKey: panel.querySelector('#pressero-apikey').value || pCfg.apiKey || '' }) }).then(r=>r.json()).catch(()=>({ ok:false, error:'Erreur réseau' }));
+      const r = await fetch(API.testConn, { method:'POST', headers: authJsonH(), body: JSON.stringify({ source:'pressero', url: panel.querySelector('#pressero-url').value.trim(), apiKey: panel.querySelector('#pressero-apikey').value })}).then(r=>r.json()).catch(()=>({ok:false,error:'Erreur réseau'}));
       if (r.ok) { msgEl.style.color='#16a34a'; msgEl.textContent='✅ Connexion réussie'; }
       else { msgEl.style.color='#ef4444'; msgEl.textContent='❌ '+(r.error||'Connexion échouée'); }
     } catch(e) { msgEl.style.color='#ef4444'; msgEl.textContent='❌ Erreur réseau'; }
@@ -594,7 +557,7 @@ function renderMdsfTab(panel, cfg, activeProvider = 'none') {
     const msgEl = panel.querySelector('#mdsf-msg');
     msgEl.style.color='#6b7280'; msgEl.textContent='⏳ Test de connexion MDSF…';
     try {
-      const r = await fetch(API.testConn, { method:'POST', headers: authJsonH(), body: JSON.stringify({ source:'mdsf', url: panel.querySelector('#mdsf-url').value.trim(), apiKey: panel.querySelector('#mdsf-apikey').value || mCfg.apiKey||'' }) }).then(r=>r.json()).catch(()=>({ ok:false, error:'Erreur réseau' }));
+      const r = await fetch(API.testConn, { method:'POST', headers: authJsonH(), body: JSON.stringify({ source:'mdsf', url: panel.querySelector('#mdsf-url').value.trim(), apiKey: panel.querySelector('#mdsf-apikey').value })}).then(r=>r.json()).catch(()=>({ok:false,error:'Erreur réseau'}));
       if (r.ok) { msgEl.style.color='#16a34a'; msgEl.textContent='✅ Connexion réussie'; }
       else { msgEl.style.color='#ef4444'; msgEl.textContent='❌ '+(r.error||'Connexion échouée'); }
     } catch(e) { msgEl.style.color='#ef4444'; msgEl.textContent='❌ Erreur réseau'; }
