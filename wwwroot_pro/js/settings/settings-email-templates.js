@@ -123,6 +123,7 @@ export async function renderSettingsEmailTemplates(panel) {
     'client_production_completed': { title: 'Fin de production',        desc: 'Envoyé au client lorsque sa commande est terminée (déclenché manuellement).', trigger: 'Fin de production (mail manuel depuis tuile)' },
     'atelier_client_bat_refused': { title: 'BAT refusé — notification atelier',  desc: 'Envoyé à l\'atelier lorsqu\'un client refuse un BAT depuis son espace client (avec motif).', trigger: 'Refus BAT par le client (portail)' },
     'atelier_new_client_order':   { title: 'Nouvelle commande web — atelier',    desc: 'Envoyé à l\'atelier lorsqu\'une nouvelle commande arrive depuis le portail client.', trigger: 'Soumission d\'une commande web (portail)' },
+    'atelier_password_reset_reply': { title: 'Nouveau mot de passe — réponse atelier', desc: "Modèle que l'atelier utilise pour envoyer manuellement le nouveau mot de passe au client après réinitialisation.", trigger: null },
   };
 
   // Default bodies for portal templates
