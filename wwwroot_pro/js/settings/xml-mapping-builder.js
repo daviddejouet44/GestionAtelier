@@ -92,19 +92,6 @@ export async function renderXmlMappingBuilder(panel, cfg, ficheFields) {
       </div>
       <div id="xml-builder-save-msg" style="margin-top:8px;font-size:13px;"></div>
     </div>
-
-    <!-- XML Source Management -->
-    <div class="settings-section-card" style="border-left:4px solid #8b5cf6;margin-top:20px;">
-      <h4>🔗 Sources XML (multiples)</h4>
-      <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">
-        Gérez plusieurs sources XML pour supporter différents formats de fournisseurs.
-        Chaque source peut avoir son propre mapping ou réutiliser le mapping global.
-      </p>
-      <div id="xml-sources-editor" style="display:flex;flex-direction:column;gap:12px;">
-        <p style="color:#9ca3af;font-size:12px;">Aucune source personnalisée configurée</p>
-      </div>
-      <button id="xml-source-add-btn" class="btn btn-sm" style="margin-top:12px;">➕ Ajouter une source</button>
-    </div>
   `;
 
   // ============================================================

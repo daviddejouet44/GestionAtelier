@@ -85,7 +85,7 @@ app.MapGet("/api/operators", () =>
     try
     {
         var users = BackendUtils.LoadUsers();
-        var operators = users.Where(u => u.Profile == 2)
+        var operators = users.Where(u => u.Profile == 2 || u.Profile == 4 || u.Profile == 6)
             .Select(u => new { id = u.Id, name = u.Name, login = u.Login });
         return Results.Json(new { ok = true, operators });
     }
