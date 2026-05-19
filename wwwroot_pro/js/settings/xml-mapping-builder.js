@@ -185,7 +185,7 @@ export async function renderXmlMappingBuilder(panel, cfg, ficheFields) {
     msgEl.textContent = '⏳ Enregistrement…';
 
     try {
-      const response = await fetch('/api/config/integrations', {
+      const response = await fetch('/api/settings/integrations-config', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
