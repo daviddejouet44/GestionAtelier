@@ -88,33 +88,7 @@ export async function renderSettingsPortal(panel) {
         </div>
       </div>
 
-      <div class="settings-section-card" style="margin-top:16px;">
-        <h4>📧 Configuration SMTP (emails portail)</h4>
-        <p style="font-size:12px;color:#6b7280;margin-bottom:12px;">Configurez le serveur SMTP pour l'envoi des emails de notification (confirmation, BAT, réinitialisation de mot de passe).</p>
-        <div style="display:grid;grid-template-columns:1fr 100px;gap:12px;margin-bottom:12px;">
-          <div class="settings-form-group"><label>Serveur SMTP</label><input type="text" id="smtp-host" value="${esc(smtp.host || '')}" class="settings-input settings-input-wide" placeholder="smtp.example.com" /></div>
-          <div class="settings-form-group"><label>Port</label><input type="number" id="smtp-port" value="${smtp.port || 587}" class="settings-input" style="width:90px;" /></div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-          <div class="settings-form-group"><label>Utilisateur SMTP</label><input type="text" id="smtp-username" value="${esc(smtp.username || '')}" class="settings-input settings-input-wide" placeholder="user@example.com" /></div>
-          <div class="settings-form-group"><label>Mot de passe (laisser vide pour ne pas modifier)</label><input type="password" id="smtp-password" value="" class="settings-input settings-input-wide" placeholder="••••••••" /></div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-          <div class="settings-form-group"><label>Email expéditeur</label><input type="email" id="smtp-from" value="${esc(smtp.fromAddress || '')}" class="settings-input settings-input-wide" placeholder="portail@votreSoc.fr" /></div>
-          <div class="settings-form-group"><label>Nom expéditeur</label><input type="text" id="smtp-from-name" value="${esc(smtp.fromName || 'Portail Client')}" class="settings-input settings-input-wide" /></div>
-        </div>
-        <div class="settings-form-group" style="margin-bottom:12px;"><label>Email de notification atelier</label><input type="email" id="smtp-atelier-email" value="${esc(smtp.atelierNotifyEmail || '')}" class="settings-input settings-input-wide" placeholder="atelier@votreSoc.fr" /></div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
-          <input type="checkbox" id="smtp-ssl" ${smtp.useSsl !== false ? 'checked' : ''} />
-          <label for="smtp-ssl" style="font-size:13px;color:#374151;">Connexion SSL/TLS</label>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
-          <button id="btn-smtp-test" class="btn btn-sm" style="background:#f0fdf4;border:1px solid #86efac;color:#15803d;">🧪 Tester la config SMTP</button>
-          <span id="smtp-test-msg" style="font-size:13px;"></span>
-        </div>
-      </div>
-
-      <button id="portal-save-settings" class="btn btn-primary" style="margin-top:8px;">Enregistrer la configuration</button>
+      <button id="portal-save-settings"save-settings" class="btn btn-primary" style="margin-top:8px;">Enregistrer la configuration</button>
       <span id="portal-settings-msg" style="margin-left:12px;font-size:13px;"></span>
     </div>
 
@@ -337,16 +311,6 @@ export async function renderSettingsPortal(panel) {
       lockDurationMinutes: parseInt(panel.querySelector('#portal-lock-duration').value) || 30,
       maxUploadSizeMb: parseInt(panel.querySelector('#portal-max-size').value) || 500,
       maxFilesPerOrder: parseInt(panel.querySelector('#portal-max-files').value) || 10,
-      smtp: {
-        host: panel.querySelector('#smtp-host').value.trim(),
-        port: parseInt(panel.querySelector('#smtp-port').value) || 587,
-        useSsl: panel.querySelector('#smtp-ssl').checked,
-        username: panel.querySelector('#smtp-username').value.trim(),
-        password: panel.querySelector('#smtp-password').value,
-        fromAddress: panel.querySelector('#smtp-from').value.trim(),
-        fromName: panel.querySelector('#smtp-from-name').value.trim(),
-        atelierNotifyEmail: panel.querySelector('#smtp-atelier-email').value.trim()
-      }
     };
 
     try {
@@ -360,34 +324,7 @@ export async function renderSettingsPortal(panel) {
     } catch { msgEl.style.color = '#dc2626'; msgEl.textContent = 'Erreur réseau'; }
   };
 
-  // ── SMTP test ─────────────────────────────────────────────────────────────
-  panel.querySelector('#btn-smtp-test').onclick = async () => {
-    const msgEl = panel.querySelector('#smtp-test-msg');
-    msgEl.style.color = '#6b7280';
-    msgEl.textContent = '⏳ Envoi en cours…';
-    try {
-      const toAddr = panel.querySelector('#smtp-atelier-email').value.trim()
-                  || panel.querySelector('#smtp-from').value.trim();
-      const r = await fetch('/api/admin/portal/smtp-test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-        body: JSON.stringify({ to: toAddr })
-      }).then(r => r.json());
-      if (r.ok) {
-        msgEl.style.color = '#16a34a';
-        msgEl.textContent = `✅ Email de test envoyé à ${r.sentTo}`;
-      } else {
-        msgEl.style.color = '#dc2626';
-        msgEl.textContent = '❌ ' + (r.error || 'Erreur');
-      }
-    } catch(e) {
-      msgEl.style.color = '#dc2626';
-      msgEl.textContent = '❌ Erreur réseau';
-    }
-    setTimeout(() => { msgEl.textContent = ''; }, 8000);
-  };
-
-  // ── Save theme ────────────────────────────────────────────────────────────
+    // ── Save theme ────────────────────────────────────────────────────────────
   panel.querySelector('#portal-theme-save').onclick = async () => {
     const msgEl = panel.querySelector('#portal-theme-msg');
     msgEl.textContent = '';

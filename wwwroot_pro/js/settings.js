@@ -60,7 +60,6 @@ export async function initSettingsView() {
         <button class="settings-tab" data-tab="form-config">Fiche de production</button>
         <button class="settings-tab" data-tab="logo">Logos/Images</button>
         <button class="settings-tab" data-tab="planning-colors">🎨 Couleurs Planning</button>
-        <button class="settings-tab" data-tab="imap-config">Import email (IMAP)</button>
         <button class="settings-tab" data-tab="email-templates">📧 Templates email</button>
         <button class="settings-tab" data-tab="integrations">🔌 Intégrations</button>
         <button class="settings-tab" data-tab="portal">🌐 Portail client</button>
@@ -90,7 +89,6 @@ export async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-form-config"></div>
       <div class="settings-panel hidden" id="settings-panel-logo"></div>
       <div class="settings-panel hidden" id="settings-panel-planning-colors"></div>
-      <div class="settings-panel hidden" id="settings-panel-imap-config"></div>
       <div class="settings-panel hidden" id="settings-panel-email-templates"></div>
       <div class="settings-panel hidden" id="settings-panel-integrations"></div>
       <div class="settings-panel hidden" id="settings-panel-portal"></div>
@@ -144,7 +142,6 @@ export async function loadSettingsPanel(tabName, panelEl) {
     case "form-config": await renderSettingsFormConfig(panelEl); break;
     case "logo": await renderSettingsLogo(panelEl); break;
     case "planning-colors": await renderSettingsPlanningColors(panelEl); break;
-    case "imap-config": await renderSettingsImapConfig(panelEl); break;
     case "email-templates": await renderSettingsEmailTemplates(panelEl); break;
     case "integrations": await renderSettingsIntegrations(panelEl); break;
     case "portal": await renderSettingsPortal(panelEl); break;
@@ -251,72 +248,6 @@ async function renderSettingsBackup(panel) {
       btnImport.disabled = false;
       btnImport.textContent = "📥 Importer";
     }
-  };
-}
-
-async function renderSettingsImapConfig(panel) {
-  let cfg = {};
-  try {
-    const r = await fetch('/api/settings/imap').then(res => res.json()).catch(() => ({}));
-    if (r.ok && r.settings) cfg = r.settings;
-  } catch(e) {}
-
-  panel.innerHTML = `
-    <h3>Import email (IMAP)</h3>
-    <p style='color:#6b7280;font-size:13px;margin-bottom:20px;'>Configurez les paramètres IMAP pour pré-remplir le formulaire d'import depuis un mail dans la vue Soumission.</p>
-
-    <div class='settings-section-card' style='background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px 16px;margin-bottom:16px;'>
-      <h4 style='margin:0 0 8px;font-size:13px;color:#854d0e;'>⚠️ Gmail — Mot de passe d'application</h4>
-      <p style='font-size:12px;color:#713f12;margin:0 0 6px;'>Google a progressivement désactivé l'accès IMAP par mot de passe d'application pour les nouveaux comptes. Si la connexion échoue, suivez ces étapes :</p>
-      <ul style='font-size:12px;color:#713f12;margin:0;padding-left:18px;'>
-        <li>Serveur : <code>imap.gmail.com</code>, Port : <code>993</code>, SSL activé</li>
-        <li>Activer la vérification en 2 étapes sur votre compte Google, puis générer un <strong>mot de passe d'application</strong> dans <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">Google App Passwords</a></li>
-        <li>Utiliser le mot de passe d'application à 16 caractères comme mot de passe ici (saisissez-le <strong>sans espaces</strong>)</li>
-        <li>Si cela ne fonctionne pas, Google peut bloquer l'accès IMAP — une intégration OAuth2 sera nécessaire dans une prochaine version.</li>
-      </ul>
-    </div>
-
-    <div class='settings-section-card' style='background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:12px 16px;margin-bottom:16px;'>
-      <h4 style='margin:0 0 8px;font-size:13px;color:#1e3a8a;'>ℹ️ Office 365 / Outlook</h4>
-      <p style='font-size:12px;color:#1e40af;margin:0 0 6px;'>Pour tester avec Office 365 :</p>
-      <ul style='font-size:12px;color:#1e40af;margin:0;padding-left:18px;'>
-        <li>Serveur : <code>outlook.office365.com</code>, Port : <code>993</code>, SSL activé</li>
-        <li>Un compte <strong>Microsoft 365 Developer</strong> (programme développeur Microsoft, gratuit) permet de tester avec IMAP</li>
-        <li>Un compte <strong>Outlook.com gratuit</strong> peut ne pas autoriser l'accès IMAP/mot de passe d'application — vérifiez dans les paramètres du compte Outlook</li>
-        <li>Si votre organisation utilise l'authentification moderne (OAuth2), le mot de passe classique ne fonctionnera pas</li>
-      </ul>
-    </div>
-
-    <div class='settings-section-card'>
-      <h4>Configuration serveur IMAP</h4>
-      <div style='display:grid;grid-template-columns:1fr 100px;gap:12px;margin-bottom:12px;'>
-        <div class='settings-form-group'><label>Serveur IMAP</label><input type='text' id='imap-cfg-host' value='${esc(cfg.host||"")}' class='settings-input settings-input-wide' placeholder='imap.gmail.com' /></div>
-        <div class='settings-form-group'><label>Port</label><input type='number' id='imap-cfg-port' value='${cfg.port||993}' class='settings-input' style='width:90px;' /></div>
-      </div>
-      <div class='settings-form-group' style='margin-bottom:12px;'>
-        <label>Email (compte par défaut)</label>
-        <input type='email' id='imap-cfg-email' value='${esc(cfg.email||"")}' class='settings-input settings-input-wide' placeholder='votre@email.com' />
-      </div>
-      <div style='display:flex;align-items:center;gap:8px;margin-bottom:16px;'>
-        <input type='checkbox' id='imap-cfg-ssl' ${cfg.useSsl!==false?'checked':''} />
-        <label for='imap-cfg-ssl' style='font-size:13px;color:#374151;'>Connexion SSL/TLS</label>
-      </div>
-      <button id='imap-cfg-save' class='btn btn-primary'>Enregistrer la configuration IMAP</button>
-    </div>
-  `;
-
-  panel.querySelector('#imap-cfg-save').onclick = async () => {
-    const host = panel.querySelector('#imap-cfg-host').value.trim();
-    const port = parseInt(panel.querySelector('#imap-cfg-port').value)||993;
-    const email = panel.querySelector('#imap-cfg-email').value.trim();
-    const useSsl = panel.querySelector('#imap-cfg-ssl').checked;
-    const r = await fetch('/api/settings/imap', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-      body: JSON.stringify({ host, port, email, useSsl })
-    }).then(res => res.json()).catch(() => ({ ok: false }));
-    if (r.ok) showNotification('✅ Configuration IMAP enregistrée', 'success');
-    else showNotification('❌ ' + (r.error||'Erreur'), 'error');
   };
 }
 

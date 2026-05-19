@@ -123,6 +123,7 @@ export async function renderSettingsEmailTemplates(panel) {
     'client_production_completed': { title: 'Fin de production',        desc: 'Envoyé au client lorsque sa commande est terminée (déclenché manuellement).', trigger: 'Fin de production (mail manuel depuis tuile)' },
     'atelier_client_bat_refused': { title: 'BAT refusé — notification atelier',  desc: 'Envoyé à l\'atelier lorsqu\'un client refuse un BAT depuis son espace client (avec motif).', trigger: 'Refus BAT par le client (portail)' },
     'atelier_new_client_order':   { title: 'Nouvelle commande web — atelier',    desc: 'Envoyé à l\'atelier lorsqu\'une nouvelle commande arrive depuis le portail client.', trigger: 'Soumission d\'une commande web (portail)' },
+    'atelier_password_reset_reply': { title: 'Nouveau mot de passe — réponse atelier', desc: "Modèle que l'atelier utilise pour envoyer manuellement le nouveau mot de passe au client après réinitialisation.", trigger: null },
   };
 
   // Default bodies for portal templates
@@ -137,6 +138,7 @@ export async function renderSettingsEmailTemplates(panel) {
     'client_production_completed': { subject: 'Fin de production — {orderNumber}', body: 'Bonjour {clientName},\n\nVotre commande {orderNumber} — {orderTitle} est terminée.\n\nCordialement,' },
     'atelier_client_bat_refused': { subject: 'BAT refusé — {orderNumber}', body: 'BAT refusé par {clientName} ({companyName})\nCommande : {orderNumber}\nMotif : {motif}\n\nCordialement,' },
     'atelier_new_client_order':   { subject: 'Nouvelle commande client — {orderNumber}', body: 'Nouvelle commande web.\n\nClient : {clientName} ({companyName})\nCommande : {orderNumber} — {orderTitle}\n\nCordialement,' },
+    'atelier_password_reset_reply': { subject: 'Réinitialisation de votre mot de passe', body: 'Bonjour {clientName},\n\nSuite à votre demande, votre mot de passe a été réinitialisé.\n\nVotre nouveau mot de passe : {newPassword}\n\nConnectez-vous ici : {portalLink}\n\nCordialement,' },
   };
 
   // Fetch all templates

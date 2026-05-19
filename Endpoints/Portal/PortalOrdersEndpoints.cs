@@ -300,12 +300,16 @@ public static class PortalOrdersEndpoints
                 string? mediaCouverture = json.TryGetProperty("mediaCouverture", out var mcEl) ? mcEl.GetString() : null;
                 string? formatFini = json.TryGetProperty("formatFini", out var fnEl) ? fnEl.GetString() : null;
 
-                // Donneur d'ordre
+                // Donneur d'ordre — fall back to client account data when not explicitly provided
                 string? donneurOrdreNom     = json.TryGetProperty("donneurOrdreNom",     out var donNomEl)    ? donNomEl.GetString()    : null;
                 string? donneurOrdrePrenom  = json.TryGetProperty("donneurOrdrePrenom",  out var donPrenEl)   ? donPrenEl.GetString()   : null;
                 string? donneurOrdreTel     = json.TryGetProperty("donneurOrdreTelephone",out var donTelEl)   ? donTelEl.GetString()   : null;
                 string? donneurOrdreEmail   = json.TryGetProperty("donneurOrdreEmail",   out var donEmailEl)  ? donEmailEl.GetString()  : null;
                 string? donneurOrdreSociete = json.TryGetProperty("donneurOrdreSociete", out var donSocEl)    ? donSocEl.GetString()    : null;
+                if (string.IsNullOrWhiteSpace(donneurOrdreNom))     donneurOrdreNom     = !string.IsNullOrWhiteSpace(client.DisplayName) ? client.DisplayName : client.CompanyName;
+                if (string.IsNullOrWhiteSpace(donneurOrdreEmail))   donneurOrdreEmail   = client.Email;
+                if (string.IsNullOrWhiteSpace(donneurOrdreTel))     donneurOrdreTel     = client.ContactPhone;
+                if (string.IsNullOrWhiteSpace(donneurOrdreSociete)) donneurOrdreSociete = client.CompanyName;
 
                 // Finitions étendues
                 bool? rainage = null;

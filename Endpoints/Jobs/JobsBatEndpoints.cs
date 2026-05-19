@@ -118,9 +118,9 @@ app.MapPut("/api/assignment", async (HttpContext ctx) =>
         var operatorId = opIdEl.GetString() ?? "";
 
         var users2 = BackendUtils.LoadUsers();
-        var operator2 = users2.FirstOrDefault(u => u.Id == operatorId && u.Profile == 2);
+        var operator2 = users2.FirstOrDefault(u => u.Id == operatorId && (u.Profile == 2 || u.Profile == 4 || u.Profile == 6));
         if (operator2 == null)
-            return Results.Json(new { ok = false, error = "Opérateur introuvable ou profil invalide." });
+            return Results.Json(new { ok = false, error = "Utilisateur introuvable ou profil non autorisé." });
 
         var assignment = new AssignmentItem
         {
