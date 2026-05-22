@@ -95,6 +95,115 @@ public static class FormConfigEndpoints
                 return Results.Json(new { ok = false, error = ex.Message });
             }
         });
+
+        // POST /api/settings/form-config/section  — add a new custom section
+        app.MapPost("/api/settings/form-config/section", async (HttpContext ctx) =>
+        {
+            try
+            {
+                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+                var parts = decoded.Split(':');
+                if (parts.Length < 3 || parts[2] != "3")
+                    return Results.Json(new { ok = false, error = "Admin uniquement" });
+
+                var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+                var name = body.TryGetProperty("name", out var n) ? n.GetString()?.Trim() : null;
+                if (string.IsNullOrWhiteSpace(name))
+                    return Results.Json(new { ok = false, error = "Nom de section requis" });
+
+                var config = MongoDbHelper.GetSettings<FabricationFormConfig>(SettingsKey) ?? DefaultConfig;
+                if (config.Sections.Contains(name))
+                    return Results.Json(new { ok = false, error = "Section déjà existante" });
+
+                config.Sections.Add(name);
+                MongoDbHelper.UpsertSettings(SettingsKey, config);
+                return Results.Json(new { ok = true });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // DELETE /api/settings/form-config/section/{name}  — remove a section (fields moved to first section)
+        app.MapDelete("/api/settings/form-config/section/{name}", (HttpContext ctx, string name) =>
+        {
+            try
+            {
+                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+                var parts = decoded.Split(':');
+                if (parts.Length < 3 || parts[2] != "3")
+                    return Results.Json(new { ok = false, error = "Admin uniquement" });
+
+                var decodedName = Uri.UnescapeDataString(name);
+                var config = MongoDbHelper.GetSettings<FabricationFormConfig>(SettingsKey) ?? DefaultConfig;
+                config.Sections.Remove(decodedName);
+                // Move orphaned fields to first available section
+                var fallback = config.Sections.FirstOrDefault() ?? "Informations générales";
+                foreach (var f in config.Fields.Where(f => f.Section == decodedName))
+                    f.Section = fallback;
+                MongoDbHelper.UpsertSettings(SettingsKey, config);
+                return Results.Json(new { ok = true });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // POST /api/settings/form-config/field  — add a custom field
+        app.MapPost("/api/settings/form-config/field", async (HttpContext ctx) =>
+        {
+            try
+            {
+                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+                var parts = decoded.Split(':');
+                if (parts.Length < 3 || parts[2] != "3")
+                    return Results.Json(new { ok = false, error = "Admin uniquement" });
+
+                var field = await ctx.Request.ReadFromJsonAsync<FormFieldConfig>();
+                if (field == null || string.IsNullOrWhiteSpace(field.Id))
+                    return Results.Json(new { ok = false, error = "Champ invalide" });
+
+                var config = MongoDbHelper.GetSettings<FabricationFormConfig>(SettingsKey) ?? DefaultConfig;
+                if (config.Fields.Any(f => f.Id == field.Id))
+                    return Results.Json(new { ok = false, error = "Un champ avec cet ID existe déjà" });
+
+                field.IsCustom = true;
+                field.Order = config.Fields.Count > 0 ? config.Fields.Max(f => f.Order) + 1 : 0;
+                config.Fields.Add(field);
+
+                // Add section if it doesn't exist
+                if (!string.IsNullOrWhiteSpace(field.Section) && !config.Sections.Contains(field.Section))
+                    config.Sections.Add(field.Section);
+
+                MongoDbHelper.UpsertSettings(SettingsKey, config);
+                return Results.Json(new { ok = true });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
+
+        // DELETE /api/settings/form-config/field/{id}  — delete a custom field
+        app.MapDelete("/api/settings/form-config/field/{id}", (HttpContext ctx, string id) =>
+        {
+            try
+            {
+                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+                var parts = decoded.Split(':');
+                if (parts.Length < 3 || parts[2] != "3")
+                    return Results.Json(new { ok = false, error = "Admin uniquement" });
+
+                var config = MongoDbHelper.GetSettings<FabricationFormConfig>(SettingsKey) ?? DefaultConfig;
+                var field = config.Fields.FirstOrDefault(f => f.Id == id);
+                if (field == null)
+                    return Results.Json(new { ok = false, error = "Champ introuvable" });
+                if (!field.IsCustom)
+                    return Results.Json(new { ok = false, error = "Seuls les champs personnalisés peuvent être supprimés" });
+
+                config.Fields.Remove(field);
+                MongoDbHelper.UpsertSettings(SettingsKey, config);
+                return Results.Json(new { ok = true });
+            }
+            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+        });
     }
 
     /// <summary>

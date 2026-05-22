@@ -72,6 +72,12 @@ public record FabricationSheet
     // ── Rainage ──────────────────────────────────────────
     public bool? Rainage { get; init; }
 
+    /// <summary>Rainage type when admin-defined rainage options are configured.</summary>
+    public string? RainageType { get; init; }
+
+    /// <summary>Custom field values added dynamically by admin (fieldId → value).</summary>
+    public Dictionary<string, string>? CustomFields { get; init; }
+
     // ── Ennoblissement ───────────────────────────────────
     public List<string>? Ennoblissement { get; init; }
 

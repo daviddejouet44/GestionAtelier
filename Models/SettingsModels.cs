@@ -285,6 +285,10 @@ public class FormFieldConfig
     [JsonPropertyName("options")]
     public List<string>? Options { get; set; }
 
+    /// <summary>Sub-options per parent option value: { "Option A": ["Sub 1", "Sub 2"] }</summary>
+    [JsonPropertyName("subOptions")]
+    public Dictionary<string, List<string>>? SubOptions { get; set; }
+
     [JsonPropertyName("section")]
     public string? Section { get; set; }
 
@@ -297,8 +301,16 @@ public class FormFieldConfig
     [JsonPropertyName("dependsOnValue")]
     public string? DependsOnValue { get; set; }
 
+    /// <summary>Show this field when the parent field's value matches ANY of these values (OR logic).</summary>
+    [JsonPropertyName("dependsOnValues")]
+    public List<string>? DependsOnValues { get; set; }
+
     [JsonPropertyName("calculationRule")]
     public string? CalculationRule { get; set; }
+
+    /// <summary>Custom field added by admin — may be deleted via the settings UI.</summary>
+    [JsonPropertyName("isCustom")]
+    public bool IsCustom { get; set; } = false;
 }
 
 public class FabricationFormConfig
@@ -308,6 +320,90 @@ public class FabricationFormConfig
 
     [JsonPropertyName("sections")]
     public List<string> Sections { get; set; } = new();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Finition time rules — time added to production when a finition is selected
+// ──────────────────────────────────────────────────────────────────────────────
+public class FinitionTimeRule
+{
+    [JsonPropertyName("finitionName")]
+    public string FinitionName { get; set; } = "";
+
+    [JsonPropertyName("timeMinutes")]
+    public int TimeMinutes { get; set; } = 0;
+
+    [JsonPropertyName("notes")]
+    public string? Notes { get; set; }
+}
+
+public class FinitionTimeConfig
+{
+    [JsonPropertyName("rules")]
+    public List<FinitionTimeRule> Rules { get; set; } = new();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Finition sheet formulas — per-finition sheet count overrides
+// Example: "Dorure à chaud" on "Brochure" = 1 sheet (not all sheets)
+// ──────────────────────────────────────────────────────────────────────────────
+public class FinitionSheetFormula
+{
+    [JsonPropertyName("finitionName")]
+    public string FinitionName { get; set; } = "";
+
+    /// <summary>Optional: restrict this formula to a specific work type. Empty = applies to all.</summary>
+    [JsonPropertyName("typeTravail")]
+    public string? TypeTravail { get; set; }
+
+    /// <summary>Fixed number of sheets for this finition (overrides the normal sheet count calculation).</summary>
+    [JsonPropertyName("sheetsOverride")]
+    public int SheetsOverride { get; set; } = 1;
+
+    [JsonPropertyName("notes")]
+    public string? Notes { get; set; }
+}
+
+public class FinitionSheetFormulaConfig
+{
+    [JsonPropertyName("formulas")]
+    public List<FinitionSheetFormula> Formulas { get; set; } = new();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Rainage options — admin-defined list of rainage types
+// ──────────────────────────────────────────────────────────────────────────────
+public class RainageOptionsConfig
+{
+    [JsonPropertyName("options")]
+    public List<string> Options { get; set; } = new();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Custom paper catalog entries (stored in MongoDB, merged with XML catalog)
+// ──────────────────────────────────────────────────────────────────────────────
+public class CustomPaperEntry
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+
+    [JsonPropertyName("grammage")]
+    public string? Grammage { get; set; }
+
+    [JsonPropertyName("format")]
+    public string? Format { get; set; }
+
+    [JsonPropertyName("fabricant")]
+    public string? Fabricant { get; set; }
+
+    [JsonPropertyName("notes")]
+    public string? Notes { get; set; }
+}
+
+public class CustomPaperCatalog
+{
+    [JsonPropertyName("papers")]
+    public List<CustomPaperEntry> Papers { get; set; } = new();
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
