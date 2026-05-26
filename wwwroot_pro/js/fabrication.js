@@ -257,7 +257,8 @@ function updatePassesDisplay() {
   const disp=gEl("passes"); if(!disp) return;
   const ennob=getEnnoblissementSelected();
   const fb=(gEl("faconnageBinding")||{value:""}).value;
-  const rv=(gEl("rainage")||{checked:false}).checked;
+  const rainEl=gEl("rainage");
+  const rv=rainEl ? (rainEl.tagName==='SELECT' ? !!rainEl.value : rainEl.checked) : false;
   const lines=[];
   if(fb && _passesConfig.faconnage>0) lines.push('Façonnage : +'+_passesConfig.faconnage+' feuilles');
   if(ennob.some(e=>e.includes('Pelliculage')&&e.includes('recto/verso'))&&_passesConfig.pelliculageRectoVerso>0) lines.push('Pelliculage recto/verso : +'+_passesConfig.pelliculageRectoVerso+' feuilles');

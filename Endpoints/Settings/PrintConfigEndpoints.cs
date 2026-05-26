@@ -180,7 +180,9 @@ app.MapGet("/api/config/paper-catalog", () =>
 {
     try
     {
-        // Look for Paper Catalog.xml in app directory or common locations
+        var names = new List<string>();
+
+        // Load from XML catalog
         var searchPaths = new[]
         {
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data", "Paper Catalog.xml"),
@@ -192,57 +194,45 @@ app.MapGet("/api/config/paper-catalog", () =>
         };
 
         string? xmlPath = searchPaths.FirstOrDefault(p => File.Exists(p));
-        if (xmlPath == null)
-            return Results.Json(new string[0]);
-
-        // Load XML with secure settings to prevent XXE attacks
-        var xmlSettings = new System.Xml.XmlReaderSettings
+        if (xmlPath != null)
         {
-            DtdProcessing = System.Xml.DtdProcessing.Prohibit,
-            XmlResolver = null
-        };
-        XDocument doc;
-        using (var xmlReader = System.Xml.XmlReader.Create(xmlPath, xmlSettings))
-        {
-            doc = XDocument.Load(xmlReader);
-        }
+            var xmlSettings = new System.Xml.XmlReaderSettings
+            {
+                DtdProcessing = System.Xml.DtdProcessing.Prohibit,
+                XmlResolver = null
+            };
+            XDocument doc;
+            using (var xmlReader = System.Xml.XmlReader.Create(xmlPath, xmlSettings))
+            {
+                doc = XDocument.Load(xmlReader);
+            }
 
-        // JDF format (Fiery/EFI Paper Catalog): <Media DescriptiveName="..." />
-        var names = doc.Descendants()
-            .Where(el => el.Name.LocalName == "Media")
-            .Select(el => (string?)(el.Attribute("DescriptiveName") ?? el.Attribute("descriptiveName")))
-            .Where(n => !string.IsNullOrWhiteSpace(n))
-            .Select(n => n!)
-            .Distinct()
-            .OrderBy(n => n)
-            .ToList();
-
-        if (!names.Any())
-        {
-            // Fallback: try CatalogEntry/Paper/Entry elements with Name/name attribute
-            names = doc.Descendants()
-                .Where(el => el.Name.LocalName == "CatalogEntry" || el.Name.LocalName == "Paper" || el.Name.LocalName == "Entry")
-                .Select(el => (string?)(el.Attribute("Name") ?? el.Attribute("name") ?? el.Attribute("mediaName") ?? el.Attribute("MediaName")))
+            var xmlNames = doc.Descendants()
+                .Where(el => el.Name.LocalName == "Media")
+                .Select(el => (string?)(el.Attribute("DescriptiveName") ?? el.Attribute("descriptiveName")))
                 .Where(n => !string.IsNullOrWhiteSpace(n))
                 .Select(n => n!)
-                .Distinct()
-                .OrderBy(n => n)
                 .ToList();
+
+            if (!xmlNames.Any())
+            {
+                xmlNames = doc.Descendants()
+                    .Where(el => el.Name.LocalName == "CatalogEntry" || el.Name.LocalName == "Paper" || el.Name.LocalName == "Entry")
+                    .Select(el => (string?)(el.Attribute("Name") ?? el.Attribute("name") ?? el.Attribute("mediaName") ?? el.Attribute("MediaName")))
+                    .Where(n => !string.IsNullOrWhiteSpace(n))
+                    .Select(n => n!)
+                    .ToList();
+            }
+
+            names.AddRange(xmlNames);
         }
 
-        if (!names.Any())
-        {
-            // Last resort: all leaf text content
-            names = doc.Descendants()
-                .Where(el => !el.HasElements && !string.IsNullOrWhiteSpace(el.Value))
-                .Select(el => el.Value.Trim())
-                .Where(n => n.Length > 0 && n.Length < 200)
-                .Distinct()
-                .OrderBy(n => n)
-                .ToList();
-        }
+        // Merge with custom MongoDB papers
+        var customCatalog = MongoDbHelper.GetSettings<CustomPaperCatalog>("customPaperCatalog");
+        if (customCatalog?.Papers != null)
+            names.AddRange(customCatalog.Papers.Select(p => p.Name).Where(n => !string.IsNullOrWhiteSpace(n)));
 
-        return Results.Json(names);
+        return Results.Json(names.Distinct().OrderBy(n => n).ToList());
     }
     catch (Exception ex)
     {
@@ -251,5 +241,119 @@ app.MapGet("/api/config/paper-catalog", () =>
     }
 });
 
+// GET /api/config/paper-catalog/custom — list only custom (MongoDB) papers
+app.MapGet("/api/config/paper-catalog/custom", (HttpContext ctx) =>
+{
+    try
+    {
+        if (!IsAdminLocal(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
+        var catalog = MongoDbHelper.GetSettings<CustomPaperCatalog>("customPaperCatalog")
+            ?? new CustomPaperCatalog();
+        return Results.Json(new { ok = true, papers = catalog.Papers });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// POST /api/config/paper-catalog/add — add a paper manually
+app.MapPost("/api/config/paper-catalog/add", async (HttpContext ctx) =>
+{
+    try
+    {
+        if (!IsAdminLocal(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
+        var entry = await ctx.Request.ReadFromJsonAsync<CustomPaperEntry>();
+        if (entry == null || string.IsNullOrWhiteSpace(entry.Name))
+            return Results.Json(new { ok = false, error = "Nom de papier requis" });
+
+        var catalog = MongoDbHelper.GetSettings<CustomPaperCatalog>("customPaperCatalog")
+            ?? new CustomPaperCatalog();
+
+        if (catalog.Papers.Any(p => p.Name == entry.Name))
+            return Results.Json(new { ok = false, error = "Ce papier existe déjà dans le catalogue personnalisé" });
+
+        catalog.Papers.Add(entry);
+        MongoDbHelper.UpsertSettings("customPaperCatalog", catalog);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// POST /api/config/paper-catalog/import-csv — import papers from CSV
+app.MapPost("/api/config/paper-catalog/import-csv", async (HttpContext ctx) =>
+{
+    try
+    {
+        if (!IsAdminLocal(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
+        var form = await ctx.Request.ReadFormAsync();
+        var file = form.Files.GetFile("file");
+        if (file == null) return Results.Json(new { ok = false, error = "Fichier manquant" });
+
+        using var reader = new StreamReader(file.OpenReadStream(), Encoding.UTF8);
+        var content = await reader.ReadToEndAsync();
+        var lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+        var catalog = MongoDbHelper.GetSettings<CustomPaperCatalog>("customPaperCatalog")
+            ?? new CustomPaperCatalog();
+
+        int added = 0, skipped = 0;
+        // CSV format: Name[;Grammage[;Format[;Fabricant[;Notes]]]]
+        foreach (var raw in lines)
+        {
+            var line = raw.Trim();
+            if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
+
+            // Support both comma and semicolon as separator
+            var sep = line.Contains(';') ? ';' : ',';
+            var cols = line.Split(sep).Select(c => c.Trim().Trim('"')).ToArray();
+            var name = cols.Length > 0 ? cols[0] : "";
+            if (string.IsNullOrWhiteSpace(name)) continue;
+
+            if (catalog.Papers.Any(p => p.Name == name)) { skipped++; continue; }
+
+            catalog.Papers.Add(new CustomPaperEntry
+            {
+                Name      = name,
+                Grammage  = cols.Length > 1 ? cols[1] : null,
+                Format    = cols.Length > 2 ? cols[2] : null,
+                Fabricant = cols.Length > 3 ? cols[3] : null,
+                Notes     = cols.Length > 4 ? cols[4] : null
+            });
+            added++;
+        }
+
+        MongoDbHelper.UpsertSettings("customPaperCatalog", catalog);
+        return Results.Json(new { ok = true, added, skipped });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// DELETE /api/config/paper-catalog/custom/{name} — remove a custom paper
+app.MapDelete("/api/config/paper-catalog/custom/{name}", (HttpContext ctx, string name) =>
+{
+    try
+    {
+        if (!IsAdminLocal(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
+        var decoded = Uri.UnescapeDataString(name);
+        var catalog = MongoDbHelper.GetSettings<CustomPaperCatalog>("customPaperCatalog")
+            ?? new CustomPaperCatalog();
+        var before = catalog.Papers.Count;
+        catalog.Papers.RemoveAll(p => p.Name == decoded);
+        MongoDbHelper.UpsertSettings("customPaperCatalog", catalog);
+        return Results.Json(new { ok = true, removed = before - catalog.Papers.Count });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+    }
+
+    private static bool IsAdminLocal(HttpContext ctx)
+    {
+        try
+        {
+            var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            var parts = decoded.Split(':');
+            return parts.Length >= 3 && parts[2] == "3";
+        }
+        catch { return false; }
     }
 }

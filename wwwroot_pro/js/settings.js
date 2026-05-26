@@ -20,6 +20,7 @@ import { renderSettingsFormConfig } from './settings/settings-form-config.js';
 import { renderSettingsEmailTemplates } from './settings/settings-email-templates.js';
 import { renderSettingsIntegrations } from './settings/settings-integrations.js';
 import { renderSettingsPortal } from './settings/settings-portal.js';
+import { renderSettingsRainageOptions, renderSettingsFinitionTimeRules, renderSettingsFinitionSheetFormulas } from './settings/settings-finition-config.js';
 
 // calendar and submissionCalendar are accessed via window globals set by app.js
 
@@ -47,8 +48,11 @@ export async function initSettingsView() {
         <button class="settings-tab" data-tab="print-engines">Moteurs d'impression</button>
         <button class="settings-tab" data-tab="work-types">Types de travail</button>
         <button class="settings-tab" data-tab="print-routing">Routage Impression</button>
-        <button class="settings-tab" data-tab="fabrication-imports">Import catalogues papiers</button>
+        <button class="settings-tab" data-tab="fabrication-imports">Catalogue papiers</button>
         <button class="settings-tab" data-tab="faconnage">Finitions</button>
+        <button class="settings-tab" data-tab="rainage-options">Rainage</button>
+        <button class="settings-tab" data-tab="finition-times">⏱️ Temps finitions</button>
+        <button class="settings-tab" data-tab="finition-sheet-formulas">📋 Formules feuilles</button>
         <button class="settings-tab" data-tab="reports">Rapports</button>
         <button class="settings-tab" data-tab="sheet-formats">Formats feuille</button>
         <button class="settings-tab" data-tab="cover-products">Produit avec couverture</button>
@@ -78,6 +82,9 @@ export async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-print-routing"></div>
       <div class="settings-panel hidden" id="settings-panel-fabrication-imports"></div>
       <div class="settings-panel hidden" id="settings-panel-faconnage"></div>
+      <div class="settings-panel hidden" id="settings-panel-rainage-options"></div>
+      <div class="settings-panel hidden" id="settings-panel-finition-times"></div>
+      <div class="settings-panel hidden" id="settings-panel-finition-sheet-formulas"></div>
       <div class="settings-panel hidden" id="settings-panel-reports"></div>
       <div class="settings-panel hidden" id="settings-panel-sheet-formats"></div>
       <div class="settings-panel hidden" id="settings-panel-cover-products"></div>
@@ -131,6 +138,9 @@ export async function loadSettingsPanel(tabName, panelEl) {
     case "fabrication-imports": await renderSettingsFabricationImports(panelEl); break;
     case "bat-command": await renderSettingsBatConfig(panelEl); break;
     case "faconnage": await renderSettingsFinitions(panelEl); break;
+    case "rainage-options": await renderSettingsRainageOptions(panelEl); break;
+    case "finition-times": await renderSettingsFinitionTimeRules(panelEl); break;
+    case "finition-sheet-formulas": await renderSettingsFinitionSheetFormulas(panelEl); break;
     case "reports": await renderSettingsReports(panelEl); break;
     case "sheet-formats": await renderSettingsSheetFormats(panelEl); break;
     case "cover-products": await renderSettingsCoverProducts(panelEl); break;

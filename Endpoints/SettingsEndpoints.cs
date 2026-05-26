@@ -33,6 +33,7 @@ public static class SettingsEndpointsExtensions
         app.MapKanbanConfigEndpoints(recyclePath);
         app.MapAccountsEndpoints(recyclePath);
         app.MapFormConfigEndpoints();
+        app.MapFinitionConfigEndpoints();
         app.MapIntegrationsEndpoints();
         app.MapOrderSourcesEndpoints();
         app.MapPortalAdminEndpoints();
