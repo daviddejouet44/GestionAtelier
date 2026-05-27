@@ -21,7 +21,7 @@ import { initGlobalProductionView, refreshProductionViewKanban, buildProductionV
 import { STAGE_PROGRESS, STAGE_DISPLAY_LABELS } from './constants.js';
 
 import { hideAllViews, showDossiers, showSettings, showGlobalProduction } from './app/navigation.js';
-import { initDashboardView } from './app/dashboard.js';
+import { initDashboardView } from './app/dashboard.js?v=2';
 import { initHelpPanel } from './help.js';
 
 // ======================================================
