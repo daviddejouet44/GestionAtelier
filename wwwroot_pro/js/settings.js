@@ -20,6 +20,8 @@ import { renderSettingsFormConfig } from './settings/settings-form-config.js';
 import { renderSettingsEmailTemplates } from './settings/settings-email-templates.js';
 import { renderSettingsIntegrations } from './settings/settings-integrations.js';
 import { renderSettingsPortal } from './settings/settings-portal.js';
+import { renderSettingsRainageOptions, renderSettingsFinitionTimeRules, renderSettingsFinitionSheetFormulas } from './settings/settings-finition-config.js';
+import { renderSettingsProductionDelayAlert } from './settings/settings-alerts.js';
 import { renderSettingsFinitionTimeRules, renderSettingsFinitionSheetFormulas } from './settings/settings-finition-config.js';
 
 // calendar and submissionCalendar are accessed via window globals set by app.js
@@ -66,6 +68,7 @@ export async function initSettingsView() {
         <button class="settings-tab" data-tab="email-templates">📧 Templates email</button>
         <button class="settings-tab" data-tab="integrations">🔌 Intégrations</button>
         <button class="settings-tab" data-tab="portal">🌐 Portail client</button>
+        <button class="settings-tab" data-tab="production-delay-alert">⚠️ Alertes retard</button>
         <button class="settings-tab" data-tab="backup">💾 Sauvegarde</button>
         <button class="settings-tab" data-tab="logs">Logs</button>
       </div>
@@ -97,6 +100,7 @@ export async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-email-templates"></div>
       <div class="settings-panel hidden" id="settings-panel-integrations"></div>
       <div class="settings-panel hidden" id="settings-panel-portal"></div>
+      <div class="settings-panel hidden" id="settings-panel-production-delay-alert"></div>
       <div class="settings-panel hidden" id="settings-panel-backup"></div>
       <div class="settings-panel hidden" id="settings-panel-logs"></div>
     </div>
@@ -152,6 +156,7 @@ export async function loadSettingsPanel(tabName, panelEl) {
     case "email-templates": await renderSettingsEmailTemplates(panelEl); break;
     case "integrations": await renderSettingsIntegrations(panelEl); break;
     case "portal": await renderSettingsPortal(panelEl); break;
+    case "production-delay-alert": await renderSettingsProductionDelayAlert(panelEl); break;
     case "backup": await renderSettingsBackup(panelEl); break;
     case "logs": await renderSettingsLogs(panelEl); break;
   }

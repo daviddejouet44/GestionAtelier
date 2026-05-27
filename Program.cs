@@ -185,6 +185,7 @@ catch (Exception migEx) { Console.WriteLine($"[WARN] EmailTemplateKey migration 
 
 // 4. Register all endpoint groups
 app.MapAuthEndpoints();
+app.MapDashboardEndpoints();
 app.MapRecycleEndpoints(recyclePath, recycleDays);
 app.MapMiscEndpoints();
 app.MapJobsEndpoints(recyclePath);

@@ -406,6 +406,12 @@ export async function initCalendar() {
           : [];
         const operatorFilter = document.getElementById("planning-operator-filter")?.value || "";
 
+        // Get paper filter — pill buttons (empty selection = all papers)
+        const paperPillsEl = document.getElementById("planning-paper-pills");
+        const paperFilters = paperPillsEl
+          ? Array.from(paperPillsEl.querySelectorAll('.planning-engine-pill[data-selected="true"]')).map(p => p.dataset.value).filter(Boolean)
+          : [];
+
         // Get finitions filters — pill buttons (empty selection = all types)
         const finOpFilter = document.getElementById("planning-finitions-operator-filter")?.value || "";
         const finPillsEl = document.getElementById("planning-finitions-pills");
@@ -421,6 +427,12 @@ export async function initCalendar() {
               if (fe.type !== 'impression') return false;
               if (machineFilters.length > 0 && !machineFilters.includes(fe.moteurImpression)) return false;
               if (operatorFilter && fe.operateur !== operatorFilter) return false;
+              // Paper filter: show event if any of its media fields match a selected paper
+              if (paperFilters.length > 0) {
+                const eventPapers = [fe.media1, fe.media2, fe.media3, fe.media4, fe.mediaCouverture]
+                  .filter(p => p && p.trim());
+                if (!eventPapers.some(p => paperFilters.includes(p))) return false;
+              }
               return true;
             }
             if (_planningViewMode === 'finitions') {
@@ -484,20 +496,27 @@ export async function initCalendar() {
             }];
           });
 
-        // For machine view, filter delivery events by machine and/or operator
+        // For machine view, filter delivery events by machine, operator and/or paper
         // For finitions and livraison views, delivery events are not relevant (use fab events instead)
         let filtered = (_planningViewMode === 'finitions' || _planningViewMode === 'livraison') ? [] : deliveryList;
-        if (_planningViewMode === 'machine' && (machineFilters.length > 0 || operatorFilter)) {
+        if (_planningViewMode === 'machine' && (machineFilters.length > 0 || operatorFilter || paperFilters.length > 0)) {
           const withFiche = await Promise.all(filtered.map(async x => {
             try {
               const fiche = await fetch('/api/fabrication?fileName=' + encodeURIComponent(fnKey(x.fullPath || '')), {
                 headers: { 'Authorization': `Bearer ${authToken}` }
               }).then(r => r.json());
-              return { x, machine: fiche?.moteurImpression || '', operateur: fiche?.operateur || '' };
-            } catch(e) { return { x, machine: '', operateur: '' }; }
+              const papers = [fiche?.media1, fiche?.media2, fiche?.media3, fiche?.media4, fiche?.mediaCouverture]
+                .filter(p => p && p.trim());
+              return { x, machine: fiche?.moteurImpression || '', operateur: fiche?.operateur || '', papers };
+            } catch(e) { return { x, machine: '', operateur: '', papers: [] }; }
           }));
           filtered = withFiche
-            .filter(wm => (machineFilters.length === 0 || machineFilters.includes(wm.machine)) && (!operatorFilter || wm.operateur === operatorFilter))
+            .filter(wm => {
+              if (machineFilters.length > 0 && !machineFilters.includes(wm.machine)) return false;
+              if (operatorFilter && wm.operateur !== operatorFilter) return false;
+              if (paperFilters.length > 0 && !wm.papers.some(p => paperFilters.includes(p))) return false;
+              return true;
+            })
             .map(wm => wm.x);
         }
 
@@ -742,6 +761,12 @@ async function addMachineFilter(calendarEl) {
     <div style="display:flex;align-items:flex-start;gap:6px;flex-direction:column;">
       <label style="font-size:13px;font-weight:500;">Opérateur :</label>
       <select id="planning-operator-filter" class="settings-input" style="font-size:13px;padding:4px 8px;min-width:160px;"></select>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:6px;flex-direction:column;">
+      <label style="font-size:13px;font-weight:500;">Papier(s) :</label>
+      <div id="planning-paper-pills" style="display:flex;flex-wrap:wrap;gap:6px;max-width:600px;">
+        <span style="font-size:12px;color:#9ca3af;font-style:italic;">Chargement...</span>
+      </div>
     </div>`;
   calendarEl.parentNode?.insertBefore(wrap, calendarEl);
 
@@ -790,10 +815,11 @@ async function addMachineFilter(calendarEl) {
   }
 
   try {
-    const [engines, usersResp, faconnageOpts] = await Promise.all([
+    const [engines, usersResp, faconnageOpts, papersResp] = await Promise.all([
       fetch("/api/config/print-engines").then(r => r.json()).catch(() => []),
       fetch("/api/auth/users", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, users: [] })),
-      fetch("/api/settings/faconnage-options", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => [])
+      fetch("/api/settings/faconnage-options", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => []),
+      fetch("/api/fabrication/papers", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, papers: [] }))
     ]);
 
     // Machine pills
@@ -809,6 +835,10 @@ async function addMachineFilter(calendarEl) {
       return `<option value="${name}">${name}</option>`;
     }).join('');
     opSel.onchange = () => calendar?.refetchEvents();
+
+    // Paper pills (loaded from active fabrications)
+    const paperNames = (papersResp.ok && Array.isArray(papersResp.papers)) ? papersResp.papers : [];
+    buildPills("planning-paper-pills", paperNames, () => calendar?.refetchEvents());
 
     // Finitions operator filter
     const finOpSel = finWrap.querySelector("#planning-finitions-operator-filter");

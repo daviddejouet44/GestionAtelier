@@ -21,7 +21,7 @@ import { initGlobalProductionView, refreshProductionViewKanban, buildProductionV
 import { STAGE_PROGRESS, STAGE_DISPLAY_LABELS } from './constants.js';
 
 import { hideAllViews, showDossiers, showSettings, showGlobalProduction } from './app/navigation.js';
-import { initDashboardView } from './app/dashboard.js';
+import { initDashboardView } from './app/dashboard.js?v=2';
 import { initHelpPanel } from './help.js';
 
 // ======================================================
@@ -81,12 +81,14 @@ async function updateGlobalAlert() {
     ]);
 
     const delayGroups = (delayResp.ok && Array.isArray(delayResp.groups)) ? delayResp.groups : [];
+    const alertCfg = delayResp.config || { enabled: true, title: "Retard de production" };
     const batAlerts = Array.isArray(batResp) ? batResp : [];
 
     let html = "";
 
-    // Production delay alerts grouped by machine
-    if (delayGroups.length > 0) {
+    // Production delay alerts grouped by machine (only if alerts are enabled in admin config)
+    if (alertCfg.enabled !== false && delayGroups.length > 0) {
+      const alertTitle = alertCfg.title || "Retard de production";
       const groupsHtml = delayGroups.map(g => {
         const jobsHtml = g.jobs.map(j => {
           const dossier = j.numeroDossier ? `#${esc(j.numeroDossier)}` : esc(j.fileName);
@@ -102,7 +104,7 @@ async function updateGlobalAlert() {
         : '';
       html += `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;margin-bottom:6px;">
         <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
-          <span style="font-size:12px;font-weight:700;color:#b91c1c;">⚠️ Retard de production</span>${purgeBtn}
+          <span style="font-size:12px;font-weight:700;color:#b91c1c;">⚠️ ${esc(alertTitle)}</span>${purgeBtn}
         </div>
         <div style="margin-top:4px;display:flex;flex-direction:column;gap:4px;">${groupsHtml}</div>
       </div>`;
@@ -815,7 +817,7 @@ function _makeSidebarSection(id, title, color, iconTc) {
   section.id = `kanban-sidebar-sec-${id}`;
   const hdr = document.createElement("div");
   hdr.style.cssText = "display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;margin-bottom:" + (isCollapsed ? "0" : "8px");
-  hdr.innerHTML = `<div style="font-size:12px;font-weight:700;color:${iconTc || '#374151'};text-transform:uppercase;letter-spacing:0.05em;">${escH(title)}</div>
+  hdr.innerHTML = `<div id="kanban-sidebar-${id}-title" style="font-size:12px;font-weight:700;color:${iconTc || '#374151'};text-transform:uppercase;letter-spacing:0.05em;">${escH(title)}</div>
     <span id="kanban-sidebar-arrow-${id}" style="font-size:10px;color:#9ca3af;transition:transform 0.2s;">${isCollapsed ? '▶' : '▼'}</span>`;
   const body = document.createElement("div");
   body.id = `kanban-sidebar-${id}`;
@@ -839,7 +841,7 @@ async function buildKanbanSidebar() {
   if (!sidebar) return;
   sidebar.innerHTML = '';
 
-  sidebar.appendChild(_makeSidebarSection("retard", "🚨 Retard de production", "", "#b91c1c"));
+  sidebar.appendChild(_makeSidebarSection("retard", "🚨 Retard de production", "", "#b91c1c")); // title updated dynamically in loadRetardSidebar
   sidebar.appendChild(_makeSidebarSection("machine", "🖨️ Planning Machine", "", "#374151"));
   sidebar.appendChild(_makeSidebarSection("bat-attente", "⏳ BAT en attente", "", "#92400e"));
   sidebar.appendChild(_makeSidebarSection("bat-cours", "📋 BAT en cours", "", "#374151"));
@@ -857,6 +859,21 @@ async function loadRetardSidebar() {
   try {
     const resp = await fetch("/api/alerts/production-delay").then(r => r.json()).catch(() => ({ ok: false, groups: [] }));
     const groups = (resp.ok && Array.isArray(resp.groups)) ? resp.groups : [];
+    const alertCfg = resp.config || { enabled: true, title: "Retard de production", maxJobsPerGroup: 3 };
+    const maxPerGroup = (alertCfg.maxJobsPerGroup > 0) ? alertCfg.maxJobsPerGroup : 3;
+
+    // Update sidebar section title based on admin config
+    const titleEl = document.getElementById("kanban-sidebar-retard-title");
+    if (titleEl) titleEl.textContent = "🚨 " + (alertCfg.title || "Retard de production");
+
+    // Hide the section entirely if alerts are disabled
+    const sectionEl = document.getElementById("kanban-sidebar-sec-retard");
+    if (alertCfg.enabled === false) {
+      if (sectionEl) sectionEl.style.display = 'none';
+      return;
+    }
+    if (sectionEl) sectionEl.style.display = '';
+
     if (groups.length === 0) {
       listEl.innerHTML = '<div style="color:#9ca3af;">Aucun retard</div>';
       return;
@@ -865,13 +882,13 @@ async function loadRetardSidebar() {
     listEl.innerHTML = groups.map(g => {
       const jobs = Array.isArray(g.jobs) ? g.jobs : [];
       return `<div style="padding:5px 0;border-bottom:1px solid #fee2e2;">
-        <div style="font-size:10px;font-weight:700;color:#b91c1c;margin-bottom:2px;">${escH(g.folder || '')} (${jobs.length})</div>
-        ${jobs.slice(0, 3).map(j => {
+        <div style="font-size:10px;font-weight:700;color:#b91c1c;margin-bottom:2px;">${escH(g.moteur || g.folder || '')} (${jobs.length})</div>
+        ${jobs.slice(0, maxPerGroup).map(j => {
           const label = j.numeroDossier ? `#${escH(j.numeroDossier)}` : escH(j.fileName || '—');
           const retard = j.retardJours >= 1 ? ` — ${j.retardJours}j de retard` : '';
           return `<div style="font-size:10px;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escH(j.fileName || '')}${j.nomClient ? ' — ' + escH(j.nomClient) : ''}">${label}${escH(retard)}</div>`;
         }).join('')}
-        ${jobs.length > 3 ? `<div style="font-size:10px;color:#9ca3af;">+${jobs.length - 3} autres</div>` : ''}
+        ${jobs.length > maxPerGroup ? `<div style="font-size:10px;color:#9ca3af;">+${jobs.length - maxPerGroup} autres</div>` : ''}
       </div>`;
     }).join('');
   } catch(e) {
@@ -1068,7 +1085,8 @@ function setupProfileUI() {
 
   if (btnRecycle) btnRecycle.style.display = "inline-block";
   if (btnDossiers) btnDossiers.style.display = "inline-block";
-  if (btnDashboard) btnDashboard.style.display = currentUser.profile === 3 ? "inline-block" : "none";
+  // Dashboard visible for all staff except profile 1 (Soumission)
+  if (btnDashboard) btnDashboard.style.display = currentUser.profile !== 1 ? "inline-block" : "none";
   // Profile 1 (Soumission): no Rapport, no BAT
   if (btnRapport) btnRapport.style.display = currentUser.profile === 1 ? "none" : "inline-block";
   if (btnBat) btnBat.style.display = currentUser.profile === 1 ? "none" : "inline-block";

@@ -155,28 +155,23 @@ export async function initLogin(onSuccess) {
     }
   }
 
-  loginForm.onsubmit = async (e) => {
-    e.preventDefault();
-    loginError.style.display = "none";
-
-    const login = loginInput.value.trim();
-    const password = passwordInput.value.trim();
-
-    if (!login || !password) {
-      loginError.textContent = "Remplissez tous les champs";
-      loginError.style.display = "block";
-      return;
-    }
-
+  async function attemptLogin(login, password, force = false) {
     try {
       const resp = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ login, password })
+        body: JSON.stringify({ login, password, ...(force ? { force: true } : {}) })
       }).then(r => r.json());
 
       if (!resp.ok) {
-        loginError.textContent = resp.error || "Erreur de connexion";
+        // Session already active on another device — show confirmation modal
+        if (resp.error === "session_active") {
+          _showForceLoginModal(resp.message || "Ce compte est déjà connecté sur un autre poste.", () => {
+            attemptLogin(login, password, true);
+          });
+          return;
+        }
+        loginError.textContent = resp.message || resp.error || "Erreur de connexion";
         loginError.style.display = "block";
         return;
       }
@@ -195,7 +190,56 @@ export async function initLogin(onSuccess) {
       loginError.textContent = "Erreur réseau";
       loginError.style.display = "block";
     }
+  }
+
+  loginForm.onsubmit = async (e) => {
+    e.preventDefault();
+    loginError.style.display = "none";
+
+    const login = loginInput.value.trim();
+    const password = passwordInput.value.trim();
+
+    if (!login || !password) {
+      loginError.textContent = "Remplissez tous les champs";
+      loginError.style.display = "block";
+      return;
+    }
+
+    await attemptLogin(login, password);
   };
+}
+
+function _showForceLoginModal(message, onConfirm) {
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99999;";
+
+  const box = document.createElement("div");
+  box.style.cssText = "background:#fff;border-radius:14px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 12px 40px rgba(0,0,0,.25);";
+  box.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+      <span style="font-size:28px;">🔒</span>
+      <h3 style="margin:0;font-size:16px;font-weight:700;color:#1e3a5f;">Compte déjà connecté</h3>
+    </div>
+    <p style="font-size:13px;color:#4b5563;margin-bottom:20px;line-height:1.5;">${message}</p>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button id="_force-login-btn" style="padding:10px 16px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+        🔓 Forcer la connexion (déconnecter l'autre session)
+      </button>
+      <button id="_force-cancel-btn" style="padding:10px 16px;background:#f9fafb;color:#374151;border:1px solid #d1d5db;border-radius:8px;font-size:13px;cursor:pointer;">
+        Annuler
+      </button>
+    </div>
+  `;
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  box.querySelector("#_force-login-btn").onclick = () => {
+    overlay.remove();
+    onConfirm();
+  };
+  box.querySelector("#_force-cancel-btn").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 }
 
 export function logout() {

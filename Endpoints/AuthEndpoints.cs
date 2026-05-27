@@ -57,9 +57,10 @@ app.MapPost("/api/auth/login", async (HttpContext ctx) =>
         }
 
         // Check if account is already in use (active session within last 5 minutes)
-        // Admins (profile 3) can always force login; option "force" in JSON also bypasses
+        // All profiles are subject to single-session enforcement.
+        // The "force" flag (passed explicitly) allows taking over an active session.
         var forceLogin = json.TryGetProperty("force", out var forceEl) && forceEl.GetBoolean();
-        if (!forceLogin && user.Profile != 3)
+        if (!forceLogin)
         {
             try
             {
@@ -71,7 +72,14 @@ app.MapPost("/api/auth/login", async (HttpContext ctx) =>
                     var lastActivity = userDoc["lastActivityAt"].ToUniversalTime();
                     if ((DateTime.UtcNow - lastActivity).TotalMinutes < OnlineThresholdMinutes)
                     {
-                        return Results.Json(new { ok = false, error = "Ce compte est déjà utilisé sur un autre poste. Déconnectez-vous de l'autre session ou attendez 5 minutes." });
+                        var lastActivityStr = lastActivity.ToLocalTime().ToString("HH:mm:ss");
+                        return Results.Json(new
+                        {
+                            ok = false,
+                            error = "session_active",
+                            message = $"Ce compte est déjà utilisé sur un autre poste (dernière activité à {lastActivityStr}). Forcez la connexion pour déconnecter l'autre session.",
+                            lastActivityAt = lastActivity.ToString("o")
+                        });
                     }
                 }
             }
