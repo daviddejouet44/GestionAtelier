@@ -239,7 +239,41 @@ app.MapGet("/api/production-folders/{id}/files/{filename}", (string id, string f
     }
 });
 
+// NOTE: DELETE /api/production-folder is defined in MiscSettingsEndpoints.cs.
+// The new endpoint below handles per-file deletion within a folder's files[] array.
+
 // ======================================================
+// PRODUCTION FOLDERS — DELETE A SPECIFIC FILE ENTRY from files[] array
+// DELETE /api/production-folders/{id}/files?fileName=...
+// ======================================================
+app.MapDelete("/api/production-folders/{id}/files", (string id, string? fileName) =>
+{
+    try
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+            return Results.Json(new { ok = false, error = "fileName requis." });
+
+        if (!ObjectId.TryParse(id, out var oid))
+            return Results.Json(new { ok = false, error = "ID invalide." });
+
+        var col = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
+        var filter = Builders<BsonDocument>.Filter.Eq("_id", oid);
+        var doc = col.Find(filter).FirstOrDefault();
+        if (doc == null) return Results.Json(new { ok = false, error = "Dossier introuvable." });
+
+        // Pull the file entry with the matching fileName from files[]
+        var pull = Builders<BsonDocument>.Update.PullFilter("files",
+            Builders<BsonDocument>.Filter.Eq("fileName", fileName));
+        col.UpdateOne(filter, pull);
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
 // PRODUCTION FOLDERS — GLOBAL PROGRESS
 
 // ======================================================

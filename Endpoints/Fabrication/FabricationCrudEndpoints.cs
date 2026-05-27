@@ -1625,7 +1625,15 @@ app.MapGet("/api/fabrication/events", () =>
             {
                 try {
                     var dt = doc["dateProductionFinitions"].ToUniversalTime();
-                    events.Add(new { type = "finitions", date = dt.ToString("yyyy-MM-dd"), title = $"✂️ {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeFinitions, locked });
+                    // Build finitionTypes from faconnage array + ennoblissement for filter support
+                    var finitionTypes = new List<string>();
+                    if (doc.Contains("faconnage") && doc["faconnage"].IsBsonArray)
+                        finitionTypes.AddRange(doc["faconnage"].AsBsonArray.Select(x => x.AsString));
+                    if (doc.Contains("ennoblissement") && doc["ennoblissement"].IsBsonArray)
+                        finitionTypes.AddRange(doc["ennoblissement"].AsBsonArray.Select(x => x.AsString));
+                    if (doc.Contains("finitionsChecked") && doc["finitionsChecked"].IsBsonArray)
+                        finitionTypes.AddRange(doc["finitionsChecked"].AsBsonArray.Select(x => x.AsString));
+                    events.Add(new { type = "finitions", date = dt.ToString("yyyy-MM-dd"), title = $"✂️ {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeFinitions, locked, finitionTypes = finitionTypes.Distinct().ToList() });
                 } catch { }
             }
             if (doc.Contains("dateReceptionSouhaitee") && doc["dateReceptionSouhaitee"] != BsonNull.Value)

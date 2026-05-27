@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Validation BAT — Espace client</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/portal/css/portal.css" />
+  <style>
+    body { background: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .bat-wrapper { max-width: 640px; margin: 40px auto; padding: 0 16px 60px; }
+    .bat-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+    .bat-brand img { max-height: 40px; max-width: 140px; object-fit: contain; }
+    .bat-brand-name { font-size: 18px; font-weight: 700; color: #111827; }
+    .bat-card { background: #fff; border-radius: 12px; box-shadow: 0 1px 6px rgba(0,0,0,.08); overflow: hidden; margin-bottom: 20px; }
+    .bat-card-header { background: #1d4ed8; padding: 22px 28px; color: #fff; }
+    .bat-card-header .eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.75); margin-bottom: 4px; }
+    .bat-card-header h2 { margin: 0; font-size: 20px; font-weight: 700; }
+    .bat-card-body { padding: 24px 20px; }
+    .hidden { display: none !important; }
+    .spinner { width: 36px; height: 36px; border: 3px solid #e5e7eb; border-top-color: #1d4ed8; border-radius: 50%; animation: spin .7s linear infinite; margin: 0 auto 12px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn-action { border: none; border-radius: 8px; padding: 14px 32px; font-size: 16px; font-weight: 700; cursor: pointer; min-width: 160px; transition: background 0.15s; }
+    .btn-accept { background: #16a34a; color: #fff; }
+    .btn-accept:hover:not(:disabled) { background: #15803d; }
+    .btn-refuse { background: #dc2626; color: #fff; }
+    .btn-refuse:hover:not(:disabled) { background: #b91c1c; }
+    .btn-action:disabled { opacity: 0.6; cursor: not-allowed; }
+    .alert-box { border-radius: 6px; padding: 10px 14px; font-size: 13px; margin-top: 16px; display: none; }
+    .alert-error { background: #fef2f2; border: 1px solid #fca5a5; color: #dc2626; }
+    .iframe-wrapper { width: 100%; height: 500px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 16px; }
+    iframe { width: 100%; height: 100%; border: none; }
+    .refuse-modal { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 999; }
+    .refuse-modal-inner { background: #fff; border-radius: 12px; padding: 28px; width: min(400px, 92vw); }
+    .refuse-modal textarea { width: 100%; height: 100px; border: 1px solid #d1d5db; border-radius: 6px; padding: 10px; font-size: 14px; resize: vertical; margin: 12px 0; box-sizing: border-box; }
+    .refuse-modal-btns { display: flex; gap: 12px; justify-content: flex-end; }
+    .btn-sm { padding: 8px 16px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; }
+    .btn-sm.danger { background: #dc2626; color: #fff; border-color: #dc2626; }
+    .success-icon { font-size: 56px; text-align: center; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div class="bat-wrapper">
+    <!-- Brand -->
+    <div class="bat-brand">
+      <img id="brand-logo" src="/api/logo" alt="Logo" onerror="this.style.display='none'" />
+      <span class="bat-brand-name" id="brand-name">Espace client</span>
+    </div>
+
+    <!-- Loading -->
+    <div class="bat-card" id="block-loading">
+      <div class="bat-card-body" style="text-align:center;padding:40px 20px;">
+        <div class="spinner"></div>
+        <p style="color:#6b7280;font-size:14px;">Chargement du BAT…</p>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div class="bat-card hidden" id="block-error">
+      <div class="bat-card-body" style="text-align:center;padding:40px 20px;">
+        <div style="font-size:56px;margin-bottom:16px;">🔒</div>
+        <h2 style="margin:0 0 8px;font-size:20px;color:#111827;" id="error-title">Lien invalide</h2>
+        <p style="color:#6b7280;font-size:14px;" id="error-msg">Ce lien est invalide, expiré ou révoqué.</p>
+      </div>
+    </div>
+
+    <!-- Main decision view -->
+    <div class="hidden" id="block-main">
+      <div class="bat-card">
+        <div class="bat-card-header">
+          <div class="eyebrow">BON À TIRER</div>
+          <h2 id="bat-title">BAT à valider</h2>
+        </div>
+        <div class="bat-card-body">
+          <p style="font-size:14px;color:#374151;margin-bottom:16px;">Veuillez consulter attentivement votre BAT avant de prendre votre décision.</p>
+          <!-- Inline PDF viewer -->
+          <div class="iframe-wrapper" id="bat-viewer-wrap">
+            <iframe id="bat-iframe" title="Aperçu BAT"></iframe>
+          </div>
+          <div id="no-file-msg" class="hidden" style="padding:20px;text-align:center;color:#6b7280;font-size:14px;">
+            ⚠️ Le fichier BAT n'est pas disponible pour la prévisualisation.
+          </div>
+        </div>
+      </div>
+
+      <!-- Decision card -->
+      <div class="bat-card" id="block-decide">
+        <div class="bat-card-body" style="text-align:center;">
+          <p style="font-size:15px;font-weight:600;color:#111827;margin-bottom:8px;">Votre décision :</p>
+          <p style="font-size:13px;color:#6b7280;margin-bottom:24px;">En acceptant le BAT, vous autorisez le démarrage de l'impression.</p>
+          <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
+            <button class="btn-action btn-accept" id="btn-accept">✅ Je valide le BAT</button>
+            <button class="btn-action btn-refuse" id="btn-refuse">❌ Je refuse le BAT</button>
+          </div>
+          <div class="alert-box alert-error" id="decide-alert"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Already decided -->
+    <div class="bat-card hidden" id="block-already-decided">
+      <div class="bat-card-body" style="text-align:center;padding:40px 20px;">
+        <div class="success-icon" id="already-icon">✅</div>
+        <h2 style="margin:0 0 8px;font-size:20px;color:#111827;" id="already-title">Réponse enregistrée</h2>
+        <p style="color:#6b7280;font-size:14px;" id="already-msg">Votre décision a déjà été enregistrée.</p>
+      </div>
+    </div>
+
+    <!-- Accepted -->
+    <div class="bat-card hidden" id="block-accepted">
+      <div class="bat-card-body" style="text-align:center;padding:40px 20px;">
+        <div class="success-icon">✅</div>
+        <h2 style="margin:0 0 8px;font-size:20px;color:#16a34a;">BAT validé !</h2>
+        <p style="color:#374151;font-size:14px;">Votre validation a bien été enregistrée. Nous allons procéder à l'impression. Merci !</p>
+      </div>
+    </div>
+
+    <!-- Refused -->
+    <div class="bat-card hidden" id="block-refused">
+      <div class="bat-card-body" style="text-align:center;padding:40px 20px;">
+        <div class="success-icon">❌</div>
+        <h2 style="margin:0 0 8px;font-size:20px;color:#dc2626;">BAT refusé</h2>
+        <p style="color:#374151;font-size:14px;">Votre refus a été enregistré. Notre équipe va traiter vos corrections et vous soumettre un nouveau BAT.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Refuse modal -->
+  <div class="refuse-modal hidden" id="refuse-modal">
+    <div class="refuse-modal-inner">
+      <h3 style="margin:0 0 8px;font-size:16px;">Motif du refus (optionnel)</h3>
+      <p style="color:#6b7280;font-size:13px;margin:0 0 8px;">Précisez les corrections souhaitées pour faciliter le traitement.</p>
+      <textarea id="refuse-motif" placeholder="Décrivez les corrections attendues…"></textarea>
+      <div class="refuse-modal-btns">
+        <button class="btn-sm" id="refuse-cancel">Annuler</button>
+        <button class="btn-sm danger" id="refuse-confirm">Confirmer le refus</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const TOKEN = params.get('token') || '';
+
+    function show(id) { document.getElementById(id)?.classList.remove('hidden'); }
+    function hide(id) { document.getElementById(id)?.classList.add('hidden'); }
+
+    // Theme
+    fetch('/api/portal/config/theme').then(r => r.json()).then(d => {
+      if (!d.ok) return;
+      const t = d.theme;
+      if (t.primaryColor) document.documentElement.style.setProperty('--color-primary', t.primaryColor);
+      if (t.companyName) { document.getElementById('brand-name').textContent = t.companyName; document.title = `BAT — ${t.companyName}`; }
+    }).catch(() => {});
+
+    async function loadBat() {
+      if (!TOKEN) {
+        hide('block-loading'); show('block-error');
+        document.getElementById('error-msg').textContent = 'Aucun token dans l\'URL.';
+        return;
+      }
+      try {
+        const res = await fetch(`/api/portal/bat-external?token=${encodeURIComponent(TOKEN)}`);
+        const data = await res.json();
+        hide('block-loading');
+
+        if (!data.ok) {
+          show('block-error');
+          document.getElementById('error-msg').textContent = data.error || 'Lien invalide.';
+          return;
+        }
+
+        document.getElementById('bat-title').textContent = `BAT — ${data.numeroDossier || data.fileName}`;
+
+        // Load PDF viewer
+        if (data.hasFile) {
+          const iframeEl = document.getElementById('bat-iframe');
+          iframeEl.src = `/api/portal/bat-external/file?token=${encodeURIComponent(TOKEN)}`;
+        } else {
+          hide('bat-viewer-wrap');
+          show('no-file-msg');
+        }
+
+        if (data.clientDecision) {
+          // Already decided
+          const emoji = data.clientDecision === 'accepted' ? '✅' : '❌';
+          const title = data.clientDecision === 'accepted' ? 'BAT déjà validé' : 'BAT déjà refusé';
+          const msg = data.clientDecision === 'accepted'
+            ? 'Vous avez déjà validé ce BAT. L\'impression est en cours.'
+            : 'Vous avez déjà refusé ce BAT. Notre équipe traite vos corrections.';
+          document.getElementById('already-icon').textContent = emoji;
+          document.getElementById('already-title').textContent = title;
+          document.getElementById('already-msg').textContent = msg;
+          show('block-main');
+          hide('block-decide');
+          document.getElementById('bat-card-header')?.remove();
+          show('block-already-decided');
+          return;
+        }
+
+        show('block-main');
+      } catch(err) {
+        hide('block-loading'); show('block-error');
+        document.getElementById('error-msg').textContent = 'Erreur : ' + err.message;
+      }
+    }
+
+    loadBat();
+
+    async function sendDecision(decision, motif = '') {
+      const alertEl = document.getElementById('decide-alert');
+      alertEl.style.display = 'none';
+      [document.getElementById('btn-accept'), document.getElementById('btn-refuse')].forEach(b => { if(b) b.disabled = true; });
+      try {
+        const res = await fetch(`/api/portal/bat-external/decide?token=${encodeURIComponent(TOKEN)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ decision, motif })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          alertEl.textContent = data.error || 'Erreur.';
+          alertEl.style.display = '';
+          [document.getElementById('btn-accept'), document.getElementById('btn-refuse')].forEach(b => { if(b) b.disabled = false; });
+          return;
+        }
+        hide('block-main');
+        show(decision === 'accepted' ? 'block-accepted' : 'block-refused');
+        // Popup
+        const pop = document.createElement('div');
+        pop.style.cssText = `position:fixed;top:20px;right:20px;background:${decision==='accepted'?'#16a34a':'#dc2626'};color:#fff;padding:14px 20px;border-radius:10px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.2);`;
+        pop.textContent = decision === 'accepted' ? '✅ BAT validé avec succès !' : '❌ Refus enregistré.';
+        document.body.appendChild(pop);
+        setTimeout(() => pop.remove(), 4000);
+      } catch(err) {
+        alertEl.textContent = 'Erreur réseau : ' + err.message;
+        alertEl.style.display = '';
+        [document.getElementById('btn-accept'), document.getElementById('btn-refuse')].forEach(b => { if(b) b.disabled = false; });
+      }
+    }
+
+    document.getElementById('btn-accept').addEventListener('click', () => sendDecision('accepted'));
+    document.getElementById('btn-refuse').addEventListener('click', () => {
+      show('refuse-modal');
+    });
+    document.getElementById('refuse-cancel').addEventListener('click', () => hide('refuse-modal'));
+    document.getElementById('refuse-confirm').addEventListener('click', () => {
+      const motif = document.getElementById('refuse-motif').value.trim();
+      hide('refuse-modal');
+      sendDecision('refused', motif);
+    });
+  </script>
+</body>
+</html>

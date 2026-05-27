@@ -598,5 +598,234 @@ public static class PortalBatEndpoints
                 return Results.Json(new { ok = false, error = ex.Message });
             }
         });
+
+        // ── STAFF: POST /api/pro/bat/external-link ────────────────────────────
+        // Creates an external BAT validation link (no portal account required).
+        // Body: { fileName, fullPath, clientEmail, clientName? }
+        // Returns: { ok, token, batUrl }
+        app.MapPost("/api/pro/bat/external-link", async (HttpContext ctx) =>
+        {
+            try
+            {
+                var raw = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "").Trim();
+                if (string.IsNullOrWhiteSpace(raw)) return Results.Json(new { ok = false, error = "Non autorisé" });
+
+                var body = await ctx.Request.ReadFromJsonAsync<System.Text.Json.JsonDocument>();
+                if (body == null) return Results.Json(new { ok = false, error = "Payload invalide" });
+
+                var fileName = body.RootElement.TryGetProperty("fileName", out var fnEl) ? fnEl.GetString() ?? "" : "";
+                var fullPath = body.RootElement.TryGetProperty("fullPath", out var fpEl) ? fpEl.GetString() ?? "" : "";
+                var clientEmail = body.RootElement.TryGetProperty("clientEmail", out var ceEl) ? ceEl.GetString() ?? "" : "";
+                var clientName = body.RootElement.TryGetProperty("clientName", out var cnEl) ? cnEl.GetString() ?? "" : clientEmail;
+                var numeroDossier = body.RootElement.TryGetProperty("numeroDossier", out var ndEl) ? ndEl.GetString() ?? "" : "";
+
+                if (string.IsNullOrWhiteSpace(clientEmail))
+                    return Results.Json(new { ok = false, error = "Email client requis" });
+                if (string.IsNullOrWhiteSpace(fileName))
+                    return Results.Json(new { ok = false, error = "Nom de fichier BAT requis" });
+
+                // Generate token and expiry
+                var tokenBytes = new byte[24];
+                System.Security.Cryptography.RandomNumberGenerator.Fill(tokenBytes);
+                var token = Convert.ToBase64String(tokenBytes).Replace("+", "-").Replace("/", "_").Replace("=", "");
+                var expiresAt = DateTime.UtcNow.AddDays(30);
+
+                // Determine BAT file path for viewing
+                var hotRoot = BackendUtils.HotfoldersRoot();
+                var batDir = System.IO.Path.Combine(hotRoot, "BAT");
+                // Try to find the file in BAT folder
+                string? batFilePath = null;
+                if (!string.IsNullOrWhiteSpace(fullPath) && System.IO.File.Exists(fullPath))
+                    batFilePath = fullPath;
+                else
+                {
+                    var candidates = new[] { fileName, "BAT_" + fileName };
+                    foreach (var c in candidates)
+                    {
+                        var p = System.IO.Path.Combine(batDir, c);
+                        if (System.IO.File.Exists(p)) { batFilePath = p; break; }
+                    }
+                }
+
+                // Save to bat_external_links collection
+                var col = MongoDbHelper.GetCollection<BsonDocument>("bat_external_links");
+                var doc = new BsonDocument
+                {
+                    ["token"] = token,
+                    ["fileName"] = fileName,
+                    ["fullPath"] = batFilePath ?? fullPath,
+                    ["clientEmail"] = clientEmail,
+                    ["clientName"] = clientName,
+                    ["numeroDossier"] = numeroDossier,
+                    ["status"] = "pending",
+                    ["clientDecision"] = BsonNull.Value,
+                    ["createdAt"] = DateTime.UtcNow,
+                    ["expiresAt"] = expiresAt
+                };
+                col.InsertOne(doc);
+
+                // Build the URL
+                var settings = MongoDbHelper.GetSettings<PortalSettings>("portalSettings") ?? new PortalSettings();
+                var portalBase = PortalEmailHelper.SanitizePortalBaseUrl(settings.PortalUrl);
+                if (string.IsNullOrWhiteSpace(portalBase))
+                    portalBase = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+                var batUrl = $"{portalBase}/portal/bat-external.html?token={token}";
+
+                return Results.Json(new { ok = true, token, batUrl, clientEmail, expiresAt });
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { ok = false, error = ex.Message });
+            }
+        });
+
+        // ── PUBLIC: GET /api/portal/bat-external?token= ─────────────────────
+        // Returns BAT metadata for an external BAT link
+        app.MapGet("/api/portal/bat-external", (HttpContext ctx) =>
+        {
+            var token = ctx.Request.Query["token"].ToString();
+            if (string.IsNullOrWhiteSpace(token)) return Results.Json(new { ok = false, error = "Token manquant" });
+
+            var col = MongoDbHelper.GetCollection<BsonDocument>("bat_external_links");
+            var doc = col.Find(Builders<BsonDocument>.Filter.Eq("token", token)).FirstOrDefault();
+            if (doc == null) return Results.Json(new { ok = false, error = "Lien invalide ou introuvable" });
+
+            if (doc["status"].AsString == "revoked") return Results.Json(new { ok = false, error = "Ce lien a été révoqué" });
+
+            var expiresAt = doc.Contains("expiresAt") && doc["expiresAt"] != BsonNull.Value
+                ? (DateTime?)doc["expiresAt"].ToUniversalTime() : null;
+            if (expiresAt.HasValue && expiresAt.Value < DateTime.UtcNow)
+                return Results.Json(new { ok = false, error = "Ce lien a expiré" });
+
+            var clientDecision = (doc.Contains("clientDecision") && doc["clientDecision"] != BsonNull.Value)
+                ? doc["clientDecision"].AsString : null;
+
+            return Results.Json(new
+            {
+                ok = true,
+                fileName = doc["fileName"].AsString,
+                clientName = doc.Contains("clientName") ? doc["clientName"].AsString : "",
+                numeroDossier = doc.Contains("numeroDossier") ? doc["numeroDossier"].AsString : "",
+                hasFile = !string.IsNullOrWhiteSpace(doc["fullPath"].AsString) && System.IO.File.Exists(doc["fullPath"].AsString),
+                clientDecision,
+                expiresAt
+            });
+        });
+
+        // ── PUBLIC: GET /api/portal/bat-external/file?token= ────────────────
+        // Serves the BAT PDF file for an external BAT link
+        app.MapGet("/api/portal/bat-external/file", (HttpContext ctx) =>
+        {
+            var token = ctx.Request.Query["token"].ToString();
+            if (string.IsNullOrWhiteSpace(token)) return Results.Json(new { ok = false, error = "Token manquant" });
+
+            var col = MongoDbHelper.GetCollection<BsonDocument>("bat_external_links");
+            var doc = col.Find(Builders<BsonDocument>.Filter.Eq("token", token)).FirstOrDefault();
+            if (doc == null || doc["status"].AsString == "revoked")
+                return Results.Json(new { ok = false, error = "Lien invalide" });
+
+            var filePath = doc["fullPath"].AsString;
+            if (string.IsNullOrWhiteSpace(filePath) || !System.IO.File.Exists(filePath))
+                return Results.NotFound();
+
+            var fn = System.IO.Path.GetFileName(filePath);
+            return Results.File(System.IO.File.OpenRead(filePath), "application/pdf", fn);
+        });
+
+        // ── PUBLIC: POST /api/portal/bat-external/decide?token= ─────────────
+        // Records the client's BAT decision (accepted/refused)
+        app.MapPost("/api/portal/bat-external/decide", async (HttpContext ctx) =>
+        {
+            try
+            {
+                var token = ctx.Request.Query["token"].ToString();
+                if (string.IsNullOrWhiteSpace(token)) return Results.Json(new { ok = false, error = "Token manquant" });
+
+                var col = MongoDbHelper.GetCollection<BsonDocument>("bat_external_links");
+                var doc = col.Find(Builders<BsonDocument>.Filter.Eq("token", token)).FirstOrDefault();
+                if (doc == null) return Results.Json(new { ok = false, error = "Lien invalide ou introuvable" });
+                if (doc["status"].AsString == "revoked") return Results.Json(new { ok = false, error = "Lien révoqué" });
+
+                var body = await ctx.Request.ReadFromJsonAsync<System.Text.Json.JsonDocument>();
+                var decision = body?.RootElement.TryGetProperty("decision", out var decEl) == true ? decEl.GetString() ?? "" : "";
+                if (decision != "accepted" && decision != "refused")
+                    return Results.Json(new { ok = false, error = "Décision invalide." });
+
+                var motif = body?.RootElement.TryGetProperty("motif", out var motifEl) == true ? motifEl.GetString() ?? "" : "";
+                var now = DateTime.UtcNow;
+
+                // Update the link record
+                var filter = Builders<BsonDocument>.Filter.Eq("token", token);
+                var update = Builders<BsonDocument>.Update
+                    .Set("clientDecision", decision)
+                    .Set("clientDecisionAt", now)
+                    .Set("clientDecisionMotif", motif)
+                    .Set("status", decision == "accepted" ? "validated" : "refused");
+                col.UpdateOne(filter, update);
+
+                // Sync batStatus if accepted
+                if (decision == "accepted")
+                {
+                    SyncBatStatusValidated(doc["fileName"].AsString, now);
+                }
+                else
+                {
+                    // Mark as refused in batStatus
+                    var hotRoot = BackendUtils.HotfoldersRoot();
+                    var batStatusCol = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
+                    var fn = doc["fileName"].AsString;
+                    var paths = new List<string>
+                    {
+                        System.IO.Path.Combine(hotRoot, "BAT", fn),
+                        System.IO.Path.Combine(hotRoot, "BAT", "BAT_" + fn)
+                    };
+                    foreach (var sp in paths)
+                    {
+                        batStatusCol.UpdateOne(
+                            Builders<BsonDocument>.Filter.Eq("fullPath", sp),
+                            Builders<BsonDocument>.Update.Set("status", "refused").Set("rejectedAt", now),
+                            new UpdateOptions { IsUpsert = true });
+                    }
+                }
+
+                // Create a staff notification
+                var emoji = decision == "accepted" ? "✅" : "❌";
+                var clientName = doc.Contains("clientName") ? doc["clientName"].AsString : "";
+                var numDossier = doc.Contains("numeroDossier") ? doc["numeroDossier"].AsString : "";
+                var actionLabel = decision == "accepted" ? "a VALIDÉ" : "a REFUSÉ";
+                var notifCol = MongoDbHelper.GetCollection<BsonDocument>("notifications");
+                notifCol.InsertOne(new BsonDocument
+                {
+                    ["type"] = decision == "accepted" ? "bat_validated" : "bat_refused",
+                    ["message"] = $"{emoji} BAT {actionLabel} par {clientName} — dossier {numDossier}",
+                    ["fileName"] = doc["fileName"].AsString,
+                    ["read"] = false,
+                    ["createdAt"] = now
+                });
+
+                return Results.Json(new { ok = true, decision });
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { ok = false, error = ex.Message });
+            }
+        });
+
+        // ── STAFF: GET /api/pro/bat/external-link-enabled ────────────────────
+        // Returns whether external BAT links are enabled (admin toggle)
+        app.MapGet("/api/pro/bat/external-link-enabled", () =>
+        {
+            try
+            {
+                var col = MongoDbHelper.GetSettingsCollection();
+                var doc = col.Find(Builders<BsonDocument>.Filter.Eq("_id", "productionSettings")).FirstOrDefault();
+                bool enabled = doc != null
+                    && doc.Contains("enableExternalBatLinks")
+                    && doc["enableExternalBatLinks"] != BsonNull.Value
+                    && doc["enableExternalBatLinks"].ToBoolean();
+                return Results.Json(new { ok = true, enabled });
+            }
+            catch { return Results.Json(new { ok = true, enabled = false }); }
+        });
     }
 }

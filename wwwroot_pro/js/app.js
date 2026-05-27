@@ -12,7 +12,7 @@ import {
 } from './core.js';
 
 import { buildKanban, refreshKanban, openAssignDropdown, startBatDecisionPolling, stopBatDecisionPolling } from './kanban.js';
-import { openFabrication, initFabrication } from './fabrication.js';
+import { openFabrication, initFabrication, openQuoteSendModal } from './fabrication.js';
 import { initCalendar, ensureCalendar, calendar, submissionCalendar, initSubmissionCalendar, colorForEvent, openPlanificationCalendar, refreshOperatorView } from './calendar.js';
 import { initDossiersView, loadDossiersList, openDossierDetail } from './dossiers.js';
 import { initSettingsView } from './settings.js';
@@ -39,6 +39,7 @@ let submissionJobs = [];
 // CALLBACKS GLOBAUX (injection de dépendances cross-module)
 // ======================================================
 window._openFabrication = openFabrication;
+window._openQuoteSendModal = openQuoteSendModal;
 window._refreshKanban = refreshKanban;
 window._buildKanban = buildKanban;
 window._refreshSubmissionView = refreshSubmissionView;

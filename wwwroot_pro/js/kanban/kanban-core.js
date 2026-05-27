@@ -14,7 +14,8 @@ export const state = {
   preflightColumnsHidden: false,  // was _preflightColumnsHidden
   columnCache: {},       // was _columnCache
   visibleActionsMap: {}, // folder → string[] | null (null = show all)
-  emailTemplatesMap: {}  // folder → string[] | null (null = no extra templates)
+  emailTemplatesMap: {},  // folder → string[] | null (null = no extra templates)
+  externalBatLinksEnabled: false // admin toggle for external BAT links
 };
 
 // Default kanban columns (used as fallback if API fails)
@@ -52,6 +53,12 @@ export async function buildKanban() {
   const correctionsCol = allColumns.find(c => c.folder === "Corrections");
   const correctionsFpCol = allColumns.find(c => c.folder === "Corrections et fond perdu");
   state.preflightColumnsHidden = (correctionsCol?.visible === false) && (correctionsFpCol?.visible === false);
+
+  // Load admin toggle for external BAT links
+  try {
+    const batToggleResp = await fetch('/api/pro/bat/external-link-enabled').then(r => r.json()).catch(() => ({ enabled: false }));
+    state.externalBatLinksEnabled = !!(batToggleResp.enabled);
+  } catch(e) { state.externalBatLinksEnabled = false; }
 
   // Build visible actions map: folder → string[] | null
   state.visibleActionsMap = {};
