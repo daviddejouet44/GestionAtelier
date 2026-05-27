@@ -22,6 +22,8 @@ namespace GestionAtelier.Endpoints;
 
 public static class MiscEndpointsExtensions
 {
+    private static readonly string[] SupportedImageExtensions = { ".png", ".jpg", ".jpeg", ".gif", ".webp" };
+
     // Helper to delete files matching a base name (no extension) in a directory
     private static void DeleteImageFiles(string dir, string baseName)
     {
@@ -31,9 +33,37 @@ public static class MiscEndpointsExtensions
                 File.Delete(f);
     }
 
+    private static string? FindImageFile(string dir, string baseName)
+    {
+        foreach (var ext in SupportedImageExtensions)
+        {
+            var candidate = Path.Combine(dir, baseName + ext);
+            if (File.Exists(candidate)) return candidate;
+        }
+        return null;
+    }
+
+    private static IResult ServeOptionalImage(HttpContext ctx, string dir, string baseName, string defaultContentType)
+    {
+        ctx.Response.Headers["Cache-Control"] = "no-cache, no-store";
+
+        var found = FindImageFile(dir, baseName);
+        if (found == null)
+        {
+            // These images are optional: 204 avoids noisy 404 logs while <img onerror> still hides the missing asset.
+            return Results.NoContent();
+        }
+
+        var provider = new FileExtensionContentTypeProvider();
+        if (!provider.TryGetContentType(found, out var ct)) ct = defaultContentType;
+        return Results.File(File.OpenRead(found), ct);
+    }
+
     public static void MapMiscEndpoints(this WebApplication app)
     {
 app.MapGet("/api/ping", () => "pong");
+
+app.MapGet("/favicon.ico", () => Results.NoContent());
 
 app.MapGet("/api/file-stage", (string fileName) =>
 {
@@ -212,19 +242,7 @@ app.MapGet("/debug/pro", () =>
 app.MapGet("/api/logo", (HttpContext ctx) =>
 {
     var logoDir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
-    // Try all supported extensions
-    string? found = null;
-    foreach (var ext in new[] { ".png", ".jpg", ".jpeg", ".gif", ".webp" })
-    {
-        var candidate = Path.Combine(logoDir, "logo" + ext);
-        if (File.Exists(candidate)) { found = candidate; break; }
-    }
-    if (found == null)
-        return Results.NotFound();
-    var provider = new FileExtensionContentTypeProvider();
-    if (!provider.TryGetContentType(found, out var ct)) ct = "image/png";
-    ctx.Response.Headers["Cache-Control"] = "no-cache, no-store";
-    return Results.File(File.OpenRead(found), ct);
+    return ServeOptionalImage(ctx, logoDir, "logo", "image/png");
 });
 
 app.MapPost("/api/logo", async (HttpContext ctx) =>
@@ -286,18 +304,7 @@ app.MapDelete("/api/logo", (HttpContext ctx) =>
 app.MapGet("/api/logo-login", (HttpContext ctx) =>
 {
     var logoDir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
-    string? found = null;
-    foreach (var ext in new[] { ".png", ".jpg", ".jpeg", ".gif", ".webp" })
-    {
-        var candidate = Path.Combine(logoDir, "logo-login" + ext);
-        if (File.Exists(candidate)) { found = candidate; break; }
-    }
-    if (found == null)
-        return Results.NotFound();
-    var provider = new FileExtensionContentTypeProvider();
-    if (!provider.TryGetContentType(found, out var ct)) ct = "image/png";
-    ctx.Response.Headers["Cache-Control"] = "no-cache, no-store";
-    return Results.File(File.OpenRead(found), ct);
+    return ServeOptionalImage(ctx, logoDir, "logo-login", "image/png");
 });
 
 app.MapPost("/api/logo-login", async (HttpContext ctx) =>
@@ -355,17 +362,7 @@ app.MapDelete("/api/logo-login", (HttpContext ctx) =>
 app.MapGet("/api/background-login", (HttpContext ctx) =>
 {
     var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
-    string? found = null;
-    foreach (var ext in new[] { ".png", ".jpg", ".jpeg", ".gif", ".webp" })
-    {
-        var candidate = Path.Combine(dir, "background-login" + ext);
-        if (File.Exists(candidate)) { found = candidate; break; }
-    }
-    if (found == null) return Results.NotFound();
-    var provider = new FileExtensionContentTypeProvider();
-    if (!provider.TryGetContentType(found, out var ct)) ct = "image/jpeg";
-    ctx.Response.Headers["Cache-Control"] = "no-cache, no-store";
-    return Results.File(File.OpenRead(found), ct);
+    return ServeOptionalImage(ctx, dir, "background-login", "image/jpeg");
 });
 
 app.MapPost("/api/background-login", async (HttpContext ctx) =>
@@ -405,17 +402,7 @@ app.MapDelete("/api/background-login", (HttpContext ctx) =>
 app.MapGet("/api/header-banner", (HttpContext ctx) =>
 {
     var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
-    string? found = null;
-    foreach (var ext in new[] { ".png", ".jpg", ".jpeg", ".gif", ".webp" })
-    {
-        var candidate = Path.Combine(dir, "header-banner" + ext);
-        if (File.Exists(candidate)) { found = candidate; break; }
-    }
-    if (found == null) return Results.NotFound();
-    var provider = new FileExtensionContentTypeProvider();
-    if (!provider.TryGetContentType(found, out var ct)) ct = "image/jpeg";
-    ctx.Response.Headers["Cache-Control"] = "no-cache, no-store";
-    return Results.File(File.OpenRead(found), ct);
+    return ServeOptionalImage(ctx, dir, "header-banner", "image/jpeg");
 });
 
 app.MapPost("/api/header-banner", async (HttpContext ctx) =>
@@ -455,16 +442,11 @@ app.MapDelete("/api/header-banner", (HttpContext ctx) =>
 IResult DashboardImageHandler(HttpContext ctx)
 {
     var dir = Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro");
-    string? found = null;
-    foreach (var ext in new[] { ".png", ".jpg", ".jpeg", ".gif", ".webp" })
-    {
-        var candidate = Path.Combine(dir, "dashboard-image" + ext);
-        if (File.Exists(candidate)) { found = candidate; break; }
-    }
-    if (found == null) return Results.NotFound();
+    var found = FindImageFile(dir, "dashboard-image");
+    ctx.Response.Headers["Cache-Control"] = "no-cache, no-store";
+    if (found == null) return Results.NoContent();
     var provider = new FileExtensionContentTypeProvider();
     if (!provider.TryGetContentType(found, out var ct)) ct = "image/jpeg";
-    ctx.Response.Headers["Cache-Control"] = "no-cache, no-store";
     if (ctx.Request.Method == "HEAD")
     {
         ctx.Response.ContentType = ct;
