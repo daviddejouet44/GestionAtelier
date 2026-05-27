@@ -1,6 +1,6 @@
 // kanban/kanban-core.js — Build, refresh, summary
 import { currentUser, deliveriesByPath, fnKey, normalizePath, isLight, darkenColor, showNotification, FOLDER_FIN_PRODUCTION } from '../core.js';
-import { refreshKanbanColumnOperator } from './kanban-cards.js';
+import { refreshKanbanColumnOperator } from './kanban-cards.js?v=33';
 import { showFaconnageAlerts } from './kanban-actions.js';
 
 const kanbanDiv = document.getElementById("kanban");
