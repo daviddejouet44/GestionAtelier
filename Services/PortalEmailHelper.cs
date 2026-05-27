@@ -100,6 +100,76 @@ public static class PortalEmailHelper
         return trimmed;
     }
 
+    /// <summary>
+    /// Sends an HTML email with an optional PDF attachment.
+    /// Unlike <see cref="SendEmail"/>, <paramref name="htmlBody"/> is used verbatim (not HTML-encoded).
+    /// </summary>
+    public static void SendHtmlEmail(
+        string toAddress,
+        string subject,
+        string htmlBody,
+        string? plainTextBody = null,
+        string? attachmentPath = null,
+        string? attachmentName = null)
+    {
+        var smtp = MongoDbHelper.GetSettings<PortalSmtpSettings>("portalSmtp");
+        if (smtp == null || string.IsNullOrWhiteSpace(smtp.Host) || string.IsNullOrWhiteSpace(smtp.FromAddress))
+        {
+            Console.WriteLine($"[WARN] Portal SMTP not configured — email not sent to {MaskEmail(toAddress)}");
+            return;
+        }
+
+        try
+        {
+            Console.WriteLine($"[EMAIL] Sending HTML email to {MaskEmail(toAddress)} via {smtp.Host}:{(smtp.Port > 0 ? smtp.Port : 587)}");
+
+            var message = new MimeMessage();
+            message.From.Add(new MailboxAddress(smtp.FromName ?? "Portail Client", smtp.FromAddress));
+            message.To.Add(MailboxAddress.Parse(toAddress));
+            message.Subject = subject;
+
+            var altPart = new MimeKit.Multipart("alternative");
+            altPart.Add(new TextPart("plain") { Text = plainTextBody ?? System.Text.RegularExpressions.Regex.Replace(htmlBody, "<[^>]+>", "") });
+            altPart.Add(new TextPart("html") { Text = htmlBody });
+
+            if (!string.IsNullOrWhiteSpace(attachmentPath) && File.Exists(attachmentPath))
+            {
+                var mixed = new MimeKit.Multipart("mixed");
+                mixed.Add(altPart);
+                var attachment = new MimePart("application", "pdf")
+                {
+                    Content = new MimeContent(File.OpenRead(attachmentPath)),
+                    ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
+                    ContentTransferEncoding = ContentEncoding.Base64,
+                    FileName = attachmentName ?? Path.GetFileName(attachmentPath)
+                };
+                mixed.Add(attachment);
+                message.Body = mixed;
+            }
+            else
+            {
+                message.Body = altPart;
+            }
+
+            using var client = new SmtpClient();
+            var port = smtp.Port > 0 ? smtp.Port : 587;
+            var secureOption = port == 465 ? SecureSocketOptions.SslOnConnect
+                             : port == 587 ? SecureSocketOptions.StartTls
+                             : (smtp.UseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable);
+            client.Connect(smtp.Host, port, secureOption);
+            if (!string.IsNullOrWhiteSpace(smtp.Username))
+                client.Authenticate(smtp.Username, smtp.Password ?? "");
+            client.Send(message);
+            client.Disconnect(true);
+
+            Console.WriteLine($"[EMAIL] Successfully sent HTML email to {MaskEmail(toAddress)}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] HTML email send failed to {MaskEmail(toAddress)}: {ex.Message}");
+        }
+    }
+
     /// <summary>Resolves and renders a portal email template, replacing variables.</summary>
     public static (string subject, string body) RenderTemplate(
         string templateKey,

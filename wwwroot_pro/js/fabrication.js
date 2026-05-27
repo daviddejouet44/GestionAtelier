@@ -753,6 +753,8 @@ export function initFabrication() {
       fabExport.insertAdjacentElement('afterend', picker);
     };
   }
+  // Initialise the quote-send modal (must be here to guarantee DOM is ready)
+  initQuoteSendModal();
 }
 
 export async function openFabrication(fullPath, prefillData = null) {
@@ -930,6 +932,161 @@ export async function openFabrication(fullPath, prefillData = null) {
   const jdfSection=document.getElementById('fab-jdf-section');
   if(jdfSection) jdfSection.style.display=_jdfEnabled?'':'none';
   if(fabDynamicForm){fabDynamicForm.style.opacity='';fabDynamicForm.style.pointerEvents='';}
+}
+
+// ── Quote-send modal ──────────────────────────────────────────────────────────
+// Called from initFabrication() to ensure DOM is ready and event order is correct.
+export function initQuoteSendModal() {
+  const modal = document.getElementById('quote-send-modal');
+  if (!modal) return;
+
+  const btnOpen   = document.getElementById('fab-send-quote');
+  const btnCancel = document.getElementById('qs-cancel');
+  const btnSend   = document.getElementById('qs-send');
+  const uploadZone  = document.getElementById('qs-upload-zone');
+  const fileInput   = document.getElementById('qs-file-input');
+  const filePreview = document.getElementById('qs-file-preview');
+  const fileNameEl  = document.getElementById('qs-file-name');
+  const fileRemove  = document.getElementById('qs-file-remove');
+  const errDiv      = document.getElementById('quote-send-error');
+  const successDiv  = document.getElementById('quote-send-success');
+
+  let _qsFile = null;
+
+  function openModal() {
+    // Pre-fill from current fabrication fiche (use gEl which maps logical IDs to HTML element IDs)
+    const g = id => { const el = gEl(id); return el ? el.value : ''; };
+    document.getElementById('qs-client-name').value  = g('client') || '';
+    document.getElementById('qs-client-email').value = g('donneurOrdreEmail') || '';
+    document.getElementById('qs-title').value         = g('typeTravail') || '';
+    document.getElementById('qs-format').value        = g('formatFini') || '';
+    document.getElementById('qs-encres').value        = g('encres') || g('couleurs') || '';
+    const qtyEl = gEl('quantite'); document.getElementById('qs-quantity').value = qtyEl ? (qtyEl.value || '') : '';
+    const paginEl = gEl('pagination'); document.getElementById('qs-pagination').value = paginEl ? (paginEl.value || '') : '';
+    document.getElementById('qs-devis-number').value  = g('numeroDossier') || '';
+    document.getElementById('qs-notes').value         = '';
+    document.getElementById('qs-finitions').value     = '';
+
+    // Reset file
+    _qsFile = null;
+    fileInput.value = '';
+    filePreview.style.display = 'none';
+    uploadZone.style.display = '';
+    uploadZone.style.borderColor = '#d1d5db';
+    uploadZone.style.background = '#fafafa';
+
+    // Reset state
+    errDiv.style.display = 'none';
+    successDiv.style.display = 'none';
+    btnSend.disabled = false;
+    btnSend.textContent = '📨 Envoyer l\'email';
+
+    modal.classList.remove('hidden');
+  }
+
+  function closeModal() { modal.classList.add('hidden'); }
+
+  if (btnOpen)   btnOpen.addEventListener('click', openModal);
+  if (btnCancel) btnCancel.addEventListener('click', closeModal);
+
+  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+
+  // File handling
+  if (uploadZone) {
+    uploadZone.addEventListener('click', () => fileInput.click());
+    uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.style.borderColor = '#1d4ed8'; uploadZone.style.background = '#eff6ff'; });
+    uploadZone.addEventListener('dragleave', () => { uploadZone.style.borderColor = '#d1d5db'; uploadZone.style.background = '#fafafa'; });
+    uploadZone.addEventListener('drop', e => {
+      e.preventDefault();
+      uploadZone.style.borderColor = '#d1d5db';
+      uploadZone.style.background = '#fafafa';
+      if (e.dataTransfer.files[0]) setQsFile(e.dataTransfer.files[0]);
+    });
+  }
+
+  if (fileInput) fileInput.addEventListener('change', () => { if (fileInput.files[0]) setQsFile(fileInput.files[0]); });
+
+  function setQsFile(f) {
+    if (!f.name.toLowerCase().endsWith('.pdf')) {
+      errDiv.textContent = 'Seuls les fichiers PDF sont acceptés.';
+      errDiv.style.display = '';
+      return;
+    }
+    _qsFile = f;
+    fileNameEl.textContent = f.name;
+    uploadZone.style.display = 'none';
+    filePreview.style.display = 'flex';
+    errDiv.style.display = 'none';
+  }
+
+  if (fileRemove) fileRemove.addEventListener('click', () => {
+    _qsFile = null;
+    fileInput.value = '';
+    filePreview.style.display = 'none';
+    uploadZone.style.display = '';
+  });
+
+  // Send
+  if (btnSend) btnSend.addEventListener('click', async () => {
+    errDiv.style.display = 'none';
+    successDiv.style.display = 'none';
+
+    const devisNumber = document.getElementById('qs-devis-number').value.trim();
+    const clientEmail = document.getElementById('qs-client-email').value.trim();
+    const clientName  = document.getElementById('qs-client-name').value.trim();
+    if (!devisNumber) { errDiv.textContent = 'Le numéro de devis est obligatoire.'; errDiv.style.display = ''; return; }
+    if (!clientEmail)  { errDiv.textContent = 'L\'adresse email est obligatoire.'; errDiv.style.display = ''; return; }
+    if (!clientName)   { errDiv.textContent = 'Le nom du client est obligatoire.'; errDiv.style.display = ''; return; }
+
+    btnSend.disabled = true;
+    btnSend.textContent = 'Envoi…';
+
+    try {
+      const fd = new FormData();
+      fd.append('devisNumber', devisNumber);
+      fd.append('clientEmail', clientEmail);
+      fd.append('clientName',  clientName);
+      fd.append('title',    document.getElementById('qs-title').value.trim());
+      fd.append('format',   document.getElementById('qs-format').value.trim());
+      fd.append('paper',    document.getElementById('qs-paper') ? document.getElementById('qs-paper').value.trim() : '');
+      fd.append('encres',   document.getElementById('qs-encres').value.trim());
+      fd.append('quantity', document.getElementById('qs-quantity').value.trim());
+      fd.append('pagination', document.getElementById('qs-pagination').value.trim());
+      fd.append('recto',    document.getElementById('qs-recto').value);
+      fd.append('finitions', document.getElementById('qs-finitions').value.trim());
+      fd.append('notes',    document.getElementById('qs-notes').value.trim());
+      if (fabCurrentPath) fd.append('fichePath', fabCurrentPath);
+      if (_qsFile) fd.append('quotePdf', _qsFile);
+
+      const res = await fetch('/api/pro/quotes/send', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + authToken },
+        body: fd
+      });
+      const data = await res.json();
+
+      if (!data.ok) {
+        errDiv.textContent = data.error || 'Erreur lors de l\'envoi.';
+        errDiv.style.display = '';
+        btnSend.disabled = false;
+        btnSend.textContent = '📨 Envoyer l\'email';
+        return;
+      }
+
+      successDiv.innerHTML = `✅ Email envoyé à <strong>${clientEmail}</strong> !<br>
+        <span style="font-size:12px;color:#166534;">Lien unique généré : 
+          <a href="${data.quoteUrl}" target="_blank" style="color:#15803d;word-break:break-all;">${data.quoteUrl}</a>
+        </span>`;
+      successDiv.style.display = '';
+      btnSend.textContent = '✅ Envoyé';
+
+    } catch (err) {
+      errDiv.textContent = 'Erreur : ' + err.message;
+      errDiv.style.display = '';
+      btnSend.disabled = false;
+      btnSend.textContent = '📨 Envoyer l\'email';
+    }
+  });
 }
 
 export async function saveFabrication() {
