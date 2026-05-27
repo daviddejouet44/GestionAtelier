@@ -340,7 +340,7 @@ public static class QuoteLinksEndpoints
                     portalBase = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
                 var quoteUrl = $"{portalBase}/portal/quote.html?token={token}";
 
-                // Build and send email
+                // Build and (optionally) send email
                 var theme = MongoDbHelper.GetSettings<PortalThemeConfig>("portalTheme") ?? new PortalThemeConfig();
                 var companyName = string.IsNullOrWhiteSpace(theme.CompanyName) ? "Gestion d'Atelier" : theme.CompanyName;
 
@@ -348,15 +348,34 @@ public static class QuoteLinksEndpoints
                 var htmlBody = BuildQuoteEmailHtml(link, quoteUrl, companyName);
                 var plainBody = BuildQuoteEmailPlainText(link, quoteUrl, companyName);
 
-                PortalEmailHelper.SendHtmlEmail(
-                    clientEmail,
-                    subject,
-                    htmlBody,
-                    plainBody,
-                    pdfStoredPath,
-                    pdfFileName);
+                // mailtoMode=true means: only create the link, the frontend will open mailto: — no SMTP needed
+                bool mailtoMode = false;
+                ctx.Request.Form.TryGetValue("mailtoMode", out var mailtoModeVal);
+                if (mailtoModeVal.ToString() == "true") mailtoMode = true;
 
-                return Results.Json(new { ok = true, quoteLinkId = linkId, quoteUrl, token });
+                bool emailSent = false;
+                string emailError = "";
+                if (!mailtoMode)
+                {
+                    try
+                    {
+                        PortalEmailHelper.SendHtmlEmail(
+                            clientEmail,
+                            subject,
+                            htmlBody,
+                            plainBody,
+                            pdfStoredPath,
+                            pdfFileName);
+                        emailSent = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        emailError = ex.Message;
+                        Console.WriteLine($"[WARN] Quote email send failed (non-blocking): {ex.Message}");
+                    }
+                }
+
+                return Results.Json(new { ok = true, quoteLinkId = linkId, quoteUrl, token, emailSent, emailError, subject, plainBody });
             }
             catch (Exception ex)
             {
@@ -437,6 +456,12 @@ public static class QuoteLinksEndpoints
             if (link.ExpiresAt.HasValue && link.ExpiresAt.Value < DateTime.UtcNow)
                 return Results.Json(new { ok = false, error = "Ce lien a expiré" });
 
+            // Read clientDecision from DB
+            var col2 = MongoDbHelper.GetCollection<BsonDocument>("quote_links");
+            var doc2 = col2.Find(Builders<BsonDocument>.Filter.Eq("token", token)).FirstOrDefault();
+            var clientDecision = (doc2 != null && doc2.Contains("clientDecision") && doc2["clientDecision"] != BsonNull.Value)
+                ? doc2["clientDecision"].AsString : null;
+
             return Results.Json(new
             {
                 ok = true,
@@ -454,7 +479,8 @@ public static class QuoteLinksEndpoints
                 recto = link.Recto,
                 notes = link.Notes,
                 hasQuotePdf = !string.IsNullOrWhiteSpace(link.QuotePdfFileName),
-                expiresAt = link.ExpiresAt
+                expiresAt = link.ExpiresAt,
+                clientDecision
             });
         });
 
@@ -473,6 +499,81 @@ public static class QuoteLinksEndpoints
             var fileName = link.QuotePdfFileName ?? $"Devis-{link.DevisNumber}.pdf";
             ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"{SanitizeForFs(fileName)}\"";
             return Results.File(link.QuotePdfStoredPath, "application/pdf");
+        });
+
+        // ── PUBLIC: POST /api/portal/quote/decide?token= ─────────────────────
+        // Body: { "decision": "accepted" | "refused" }
+        // Records the client's decision on the quote and notifies staff.
+        app.MapPost("/api/portal/quote/decide", async (HttpContext ctx) =>
+        {
+            try
+            {
+                var token = ctx.Request.Query["token"].ToString();
+                if (string.IsNullOrWhiteSpace(token))
+                    return Results.Json(new { ok = false, error = "Token manquant" });
+
+                var col = MongoDbHelper.GetCollection<BsonDocument>("quote_links");
+                var doc = col.Find(Builders<BsonDocument>.Filter.Eq("token", token)).FirstOrDefault();
+                if (doc == null)
+                    return Results.Json(new { ok = false, error = "Lien invalide ou introuvable" });
+
+                var link = DocToLink(doc);
+                if (link.Status == "revoked")
+                    return Results.Json(new { ok = false, error = "Ce lien a été révoqué" });
+
+                // Parse decision
+                var body = await ctx.Request.ReadFromJsonAsync<System.Text.Json.JsonDocument>();
+                var decision = body?.RootElement.TryGetProperty("decision", out var decEl) == true ? decEl.GetString() ?? "" : "";
+                if (decision != "accepted" && decision != "refused")
+                    return Results.Json(new { ok = false, error = "Décision invalide. Utilisez 'accepted' ou 'refused'." });
+
+                // Persist decision on the quote_links document
+                var filter = Builders<BsonDocument>.Filter.Eq("token", token);
+                var update = Builders<BsonDocument>.Update
+                    .Set("clientDecision", decision)
+                    .Set("clientDecisionAt", DateTime.UtcNow);
+                col.UpdateOne(filter, update);
+
+                // Create a staff notification
+                var notifCol = MongoDbHelper.GetCollection<BsonDocument>("notifications");
+                var emoji = decision == "accepted" ? "✅" : "❌";
+                var actionLabel = decision == "accepted" ? "a ACCEPTÉ" : "a REFUSÉ";
+                var notif = new BsonDocument
+                {
+                    ["type"] = decision == "accepted" ? "quote_accepted" : "quote_refused",
+                    ["message"] = $"{emoji} {link.ClientName} {actionLabel} le devis n° {link.DevisNumber}",
+                    ["devisNumber"] = link.DevisNumber,
+                    ["clientName"] = link.ClientName,
+                    ["token"] = token,
+                    ["read"] = false,
+                    ["createdAt"] = DateTime.UtcNow
+                };
+                notifCol.InsertOne(notif);
+
+                // Try to send an email notification to a configured notification address (non-blocking)
+                // The notification email destination comes from portal SMTP settings "fromAddress"
+                try
+                {
+                    var smtpSettings = MongoDbHelper.GetSettings<PortalSmtpSettings>("portalSmtp");
+                    var notifEmail = smtpSettings?.FromAddress;
+                    if (!string.IsNullOrWhiteSpace(notifEmail))
+                    {
+                        var theme = MongoDbHelper.GetSettings<PortalThemeConfig>("portalTheme") ?? new PortalThemeConfig();
+                        var companyName = string.IsNullOrWhiteSpace(theme.CompanyName) ? "Gestion d'Atelier" : theme.CompanyName;
+                        var subject = $"{emoji} Devis {link.DevisNumber} — {link.ClientName} {actionLabel}";
+                        var htmlBody = $"<p><strong>{companyName}</strong></p><p>{emoji} Le client <strong>{link.ClientName}</strong> {actionLabel} le devis n° <strong>{link.DevisNumber}</strong>.</p><p>Date : {DateTime.Now:dd/MM/yyyy HH:mm}</p>";
+                        var plainBody = $"{emoji} {link.ClientName} {actionLabel} le devis n° {link.DevisNumber}. Date : {DateTime.Now:dd/MM/yyyy HH:mm}";
+                        PortalEmailHelper.SendHtmlEmail(notifEmail, subject, htmlBody, plainBody, null, null);
+                    }
+                }
+                catch { /* non-blocking — email notification to staff */ }
+
+                return Results.Json(new { ok = true, decision });
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { ok = false, error = ex.Message });
+            }
         });
 
         // ── PUBLIC: POST /api/portal/quote/submit?token= ─────────────────────

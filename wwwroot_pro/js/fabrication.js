@@ -189,6 +189,20 @@ function updateDateLivraison() {
   if(!livEl._manuallyEdited) livEl.value=lDate.toISOString().split('T')[0];
 }
 
+// Visual helper: mark/unmark a calculated date field as auto-calculated
+function _setAutoDateStyle(el, isAuto) {
+  if(!el) return;
+  if(isAuto) {
+    el.style.background='#eff6ff';
+    el.style.color='#1e40af';
+    el.title='Date calculée automatiquement depuis la date de réception (cliquez pour modifier)';
+  } else {
+    el.style.background='';
+    el.style.color='';
+    el.title='';
+  }
+}
+
 function updateKeyDates() {
   const recEl=document.getElementById('fab-date-reception'); if(!recEl||!recEl.value) return;
   const recTs=new Date(recEl.value+'T00:00:00').getTime();
@@ -206,9 +220,9 @@ function updateKeyDates() {
   }
   // Only fill a date field if it is empty OR not protected (not loaded from DB / not manually set).
   // This prevents overwriting dates entered by the user when another field (e.g. temps de production) changes.
-  if(envEl&&!envEl.dataset.protected) envEl.value=_localDate(recTs-cfg.sendOffsetHours*3600000);
-  if(finEl&&!finEl.dataset.protected) finEl.value=_localDate(recTs-cfg.finitionsOffsetHours*3600000);
-  if(impEl&&!impEl.dataset.protected) impEl.value=_localDate(recTs-cfg.impressionOffsetHours*3600000);
+  if(envEl&&!envEl.dataset.protected) { envEl.value=_localDate(recTs-cfg.sendOffsetHours*3600000); _setAutoDateStyle(envEl,true); }
+  if(finEl&&!finEl.dataset.protected) { finEl.value=_localDate(recTs-cfg.finitionsOffsetHours*3600000); _setAutoDateStyle(finEl,true); }
+  if(impEl&&!impEl.dataset.protected) { impEl.value=_localDate(recTs-cfg.impressionOffsetHours*3600000); _setAutoDateStyle(impEl,true); }
 }
 
 function updateTempsProduction() {
@@ -382,10 +396,14 @@ function renderFabForm(config, opts) {
       if(field.dependsOn){wrap.dataset.dependsOn=field.dependsOn;if(field.dependsOnValue)wrap.dataset.dependsOnValue=field.dependsOnValue;wrap.style.display='none';}
       const elId=gElId(field.id);
       const reqStar=field.required?' <span class="required-star">*</span>':'';
-      const calcNote=field.calculationRule?' <small style="color:#9ca3af;font-size:10px;">(calculé)</small>':'';
-      const editableKeyDate=['dateEnvoi','dateProductionFinitions','dateImpression'].includes(field.id);
+      const isAutoKeyDate=['dateEnvoi','dateProductionFinitions','dateImpression'].includes(field.id);
+      const isAnchorDate=field.id==='dateReception';
+      const autoNote=isAutoKeyDate?' <small style="color:#9ca3af;font-size:10px;">(calculé)</small>':'';
+      const calcNote=field.calculationRule?' <small style="color:#9ca3af;font-size:10px;">(calculé)</small>':autoNote;
+      const editableKeyDate=isAutoKeyDate;
       const roAttr=(field.readOnly&&!editableKeyDate)?' readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;"':'';
       const roSel=field.readOnly?' disabled style="background:#f3f4f6;color:#6b7280;"':'';
+      const anchorStyle=isAnchorDate?' style="border:2px solid #3b82f6;border-radius:6px;"':'';
       const selPH='<option value="">— Sélectionner —</option>';
 
       if(field.id==='tempsProduitMinutes'){
@@ -398,7 +416,9 @@ function renderFabForm(config, opts) {
       } else if(field.type==='text'||field.type==='number'){
         wrap.innerHTML='<label>'+field.label+reqStar+calcNote+'</label><input id="'+elId+'" type="'+field.type+'"'+roAttr+' />';
       } else if(field.type==='date'){
-        wrap.innerHTML='<label>'+field.label+reqStar+calcNote+'</label><input id="'+elId+'" type="date"'+roAttr+' />';
+        const labelPrefix=isAnchorDate?'📅 ':'';
+        const labelHtml='<label>'+labelPrefix+field.label+reqStar+calcNote+'</label>';
+        wrap.innerHTML=labelHtml+'<input id="'+elId+'" type="date"'+roAttr+anchorStyle+' />';
       } else if(field.type==='textarea'){
         wrap.innerHTML='<label>'+field.label+'</label><textarea id="'+elId+'" rows="3"></textarea>';
       } else if(field.type==='select'){
@@ -480,13 +500,13 @@ function renderFabForm(config, opts) {
     kdGrid.className='fab-form-group fab-full-width';
     kdGrid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;';
     kdGrid.innerHTML=''
-      +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date de réception souhaitée</label>'
-      +'<input id="fab-date-reception" type="date" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" /></div>'
-      +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date d\'envoi</label>'
+      +'<div><label style="font-size:12px;color:#374151;font-weight:600;display:block;margin-bottom:4px;">📅 Date de réception souhaitée <span style="color:#ef4444;">*</span></label>'
+      +'<input id="fab-date-reception" type="date" style="width:100%;padding:6px 8px;border:2px solid #3b82f6;border-radius:6px;font-size:13px;" /></div>'
+      +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date d\'envoi <small style="color:#9ca3af;font-weight:normal;">(calculé)</small></label>'
       +'<input id="fab-date-envoi" type="date" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" /></div>'
-      +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date production Finitions</label>'
+      +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date production Finitions <small style="color:#9ca3af;font-weight:normal;">(calculé)</small></label>'
       +'<input id="fab-date-finitions" type="date" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" /></div>'
-      +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date d\'impression</label>'
+      +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date d\'impression <small style="color:#9ca3af;font-weight:normal;">(calculé)</small></label>'
       +'<input id="fab-date-impression" type="date" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" /></div>';
     fabDynamicForm.appendChild(kdGrid);
   }
@@ -584,10 +604,11 @@ function populateFabForm(d, faconnageOptions) {
   const envEl=document.getElementById('fab-date-envoi');
   const finEl=document.getElementById('fab-date-finitions');
   const impEl=document.getElementById('fab-date-impression');
-  if(recEl) recEl.value=d.dateReception?fmtDate(d.dateReception):'';
-  if(envEl) { envEl.value=d.dateEnvoi?fmtDate(d.dateEnvoi):''; if(envEl.value) envEl.dataset.protected='1'; else delete envEl.dataset.protected; }
-  if(finEl) { finEl.value=d.dateProductionFinitions?fmtDate(d.dateProductionFinitions):''; if(finEl.value) finEl.dataset.protected='1'; else delete finEl.dataset.protected; }
-  if(impEl) { impEl.value=d.dateImpression?fmtDate(d.dateImpression):''; if(impEl.value) impEl.dataset.protected='1'; else delete impEl.dataset.protected; }
+  // Load dateReception — fall back to dateReceptionSouhaitee (set by calendar drag-and-drop)
+  if(recEl) recEl.value=(d.dateReception||d.dateReceptionSouhaitee)?fmtDate(d.dateReception||d.dateReceptionSouhaitee):'';
+  if(envEl) { envEl.value=d.dateEnvoi?fmtDate(d.dateEnvoi):''; if(envEl.value){envEl.dataset.protected='1';_setAutoDateStyle(envEl,false);}else{delete envEl.dataset.protected;_setAutoDateStyle(envEl,false);} }
+  if(finEl) { finEl.value=d.dateProductionFinitions?fmtDate(d.dateProductionFinitions):''; if(finEl.value){finEl.dataset.protected='1';_setAutoDateStyle(finEl,false);}else{delete finEl.dataset.protected;_setAutoDateStyle(finEl,false);} }
+  if(impEl) { impEl.value=d.dateImpression?fmtDate(d.dateImpression):''; if(impEl.value){impEl.dataset.protected='1';_setAutoDateStyle(impEl,false);}else{delete impEl.dataset.protected;_setAutoDateStyle(impEl,false);} }
   const tpEl=document.getElementById('fab-temps-produit');
   if(tpEl) {
     tpEl.value=d.tempsProduitMinutes!=null?d.tempsProduitMinutes:'';
@@ -601,6 +622,11 @@ function populateFabForm(d, faconnageOptions) {
   set('certification', d.certification);
   // If dateReception is set but calculated dates are missing, recalculate
   if(recEl&&recEl.value&&(!envEl||!envEl.value)) updateKeyDates();
+  // Restore anchor date visual indicator (blue border)
+  if(recEl&&recEl.value) {
+    const recInput=document.getElementById('fab-date-reception');
+    if(recInput&&!recInput.style.borderColor) recInput.style.border='2px solid #3b82f6';
+  }
 }
 
 function attachFormHandlers(fabCurrentFileName) {
@@ -617,8 +643,9 @@ function attachFormHandlers(fabCurrentFileName) {
     }
     if(id===gElId('plis')||id===gElId('sortie'))updateTempsProduction();
     if(id==='fab-date-envoi'||id==='fab-date-finitions'||id==='fab-date-impression'){
-      if(e.target.value)e.target.dataset.protected='1';
-      else delete e.target.dataset.protected;
+      if(e.target.value){e.target.dataset.protected='1';}
+      else{delete e.target.dataset.protected;}
+      _setAutoDateStyle(e.target,false); // user manually changed — remove auto indicator
     }
     if(id===gElId('dateLivraison')){const el=gEl('dateLivraison');if(el)el._manuallyEdited=true;}
     if(id===gElId('nombreFeuilles')){const el=gEl('nombreFeuilles');if(el)el._manuallyEdited=true;}
@@ -640,8 +667,9 @@ function attachFormHandlers(fabCurrentFileName) {
     if(id==='fab-temps-produit'){const el=document.getElementById('fab-temps-produit');if(el)el.dataset.manual=el.value?'1':'';}
     if(id===gElId('moteurImpression')||id===gElId('media1'))updateTempsProduction();
     if(id==='fab-date-envoi'||id==='fab-date-finitions'||id==='fab-date-impression'){
-      if(e.target.value)e.target.dataset.protected='1';
-      else delete e.target.dataset.protected;
+      if(e.target.value){e.target.dataset.protected='1';}
+      else{delete e.target.dataset.protected;}
+      _setAutoDateStyle(e.target,false); // user manually changed — remove auto indicator
     }
   });
   const repsAdd=document.getElementById('fab-repartitions-add'); if(repsAdd)repsAdd.onclick=()=>addRepartitionRow();
@@ -936,6 +964,45 @@ export async function openFabrication(fullPath, prefillData = null) {
 
 // ── Quote-send modal ──────────────────────────────────────────────────────────
 // Called from initFabrication() to ensure DOM is ready and event order is correct.
+// Can also be triggered externally via openQuoteSendModal(prefillData) from Kanban.
+export function openQuoteSendModal(prefillData = {}) {
+  const modal = document.getElementById('quote-send-modal');
+  if (!modal) return;
+  const errDiv = document.getElementById('quote-send-error');
+  const successDiv = document.getElementById('quote-send-success');
+  const filePreview = document.getElementById('qs-file-preview');
+  const uploadZone = document.getElementById('qs-upload-zone');
+  const fileInput = document.getElementById('qs-file-input');
+  const btnSend = document.getElementById('qs-send');
+
+  // Pre-fill from provided data OR current fabrication fiche
+  const g = id => { const el = gEl(id); return el ? el.value : ''; };
+  document.getElementById('qs-client-name').value  = prefillData.client || g('client') || '';
+  document.getElementById('qs-client-email').value = prefillData.email || g('donneurOrdreEmail') || '';
+  document.getElementById('qs-title').value         = prefillData.typeTravail || g('typeTravail') || '';
+  document.getElementById('qs-format').value        = prefillData.format || g('formatFini') || '';
+  document.getElementById('qs-encres').value        = prefillData.encres || g('encres') || g('couleurs') || '';
+  const qtyEl = gEl('quantite');
+  document.getElementById('qs-quantity').value     = prefillData.quantite || (qtyEl ? qtyEl.value : '') || '';
+  const paginEl = gEl('pagination');
+  document.getElementById('qs-pagination').value   = prefillData.pagination || (paginEl ? paginEl.value : '') || '';
+  document.getElementById('qs-devis-number').value  = prefillData.numeroDossier || g('numeroDossier') || '';
+  document.getElementById('qs-notes').value         = prefillData.notes || '';
+  document.getElementById('qs-finitions').value     = prefillData.finitions || '';
+  // Store context path (used when submitting to link to the right fabrication)
+  modal.dataset.filePath = prefillData.filePath || fabCurrentPath || '';
+
+  // Reset file
+  if (fileInput) fileInput.value = '';
+  if (filePreview) filePreview.style.display = 'none';
+  if (uploadZone) { uploadZone.style.display = ''; uploadZone.style.borderColor = '#d1d5db'; uploadZone.style.background = '#fafafa'; }
+  if (errDiv) errDiv.style.display = 'none';
+  if (successDiv) successDiv.style.display = 'none';
+  if (btnSend) { btnSend.disabled = false; btnSend.textContent = '📧 Ouvrir dans ma messagerie'; }
+
+  modal.classList.remove('hidden');
+}
+
 export function initQuoteSendModal() {
   const modal = document.getElementById('quote-send-modal');
   if (!modal) return;
@@ -953,36 +1020,7 @@ export function initQuoteSendModal() {
 
   let _qsFile = null;
 
-  function openModal() {
-    // Pre-fill from current fabrication fiche (use gEl which maps logical IDs to HTML element IDs)
-    const g = id => { const el = gEl(id); return el ? el.value : ''; };
-    document.getElementById('qs-client-name').value  = g('client') || '';
-    document.getElementById('qs-client-email').value = g('donneurOrdreEmail') || '';
-    document.getElementById('qs-title').value         = g('typeTravail') || '';
-    document.getElementById('qs-format').value        = g('formatFini') || '';
-    document.getElementById('qs-encres').value        = g('encres') || g('couleurs') || '';
-    const qtyEl = gEl('quantite'); document.getElementById('qs-quantity').value = qtyEl ? (qtyEl.value || '') : '';
-    const paginEl = gEl('pagination'); document.getElementById('qs-pagination').value = paginEl ? (paginEl.value || '') : '';
-    document.getElementById('qs-devis-number').value  = g('numeroDossier') || '';
-    document.getElementById('qs-notes').value         = '';
-    document.getElementById('qs-finitions').value     = '';
-
-    // Reset file
-    _qsFile = null;
-    fileInput.value = '';
-    filePreview.style.display = 'none';
-    uploadZone.style.display = '';
-    uploadZone.style.borderColor = '#d1d5db';
-    uploadZone.style.background = '#fafafa';
-
-    // Reset state
-    errDiv.style.display = 'none';
-    successDiv.style.display = 'none';
-    btnSend.disabled = false;
-    btnSend.textContent = '📨 Envoyer l\'email';
-
-    modal.classList.remove('hidden');
-  }
+  function openModal() { openQuoteSendModal(); }
 
   function closeModal() { modal.classList.add('hidden'); }
 
@@ -1026,7 +1064,7 @@ export function initQuoteSendModal() {
     uploadZone.style.display = '';
   });
 
-  // Send
+  // Send — mailto: mode (create link + open local mail app)
   if (btnSend) btnSend.addEventListener('click', async () => {
     errDiv.style.display = 'none';
     successDiv.style.display = 'none';
@@ -1039,7 +1077,7 @@ export function initQuoteSendModal() {
     if (!clientName)   { errDiv.textContent = 'Le nom du client est obligatoire.'; errDiv.style.display = ''; return; }
 
     btnSend.disabled = true;
-    btnSend.textContent = 'Envoi…';
+    btnSend.textContent = '⏳ Génération du lien…';
 
     try {
       const fd = new FormData();
@@ -1055,7 +1093,9 @@ export function initQuoteSendModal() {
       fd.append('recto',    document.getElementById('qs-recto').value);
       fd.append('finitions', document.getElementById('qs-finitions').value.trim());
       fd.append('notes',    document.getElementById('qs-notes').value.trim());
-      if (fabCurrentPath) fd.append('fichePath', fabCurrentPath);
+      fd.append('mailtoMode', 'true'); // don't send via SMTP — we'll open mailto:
+      const filePath = modal.dataset.filePath || fabCurrentPath || '';
+      if (filePath) fd.append('fichePath', filePath);
       if (_qsFile) fd.append('quotePdf', _qsFile);
 
       const res = await fetch('/api/pro/quotes/send', {
@@ -1066,25 +1106,40 @@ export function initQuoteSendModal() {
       const data = await res.json();
 
       if (!data.ok) {
-        errDiv.textContent = data.error || 'Erreur lors de l\'envoi.';
+        errDiv.textContent = data.error || 'Erreur lors de la création du lien.';
         errDiv.style.display = '';
         btnSend.disabled = false;
-        btnSend.textContent = '📨 Envoyer l\'email';
+        btnSend.textContent = '📧 Ouvrir dans ma messagerie';
         return;
       }
 
-      successDiv.innerHTML = `✅ Email envoyé à <strong>${clientEmail}</strong> !<br>
-        <span style="font-size:12px;color:#166534;">Lien unique généré : 
+      // Build the mailto: link and open local mail application
+      const subject = data.subject || `COMMANDE — Devis ${devisNumber}`;
+      const bodyLines = [
+        `Bonjour ${clientName},`,
+        '',
+        `Veuillez trouver ci-dessous le lien pour valider votre devis n° ${devisNumber}.`,
+        '',
+        `Cliquez ici pour consulter et accepter votre devis :`,
+        data.quoteUrl,
+        '',
+        'Cordialement'
+      ];
+      const mailtoHref = `mailto:${encodeURIComponent(clientEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyLines.join('\n'))}`;
+      window.open(mailtoHref, '_blank');
+
+      successDiv.innerHTML = `✅ Votre messagerie s'est ouverte avec l'email pré-rempli.<br>
+        <span style="font-size:12px;color:#166534;">Lien de validation du devis :<br>
           <a href="${data.quoteUrl}" target="_blank" style="color:#15803d;word-break:break-all;">${data.quoteUrl}</a>
         </span>`;
       successDiv.style.display = '';
-      btnSend.textContent = '✅ Envoyé';
+      btnSend.textContent = '✅ Messagerie ouverte';
 
     } catch (err) {
       errDiv.textContent = 'Erreur : ' + err.message;
       errDiv.style.display = '';
       btnSend.disabled = false;
-      btnSend.textContent = '📨 Envoyer l\'email';
+      btnSend.textContent = '📧 Ouvrir dans ma messagerie';
     }
   });
 }

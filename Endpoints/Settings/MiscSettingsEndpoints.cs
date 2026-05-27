@@ -544,27 +544,54 @@ app.MapPut("/api/config/commands", async (HttpContext ctx) =>
     return Results.Json(new { ok = true });
 });
 
-app.MapDelete("/api/production-folder", async (string path) =>
+app.MapDelete("/api/production-folder", (string? path) =>
 {
     try
     {
-        var root = BackendUtils.HotfoldersRoot();
-        var prodRoot = Path.GetFullPath(Path.Combine(root, "DossiersProduction"));
-        var fullPath = Path.GetFullPath(path);
-        // Security: ensure path is within production folders root using canonical paths
-        var relative = Path.GetRelativePath(prodRoot, fullPath);
-        if (relative.StartsWith("..") || Path.IsPathRooted(relative) ||
-            !fullPath.StartsWith(prodRoot, StringComparison.OrdinalIgnoreCase))
-            return Results.Json(new { ok = false, error = "Chemin non autorisé" });
-        if (Directory.Exists(fullPath))
-            Directory.Delete(fullPath, true);
-        // Remove MongoDB entry
         var col = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
-        col.DeleteMany(Builders<BsonDocument>.Filter.Or(
-            Builders<BsonDocument>.Filter.Eq("path", fullPath),
-            Builders<BsonDocument>.Filter.Eq("folderPath", fullPath)
-        ));
-        return Results.Json(new { ok = true });
+
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            // Try to delete by folder path
+            BsonDocument? doc = col.Find(Builders<BsonDocument>.Filter.Or(
+                Builders<BsonDocument>.Filter.Eq("folderPath", path),
+                Builders<BsonDocument>.Filter.Eq("path", path),
+                Builders<BsonDocument>.Filter.Eq("fileName", path)
+            )).FirstOrDefault();
+
+            if (doc != null)
+            {
+                var folderPath = doc.Contains("folderPath") ? doc["folderPath"].AsString : "";
+                if (!string.IsNullOrWhiteSpace(folderPath) && Directory.Exists(folderPath))
+                {
+                    try { Directory.Delete(folderPath, recursive: true); } catch { /* ignore FS errors */ }
+                }
+                col.DeleteOne(Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]));
+                return Results.Json(new { ok = true });
+            }
+
+            // Legacy: path is a full filesystem path within DossiersProduction
+            try
+            {
+                var root = BackendUtils.HotfoldersRoot();
+                var prodRoot = Path.GetFullPath(Path.Combine(root, "DossiersProduction"));
+                var fullPath2 = Path.GetFullPath(path);
+                var relative = Path.GetRelativePath(prodRoot, fullPath2);
+                if (!relative.StartsWith("..") && !Path.IsPathRooted(relative)
+                    && fullPath2.StartsWith(prodRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (Directory.Exists(fullPath2)) Directory.Delete(fullPath2, true);
+                    col.DeleteMany(Builders<BsonDocument>.Filter.Or(
+                        Builders<BsonDocument>.Filter.Eq("path", fullPath2),
+                        Builders<BsonDocument>.Filter.Eq("folderPath", fullPath2)
+                    ));
+                    return Results.Json(new { ok = true });
+                }
+            }
+            catch { /* ignore FS security check errors */ }
+        }
+
+        return Results.Json(new { ok = false, error = "Dossier introuvable." });
     }
     catch (Exception ex)
     {
@@ -1016,6 +1043,34 @@ app.MapPut("/api/settings/bat-papier-config", async (HttpContext ctx) =>
         if (json.TryGetProperty("enabled", out var en)) cfg.Enabled = en.GetBoolean();
         if (json.TryGetProperty("hotfolder", out var hf)) cfg.Hotfolder = hf.GetString() ?? "";
         MongoDbHelper.UpsertSettings("batPapierConfig", cfg);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+// ── PUT /api/settings/production — generic production settings key/value ─────
+app.MapPut("/api/settings/production", async (HttpContext ctx) =>
+{
+    try
+    {
+        var body = await ctx.Request.ReadFromJsonAsync<System.Text.Json.JsonDocument>();
+        if (body == null) return Results.Json(new { ok = false, error = "Payload invalide" });
+
+        // Load existing BsonDocument settings or create empty
+        var col = MongoDbHelper.GetSettingsCollection();
+        var existing = col.Find(Builders<BsonDocument>.Filter.Eq("_id", "productionSettings")).FirstOrDefault()
+            ?? new BsonDocument { ["_id"] = "productionSettings" };
+
+        foreach (var prop in body.RootElement.EnumerateObject())
+        {
+            if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.True || prop.Value.ValueKind == System.Text.Json.JsonValueKind.False)
+                existing[prop.Name] = prop.Value.GetBoolean();
+            else if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.String)
+                existing[prop.Name] = prop.Value.GetString() ?? "";
+            else if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Number)
+                existing[prop.Name] = prop.Value.GetInt64();
+        }
+        col.ReplaceOne(Builders<BsonDocument>.Filter.Eq("_id", "productionSettings"), existing, new ReplaceOptions { IsUpsert = true });
         return Results.Json(new { ok = true });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }

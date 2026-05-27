@@ -4,6 +4,25 @@ import { openBatChoiceModal } from '../bat.js';
 import { state, refreshKanban } from './kanban-core.js';
 import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js';
 
+// Opens the quote send modal from Kanban context (prefill from fabrication data)
+async function openKanbanQuoteModal(fullPath, fab) {
+  const openFn = window._openQuoteSendModal;
+  if (!openFn) { showNotification('⚠️ Module devis non chargé. Ouvrez d\'abord une fiche.', 'warning'); return; }
+  // Build prefill from fiche data
+  const prefill = {
+    client: fab?.client || '',
+    email: fab?.donneurOrdreEmail || '',
+    typeTravail: fab?.typeTravail || '',
+    format: fab?.format || '',
+    encres: fab?.couleurs || '',
+    quantite: fab?.quantite ? String(fab.quantite) : '',
+    pagination: fab?.pagination || '',
+    numeroDossier: fab?.numeroDossier || '',
+    filePath: fullPath
+  };
+  openFn(prefill);
+}
+
 // Returns true if the action should be visible for the given folder
 function isActionVisible(folderName, actionId) {
   const allowed = state.visibleActionsMap[folderName];
@@ -1098,6 +1117,60 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           if (isActionVisible(folderName, "mailDebutProduction")) actions.appendChild(btnMailDebut);
           if (isActionVisible(folderName, "mailFinProduction")) actions.appendChild(btnMailFin);
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
+        }
+      }
+
+      // 📧 Envoyer devis — available on any card for profiles 2/3 (admin/manager)
+      if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3) && isActionVisible(folderName, "envoyerDevis")) {
+        const btnDevis = document.createElement("button");
+        btnDevis.className = "btn btn-sm";
+        btnDevis.textContent = "📧 Devis";
+        btnDevis.title = "Envoyer le devis au client";
+        btnDevis.onclick = async (e) => {
+          e.stopPropagation();
+          let fab = {};
+          try {
+            fab = await fetch('/api/fabrication?fileName=' + encodeURIComponent(jobFileName), {
+              headers: { 'Authorization': 'Bearer ' + authToken }
+            }).then(r => r.json()).catch(() => ({}));
+          } catch(ex) { /* non-blocking */ }
+          await openKanbanQuoteModal(full, fab);
+        };
+        actions.appendChild(btnDevis);
+      }
+
+      // 🔍 Lien BAT externe — for BAT folder, when external BAT links are enabled by admin
+      if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)
+          && folderName === "BAT" && isActionVisible(folderName, "batLienExterne")) {
+        // Check if external bat links are enabled (cached on state)
+        if (state.externalBatLinksEnabled) {
+          const btnBatLink = document.createElement("button");
+          btnBatLink.className = "btn btn-sm";
+          btnBatLink.textContent = "🔗 Lien BAT";
+          btnBatLink.title = "Envoyer un lien de validation BAT par email (client sans compte portail)";
+          btnBatLink.onclick = async (e) => {
+            e.stopPropagation();
+            // Fetch fiche to pre-fill
+            let fab = {};
+            try { fab = await fetch('/api/fabrication?fileName=' + encodeURIComponent(jobFileName), { headers: { 'Authorization': 'Bearer ' + authToken } }).then(r => r.json()).catch(() => ({})); } catch(ex) { /* non-blocking */ }
+            const clientEmail = prompt('Email du client pour le lien BAT :', fab?.donneurOrdreEmail || '');
+            if (!clientEmail || !clientEmail.trim()) return;
+            const clientName = fab?.client || fab?.donneurOrdreNom || '';
+            try {
+              const r = await fetch('/api/pro/bat/external-link', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+                body: JSON.stringify({ fileName: jobFileName, fullPath: full, clientEmail: clientEmail.trim(), clientName, numeroDossier: fab?.numeroDossier || '' })
+              }).then(res => res.json()).catch(() => ({ ok: false, error: 'Erreur réseau' }));
+              if (!r.ok) { showNotification('❌ ' + (r.error || 'Erreur'), 'error'); return; }
+              // Open mailto: with the BAT link
+              const subject = encodeURIComponent(`Validation BAT — ${fab?.numeroDossier || jobFileName}`);
+              const body = encodeURIComponent(`Bonjour,\n\nVeuillez consulter et valider votre BAT en cliquant sur le lien ci-dessous :\n\n${r.batUrl}\n\nCordialement`);
+              window.open(`mailto:${encodeURIComponent(r.clientEmail)}?subject=${subject}&body=${body}`, '_blank');
+              showNotification('✅ Messagerie ouverte avec le lien BAT', 'success');
+            } catch(ex) { showNotification('❌ ' + ex.message, 'error'); }
+          };
+          actions.appendChild(btnBatLink);
         }
       }
 

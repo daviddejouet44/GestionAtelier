@@ -53,6 +53,15 @@ public static class FormConfigEndpoints
                     field.ReadOnly = false;
                 }
 
+                // Ensure dateReception is always visible and in the correct section.
+                var recField = saved.Fields.FirstOrDefault(f => f.Id == "dateReception");
+                if (recField != null)
+                {
+                    recField.Visible = true;
+                    recField.Section = "Dates clés";
+                    recField.ReadOnly = false;
+                }
+
                 return Results.Json(saved);
             }
             catch (Exception ex)

@@ -26,19 +26,22 @@ export async function renderSettingsBatConfig(panel) {
   let routings = [];
   let types = [];
   let batPapierCfg = { enabled: false, hotfolder: "" };
+  let externalBatLinksEnabled = false;
   try {
-    const [r1, r2, r3, r4, r9] = await Promise.all([
+    const [r1, r2, r3, r4, r9, r10] = await Promise.all([
       fetch("/api/config/integrations", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
       fetch("/api/config/bat-command").then(r => r.json()).catch(() => ({})),
       fetch("/api/config/hotfolder-routing").then(r => r.json()).catch(() => []),
       fetch("/api/config/work-types").then(r => r.json()).catch(() => []),
-      fetch("/api/settings/bat-papier-config", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({}))
+      fetch("/api/settings/bat-papier-config", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
+      fetch("/api/pro/bat/external-link-enabled", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ enabled: false }))
     ]);
     if (r1.ok && r1.config) intCfg = r1.config;
     if (r2.ok) { batCmd = r2.command || ""; batAlertDelayHours = r2.batAlertDelayHours ?? 48; batSimpleDropletPath = r2.batSimpleDropletPath || ""; }
     if (Array.isArray(r3)) routings = r3;
     if (Array.isArray(r4)) types = r4;
     if (r9.ok && r9.config) batPapierCfg = r9.config;
+    externalBatLinksEnabled = !!(r10.enabled);
   } catch(e) { /* use defaults */ }
 
   const typeOptions = types.map(t => `<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join("");
@@ -56,6 +59,17 @@ export async function renderSettingsBatConfig(panel) {
   panel.innerHTML = `
     <h3>Configuration BAT</h3>
     <p style="color:#6b7280;font-size:13px;margin-bottom:24px;">Paramétrez l'ensemble du workflow BAT : chemins de travail, routage hotfolder et commandes.</p>
+
+    <div class="settings-section-card">
+      <h4>Lien BAT externe (clients sans compte portail)</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">Permet d'envoyer un lien de validation BAT par email à des clients qui n'ont pas de compte sur le portail. Un bouton "Lien BAT" apparaîtra sur les cartes Kanban en colonne BAT.</p>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <input type="checkbox" id="bat-external-link-enabled" ${externalBatLinksEnabled ? 'checked' : ''} />
+        <label for="bat-external-link-enabled" style="font-size:14px;font-weight:500;color:#374151;">Activer les liens BAT pour clients non-portail</label>
+      </div>
+      <button id="bat-external-link-save" class="btn btn-primary">Enregistrer</button>
+      <span id="bat-external-link-saved" style="display:none;color:#16a34a;font-size:13px;margin-left:10px;">✅ Enregistré</span>
+    </div>
 
     <div class="settings-section-card">
       <h4>BAT Papier</h4>
@@ -130,6 +144,20 @@ export async function renderSettingsBatConfig(panel) {
   `;
 
   // BAT Papier config save
+  panel.querySelector("#bat-external-link-save").onclick = async () => {
+    const enabled = panel.querySelector("#bat-external-link-enabled").checked;
+    const r = await fetch("/api/settings/production", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ enableExternalBatLinks: enabled })
+    }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (r.ok) {
+      const savedEl = panel.querySelector("#bat-external-link-saved");
+      if (savedEl) { savedEl.style.display = ''; setTimeout(() => { savedEl.style.display = 'none'; }, 2500); }
+      showNotification("✅ Paramètre Liens BAT externes enregistré", "success");
+    } else showNotification("❌ " + (r.error || "Erreur"), "error");
+  };
+
   panel.querySelector("#bat-papier-cfg-save").onclick = async () => {
     const enabled = panel.querySelector("#bat-papier-enabled").checked;
     const hotfolder = panel.querySelector("#bat-papier-hotfolder").value.trim();

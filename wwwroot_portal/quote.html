@@ -331,8 +331,28 @@
         </div>
       </div>
 
-      <!-- Order form card -->
-      <div class="quote-card">
+      <!-- Accept / Refuse decision card (shown first, before file upload) -->
+      <div class="quote-card" id="block-decide">
+        <div class="quote-card-header" style="background:#1e40af;">
+          <div class="eyebrow">DÉCISION</div>
+          <h2>Acceptez-vous ce devis ?</h2>
+        </div>
+        <div style="padding:24px 20px;text-align:center;">
+          <p style="font-size:14px;color:#374151;margin-bottom:24px;">Veuillez indiquer si vous acceptez ou refusez ce devis. En cas d'acceptation, vous pourrez transmettre votre fichier de production.</p>
+          <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
+            <button id="btn-accept" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:14px 32px;font-size:16px;font-weight:700;cursor:pointer;min-width:160px;transition:background 0.15s;" onmouseover="this.style.background='#15803d'" onmouseout="this.style.background='#16a34a'">
+              ✅ J'accepte le devis
+            </button>
+            <button id="btn-refuse" style="background:#dc2626;color:#fff;border:none;border-radius:8px;padding:14px 32px;font-size:16px;font-weight:700;cursor:pointer;min-width:160px;transition:background 0.15s;" onmouseover="this.style.background='#b91c1c'" onmouseout="this.style.background='#dc2626'">
+              ❌ Je refuse le devis
+            </button>
+          </div>
+          <div id="decide-alert" style="display:none;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:10px 14px;font-size:13px;color:#dc2626;margin-top:16px;"></div>
+        </div>
+      </div>
+
+      <!-- Order form card (hidden until accepted) -->
+      <div class="quote-card hidden" id="card-upload">
         <div class="section-title">📂 Transmettez votre fichier de production</div>
 
         <div style="height: 12px;"></div>
@@ -391,6 +411,16 @@
         <button class="btn-submit-order" id="btn-submit" disabled>
           Envoyer ma commande
         </button>
+      </div>
+      </div><!-- /card-upload -->
+    </div>
+
+    <!-- Refused state -->
+    <div class="quote-card hidden" id="block-refused">
+      <div class="success-block">
+        <div class="success-icon" style="font-size:48px;">❌</div>
+        <h2>Devis refusé</h2>
+        <p>Votre réponse a bien été enregistrée. Nous avons été notifiés de votre refus.<br>Notre équipe vous contactera prochainement pour discuter de votre projet.</p>
       </div>
     </div>
 
@@ -482,6 +512,16 @@
           document.getElementById('quote-pdf-link').href = `/api/portal/quote/pdf?token=${encodeURIComponent(TOKEN)}`;
         }
 
+        // If quote was already decided, skip to the appropriate state
+        if (data.clientDecision === 'accepted') {
+          document.getElementById('block-decide').classList.add('hidden');
+          document.getElementById('card-upload').classList.remove('hidden');
+        } else if (data.clientDecision === 'refused') {
+          show('block-refused');
+          hide('block-main');
+          return;
+        }
+
         show('block-main');
         updateSubmitBtn();
       } catch (err) {
@@ -492,6 +532,50 @@
     }
 
     loadQuote();
+
+    // ── Accept / Refuse decision ─────────────────────────────────────────────
+    async function sendDecision(decision) {
+      const alertEl = document.getElementById('decide-alert');
+      alertEl.style.display = 'none';
+      const btns = [document.getElementById('btn-accept'), document.getElementById('btn-refuse')];
+      btns.forEach(b => { if(b) b.disabled = true; });
+      try {
+        const res = await fetch(`/api/portal/quote/decide?token=${encodeURIComponent(TOKEN)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ decision })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          alertEl.textContent = data.error || 'Erreur lors de l\'enregistrement.';
+          alertEl.style.display = '';
+          btns.forEach(b => { if(b) b.disabled = false; });
+          return;
+        }
+        if (decision === 'accepted') {
+          document.getElementById('block-decide').classList.add('hidden');
+          document.getElementById('card-upload').classList.remove('hidden');
+          // Small popup
+          const pop = document.createElement('div');
+          pop.style.cssText = 'position:fixed;top:20px;right:20px;background:#16a34a;color:#fff;padding:14px 20px;border-radius:10px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.2);';
+          pop.textContent = '✅ Devis accepté ! Transmettez maintenant votre fichier.';
+          document.body.appendChild(pop);
+          setTimeout(() => pop.remove(), 4000);
+        } else {
+          hide('block-main');
+          show('block-refused');
+        }
+      } catch(err) {
+        alertEl.textContent = 'Erreur réseau : ' + err.message;
+        alertEl.style.display = '';
+        btns.forEach(b => { if(b) b.disabled = false; });
+      }
+    }
+
+    document.getElementById('btn-accept').addEventListener('click', () => sendDecision('accepted'));
+    document.getElementById('btn-refuse').addEventListener('click', () => {
+      if (confirm('Êtes-vous sûr de vouloir refuser ce devis ?')) sendDecision('refused');
+    });
 
     // ── File upload UX ────────────────────────────────────────────────────────
     let selectedFile = null;
