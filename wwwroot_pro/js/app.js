@@ -1085,7 +1085,8 @@ function setupProfileUI() {
 
   if (btnRecycle) btnRecycle.style.display = "inline-block";
   if (btnDossiers) btnDossiers.style.display = "inline-block";
-  if (btnDashboard) btnDashboard.style.display = currentUser.profile === 3 ? "inline-block" : "none";
+  // Dashboard visible for all staff except profile 1 (Soumission)
+  if (btnDashboard) btnDashboard.style.display = currentUser.profile !== 1 ? "inline-block" : "none";
   // Profile 1 (Soumission): no Rapport, no BAT
   if (btnRapport) btnRapport.style.display = currentUser.profile === 1 ? "none" : "inline-block";
   if (btnBat) btnBat.style.display = currentUser.profile === 1 ? "none" : "inline-block";

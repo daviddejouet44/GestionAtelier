@@ -1,147 +1,362 @@
-// app/dashboard.js — Vue tableau de bord
+// app/dashboard.js — Vue tableau de bord de production
 
-import { currentUser, authToken } from '../core.js';
+import { currentUser, authToken, esc } from '../core.js';
+
+// Chart instances — kept to destroy before re-rendering
+let _charts = [];
+
+function destroyCharts() {
+  _charts.forEach(c => { try { c.destroy(); } catch(e) {} });
+  _charts = [];
+}
 
 export async function initDashboardView() {
+  destroyCharts();
   const dashEl = document.getElementById("dashboard");
   dashEl.innerHTML = `
-    <div class="settings-container">
-      <h2>Dashboard</h2>
-      <div id="dashboard-content"><p style="color:#6b7280;">Chargement...</p></div>
+    <div class="settings-container" style="max-width:1200px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px;">
+        <h2 style="margin:0;">📊 Tableau de bord production</h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="dashboard-refresh-btn" class="btn" style="font-size:13px;">🔄 Actualiser</button>
+          <button id="dashboard-export-csv-btn" class="btn btn-primary" style="font-size:13px;">📥 Exporter CSV</button>
+        </div>
+      </div>
+      <div id="dashboard-content"><div style="color:#6b7280;padding:40px;text-align:center;">⏳ Chargement des statistiques...</div></div>
     </div>
   `;
+
+  const refreshBtn = dashEl.querySelector("#dashboard-refresh-btn");
+  const exportBtn = dashEl.querySelector("#dashboard-export-csv-btn");
+
+  if (refreshBtn) refreshBtn.onclick = () => loadDashboardData();
+  if (exportBtn) exportBtn.onclick = exportCSV;
+
   await loadDashboardData();
 }
 
+async function exportCSV() {
+  try {
+    const a = document.createElement("a");
+    a.href = "/api/dashboard/stats/export-csv";
+    // Pass auth token as a query param via a hidden fetch + blob trick
+    const resp = await fetch("/api/dashboard/stats/export-csv", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    });
+    if (!resp.ok) { alert("Erreur lors de l'export"); return; }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const date = new Date().toISOString().split("T")[0];
+    a.href = url;
+    a.download = `stats-production-${date}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    alert("Erreur d'export : " + e.message);
+  }
+}
+
+// Colour palette for charts
+const PALETTE = [
+  "#2563eb","#7c3aed","#db2777","#ea580c","#16a34a",
+  "#0891b2","#ca8a04","#dc2626","#9333ea","#0284c7",
+  "#65a30d","#d97706","#e11d48","#7c3aed","#0369a1"
+];
+
 export async function loadDashboardData() {
+  destroyCharts();
   const contentEl = document.getElementById("dashboard-content");
   if (!contentEl) return;
 
-  // Load PrismaSync URL setting
-  let prismaSyncUrl = "";
+  contentEl.innerHTML = '<div style="color:#6b7280;padding:40px;text-align:center;">⏳ Chargement...</div>';
+
+  let stats = null;
   try {
-    const r = await fetch("/api/config/prismasync-url").then(r => r.json()).catch(() => ({}));
-    if (r.ok && r.url) prismaSyncUrl = r.url;
-  } catch(e) { /* use default */ }
+    const resp = await fetch("/api/dashboard/stats", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json());
+    if (resp.ok) stats = resp;
+  } catch(e) { /* ignore */ }
 
-  // Check if a dashboard image exists
-  let dashboardImageExists = false;
-  try {
-    const imgResp = await fetch("/api/dashboard-image", { method: "HEAD" }).catch(() => null);
-    dashboardImageExists = imgResp?.status === 200;
-  } catch(e) { /* no image */ }
-
-  // Build the dashboard content (no iframe — replaced by image)
-  let html = `<div style="display:flex;flex-direction:column;gap:16px;">`;
-
-  // PrismaSync link + settings button
-  html += `<div style="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;">`;
-  if (prismaSyncUrl) {
-    html += `<a href="${prismaSyncUrl}" target="_blank" rel="noopener" class="btn btn-primary" style="font-size:13px;font-weight:600;text-decoration:none;">🔗 Ouvrir PrismaSync ↗</a>`;
+  if (!stats) {
+    contentEl.innerHTML = '<div style="color:#ef4444;padding:40px;text-align:center;">❌ Impossible de charger les statistiques.</div>';
+    return;
   }
-  if (currentUser && currentUser.profile === 3) {
-    html += `<button id="prismasync-settings-btn" class="btn btn-sm" style="font-size:12px;">⚙️ Modifier l'URL PrismaSync</button>`;
-  }
-  html += `</div>`;
 
-  // Dashboard image section — display only (upload managed in Paramétrages → Logos/Images)
-  if (dashboardImageExists) {
-    html += `<div style="width:100%;max-height:calc(100vh - 220px);overflow:hidden;border-radius:12px;border:1px solid #e5e7eb;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-      <img src="/api/dashboard-image?v=${Date.now()}" alt="Image du dashboard" style="width:100%;height:auto;display:block;max-height:calc(100vh - 220px);object-fit:contain;" />
+  const s = stats.summary || {};
+  const byFolder = Array.isArray(stats.byFolder) ? stats.byFolder : [];
+  const byMoteur = Array.isArray(stats.byMoteur) ? stats.byMoteur : [];
+  const byTypeTravail = Array.isArray(stats.byTypeTravail) ? stats.byTypeTravail : [];
+  const byProcess = Array.isArray(stats.byProcess) ? stats.byProcess : [];
+  const paperConsumption = Array.isArray(stats.paperConsumption) ? stats.paperConsumption : [];
+  const byOperateur = Array.isArray(stats.byOperateur) ? stats.byOperateur : [];
+  const recentJobs = Array.isArray(stats.recentJobs) ? stats.recentJobs : [];
+
+  const generatedAt = stats.generatedAt
+    ? new Date(stats.generatedAt).toLocaleString("fr-FR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" })
+    : "";
+
+  // ──────────────────────────────────────────────────────
+  // KPI Cards
+  // ──────────────────────────────────────────────────────
+  function kpiCard(icon, value, label, color = "#2563eb", subtext = "") {
+    return `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px 20px;flex:1;min-width:150px;max-width:220px;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+      <div style="font-size:26px;margin-bottom:6px;">${icon}</div>
+      <div style="font-size:28px;font-weight:800;color:${color};">${value}</div>
+      <div style="font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-top:2px;">${label}</div>
+      ${subtext ? `<div style="font-size:11px;color:#9ca3af;margin-top:4px;">${subtext}</div>` : ''}
     </div>`;
-    if (currentUser && currentUser.profile === 3) {
-      html += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;">
-        <span style="font-size:12px;color:#6b7280;">Pour modifier ou supprimer cette image, allez dans</span>
-        <a href="#" id="dashboard-goto-logo-settings" style="font-size:12px;color:#2563eb;text-decoration:underline;cursor:pointer;">Paramétrages → Logos/Images</a>
-      </div>`;
-    }
-  } else if (currentUser && currentUser.profile === 3) {
-    // Admin placeholder — direct to Paramétrages → Logos/Images
-    html += `<div style="background:#f9fafb;border:2px dashed #e5e7eb;border-radius:12px;padding:32px;color:#6b7280;text-align:center;">
-      <p style="font-size:15px;font-weight:600;margin:0 0 8px;color:#374151;">Image du dashboard</p>
-      <p style="font-size:13px;margin:0 0 16px;">Aucune image configurée. Ajoutez-en une depuis Paramétrages → Logos/Images.</p>
-      <a href="#" id="dashboard-goto-logo-settings" style="display:inline-block;padding:8px 20px;background:#2563eb;color:white;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;">⚙️ Configurer l'image →</a>
+  }
+
+  const kpiHtml = `
+    <div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:24px;">
+      ${kpiCard("📄", s.totalActive ?? 0, "Dossiers actifs", "#2563eb", `${s.jobsWithFiche ?? 0} avec fiche`)}
+      ${kpiCard("🖨️", s.totalFeuilles ? s.totalFeuilles.toLocaleString("fr-FR") : "0", "Feuilles en cours", "#7c3aed")}
+      ${kpiCard("📦", s.totalQuantite ? s.totalQuantite.toLocaleString("fr-FR") : "0", "Exemplaires en cours", "#0891b2")}
+      ${kpiCard("⚠️", s.retardsCount ?? 0, "En retard", s.retardsCount > 0 ? "#dc2626" : "#16a34a")}
+      ${kpiCard("🚨", s.urgencesCount ?? 0, "Urgences (3j)", s.urgencesCount > 0 ? "#ea580c" : "#16a34a")}
+      ${kpiCard("📅", s.plannedThisWeek ?? 0, "Planifiés (7j)", "#16a34a")}
+      ${kpiCard("🗓️", s.plannedThisMonth ?? 0, "Planifiés (30j)", "#0284c7")}
+    </div>`;
+
+  // ──────────────────────────────────────────────────────
+  // Sections
+  // ──────────────────────────────────────────────────────
+  const sectionStyle = "background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.06);";
+
+  // Jobs par étape Kanban (progress bars)
+  const folderBars = byFolder.length === 0
+    ? '<p style="color:#9ca3af;font-size:13px;">Aucun dossier actif.</p>'
+    : byFolder
+        .sort((a, b) => b.count - a.count)
+        .map(f => {
+          const pct = Math.round((f.count / Math.max(1, ...byFolder.map(x => x.count))) * 100);
+          return `<div style="margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
+              <span style="font-weight:500;color:#374151;">${esc(f.folder)}</span>
+              <span style="color:#6b7280;font-weight:700;">${f.count}</span>
+            </div>
+            <div style="background:#f3f4f6;border-radius:6px;height:10px;overflow:hidden;">
+              <div style="height:100%;width:${pct}%;background:#2563eb;border-radius:6px;transition:width .3s;"></div>
+            </div>
+          </div>`;
+        }).join('');
+
+  // Jobs par processus (process breakdown)
+  const processBars = byProcess.length === 0
+    ? '<p style="color:#9ca3af;font-size:13px;">Données non disponibles.</p>'
+    : byProcess.map((p, i) => {
+        const pct = Math.round((p.count / Math.max(1, byProcess.reduce((a, x) => a + x.count, 0))) * 100);
+        return `<div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
+            <span style="font-weight:500;color:#374151;">${esc(p.process)}</span>
+            <span style="color:#6b7280;font-weight:700;">${p.count} (${pct}%)</span>
+          </div>
+          <div style="background:#f3f4f6;border-radius:6px;height:10px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:${PALETTE[i % PALETTE.length]};border-radius:6px;"></div>
+          </div>
+        </div>`;
+      }).join('');
+
+  // Recent jobs table
+  const recentRows = recentJobs.length === 0
+    ? '<tr><td colspan="4" style="text-align:center;color:#9ca3af;padding:12px;">Aucun dossier récent.</td></tr>'
+    : recentJobs.map(j => `<tr>
+        <td style="padding:6px 10px;font-size:12px;color:#374151;">${j.numeroDossier ? `#${esc(j.numeroDossier)}` : esc(j.fileName)}</td>
+        <td style="padding:6px 10px;font-size:12px;color:#6b7280;">${esc(j.client || '—')}</td>
+        <td style="padding:6px 10px;font-size:12px;"><span style="background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:4px;font-size:11px;">${esc(j.folder)}</span></td>
+        <td style="padding:6px 10px;font-size:12px;color:#9ca3af;">${new Date(j.modified).toLocaleString("fr-FR", {day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</td>
+      </tr>`).join('');
+
+  // ──────────────────────────────────────────────────────
+  // Operator table
+  // ──────────────────────────────────────────────────────
+  const opRows = byOperateur.length === 0
+    ? '<tr><td colspan="2" style="text-align:center;color:#9ca3af;padding:12px;">Aucune donnée.</td></tr>'
+    : byOperateur.map(o => `<tr>
+        <td style="padding:5px 10px;font-size:13px;color:#374151;">${esc(o.operateur)}</td>
+        <td style="padding:5px 10px;font-size:13px;font-weight:700;color:#2563eb;text-align:right;">${o.count}</td>
+      </tr>`).join('');
+
+  // ──────────────────────────────────────────────────────
+  // HTML layout
+  // ──────────────────────────────────────────────────────
+  contentEl.innerHTML = `
+    ${kpiHtml}
+
+    <!-- Row 1: Moteur + Type de travail charts -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-bottom:16px;">
+      <div style="${sectionStyle}">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e3a5f;">🖨️ Jobs par moteur d'impression</h4>
+        <div style="position:relative;height:220px;"><canvas id="chart-moteur"></canvas></div>
+      </div>
+      <div style="${sectionStyle}">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e3a5f;">📋 Types de travail</h4>
+        <div style="position:relative;height:220px;"><canvas id="chart-type-travail"></canvas></div>
+      </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-top:16px;">
-      <a href="https://prismalytics-eu.cpp.canon/accounting#" target="_blank" rel="noopener"
-         style="display:flex;flex-direction:column;gap:10px;background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius-lg);padding:24px;text-decoration:none;color:inherit;box-shadow:var(--shadow-md);">
-        <span style="font-size:36px;">📊</span>
-        <strong style="font-size:16px;font-weight:700;">Accounting</strong>
-        <span style="font-size:12px;color:var(--text-secondary);">Suivi des impressions et facturation Canon Prismalytics</span>
-        <span style="font-size:12px;color:var(--primary);font-weight:600;margin-top:4px;">Ouvrir ↗</span>
-      </a>
-      <a href="https://prismalytics-eu.cpp.canon/dashboard#" target="_blank" rel="noopener"
-         style="display:flex;flex-direction:column;gap:10px;background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--radius-lg);padding:24px;text-decoration:none;color:inherit;box-shadow:var(--shadow-md);">
-        <span style="font-size:36px;">📈</span>
-        <strong style="font-size:16px;font-weight:700;">Dashboard</strong>
-        <span style="font-size:12px;color:var(--text-secondary);">Vue d'ensemble et statistiques de production Prismalytics</span>
-        <span style="font-size:12px;color:var(--primary);font-weight:600;margin-top:4px;">Ouvrir ↗</span>
-      </a>
-    </div>`;
-  } else {
-    html += `<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:40px;text-align:center;color:#9ca3af;">
-      <p style="font-size:16px;font-weight:600;margin:0;">Image du dashboard non configurée</p>
-    </div>`;
-  }
 
-  html += `</div>`;
-  contentEl.innerHTML = html;
-
-  // Wire up buttons
-  const settingsBtn = contentEl.querySelector("#prismasync-settings-btn");
-  if (settingsBtn) settingsBtn.onclick = () => _showPrismaSyncUrlEditor(contentEl);
-
-  // Link to logo settings (for admin only, when shown in dashboard)
-  const gotoLogoBtn = contentEl.querySelector("#dashboard-goto-logo-settings");
-  if (gotoLogoBtn) {
-    gotoLogoBtn.onclick = (e) => {
-      e.preventDefault();
-      // Navigate to Settings → Logos/Images tab
-      if (typeof window._showSettings === 'function') {
-        window._showSettings("logo");
-      } else {
-        // fallback: click the settings button and activate the logo tab
-        const settingsBtnEl = document.getElementById("btn-settings");
-        if (settingsBtnEl) settingsBtnEl.click();
-        setTimeout(() => {
-          const logoTab = document.querySelector('.settings-tab[data-tab="logo"]');
-          if (logoTab) logoTab.click();
-        }, 200);
-      }
-    };
-  }
-}
-
-function _showPrismaSyncUrlEditor(contentEl) {
-  const overlay = document.createElement("div");
-  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999;";
-  const box = document.createElement("div");
-  box.style.cssText = "background:white;border-radius:12px;padding:24px;min-width:380px;max-width:520px;box-shadow:0 8px 32px rgba(0,0,0,.2);";
-  box.innerHTML = `
-    <h4 style="margin:0 0 14px;font-size:15px;font-weight:700;">URL PrismaSync</h4>
-    <input type="url" id="prismasync-url-input" placeholder="https://prismasync.example.com/dashboard" class="settings-input" style="width:100%;margin-bottom:12px;" />
-    <div style="display:flex;gap:8px;justify-content:flex-end;">
-      <button id="prismasync-url-cancel" class="btn">Annuler</button>
-      <button id="prismasync-url-save" class="btn btn-primary">Enregistrer</button>
+    <!-- Row 2: Consommation papier + Process -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-bottom:16px;">
+      <div style="${sectionStyle}">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e3a5f;">📄 Consommation papier (feuilles par média)</h4>
+        <div style="position:relative;height:240px;"><canvas id="chart-papier"></canvas></div>
+      </div>
+      <div style="${sectionStyle}">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e3a5f;">⚙️ Process d'impression</h4>
+        ${processBars}
+        <hr style="border:none;border-top:1px solid #f3f4f6;margin:16px 0 10px;">
+        <h4 style="margin:0 0 12px;font-size:14px;font-weight:700;color:#1e3a5f;">👤 Jobs par opérateur</h4>
+        <table style="width:100%;border-collapse:collapse;">
+          <tbody>${opRows}</tbody>
+        </table>
+      </div>
     </div>
+
+    <!-- Row 3: Jobs par étape + Dossiers récents -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-bottom:16px;">
+      <div style="${sectionStyle}">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e3a5f;">📁 Jobs par étape Kanban</h4>
+        ${folderBars}
+      </div>
+      <div style="${sectionStyle}">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e3a5f;">🕐 Dossiers récemment modifiés</h4>
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr>
+            <th style="text-align:left;padding:6px 10px;font-size:11px;background:#f9fafb;color:#6b7280;font-weight:600;text-transform:uppercase;">Dossier</th>
+            <th style="text-align:left;padding:6px 10px;font-size:11px;background:#f9fafb;color:#6b7280;font-weight:600;text-transform:uppercase;">Client</th>
+            <th style="text-align:left;padding:6px 10px;font-size:11px;background:#f9fafb;color:#6b7280;font-weight:600;text-transform:uppercase;">Étape</th>
+            <th style="text-align:left;padding:6px 10px;font-size:11px;background:#f9fafb;color:#6b7280;font-weight:600;text-transform:uppercase;">Modifié</th>
+          </tr></thead>
+          <tbody>${recentRows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    ${generatedAt ? `<p style="text-align:right;font-size:11px;color:#d1d5db;margin:4px 0 0;">Généré le ${generatedAt}</p>` : ''}
   `;
-  overlay.appendChild(box);
-  document.body.appendChild(overlay);
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-  box.querySelector("#prismasync-url-cancel").onclick = () => overlay.remove();
-  box.querySelector("#prismasync-url-save").onclick = async () => {
-    const url = box.querySelector("#prismasync-url-input").value.trim();
-    const r = await fetch("/api/config/prismasync-url", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ url })
-    }).then(r => r.json()).catch(() => ({ ok: false }));
-    if (r.ok) {
-      overlay.remove();
-      await loadDashboardData();
-    } else {
-      alert("Erreur : " + (r.error || ""));
-    }
-  };
-}
 
+  // ──────────────────────────────────────────────────────
+  // Build charts with Chart.js
+  // ──────────────────────────────────────────────────────
+  if (!window.Chart) return; // Chart.js not loaded
+
+  const chartDefaults = {
+    plugins: {
+      legend: { display: false }
+    },
+    responsive: true,
+    maintainAspectRatio: false,
+  };
+
+  // Bar: Jobs par moteur
+  const moteurCanvas = document.getElementById("chart-moteur");
+  if (moteurCanvas && byMoteur.length > 0) {
+    const c = new window.Chart(moteurCanvas, {
+      type: "bar",
+      data: {
+        labels: byMoteur.map(m => m.moteur),
+        datasets: [{
+          label: "Dossiers",
+          data: byMoteur.map(m => m.count),
+          backgroundColor: PALETTE.slice(0, byMoteur.length),
+          borderRadius: 6,
+          borderSkipped: false
+        }]
+      },
+      options: {
+        ...chartDefaults,
+        plugins: {
+          ...chartDefaults.plugins,
+          tooltip: {
+            callbacks: {
+              afterLabel: (ctx) => {
+                const m = byMoteur[ctx.dataIndex];
+                return m.totalFeuilles > 0 ? `${m.totalFeuilles.toLocaleString("fr-FR")} feuilles` : "";
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { font: { size: 11 }, maxRotation: 30 } },
+          y: { beginAtZero: true, ticks: { stepSize: 1 } }
+        }
+      }
+    });
+    _charts.push(c);
+  } else if (moteurCanvas) {
+    moteurCanvas.parentElement.innerHTML = '<p style="color:#9ca3af;font-size:13px;text-align:center;padding:60px 0;">Aucune donnée</p>';
+  }
+
+  // Doughnut: Types de travail
+  const typeCanvas = document.getElementById("chart-type-travail");
+  if (typeCanvas && byTypeTravail.length > 0) {
+    const c = new window.Chart(typeCanvas, {
+      type: "doughnut",
+      data: {
+        labels: byTypeTravail.map(t => t.type),
+        datasets: [{
+          data: byTypeTravail.map(t => t.count),
+          backgroundColor: PALETTE.slice(0, byTypeTravail.length),
+          borderWidth: 2,
+          borderColor: "#fff"
+        }]
+      },
+      options: {
+        ...chartDefaults,
+        plugins: {
+          legend: {
+            display: true,
+            position: "bottom",
+            labels: { font: { size: 11 }, boxWidth: 14, padding: 8 }
+          }
+        },
+        cutout: "55%"
+      }
+    });
+    _charts.push(c);
+  } else if (typeCanvas) {
+    typeCanvas.parentElement.innerHTML = '<p style="color:#9ca3af;font-size:13px;text-align:center;padding:60px 0;">Aucune donnée</p>';
+  }
+
+  // Bar (horizontal): Consommation papier
+  const papierCanvas = document.getElementById("chart-papier");
+  if (papierCanvas && paperConsumption.length > 0) {
+    const topPapers = paperConsumption.slice(0, 10);
+    const c = new window.Chart(papierCanvas, {
+      type: "bar",
+      data: {
+        labels: topPapers.map(p => p.papier),
+        datasets: [{
+          label: "Feuilles",
+          data: topPapers.map(p => p.totalFeuilles),
+          backgroundColor: PALETTE.slice(0, topPapers.length),
+          borderRadius: 4,
+          borderSkipped: false
+        }]
+      },
+      options: {
+        ...chartDefaults,
+        indexAxis: "y",
+        plugins: {
+          ...chartDefaults.plugins,
+          tooltip: {
+            callbacks: {
+              afterLabel: (ctx) => {
+                const p = topPapers[ctx.dataIndex];
+                return `${p.jobCount} dossier(s)`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { beginAtZero: true },
+          y: { ticks: { font: { size: 11 } } }
+        }
+      }
+    });
+    _charts.push(c);
+  } else if (papierCanvas) {
+    papierCanvas.parentElement.innerHTML = '<p style="color:#9ca3af;font-size:13px;text-align:center;padding:60px 0;">Aucun média enregistré dans les fiches</p>';
+  }
+}
