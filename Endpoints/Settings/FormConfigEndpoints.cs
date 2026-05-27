@@ -44,6 +44,15 @@ public static class FormConfigEndpoints
                 if (devisField != null && devisField.Section == "BAT")
                     devisField.Section = "Informations générales";
 
+                // Key planning dates must remain editable from the production sheet.
+                foreach (var field in saved.Fields.Where(f =>
+                    f.Id == "dateEnvoi" ||
+                    f.Id == "dateProductionFinitions" ||
+                    f.Id == "dateImpression"))
+                {
+                    field.ReadOnly = false;
+                }
+
                 return Results.Json(saved);
             }
             catch (Exception ex)
@@ -299,9 +308,9 @@ public static class FormConfigEndpoints
 
             // ── Section : Dates clés ──────────────────────────────────────
             new() { Id = "dateReception",           Label = "Date de réception souhaitée",  Type = "date",     Section = "Dates clés", Order = order++, Visible = true, Width = "half" },
-            new() { Id = "dateEnvoi",               Label = "Date d'envoi (indicatif)",     Type = "date",     Section = "Dates clés", Order = order++, Visible = true, ReadOnly = true, Width = "half" },
-            new() { Id = "dateProductionFinitions", Label = "Date production Finitions",    Type = "date",     Section = "Dates clés", Order = order++, Visible = true, ReadOnly = true, Width = "half" },
-            new() { Id = "dateImpression",          Label = "Date d'impression (indicatif)",Type = "date",     Section = "Dates clés", Order = order++, Visible = true, ReadOnly = true, Width = "half" },
+            new() { Id = "dateEnvoi",               Label = "Date d'envoi",                 Type = "date",     Section = "Dates clés", Order = order++, Visible = true, Width = "half" },
+            new() { Id = "dateProductionFinitions", Label = "Date production Finitions",    Type = "date",     Section = "Dates clés", Order = order++, Visible = true, Width = "half" },
+            new() { Id = "dateImpression",          Label = "Date d'impression",            Type = "date",     Section = "Dates clés", Order = order++, Visible = true, Width = "half" },
 
             // ── Section : Temps de production ────────────────────────────
             new() { Id = "tempsProduitMinutes", Label = "Temps théorique de production (minutes)", Type = "number", Section = "Temps de production", Order = order++, Visible = true, Width = "half" },
