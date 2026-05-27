@@ -22,7 +22,6 @@ import { renderSettingsIntegrations } from './settings/settings-integrations.js'
 import { renderSettingsPortal } from './settings/settings-portal.js';
 import { renderSettingsRainageOptions, renderSettingsFinitionTimeRules, renderSettingsFinitionSheetFormulas } from './settings/settings-finition-config.js';
 import { renderSettingsProductionDelayAlert } from './settings/settings-alerts.js';
-import { renderSettingsFinitionTimeRules, renderSettingsFinitionSheetFormulas } from './settings/settings-finition-config.js';
 
 // calendar and submissionCalendar are accessed via window globals set by app.js
 
