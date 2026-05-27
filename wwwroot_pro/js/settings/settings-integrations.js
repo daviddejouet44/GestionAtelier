@@ -165,7 +165,7 @@ export async function renderSettingsIntegrations(panel) {
 }
 
 // ======================================================
-// XML IMPORT  (version mai — async + builder dynamique)
+// XML IMPORT
 // ======================================================
 async function renderXmlImportTab(panel, cfg) {
   const xmlCfg = cfg.xmlImport || {};
@@ -197,43 +197,51 @@ async function renderXmlImportTab(panel, cfg) {
       <h4>Clé de déduplication</h4>
       <p style="color:#6b7280;font-size:13px;">Champ utilisé pour éviter les doublons (mise à jour si la clé existe déjà).</p>
       <select id="xml-dedup-key" class="settings-input" style="min-width:200px;">
-        <option value="">— Aucune —</option>
-        ${ficheFields.map(f => `<option value="${esc(f.key)}" ${xmlCfg.dedupKey === f.key ? 'selected' : ''}>${esc(f.label)}</option>`).join('')}
+        ${ficheFields.map(f => `<option value="${esc(f.key)}" ${(xmlCfg.dedupKey||'referenceCommande')===f.key?'selected':''}>${esc(f.key)} — ${esc(f.label)}</option>`).join('')}
       </select>
-      <button id="xml-dedup-save" class="btn btn-primary" style="margin-left:10px;">💾 Enregistrer</button>
-      <div id="xml-dedup-msg" style="margin-top:8px;font-size:13px;"></div>
+      <button id="xml-dedup-save" class="btn btn-primary" style="margin-left:10px;">Enregistrer</button>
+      <div id="xml-dedup-msg" style="font-size:13px;margin-top:6px;"></div>
     </div>
   `;
 
-  // Initialiser le builder XML
   const builderContainer = panel.querySelector('#xml-builder-container');
-  renderXmlMappingBuilder(builderContainer);
+  await renderXmlMappingBuilder(builderContainer, cfg, ficheFields);
 
-  // Import manuel
-  panel.querySelector('#xml-import-btn').onclick = async () => {
-    const file = panel.querySelector('#xml-import-file').files[0];
-    const msgEl = panel.querySelector('#xml-import-msg');
-    if (!file) { msgEl.style.color = '#ef4444'; msgEl.textContent = '⚠️ Sélectionnez un fichier XML.'; return; }
-    const formData = new FormData();
-    formData.append('file', file);
+  panel.querySelector('#xml-dedup-save').onclick = async () => {
+    const key = panel.querySelector('#xml-dedup-key').value;
+    const msgEl = panel.querySelector('#xml-dedup-msg');
     try {
-      const r = await fetch(API.importXml, { method: 'POST', headers: authH(), body: formData }).then(r => r.json());
-      if (r.ok) { msgEl.style.color = '#16a34a'; msgEl.textContent = '✅ Import réussi — ' + (r.message || ''); }
-      else       { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ ' + (r.error || 'Erreur'); }
+      const r = await fetch(API.config, {
+        method: 'PUT',
+        headers: authJsonH(),
+        body: JSON.stringify({ section: 'xmlImport', data: { ...cfg.xmlImport, dedupKey: key } })
+      }).then(r => r.json());
+      if (r.ok) {
+        msgEl.style.color = '#16a34a'; msgEl.textContent = '✅ Clé enregistrée';
+        cfg.xmlImport = { ...cfg.xmlImport, dedupKey: key };
+      } else { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ ' + (r.error || 'Erreur'); }
     } catch(e) { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ Erreur réseau'; }
   };
 
-  // Sauvegarde clé dédup
-  panel.querySelector('#xml-dedup-save').onclick = async () => {
-    const msgEl = panel.querySelector('#xml-dedup-msg');
-    const dedupKey = panel.querySelector('#xml-dedup-key').value;
+  panel.querySelector('#xml-import-btn').onclick = async () => {
+    const fileInput = panel.querySelector('#xml-import-file');
+    const msgEl = panel.querySelector('#xml-import-msg');
+    if (!fileInput.files || fileInput.files.length === 0) {
+      msgEl.style.color = '#ef4444'; msgEl.textContent = 'Sélectionnez un fichier XML'; return;
+    }
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    msgEl.style.color = '#6b7280'; msgEl.textContent = '⏳ Import en cours…';
     try {
-      const r = await fetch(API.config, {
-        method: 'PUT', headers: authJsonH(),
-        body: JSON.stringify({ xmlImport: { ...xmlCfg, dedupKey } })
-      }).then(r => r.json());
-      if (r.ok) { msgEl.style.color = '#16a34a'; msgEl.textContent = '✅ Clé de déduplication enregistrée'; }
-      else       { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ ' + (r.error || 'Erreur'); }
+      const r = await fetch(API.importXml, {
+        method: 'POST',
+        headers: authH(),
+        body: formData
+      }).then(r => r.json()).catch(() => ({ ok: false, error: 'Erreur réseau' }));
+      if (r.ok) {
+        msgEl.style.color = '#16a34a';
+        msgEl.textContent = `✅ ${r.imported || 0} fiche(s) importée(s)${r.updated ? ', ' + r.updated + ' mise(s) à jour' : ''}${r.duplicates ? ', ' + r.duplicates + ' doublon(s) ignoré(s)' : ''}`;
+      } else { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ ' + (r.error || 'Erreur'); }
     } catch(e) { msgEl.style.color = '#ef4444'; msgEl.textContent = '❌ Erreur réseau'; }
   };
 }
