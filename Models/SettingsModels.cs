@@ -436,6 +436,32 @@ public class PortalClientStepsConfig
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Production delay alert configuration (admin-customizable)
+// ──────────────────────────────────────────────────────────────────────────────
+public class ProductionDelayAlertConfig
+{
+    /// <summary>Whether the production delay alert is active.</summary>
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Minimum number of days late before a job appears in the alert (0 = any past date).</summary>
+    [JsonPropertyName("delayThresholdDays")]
+    public int DelayThresholdDays { get; set; } = 0;
+
+    /// <summary>Custom title shown in the sidebar/bandeau for the alert section.</summary>
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = "Retard de production";
+
+    /// <summary>Maximum number of jobs displayed per machine group before "+n autres".</summary>
+    [JsonPropertyName("maxJobsPerGroup")]
+    public int MaxJobsPerGroup { get; set; } = 3;
+
+    /// <summary>If set, only show alerts for jobs assigned to these machines (empty = all machines).</summary>
+    [JsonPropertyName("filterMachines")]
+    public List<string> FilterMachines { get; set; } = new();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Kanban action menu configuration (which actions are shown in the Action dropdown)
 // ──────────────────────────────────────────────────────────────────────────────
 public class KanbanAction

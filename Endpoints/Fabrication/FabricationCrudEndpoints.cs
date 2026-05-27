@@ -1599,6 +1599,13 @@ app.MapGet("/api/fabrication/events", () =>
                 if (mpt.Contains("finitionsTime") && mpt["finitionsTime"] != BsonNull.Value) manualTimeFinitions = mpt["finitionsTime"].AsString;
             }
 
+            // Read media/paper fields for impression events (used by paper filter in machine planning)
+            var media1 = doc.Contains("media1") && doc["media1"] != BsonNull.Value ? doc["media1"].AsString : "";
+            var media2 = doc.Contains("media2") && doc["media2"] != BsonNull.Value ? doc["media2"].AsString : "";
+            var media3 = doc.Contains("media3") && doc["media3"] != BsonNull.Value ? doc["media3"].AsString : "";
+            var media4 = doc.Contains("media4") && doc["media4"] != BsonNull.Value ? doc["media4"].AsString : "";
+            var mediaCouverture = doc.Contains("mediaCouverture") && doc["mediaCouverture"] != BsonNull.Value ? doc["mediaCouverture"].AsString : "";
+
             if (doc.Contains("dateEnvoi") && doc["dateEnvoi"] != BsonNull.Value)
             {
                 try {
@@ -1610,7 +1617,7 @@ app.MapGet("/api/fabrication/events", () =>
             {
                 try {
                     var dt = doc["dateImpression"].ToUniversalTime();
-                    events.Add(new { type = "impression", date = dt.ToString("yyyy-MM-dd"), title = $"🖨️ {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeMachine, locked });
+                    events.Add(new { type = "impression", date = dt.ToString("yyyy-MM-dd"), title = $"🖨️ {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeMachine, locked, media1, media2, media3, media4, mediaCouverture });
                 } catch { }
             }
             if (doc.Contains("dateProductionFinitions") && doc["dateProductionFinitions"] != BsonNull.Value)
@@ -1637,19 +1644,73 @@ app.MapGet("/api/fabrication/events", () =>
 });
 
 // ======================================================
+// PAPERS — List unique papers used in active fabrications
+// Returns sorted list of all non-empty media1/2/3/4/mediaCouverture values
+// ======================================================
+app.MapGet("/api/fabrication/papers", (HttpContext ctx) =>
+{
+    try
+    {
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+        var filter = Builders<BsonDocument>.Filter.And(
+            Builders<BsonDocument>.Filter.Or(
+                Builders<BsonDocument>.Filter.Exists("media1"),
+                Builders<BsonDocument>.Filter.Exists("media2"),
+                Builders<BsonDocument>.Filter.Exists("media3"),
+                Builders<BsonDocument>.Filter.Exists("media4"),
+                Builders<BsonDocument>.Filter.Exists("mediaCouverture")
+            ),
+            Builders<BsonDocument>.Filter.Ne("excludeFromPlanning", true)
+        );
+        var docs = fabCol.Find(filter).ToList();
+
+        var papersSet = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var doc in docs)
+        {
+            foreach (var field in new[] { "media1", "media2", "media3", "media4", "mediaCouverture" })
+            {
+                if (doc.Contains(field) && doc[field] != BsonNull.Value)
+                {
+                    var val = doc[field].AsString;
+                    if (!string.IsNullOrWhiteSpace(val))
+                        papersSet.Add(val.Trim());
+                }
+            }
+        }
+        return Results.Json(new { ok = true, papers = papersSet.ToList() });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message, papers = new List<string>() });
+    }
+});
+
+// ======================================================
 // ALERTS — RETARD DE PRODUCTION (dateImpression dépassée, hors Fin de production)
 // ======================================================
 app.MapGet("/api/alerts/production-delay", () =>
 {
     try
     {
+        // Load admin config — defaults are safe to use if missing
+        var alertCfg = MongoDbHelper.GetSettings<ProductionDelayAlertConfig>("productionDelayAlert")
+            ?? new ProductionDelayAlertConfig();
+
+        // If alerts are disabled by admin, return empty result
+        if (!alertCfg.Enabled)
+            return Results.Json(new { ok = true, groups = new object[0], config = alertCfg });
+
         var fabCol = MongoDbHelper.GetFabricationsCollection();
         var today = DateTime.UtcNow.Date;
-        // Jobs with dateImpression in the past and not yet in Fin de production
+
+        // Apply threshold: filter only jobs delayed by at least delayThresholdDays
+        var thresholdDate = today.AddDays(-alertCfg.DelayThresholdDays);
+
+        // Jobs with dateImpression in the past (beyond threshold) and not yet in Fin de production
         var filter = Builders<BsonDocument>.Filter.And(
             Builders<BsonDocument>.Filter.Exists("dateImpression"),
             Builders<BsonDocument>.Filter.Ne("dateImpression", BsonNull.Value),
-            Builders<BsonDocument>.Filter.Lt("dateImpression", new BsonDateTime(today))
+            Builders<BsonDocument>.Filter.Lt("dateImpression", new BsonDateTime(thresholdDate))
         );
         var docs = fabCol.Find(filter).ToList();
 
@@ -1726,6 +1787,11 @@ app.MapGet("/api/alerts/production-delay", () =>
                 ? doc["moteurImpression"].AsString ?? "—" : "—";
             if (string.IsNullOrWhiteSpace(moteur)) moteur = "—";
 
+            // Filter by configured machines (if any machine filter is set)
+            if (alertCfg.FilterMachines.Count > 0
+                && !alertCfg.FilterMachines.Any(m => string.Equals(m, moteur, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
             DateTime dateImpression;
             try { dateImpression = doc["dateImpression"].ToUniversalTime(); }
             catch { continue; }
@@ -1754,7 +1820,7 @@ app.MapGet("/api/alerts/production-delay", () =>
             .Select(g => new { moteur = g.Key, jobs = g.Value })
             .ToList();
 
-        return Results.Json(new { ok = true, groups = result });
+        return Results.Json(new { ok = true, groups = result, config = alertCfg });
     }
     catch (Exception ex)
     {
@@ -1832,6 +1898,38 @@ app.MapDelete("/api/alerts/purge-orphans", (HttpContext ctx) =>
         }
 
         return Results.Json(new { ok = true, purgedCount });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+// ======================================================
+// PRODUCTION DELAY ALERT CONFIG — GET/PUT (admin)
+// ======================================================
+app.MapGet("/api/settings/production-delay-alert", () =>
+{
+    try
+    {
+        var cfg = MongoDbHelper.GetSettings<ProductionDelayAlertConfig>("productionDelayAlert")
+            ?? new ProductionDelayAlertConfig();
+        return Results.Json(new { ok = true, config = cfg });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapPut("/api/settings/production-delay-alert", async (HttpContext ctx) =>
+{
+    try
+    {
+        var cfg = await ctx.Request.ReadFromJsonAsync<ProductionDelayAlertConfig>()
+            ?? new ProductionDelayAlertConfig();
+        MongoDbHelper.UpsertSettings("productionDelayAlert", cfg);
+        return Results.Json(new { ok = true });
     }
     catch (Exception ex)
     {
