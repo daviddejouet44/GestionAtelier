@@ -128,6 +128,7 @@
           <button id="fab-finprod" class="btn btn-primary">Fin de production</button>
           <button id="fab-delivery-remove" class="btn">Retirer du planning</button>
           <button id="fab-export" class="btn" title="Exporter la fiche (XML / CSV)">📤 Exporter</button>
+          <button id="fab-send-quote" class="btn" title="Envoyer le devis au client par email">📧 Envoyer devis</button>
           <button id="fab-save" class="btn btn-primary">Enregistrer</button>
         </div>
       </div>
@@ -136,6 +137,96 @@
   </div>
 
   <script type="module" src="js/app.js?v=31"></script>
+  <!-- MODALE ENVOI DEVIS CLIENT ─────────────────────────────────────────── -->
+  <div id="quote-send-modal" class="modal hidden" style="z-index:20001;">
+    <div class="fab-modal-content" style="max-width:540px;max-height:90vh;overflow-y:auto;">
+      <h2 style="margin-bottom:18px;">📧 Envoyer le devis au client</h2>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:20px;">Renseignez les champs ci-dessous puis joignez le PDF de devis issu de votre logiciel. Un email formaté sera envoyé au client avec un lien unique pour transmettre ses fichiers.</p>
+
+      <div id="quote-send-error" style="display:none;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:10px 14px;font-size:13px;color:#dc2626;margin-bottom:14px;"></div>
+      <div id="quote-send-success" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:14px;font-size:13px;color:#15803d;margin-bottom:14px;"></div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <!-- Left col -->
+        <div class="fab-form-group">
+          <label>Numéro de devis *</label>
+          <input type="text" id="qs-devis-number" placeholder="D2024-1234" />
+        </div>
+        <div class="fab-form-group">
+          <label>Email client *</label>
+          <input type="email" id="qs-client-email" placeholder="client@example.com" />
+        </div>
+        <div class="fab-form-group">
+          <label>Nom / Société client *</label>
+          <input type="text" id="qs-client-name" placeholder="Imprimerie Martin" />
+        </div>
+        <div class="fab-form-group">
+          <label>Produit</label>
+          <input type="text" id="qs-title" placeholder="Brochure 24 pages" />
+        </div>
+        <div class="fab-form-group">
+          <label>Format</label>
+          <input type="text" id="qs-format" placeholder="A4" />
+        </div>
+        <div class="fab-form-group">
+          <label>Support (papier)</label>
+          <input type="text" id="qs-paper" placeholder="Couché brillant 170g" />
+        </div>
+        <div class="fab-form-group">
+          <label>Couleurs</label>
+          <input type="text" id="qs-encres" placeholder="4/4" />
+        </div>
+        <div class="fab-form-group">
+          <label>Quantité</label>
+          <input type="number" id="qs-quantity" placeholder="5000" min="1" />
+        </div>
+        <div class="fab-form-group">
+          <label>Pagination (pages)</label>
+          <input type="number" id="qs-pagination" placeholder="24" min="1" />
+        </div>
+        <div class="fab-form-group">
+          <label>Recto / Verso</label>
+          <select id="qs-recto">
+            <option value="recto">Recto</option>
+            <option value="recto-verso">Recto / Verso</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="fab-form-group" style="margin-top:6px;">
+        <label>Finitions (séparées par des virgules)</label>
+        <input type="text" id="qs-finitions" placeholder="Pelliculage mat recto, Rainage" />
+      </div>
+
+      <div class="fab-form-group">
+        <label>Notes / Remarques</label>
+        <textarea id="qs-notes" rows="2" placeholder="Informations complémentaires…" style="resize:vertical;width:100%;box-sizing:border-box;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:inherit;"></textarea>
+      </div>
+
+      <!-- PDF attachment -->
+      <div class="fab-form-group">
+        <label>PDF du devis (depuis votre logiciel) — joint à l'email</label>
+        <div id="qs-upload-zone" style="border:2px dashed #d1d5db;border-radius:8px;padding:20px;text-align:center;cursor:pointer;background:#fafafa;transition:border-color .15s,background .15s;">
+          <div style="font-size:24px;margin-bottom:6px;">📎</div>
+          <p style="margin:0;font-size:13px;color:#6b7280;">Glissez le PDF ici ou <strong style="color:#1d4ed8;">cliquez pour sélectionner</strong></p>
+        </div>
+        <input type="file" id="qs-file-input" accept=".pdf,application/pdf" style="display:none;" />
+        <div id="qs-file-preview" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;font-size:13px;color:#15803d;margin-top:6px;align-items:center;gap:8px;">
+          <span>📄</span>
+          <span id="qs-file-name" style="flex:1;word-break:break-all;"></span>
+          <button id="qs-file-remove" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:15px;padding:0 2px;">✕</button>
+        </div>
+        <p style="font-size:11px;color:#9ca3af;margin:4px 0 0;">Si vous ne joignez pas de PDF, le client recevra quand même l'email avec le récapitulatif et le lien.</p>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;border-top:1px solid #e5e7eb;padding-top:14px;">
+        <button id="qs-cancel" class="btn">Annuler</button>
+        <button id="qs-send" class="btn btn-primary">📨 Envoyer l'email</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js?v=30"></script>
 
 </body>
 </html>

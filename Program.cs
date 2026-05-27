@@ -202,6 +202,7 @@ app.MapPortalAuthEndpoints();
 app.MapPortalOrdersEndpoints();
 app.MapPortalBatEndpoints();
 app.MapPortalAccountEndpoints();
+app.MapQuoteLinksEndpoints();
 
 // Submission XML coupling + ERP/W2P lookup
 app.MapSubmissionXmlEndpoints();

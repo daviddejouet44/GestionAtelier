@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Commande — Espace client</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/portal/css/portal.css" />
+  <style>
+    /* ── Quote-specific overrides ─────────────────────────────────────── */
+    body { background: #f3f4f6; }
+
+    .quote-wrapper {
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 0 16px 60px;
+    }
+
+    .quote-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    .quote-brand img { max-height: 40px; max-width: 140px; object-fit: contain; }
+    .quote-brand-name { font-size: 18px; font-weight: 700; color: var(--color-gray-900, #111827); }
+
+    .quote-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 1px 6px rgba(0,0,0,.08);
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+
+    .quote-card-header {
+      background: var(--color-primary, #1d4ed8);
+      padding: 22px 28px;
+      color: #fff;
+    }
+
+    .quote-card-header .eyebrow {
+      font-size: 11px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,.75);
+      margin-bottom: 4px;
+    }
+
+    .quote-card-header h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .quote-recap-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .quote-recap-table tr + tr td { border-top: 1px solid #f3f4f6; }
+
+    .quote-recap-table td {
+      padding: 9px 16px;
+      font-size: 13px;
+    }
+
+    .quote-recap-table td:first-child {
+      color: #6b7280;
+      white-space: nowrap;
+      width: 38%;
+    }
+
+    .quote-recap-table td:last-child {
+      color: #111827;
+      font-weight: 500;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #374151;
+      padding: 14px 20px 10px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .upload-zone {
+      border: 2px dashed #d1d5db;
+      border-radius: 10px;
+      padding: 32px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      margin: 0 20px 16px;
+      background: #fafafa;
+    }
+
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--color-primary, #1d4ed8);
+      background: #eff6ff;
+    }
+
+    .upload-zone .upload-icon { font-size: 32px; margin-bottom: 8px; }
+
+    .upload-zone p {
+      margin: 0;
+      font-size: 14px;
+      color: #6b7280;
+    }
+
+    .upload-zone p strong {
+      color: var(--color-primary, #1d4ed8);
+    }
+
+    .file-preview {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #f0fdf4;
+      border: 1px solid #86efac;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin: 0 20px 16px;
+      font-size: 13px;
+      color: #15803d;
+    }
+
+    .file-preview .file-name { flex: 1; font-weight: 500; word-break: break-all; }
+
+    .file-remove {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #ef4444;
+      font-size: 16px;
+      padding: 2px 4px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .confirm-checkbox-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 4px 20px 20px;
+    }
+
+    .confirm-checkbox-row input[type=checkbox] {
+      margin-top: 2px;
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      cursor: pointer;
+      accent-color: var(--color-primary, #1d4ed8);
+    }
+
+    .confirm-checkbox-row label {
+      font-size: 13px;
+      color: #374151;
+      cursor: pointer;
+      line-height: 1.5;
+    }
+
+    .btn-submit-order {
+      display: block;
+      width: calc(100% - 40px);
+      margin: 0 20px 20px;
+      padding: 14px;
+      background: var(--color-primary, #1d4ed8);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+    }
+
+    .btn-submit-order:hover:not(:disabled) {
+      background: var(--color-primary-dark, #1e40af);
+    }
+
+    .btn-submit-order:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+    }
+
+    .quote-pdf-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--color-primary, #1d4ed8);
+      text-decoration: none;
+      padding: 8px 16px;
+      background: #eff6ff;
+      border-radius: 6px;
+      margin: 12px 20px 0;
+    }
+
+    .quote-pdf-link:hover { background: #dbeafe; }
+
+    .success-block {
+      text-align: center;
+      padding: 40px 28px;
+    }
+
+    .success-block .success-icon { font-size: 56px; margin-bottom: 16px; }
+
+    .success-block h2 { font-size: 20px; font-weight: 700; color: #15803d; margin: 0 0 10px; }
+
+    .success-block p { color: #6b7280; font-size: 14px; margin: 0; }
+
+    .error-block {
+      text-align: center;
+      padding: 40px 28px;
+    }
+
+    .error-block .error-icon { font-size: 48px; margin-bottom: 16px; }
+    .error-block h2 { font-size: 18px; font-weight: 700; color: #dc2626; margin: 0 0 10px; }
+    .error-block p { color: #6b7280; font-size: 13px; margin: 0; }
+
+    .loading-block { text-align: center; padding: 60px 28px; color: #9ca3af; font-size: 14px; }
+
+    .spinner { display: inline-block; width: 28px; height: 28px; border: 3px solid #e5e7eb; border-top-color: var(--color-primary, #1d4ed8); border-radius: 50%; animation: spin .7s linear infinite; margin-bottom: 12px; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .badge-used {
+      display: inline-block;
+      background: #d1fae5;
+      color: #059669;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 20px;
+      margin-left: 8px;
+    }
+
+    .form-group-compact { margin: 0 20px 12px; }
+    .form-group-compact label { display: block; font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 4px; }
+    .form-group-compact input, .form-group-compact textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      font-size: 13px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-family: inherit;
+    }
+
+    .optional-fields-toggle {
+      margin: 0 20px 12px;
+      font-size: 13px;
+      color: var(--color-primary, #1d4ed8);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .progress-bar-wrapper {
+      height: 4px;
+      background: #e5e7eb;
+      border-radius: 2px;
+      overflow: hidden;
+      margin: 0 20px 16px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: var(--color-primary, #1d4ed8);
+      width: 0%;
+      transition: width .3s;
+    }
+  </style>
+</head>
+<body>
+  <div class="quote-wrapper">
+    <!-- Brand header -->
+    <div class="quote-brand">
+      <img id="brand-logo" src="/api/logo" alt="Logo" onerror="this.style.display='none'" />
+      <span class="quote-brand-name" id="brand-name">Espace client</span>
+    </div>
+
+    <!-- Loading state -->
+    <div class="quote-card" id="block-loading">
+      <div class="loading-block">
+        <div class="spinner"></div>
+        <p>Chargement du devis…</p>
+      </div>
+    </div>
+
+    <!-- Error state -->
+    <div class="quote-card hidden" id="block-error">
+      <div class="error-block">
+        <div class="error-icon">🔒</div>
+        <h2 id="error-title">Lien invalide</h2>
+        <p id="error-msg">Ce lien est invalide, expiré ou a déjà été utilisé.</p>
+      </div>
+    </div>
+
+    <!-- Already used -->
+    <div class="quote-card hidden" id="block-used">
+      <div class="success-block">
+        <div class="success-icon">✅</div>
+        <h2>Commande déjà transmise</h2>
+        <p>Votre commande <strong id="used-order-number"></strong> liée à ce devis a bien été enregistrée.<br>Notre équipe la prend en charge.</p>
+      </div>
+    </div>
+
+    <!-- Main quote form -->
+    <div class="hidden" id="block-main">
+      <!-- Quote recap card -->
+      <div class="quote-card" id="card-recap">
+        <div class="quote-card-header">
+          <div class="eyebrow">COMMANDE</div>
+          <h2 id="devis-title">Devis —</h2>
+        </div>
+
+        <div style="padding: 16px 0 0;">
+          <div class="section-title">Récapitulatif de votre devis</div>
+          <table class="quote-recap-table" id="recap-table">
+            <!-- rows filled by JS -->
+          </table>
+
+          <!-- Download ERP PDF link (shown if hasQuotePdf) -->
+          <div id="pdf-link-row" class="hidden" style="padding-bottom: 12px;">
+            <a id="quote-pdf-link" href="#" class="quote-pdf-link" target="_blank">
+              📄 Télécharger le PDF du devis
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Order form card -->
+      <div class="quote-card">
+        <div class="section-title">📂 Transmettez votre fichier de production</div>
+
+        <div style="height: 12px;"></div>
+
+        <!-- Upload zone -->
+        <div id="upload-zone" class="upload-zone">
+          <div class="upload-icon">📂</div>
+          <p><strong>Glissez votre PDF ici</strong></p>
+          <p style="margin-top: 6px; font-size: 12px;">ou cliquez pour sélectionner · PDF uniquement · 500 Mo max</p>
+        </div>
+        <input type="file" id="file-input" accept=".pdf,application/pdf" style="display:none" />
+
+        <!-- File preview (shown after selection) -->
+        <div id="file-preview" class="file-preview hidden">
+          <span style="font-size: 18px;">📄</span>
+          <span class="file-name" id="file-name-label">fichier.pdf</span>
+          <button class="file-remove" id="btn-remove-file" title="Supprimer">✕</button>
+        </div>
+
+        <!-- Progress bar (upload) -->
+        <div class="progress-bar-wrapper hidden" id="upload-progress-wrapper">
+          <div class="progress-bar" id="upload-progress-bar"></div>
+        </div>
+
+        <!-- Optional: donneur d'ordre -->
+        <div class="optional-fields-toggle" id="toggle-optional" style="margin-top: 4px;">
+          ▶ Informations complémentaires (optionnel)
+        </div>
+        <div id="optional-fields" class="hidden" style="margin-top: 8px;">
+          <div class="form-group-compact">
+            <label for="input-nom">Votre nom</label>
+            <input type="text" id="input-nom" placeholder="Nom et prénom" autocomplete="name" />
+          </div>
+          <div class="form-group-compact">
+            <label for="input-tel">Téléphone</label>
+            <input type="tel" id="input-tel" placeholder="+33 6 00 00 00 00" autocomplete="tel" />
+          </div>
+          <div class="form-group-compact">
+            <label for="input-comments">Message (optionnel)</label>
+            <textarea id="input-comments" rows="3" placeholder="Précisions, demandes particulières…"></textarea>
+          </div>
+        </div>
+
+        <div style="height: 16px;"></div>
+
+        <!-- Confirmation checkbox -->
+        <div class="confirm-checkbox-row">
+          <input type="checkbox" id="confirm-cb" />
+          <label for="confirm-cb">Je confirme que mon fichier est conforme au devis et autorise le lancement de la production.</label>
+        </div>
+
+        <!-- Alert zone -->
+        <div id="form-alert" class="hidden" style="margin: 0 20px 12px; padding: 10px 14px; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px; font-size: 13px; color: #dc2626;"></div>
+
+        <!-- Submit -->
+        <button class="btn-submit-order" id="btn-submit" disabled>
+          Envoyer ma commande
+        </button>
+      </div>
+    </div>
+
+    <!-- Success state (after submit) -->
+    <div class="quote-card hidden" id="block-success">
+      <div class="success-block">
+        <div class="success-icon">✅</div>
+        <h2>Commande envoyée !</h2>
+        <p>Votre commande <strong id="success-order-number"></strong> a bien été reçue.<br>Un email de confirmation vous a été envoyé.<br>Notre équipe prend votre dossier en charge.</p>
+      </div>
+    </div>
+  </div><!-- /quote-wrapper -->
+
+  <script>
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    const params = new URLSearchParams(location.search);
+    const TOKEN = params.get('token') || '';
+
+    function show(id) { document.getElementById(id).classList.remove('hidden'); }
+    function hide(id) { document.getElementById(id).classList.add('hidden'); }
+    function esc(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function addRow(label, value) {
+      if (!value && value !== 0) return;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${esc(label)}</td><td>${esc(String(value))}</td>`;
+      document.getElementById('recap-table').appendChild(tr);
+    }
+
+    // ── Theme ────────────────────────────────────────────────────────────────
+    fetch('/api/portal/config/theme')
+      .then(r => r.json())
+      .then(d => {
+        if (!d.ok) return;
+        const t = d.theme;
+        if (t.primaryColor) document.documentElement.style.setProperty('--color-primary', t.primaryColor);
+        if (t.primaryDarkColor) document.documentElement.style.setProperty('--color-primary-dark', t.primaryDarkColor);
+        if (t.companyName) document.getElementById('brand-name').textContent = t.companyName;
+        if (t.fontFamily) document.body.style.fontFamily = t.fontFamily;
+        document.title = `Commande — ${t.companyName || 'Espace client'}`;
+      }).catch(() => {});
+
+    // ── Load quote data ───────────────────────────────────────────────────────
+    async function loadQuote() {
+      if (!TOKEN) {
+        hide('block-loading');
+        show('block-error');
+        document.getElementById('error-title').textContent = 'Lien manquant';
+        document.getElementById('error-msg').textContent = 'Aucun token trouvé dans l\'URL. Vérifiez le lien reçu par email.';
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/portal/quote?token=${encodeURIComponent(TOKEN)}`);
+        const data = await res.json();
+
+        hide('block-loading');
+
+        if (!data.ok) {
+          show('block-error');
+          document.getElementById('error-msg').textContent = data.error || 'Lien invalide.';
+          return;
+        }
+
+        if (data.alreadyUsed) {
+          show('block-used');
+          document.getElementById('used-order-number').textContent = data.resultOrderNumber || '';
+          return;
+        }
+
+        // Populate recap
+        document.getElementById('devis-title').textContent = `Devis ${data.devisNumber}`;
+        document.title = `Commande — Devis ${data.devisNumber}`;
+        addRow('Client', data.clientName);
+        if (data.title) addRow('Produit', data.title);
+        if (data.format) addRow('Format', data.format);
+        if (data.paper) addRow('Support', data.paper);
+        if (data.encres) addRow('Couleurs', data.encres);
+        if (data.quantity) addRow('Quantité', data.quantity.toLocaleString('fr') + ' ex.');
+        if (data.pagination) addRow('Pagination', data.pagination + ' pages');
+        if (data.recto && data.recto !== 'recto') addRow('Impression', data.recto === 'recto-verso' ? 'Recto / Verso' : data.recto);
+        if (data.finitions && data.finitions.length > 0) addRow('Finitions', data.finitions.join(', '));
+        if (data.notes) addRow('Remarques', data.notes);
+
+        if (data.hasQuotePdf) {
+          document.getElementById('pdf-link-row').classList.remove('hidden');
+          document.getElementById('quote-pdf-link').href = `/api/portal/quote/pdf?token=${encodeURIComponent(TOKEN)}`;
+        }
+
+        show('block-main');
+        updateSubmitBtn();
+      } catch (err) {
+        hide('block-loading');
+        show('block-error');
+        document.getElementById('error-msg').textContent = 'Erreur lors du chargement : ' + err.message;
+      }
+    }
+
+    loadQuote();
+
+    // ── File upload UX ────────────────────────────────────────────────────────
+    let selectedFile = null;
+
+    const uploadZone = document.getElementById('upload-zone');
+    const fileInput = document.getElementById('file-input');
+
+    uploadZone.addEventListener('click', () => fileInput.click());
+    uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+    uploadZone.addEventListener('drop', e => {
+      e.preventDefault();
+      uploadZone.classList.remove('drag-over');
+      const f = e.dataTransfer.files[0];
+      if (f) setFile(f);
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) setFile(fileInput.files[0]);
+    });
+
+    function setFile(f) {
+      if (!f.name.toLowerCase().endsWith('.pdf')) {
+        showAlert('Seuls les fichiers PDF sont acceptés.');
+        return;
+      }
+      if (f.size > 500 * 1024 * 1024) {
+        showAlert('Le fichier est trop volumineux (max 500 Mo).');
+        return;
+      }
+      selectedFile = f;
+      document.getElementById('file-name-label').textContent = f.name;
+      hide('upload-zone');
+      show('file-preview');
+      hideAlert();
+      updateSubmitBtn();
+    }
+
+    document.getElementById('btn-remove-file').addEventListener('click', () => {
+      selectedFile = null;
+      fileInput.value = '';
+      hide('file-preview');
+      show('upload-zone');
+      updateSubmitBtn();
+    });
+
+    // ── Optional fields toggle ────────────────────────────────────────────────
+    document.getElementById('toggle-optional').addEventListener('click', () => {
+      const el = document.getElementById('optional-fields');
+      const toggle = document.getElementById('toggle-optional');
+      if (el.classList.contains('hidden')) {
+        el.classList.remove('hidden');
+        toggle.textContent = '▼ Informations complémentaires (optionnel)';
+      } else {
+        el.classList.add('hidden');
+        toggle.textContent = '▶ Informations complémentaires (optionnel)';
+      }
+    });
+
+    // ── Checkbox ──────────────────────────────────────────────────────────────
+    document.getElementById('confirm-cb').addEventListener('change', updateSubmitBtn);
+
+    function updateSubmitBtn() {
+      const hasFile = !!selectedFile;
+      const confirmed = document.getElementById('confirm-cb').checked;
+      document.getElementById('btn-submit').disabled = !(hasFile && confirmed);
+    }
+
+    // ── Alerts ────────────────────────────────────────────────────────────────
+    function showAlert(msg) {
+      const el = document.getElementById('form-alert');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+    }
+
+    function hideAlert() {
+      document.getElementById('form-alert').classList.add('hidden');
+    }
+
+    // ── Submit ────────────────────────────────────────────────────────────────
+    document.getElementById('btn-submit').addEventListener('click', async () => {
+      if (!selectedFile) { showAlert('Veuillez sélectionner un fichier PDF.'); return; }
+      if (!document.getElementById('confirm-cb').checked) { showAlert('Veuillez cocher la case de confirmation.'); return; }
+
+      const btn = document.getElementById('btn-submit');
+      btn.disabled = true;
+      btn.textContent = 'Envoi en cours…';
+      hideAlert();
+
+      const progressWrapper = document.getElementById('upload-progress-wrapper');
+      const progressBar = document.getElementById('upload-progress-bar');
+      progressWrapper.classList.remove('hidden');
+
+      try {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        const nom = document.getElementById('input-nom').value.trim();
+        const tel = document.getElementById('input-tel').value.trim();
+        const comments = document.getElementById('input-comments').value.trim();
+        if (nom) formData.append('donneurNom', nom);
+        if (tel) formData.append('donneurTel', tel);
+        if (comments) formData.append('comments', comments);
+
+        // XHR for progress
+        const result = await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', `/api/portal/quote/submit?token=${encodeURIComponent(TOKEN)}`);
+          xhr.upload.addEventListener('progress', e => {
+            if (e.lengthComputable) {
+              progressBar.style.width = Math.round(e.loaded / e.total * 100) + '%';
+            }
+          });
+          xhr.addEventListener('load', () => {
+            try { resolve(JSON.parse(xhr.responseText)); }
+            catch { reject(new Error('Réponse invalide du serveur')); }
+          });
+          xhr.addEventListener('error', () => reject(new Error('Erreur réseau')));
+          xhr.send(formData);
+        });
+
+        progressWrapper.classList.add('hidden');
+
+        if (!result.ok) {
+          if (result.alreadyUsed) {
+            hide('block-main');
+            show('block-used');
+            document.getElementById('used-order-number').textContent = result.resultOrderNumber || '';
+            return;
+          }
+          showAlert(result.error || 'Erreur lors de l\'envoi.');
+          btn.disabled = false;
+          btn.textContent = 'Envoyer ma commande';
+          return;
+        }
+
+        hide('block-main');
+        show('block-success');
+        document.getElementById('success-order-number').textContent = result.orderNumber || '';
+
+      } catch (err) {
+        progressWrapper.classList.add('hidden');
+        showAlert('Erreur : ' + err.message);
+        btn.disabled = false;
+        btn.textContent = 'Envoyer ma commande';
+      }
+    });
+  </script>
+</body>
+</html>
