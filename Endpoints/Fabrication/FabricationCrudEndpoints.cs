@@ -196,11 +196,12 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             PlanningMachine = ToUtcDateOnly(input.PlanningMachine),
             DateReception         = ToUtcDateOnly(input.DateReception),
             // dateReceptionSouhaitee = same as dateReception (field labeled "Date de réception souhaitée")
-            // fallback to DateReception so the submission calendar can always find it
-            DateReceptionSouhaitee = ToUtcDateOnly(input.DateReceptionSouhaitee ?? input.DateReception) ?? old?.DateReceptionSouhaitee,
-            DateEnvoi             = ToUtcDateOnly(input.DateEnvoi) ?? old?.DateEnvoi,
-            DateProductionFinitions = ToUtcDateOnly(input.DateProductionFinitions) ?? old?.DateProductionFinitions,
-            DateImpression        = ToUtcDateOnly(input.DateImpression) ?? old?.DateImpression,
+            // fallback to DateReception in the same payload so the submission calendar can always find it.
+            // These fields are always sent by the JS form, so null must clear the planning date.
+            DateReceptionSouhaitee = ToUtcDateOnly(input.DateReceptionSouhaitee ?? input.DateReception),
+            DateEnvoi             = ToUtcDateOnly(input.DateEnvoi),
+            DateProductionFinitions = ToUtcDateOnly(input.DateProductionFinitions),
+            DateImpression        = ToUtcDateOnly(input.DateImpression),
             TempsProduitMinutes   = input.TempsProduitMinutes ?? old?.TempsProduitMinutes,
             JustifsClientsQuantite = input.JustifsClientsQuantite,
             JustifsClientsAdresse  = input.JustifsClientsAdresse,

@@ -129,6 +129,7 @@ let _keyDatesConfig = {
   retrait: { sendOffsetHours: 0, finitionsOffsetHours: 24, impressionOffsetHours: 48 }
 };
 let _grammageTimeRules = [];
+let _finitionTimeRules = [];
 let _jdfEnabled = false;
 
 function updateRainageAuto() {
@@ -177,6 +178,7 @@ function updateNombreFeuilles() {
     if(rv&&_passesConfig.rainage>0) sheets+=_passesConfig.rainage;
     if(ennob.some(e=>e.startsWith('Dorure à chaud :'))&&_passesConfig.dorure>0) sheets+=_passesConfig.dorure;
     nfEl.value=sheets;
+    updateTempsProduction();
   }
 }
 
@@ -216,24 +218,80 @@ function updateTempsProduction() {
   if(tpEl.dataset.manual==='1') return;
   const moteur=(motEl?motEl.value:'').trim();
   const nf=parseInt(nfEl?nfEl.value:'0')||0;
-  if(!moteur||!nf){tpEl.value='';return;}
+  const finitionMinutes=getSelectedFinitionTimeMinutes();
+  let baseMinutes=null;
   // Try to extract grammage from media1
   const m1El=gEl('media1'); const m1Val=m1El?m1El.value:'';
   const gMatch=m1Val.match(/(\d+)\s*g/i);
   const grammage=gMatch?parseInt(gMatch[1]):null;
   let timePerSheet=null;
-  if(grammage!==null){
+  if(moteur&&nf&&grammage!==null){
     const rule=_grammageTimeRules.find(r=>r.engineName===moteur&&grammage>=r.grammageMin&&grammage<=r.grammageMax);
     if(rule) timePerSheet=rule.timePerSheetSeconds;
   }
-  if(timePerSheet===null){
+  if(moteur&&nf&&timePerSheet===null){
     const rule=_grammageTimeRules.find(r=>r.engineName===moteur);
     if(rule) timePerSheet=rule.timePerSheetSeconds;
   }
-  if(timePerSheet===null){tpEl.value='';return;}
-  const totalSecs=nf*timePerSheet;
-  const mins=Math.round(totalSecs/60);
-  tpEl.value=mins;
+  if(timePerSheet!==null) baseMinutes=Math.round((nf*timePerSheet)/60);
+  const totalMinutes=(baseMinutes||0)+finitionMinutes;
+  tpEl.value=totalMinutes>0?totalMinutes:'';
+  updateFinitionTimeDetail(baseMinutes||0, finitionMinutes);
+}
+
+function normalizeFinitionName(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getSelectedFinitionNames() {
+  const names=[];
+  getEnnoblissementSelected().forEach(v=>names.push(v));
+  const rainEl=gEl('rainage');
+  if(rainEl && (rainEl.checked || (rainEl.tagName==='SELECT' && rainEl.value))) names.push(rainEl.value || 'Rainage');
+  const fb=(gEl('faconnageBinding')||{value:''}).value;
+  if(fb && fb !== 'Aucune') names.push(fb);
+  const plis=(gEl('plis')||{value:''}).value;
+  if(plis) names.push(plis);
+  const sortie=(gEl('sortie')||{value:''}).value;
+  if(sortie) names.push(sortie);
+  const facCont=document.getElementById('fab-faconnage-container');
+  if(facCont) facCont.querySelectorAll('.fab-faconnage-cb:checked').forEach(cb=>names.push(cb.value));
+  return [...new Set(names.filter(Boolean))];
+}
+
+function findFinitionTimeRule(name) {
+  const selected=normalizeFinitionName(name);
+  if(!selected) return null;
+  return _finitionTimeRules.find(r=>normalizeFinitionName(r.finitionName)===selected)
+    || _finitionTimeRules.find(r=>{
+      const ruleName=normalizeFinitionName(r.finitionName);
+      return ruleName && (selected.startsWith(ruleName) || ruleName.startsWith(selected));
+    })
+    || null;
+}
+
+function getSelectedFinitionTimeMinutes() {
+  return getSelectedFinitionNames().reduce((sum,name)=>{
+    const rule=findFinitionTimeRule(name);
+    return sum+(parseInt(rule?.timeMinutes)||0);
+  },0);
+}
+
+function updateFinitionTimeDetail(baseMinutes, finitionMinutes) {
+  const detail=document.getElementById('fab-temps-finitions-detail');
+  if(!detail) return;
+  if(finitionMinutes>0) {
+    detail.textContent='Base impression : '+baseMinutes+' min + finitions : '+finitionMinutes+' min';
+    detail.style.display='block';
+  } else {
+    detail.textContent='Aucun temps de finition configuré pour la sélection.';
+    detail.style.display=_finitionTimeRules.length>0?'block':'none';
+  }
 }
 
 function getEnnoblissementSelected() {
@@ -325,11 +383,19 @@ function renderFabForm(config, opts) {
       const elId=gElId(field.id);
       const reqStar=field.required?' <span class="required-star">*</span>':'';
       const calcNote=field.calculationRule?' <small style="color:#9ca3af;font-size:10px;">(calculé)</small>':'';
-      const roAttr=field.readOnly?' readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;"':'';
+      const editableKeyDate=['dateEnvoi','dateProductionFinitions','dateImpression'].includes(field.id);
+      const roAttr=(field.readOnly&&!editableKeyDate)?' readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;"':'';
       const roSel=field.readOnly?' disabled style="background:#f3f4f6;color:#6b7280;"':'';
       const selPH='<option value="">— Sélectionner —</option>';
 
-      if(field.type==='text'||field.type==='number'){
+      if(field.id==='tempsProduitMinutes'){
+        wrap.innerHTML='<label>'+field.label+calcNote+'</label>'
+          +'<div style="display:flex;align-items:center;gap:8px;">'
+          +'<input id="'+elId+'" type="number" placeholder="auto" style="width:100px;" />'
+          +'<span style="font-size:13px;color:#6b7280;">minutes</span>'
+          +'</div>'
+          +'<small id="fab-temps-finitions-detail" style="display:none;color:#6b7280;font-size:11px;margin-top:2px;"></small>';
+      } else if(field.type==='text'||field.type==='number'){
         wrap.innerHTML='<label>'+field.label+reqStar+calcNote+'</label><input id="'+elId+'" type="'+field.type+'"'+roAttr+' />';
       } else if(field.type==='date'){
         wrap.innerHTML='<label>'+field.label+reqStar+calcNote+'</label><input id="'+elId+'" type="date"'+roAttr+' />';
@@ -416,12 +482,12 @@ function renderFabForm(config, opts) {
     kdGrid.innerHTML=''
       +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date de réception souhaitée</label>'
       +'<input id="fab-date-reception" type="date" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" /></div>'
-      +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date d\'envoi <small style="color:#9ca3af;font-weight:normal;">(indicatif)</small></label>'
-      +'<input id="fab-date-envoi" type="date" readonly style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#f3f4f6;color:#6b7280;" /></div>'
-      +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date production Finitions <small style="color:#9ca3af;font-weight:normal;">(indicatif)</small></label>'
-      +'<input id="fab-date-finitions" type="date" readonly style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#f3f4f6;color:#6b7280;" /></div>'
-      +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date d\'impression <small style="color:#9ca3af;font-weight:normal;">(indicatif)</small></label>'
-      +'<input id="fab-date-impression" type="date" readonly style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:#f3f4f6;color:#6b7280;" /></div>';
+      +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date d\'envoi</label>'
+      +'<input id="fab-date-envoi" type="date" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" /></div>'
+      +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date production Finitions</label>'
+      +'<input id="fab-date-finitions" type="date" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" /></div>'
+      +'<div><label style="font-size:12px;color:#374151;font-weight:500;display:block;margin-bottom:4px;">Date d\'impression</label>'
+      +'<input id="fab-date-impression" type="date" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" /></div>';
     fabDynamicForm.appendChild(kdGrid);
   }
 
@@ -439,7 +505,7 @@ function renderFabForm(config, opts) {
       +'<input id="fab-temps-produit" type="number" placeholder="auto" style="width:100px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" />'
       +'<span style="font-size:13px;color:#6b7280;">minutes</span>'
       +'</div>'
-      +'<small style="color:#9ca3af;font-size:11px;margin-top:2px;">Calculé automatiquement, ou saisissez manuellement pour forcer la valeur.</small>';
+      +'<small id="fab-temps-finitions-detail" style="color:#6b7280;font-size:11px;margin-top:2px;display:none;"></small>';
     fabDynamicForm.appendChild(tpWrap);
   }
 
@@ -525,8 +591,7 @@ function populateFabForm(d, faconnageOptions) {
   const tpEl=document.getElementById('fab-temps-produit');
   if(tpEl) {
     tpEl.value=d.tempsProduitMinutes!=null?d.tempsProduitMinutes:'';
-    // Mark as manually-set if loaded from DB so updateTempsProduction() won't overwrite it
-    if(d.tempsProduitMinutes!=null) tpEl.dataset.manual='1'; else delete tpEl.dataset.manual;
+    delete tpEl.dataset.manual;
   }
   // Process d'impression
   set('process', d.process);
@@ -542,19 +607,26 @@ function attachFormHandlers(fabCurrentFileName) {
   if(!fabDynamicForm) return;
   fabDynamicForm.addEventListener('change',e=>{
     const id=e.target.id;
-    if(id===gElId('couvertureMedia')){updateRainageAuto();updatePassesDisplay();}
-    if(id===gElId('rainage')){const l=document.getElementById('fab-rainage-label');const r=gEl('rainage');if(l&&r)l.textContent=r.checked?'Oui':'Non';updatePassesDisplay();}
-    if(id===gElId('typeTravail')){updateNombreFeuilles();updateCouvertureVisibility();}
+    if(id===gElId('couvertureMedia')){updateRainageAuto();updateNombreFeuilles();updatePassesDisplay();updateTempsProduction();}
+    if(id===gElId('rainage')){const l=document.getElementById('fab-rainage-label');const r=gEl('rainage');if(l&&r)l.textContent=r.checked?'Oui':'Non';updateNombreFeuilles();updatePassesDisplay();updateTempsProduction();}
+    if(id===gElId('typeTravail')){updateNombreFeuilles();updateCouvertureVisibility();updateTempsProduction();}
     if(id===gElId('faconnageBinding')||e.target.classList.contains('fab-ennob-cb')
        ||e.target.classList.contains('fab-ennob-pelliculage')
-       ||(e.target.type==='radio'&&e.target.name&&(e.target.name.includes('fab-ennob-vernis')||e.target.name.includes('fab-ennob-dorure'))))updatePassesDisplay();
+       ||(e.target.type==='radio'&&e.target.name&&(e.target.name.includes('fab-ennob-vernis')||e.target.name.includes('fab-ennob-dorure')))){
+      updateNombreFeuilles();updatePassesDisplay();updateTempsProduction();
+    }
+    if(id===gElId('plis')||id===gElId('sortie'))updateTempsProduction();
+    if(id==='fab-date-envoi'||id==='fab-date-finitions'||id==='fab-date-impression'){
+      if(e.target.value)e.target.dataset.protected='1';
+      else delete e.target.dataset.protected;
+    }
     if(id===gElId('dateLivraison')){const el=gEl('dateLivraison');if(el)el._manuallyEdited=true;}
     if(id===gElId('nombreFeuilles')){const el=gEl('nombreFeuilles');if(el)el._manuallyEdited=true;}
     if(id===gElId('process')) updateDependsOnFields();
   });
   fabDynamicForm.addEventListener('input',e=>{
     const id=e.target.id;
-    if(id===gElId('quantite'))updateNombreFeuilles();
+    if(id===gElId('quantite')){updateNombreFeuilles();updateTempsProduction();}
     if(id===gElId('dateDepart'))updateDateLivraison();
     if(id==='fab-date-reception'||id==='fab-retrait-livraison'){
       // When the user explicitly changes the reception date or delivery type, remove protection
@@ -567,6 +639,10 @@ function attachFormHandlers(fabCurrentFileName) {
     if(id===gElId('nombreFeuilles')){const el=gEl('nombreFeuilles');if(el)el._manuallyEdited=true;}
     if(id==='fab-temps-produit'){const el=document.getElementById('fab-temps-produit');if(el)el.dataset.manual=el.value?'1':'';}
     if(id===gElId('moteurImpression')||id===gElId('media1'))updateTempsProduction();
+    if(id==='fab-date-envoi'||id==='fab-date-finitions'||id==='fab-date-impression'){
+      if(e.target.value)e.target.dataset.protected='1';
+      else delete e.target.dataset.protected;
+    }
   });
   const repsAdd=document.getElementById('fab-repartitions-add'); if(repsAdd)repsAdd.onclick=()=>addRepartitionRow();
   const iBat=document.getElementById('fab-import-mail-bat');const fBat=document.getElementById('fab-mail-bat-file');
@@ -685,7 +761,7 @@ export async function openFabrication(fullPath, prefillData = null) {
   if(fabDynamicForm){fabDynamicForm.style.opacity='0.5';fabDynamicForm.style.pointerEvents='none';}
   if(fabStageBanner)fabStageBanner.style.display='none';
   fabModal.classList.remove('hidden');
-  const [j,engines,types,papers,faconnageOptions,stageData,sheetFormats,coverProducts,sheetCalcRulesResp,deliveryDelayResp,passesConfigResp,formConfig,keyDatesResp,grammageTimeResp,jdfConfigResp,bindingOptionsResp,foldsOptionsResp,outputOptionsResp]=await Promise.all([
+  const [j,engines,types,papers,faconnageOptions,stageData,sheetFormats,coverProducts,sheetCalcRulesResp,deliveryDelayResp,passesConfigResp,formConfig,keyDatesResp,grammageTimeResp,finitionTimeResp,jdfConfigResp,bindingOptionsResp,foldsOptionsResp,outputOptionsResp]=await Promise.all([
     fetch('/api/fabrication?fileName='+encodeURIComponent(fabCurrentFileName),{headers:{'Authorization':'Bearer '+authToken}}).then(r=>r.json()).catch(()=>({})),
     fetchCached('/api/config/print-engines'),
     fetchCached('/api/config/work-types'),
@@ -700,6 +776,7 @@ export async function openFabrication(fullPath, prefillData = null) {
     fetchFormConfig(),
     fetch('/api/config/key-dates-offsets',{headers:{'Authorization':'Bearer '+authToken}}).then(r=>r.json()).catch(()=>({config:{livraisonEnvoiHeures:48,livraisonFinitionsHeures:72,livraisonImpressionHeures:96,retraitEnvoiHeures:0,retraitFinitionsHeures:24,retraitImpressionHeures:48}})),
     fetch('/api/settings/grammage-time-config').then(r=>r.json()).catch(()=>({rules:[]})),
+    fetch('/api/settings/finition-time-rules',{headers:{'Authorization':'Bearer '+authToken}}).then(r=>r.json()).catch(()=>({rules:[]})),
     fetch('/api/settings/jdf-config').then(r=>r.json()).catch(()=>({enabled:false,fields:[]})),
     fetch('/api/settings/binding-options').then(r=>r.json()).catch(()=>({ok:false,options:[]})),
     fetch('/api/settings/folds-options').then(r=>r.json()).catch(()=>({ok:false,options:[]})),
@@ -801,6 +878,7 @@ export async function openFabrication(fullPath, prefillData = null) {
     retrait:{sendOffsetHours:kdc.retraitEnvoiHeures??0,finitionsOffsetHours:kdc.retraitFinitionsHeures??24,impressionOffsetHours:kdc.retraitImpressionHeures??48}
   };
   _grammageTimeRules=Array.isArray(grammageTimeResp.rules)?grammageTimeResp.rules:[];
+  _finitionTimeRules=Array.isArray(finitionTimeResp.rules)?finitionTimeResp.rules:[];
   _jdfEnabled=!!(jdfConfigResp.enabled);
   const config=formConfig||{fields:[],sections:[]};
   renderFabForm(config,{engines:Array.isArray(engines)?engines:[],types:Array.isArray(types)?types:[],papers:Array.isArray(papers)?papers:[],sheetFormats:Array.isArray(sheetFormats)?sheetFormats:[],faconnageOptions:Array.isArray(faconnageOptions)?faconnageOptions:[],bindingOptions:Array.isArray(bindingOptionsResp?.options)?bindingOptionsResp.options:[],foldsOptions:Array.isArray(foldsOptionsResp?.options)?foldsOptionsResp.options:[],outputOptions:Array.isArray(outputOptionsResp?.options)?outputOptionsResp.options:[]});
