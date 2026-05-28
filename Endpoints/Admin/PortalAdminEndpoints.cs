@@ -625,6 +625,7 @@ public static class PortalAdminEndpoints
                         dateProductionFinitions = order.DateProductionFinitions,
                         status          = order.Status,
                         clientAccountId = order.ClientAccountId,
+                        devisNumber     = doc.Contains("devisNumber") && !doc["devisNumber"].IsBsonNull ? doc["devisNumber"].AsString : null,
                     },
                     clientDisplayName,
                     clientEmail,

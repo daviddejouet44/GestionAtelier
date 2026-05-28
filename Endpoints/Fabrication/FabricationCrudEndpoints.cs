@@ -2126,6 +2126,89 @@ app.MapPut("/api/fabrication/key-date", async (HttpContext ctx) =>
     }
 });
 
+    // ======================================================
+    // FABRICATION — IMPORT XML → return parsed prefill fields
+    // POST /api/fabrication/import-xml
+    // Multipart: xml file (field name "xml")
+    // Returns: { ok, prefill: { ... } }
+    // ======================================================
+    app.MapPost("/api/fabrication/import-xml", async (HttpContext ctx) =>
+    {
+        try
+        {
+            var form = await ctx.Request.ReadFormAsync();
+            var xmlFile = form.Files.GetFile("xml") ?? form.Files.FirstOrDefault(f => f.FileName.ToLowerInvariant().EndsWith(".xml"));
+            if (xmlFile == null)
+                return Results.Json(new { ok = false, error = "Aucun fichier XML reçu (champ 'xml')" });
+
+            System.Xml.Linq.XDocument doc;
+            try
+            {
+                using var stream = xmlFile.OpenReadStream();
+                doc = GestionAtelier.Services.XmlParserHelper.LoadSafely(stream);
+            }
+            catch (System.Xml.XmlException xmlEx)
+            {
+                return Results.Json(new { ok = false, error = $"Fichier XML invalide : {xmlEx.Message}" });
+            }
+
+            var fichePrefill = new Dictionary<string, string>();
+
+            if (GestionAtelier.Services.XmlParserHelper.IsMasterPrint(doc))
+            {
+                var commandeEl = doc.Descendants("Commande").FirstOrDefault();
+                if (commandeEl != null)
+                    fichePrefill = GestionAtelier.Services.XmlParserHelper.ParseMasterPrintCommande(commandeEl);
+            }
+
+            // Apply user-configured XML mapping on top
+            var intCfg = MongoDbHelper.GetSettings<GestionAtelier.Endpoints.Settings.IntegrationsFullConfig>("integrations_full_config")
+                         ?? new GestionAtelier.Endpoints.Settings.IntegrationsFullConfig();
+            var mapping = intCfg.XmlImport?.Mapping ?? new Dictionary<string, string>();
+            if (mapping.Count > 0)
+            {
+                var orderEl = GestionAtelier.Services.XmlParserHelper.IsMasterPrint(doc)
+                    ? doc.Descendants("Commande").FirstOrDefault()
+                    : (doc.Descendants("Order").Concat(doc.Descendants("Commande")).Concat(doc.Descendants("Job")).FirstOrDefault() ?? doc.Root);
+                if (orderEl != null)
+                {
+                    foreach (var kv in mapping)
+                    {
+                        try
+                        {
+                            var ficheField = GestionAtelier.Endpoints.Settings.IntegrationsEndpoints.NormalizeFicheFieldKey(kv.Key);
+                            var xmlTag = kv.Value;
+                            if (string.IsNullOrWhiteSpace(xmlTag)) continue;
+                            var el = orderEl.Element(xmlTag) ?? orderEl.Descendants(xmlTag).FirstOrDefault();
+                            if (el != null && !string.IsNullOrWhiteSpace(el.Value))
+                                fichePrefill[ficheField] = el.Value;
+                        }
+                        catch { /* skip */ }
+                    }
+                }
+            }
+
+            if (!GestionAtelier.Services.XmlParserHelper.IsMasterPrint(doc))
+            {
+                var orderElFb = doc.Descendants("Order").Concat(doc.Descendants("Commande")).Concat(doc.Descendants("Job")).FirstOrDefault() ?? doc.Root;
+                if (orderElFb != null)
+                {
+                    foreach (var el in orderElFb!.Elements())
+                    {
+                        if (!fichePrefill.ContainsKey(el.Name.LocalName) && !el.HasElements)
+                            fichePrefill[el.Name.LocalName] = el.Value;
+                    }
+                }
+            }
+
+            return Results.Json(new { ok = true, prefill = fichePrefill });
+        }
+        catch (Exception ex)
+        {
+            return Results.Json(new { ok = false, error = ex.Message });
+        }
+    });
+
     }
 
     // Helper: build a MongoDB filter to match a fabrication record by fileName or fullPath.

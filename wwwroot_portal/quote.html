@@ -120,7 +120,7 @@
       border: 1px solid #86efac;
       border-radius: 8px;
       padding: 10px 14px;
-      margin: 0 20px 16px;
+      margin: 0 20px 8px;
       font-size: 13px;
       color: #15803d;
     }
@@ -271,6 +271,49 @@
       width: 0%;
       transition: width .3s;
     }
+
+    /* Auth section tabs */
+    .auth-tabs { display: flex; border-bottom: 1px solid #e5e7eb; }
+    .auth-tab {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #6b7280;
+      border-bottom: 2px solid transparent;
+      transition: color .15s, border-color .15s;
+    }
+    .auth-tab.active {
+      color: var(--color-primary, #1d4ed8);
+      border-bottom-color: var(--color-primary, #1d4ed8);
+    }
+    .auth-panel { display: none; padding: 16px 20px; }
+    .auth-panel.active { display: block; }
+    .auth-btn {
+      width: 100%;
+      padding: 10px;
+      background: var(--color-primary, #1d4ed8);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    .auth-btn:hover:not(:disabled) { background: var(--color-primary-dark, #1e40af); }
+    .auth-btn:disabled { opacity: .6; cursor: not-allowed; }
+    .auth-badge {
+      display: inline-block;
+      background: #d1fae5;
+      color: #059669;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 20px;
+    }
   </style>
 </head>
 <body>
@@ -331,14 +374,14 @@
         </div>
       </div>
 
-      <!-- Accept / Refuse decision card (shown first, before file upload) -->
+      <!-- Accept / Refuse decision card (shown first, before account auth) -->
       <div class="quote-card" id="block-decide">
         <div class="quote-card-header" style="background:#1e40af;">
           <div class="eyebrow">DÉCISION</div>
           <h2>Acceptez-vous ce devis ?</h2>
         </div>
         <div style="padding:24px 20px;text-align:center;">
-          <p style="font-size:14px;color:#374151;margin-bottom:24px;">Veuillez indiquer si vous acceptez ou refusez ce devis. En cas d'acceptation, vous pourrez transmettre votre fichier de production.</p>
+          <p style="font-size:14px;color:#374151;margin-bottom:24px;">Veuillez indiquer si vous acceptez ou refusez ce devis. En cas d'acceptation, vous devrez vous connecter ou créer votre espace client pour transmettre vos fichiers.</p>
           <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
             <button id="btn-accept" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:14px 32px;font-size:16px;font-weight:700;cursor:pointer;min-width:160px;transition:background 0.15s;" onmouseover="this.style.background='#15803d'" onmouseout="this.style.background='#16a34a'">
               ✅ J'accepte le devis
@@ -351,26 +394,78 @@
         </div>
       </div>
 
-      <!-- Order form card (hidden until accepted) -->
+      <!-- Account auth card (shown after clicking Accept, before upload) -->
+      <div class="quote-card hidden" id="card-account">
+        <div class="quote-card-header" style="background:#0f172a;">
+          <div class="eyebrow">ESPACE CLIENT</div>
+          <h2>Connectez-vous ou créez votre compte</h2>
+        </div>
+        <!-- Authenticated state (shown once logged in) -->
+        <div id="account-authenticated" style="display:none;padding:16px 20px;">
+          <p style="font-size:13px;color:#374151;margin:0 0 8px;">✅ Connecté en tant que <span id="account-name" class="auth-badge"></span></p>
+          <p style="font-size:12px;color:#6b7280;margin:0;">Vous pouvez maintenant transmettre votre/vos fichier(s) de production ci-dessous.</p>
+        </div>
+        <!-- Tab selector -->
+        <div id="account-tabs" class="auth-tabs">
+          <div class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">J'ai déjà un compte</div>
+          <div class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">Créer mon compte</div>
+        </div>
+        <!-- Login panel -->
+        <div id="panel-login" class="auth-panel active">
+          <p style="font-size:13px;color:#374151;margin:0 0 12px;">Connectez-vous avec votre adresse email et mot de passe de l'espace client.</p>
+          <div class="form-group-compact">
+            <label>Adresse email</label>
+            <input type="email" id="auth-login-email" placeholder="votre@email.com" autocomplete="email" />
+          </div>
+          <div class="form-group-compact">
+            <label>Mot de passe</label>
+            <input type="password" id="auth-login-pwd" placeholder="••••••••" autocomplete="current-password" />
+          </div>
+          <div id="login-alert" style="display:none;color:#dc2626;font-size:12px;margin-bottom:8px;"></div>
+          <button class="auth-btn" id="btn-do-login">Se connecter</button>
+        </div>
+        <!-- Register panel -->
+        <div id="panel-register" class="auth-panel">
+          <p style="font-size:13px;color:#374151;margin:0 0 12px;">Créez votre espace client pour suivre vos commandes.</p>
+          <div class="form-group-compact">
+            <label>Adresse email</label>
+            <input type="email" id="auth-reg-email" placeholder="votre@email.com" autocomplete="email" readonly style="background:#f3f4f6;" />
+          </div>
+          <div class="form-group-compact">
+            <label>Votre nom / Société</label>
+            <input type="text" id="auth-reg-name" placeholder="Société Martin" autocomplete="organization" />
+          </div>
+          <div class="form-group-compact">
+            <label>Mot de passe <span style="font-size:11px;font-weight:400;color:#9ca3af;">(8 caractères minimum)</span></label>
+            <input type="password" id="auth-reg-pwd" placeholder="••••••••" autocomplete="new-password" />
+          </div>
+          <div class="form-group-compact">
+            <label>Confirmer le mot de passe</label>
+            <input type="password" id="auth-reg-pwd2" placeholder="••••••••" autocomplete="new-password" />
+          </div>
+          <div id="register-alert" style="display:none;color:#dc2626;font-size:12px;margin-bottom:8px;"></div>
+          <button class="auth-btn" id="btn-do-register">Créer mon compte</button>
+        </div>
+      </div>
+
+      <!-- Order form card (hidden until accepted + authenticated) -->
       <div class="quote-card hidden" id="card-upload">
-        <div class="section-title">📂 Transmettez votre fichier de production</div>
+        <div class="section-title">📂 Transmettez votre/vos fichier(s) de production</div>
 
         <div style="height: 12px;"></div>
+
+        <p style="margin: 0 20px 12px; font-size: 13px; color: #6b7280;">Si votre devis comprend plusieurs types de travaux, déposez un PDF par travail — chaque fichier génèrera une commande distincte dans votre espace client.</p>
 
         <!-- Upload zone -->
         <div id="upload-zone" class="upload-zone">
           <div class="upload-icon">📂</div>
-          <p><strong>Glissez votre PDF ici</strong></p>
-          <p style="margin-top: 6px; font-size: 12px;">ou cliquez pour sélectionner · PDF uniquement · 500 Mo max</p>
+          <p><strong>Glissez vos PDF ici</strong></p>
+          <p style="margin-top: 6px; font-size: 12px;">ou cliquez pour sélectionner · PDF uniquement · 500 Mo max · plusieurs fichiers acceptés</p>
         </div>
-        <input type="file" id="file-input" accept=".pdf,application/pdf" style="display:none" />
+        <input type="file" id="file-input" accept=".pdf,application/pdf" style="display:none" multiple />
 
-        <!-- File preview (shown after selection) -->
-        <div id="file-preview" class="file-preview hidden">
-          <span style="font-size: 18px;">📄</span>
-          <span class="file-name" id="file-name-label">fichier.pdf</span>
-          <button class="file-remove" id="btn-remove-file" title="Supprimer">✕</button>
-        </div>
+        <!-- Selected files list -->
+        <div id="files-list"></div>
 
         <!-- Progress bar (upload) -->
         <div class="progress-bar-wrapper hidden" id="upload-progress-wrapper">
@@ -401,7 +496,7 @@
         <!-- Confirmation checkbox -->
         <div class="confirm-checkbox-row">
           <input type="checkbox" id="confirm-cb" />
-          <label for="confirm-cb">Je confirme que mon fichier est conforme au devis et autorise le lancement de la production.</label>
+          <label for="confirm-cb">Je confirme que mes fichiers sont conformes au devis et autorise le lancement de la production.</label>
         </div>
 
         <!-- Alert zone -->
@@ -409,7 +504,7 @@
 
         <!-- Submit -->
         <button class="btn-submit-order" id="btn-submit" disabled>
-          Envoyer ma commande
+          Envoyer ma/mes commande(s)
         </button>
       </div>
       </div><!-- /card-upload -->
@@ -428,8 +523,13 @@
     <div class="quote-card hidden" id="block-success">
       <div class="success-block">
         <div class="success-icon">✅</div>
-        <h2>Commande envoyée !</h2>
-        <p>Votre commande <strong id="success-order-number"></strong> a bien été reçue.<br>Un email de confirmation vous a été envoyé.<br>Notre équipe prend votre dossier en charge.</p>
+        <h2>Commande(s) envoyée(s) !</h2>
+        <p id="success-msg">Votre commande a bien été reçue.<br>Un email de confirmation vous a été envoyé.<br>Notre équipe prend votre dossier en charge.</p>
+        <div id="success-portal-link" style="margin-top:16px;display:none;">
+          <a id="success-portal-href" href="/portal/orders.html" style="display:inline-block;background:var(--color-primary,#1d4ed8);color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:10px 24px;border-radius:8px;">
+            Voir mes commandes dans l'espace client →
+          </a>
+        </div>
       </div>
     </div>
   </div><!-- /quote-wrapper -->
@@ -465,6 +565,12 @@
         document.title = `Commande — ${t.companyName || 'Espace client'}`;
       }).catch(() => {});
 
+    // ── State ────────────────────────────────────────────────────────────────
+    let clientDecision = null;  // 'accepted' | 'refused' | null
+    let quoteClientEmail = '';
+    let portalToken = sessionStorage.getItem('quotePortalToken') || '';
+    let portalClientName = sessionStorage.getItem('quotePortalName') || '';
+
     // ── Load quote data ───────────────────────────────────────────────────────
     async function loadQuote() {
       if (!TOKEN) {
@@ -494,6 +600,7 @@
         }
 
         // Populate recap
+        quoteClientEmail = data.clientEmail || '';
         document.getElementById('devis-title').textContent = `Devis ${data.devisNumber}`;
         document.title = `Commande — Devis ${data.devisNumber}`;
         addRow('Client', data.clientName);
@@ -512,14 +619,29 @@
           document.getElementById('quote-pdf-link').href = `/api/portal/quote/pdf?token=${encodeURIComponent(TOKEN)}`;
         }
 
+        // Pre-fill register email
+        const regEmailEl = document.getElementById('auth-reg-email');
+        if (regEmailEl && data.clientEmail) regEmailEl.value = data.clientEmail;
+
         // If quote was already decided, skip to the appropriate state
-        if (data.clientDecision === 'accepted') {
-          document.getElementById('block-decide').classList.add('hidden');
-          document.getElementById('card-upload').classList.remove('hidden');
-        } else if (data.clientDecision === 'refused') {
+        clientDecision = data.clientDecision || null;
+        if (clientDecision === 'accepted') {
+          hide('block-decide');
+          // Show auth card unless already authenticated
+          if (portalToken) {
+            showUploadCard();
+          } else {
+            show('card-account');
+          }
+        } else if (clientDecision === 'refused') {
           show('block-refused');
           hide('block-main');
           return;
+        }
+
+        // If already authenticated from session, skip auth
+        if (portalToken && clientDecision !== 'refused') {
+          showAuthenticatedBadge();
         }
 
         show('block-main');
@@ -552,15 +674,21 @@
           btns.forEach(b => { if(b) b.disabled = false; });
           return;
         }
+        clientDecision = decision;
         if (decision === 'accepted') {
-          document.getElementById('block-decide').classList.add('hidden');
-          document.getElementById('card-upload').classList.remove('hidden');
-          // Small popup
-          const pop = document.createElement('div');
-          pop.style.cssText = 'position:fixed;top:20px;right:20px;background:#16a34a;color:#fff;padding:14px 20px;border-radius:10px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.2);';
-          pop.textContent = '✅ Devis accepté ! Transmettez maintenant votre fichier.';
-          document.body.appendChild(pop);
-          setTimeout(() => pop.remove(), 4000);
+          hide('block-decide');
+          // Show account auth section
+          if (portalToken) {
+            showUploadCard();
+          } else {
+            show('card-account');
+            // Small popup
+            const pop = document.createElement('div');
+            pop.style.cssText = 'position:fixed;top:20px;right:20px;background:#16a34a;color:#fff;padding:14px 20px;border-radius:10px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.2);';
+            pop.textContent = '✅ Devis accepté ! Connectez-vous pour transmettre vos fichiers.';
+            document.body.appendChild(pop);
+            setTimeout(() => pop.remove(), 4000);
+          }
         } else {
           hide('block-main');
           show('block-refused');
@@ -577,11 +705,112 @@
       if (confirm('Êtes-vous sûr de vouloir refuser ce devis ?')) sendDecision('refused');
     });
 
-    // ── File upload UX ────────────────────────────────────────────────────────
-    let selectedFile = null;
+    // ── Auth tab switcher ─────────────────────────────────────────────────────
+    function switchAuthTab(tab) {
+      document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+      document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+      document.getElementById('panel-login').classList.toggle('active', tab === 'login');
+      document.getElementById('panel-register').classList.toggle('active', tab === 'register');
+    }
+
+    function showAuthenticatedBadge(name) {
+      const displayName = name || portalClientName || 'Compte client';
+      document.getElementById('account-name').textContent = displayName;
+      document.getElementById('account-authenticated').style.display = '';
+      document.getElementById('account-tabs').style.display = 'none';
+      document.getElementById('panel-login').classList.remove('active');
+      document.getElementById('panel-register').classList.remove('active');
+    }
+
+    function showUploadCard() {
+      hide('card-account');
+      show('card-upload');
+    }
+
+    // ── Login ────────────────────────────────────────────────────────────────
+    document.getElementById('btn-do-login').addEventListener('click', async () => {
+      const email = document.getElementById('auth-login-email').value.trim();
+      const pwd   = document.getElementById('auth-login-pwd').value;
+      const alertEl = document.getElementById('login-alert');
+      alertEl.style.display = 'none';
+      if (!email || !pwd) { alertEl.textContent = 'Email et mot de passe requis.'; alertEl.style.display = ''; return; }
+      const btn = document.getElementById('btn-do-login');
+      btn.disabled = true; btn.textContent = '⏳ Connexion…';
+      try {
+        const res = await fetch('/api/portal/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password: pwd })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          alertEl.textContent = data.error || 'Identifiants invalides.';
+          alertEl.style.display = '';
+          return;
+        }
+        portalToken = data.token;
+        portalClientName = data.client?.displayName || data.client?.companyName || email;
+        sessionStorage.setItem('quotePortalToken', portalToken);
+        sessionStorage.setItem('quotePortalName', portalClientName);
+        showAuthenticatedBadge(portalClientName);
+        showUploadCard();
+      } catch(err) {
+        alertEl.textContent = 'Erreur réseau : ' + err.message;
+        alertEl.style.display = '';
+      } finally {
+        btn.disabled = false; btn.textContent = 'Se connecter';
+      }
+    });
+
+    // ── Register ─────────────────────────────────────────────────────────────
+    document.getElementById('btn-do-register').addEventListener('click', async () => {
+      const name  = document.getElementById('auth-reg-name').value.trim();
+      const pwd   = document.getElementById('auth-reg-pwd').value;
+      const pwd2  = document.getElementById('auth-reg-pwd2').value;
+      const alertEl = document.getElementById('register-alert');
+      alertEl.style.display = 'none';
+      if (!name) { alertEl.textContent = 'Veuillez renseigner votre nom/société.'; alertEl.style.display = ''; return; }
+      if (!pwd || pwd.length < 8) { alertEl.textContent = 'Le mot de passe doit contenir au moins 8 caractères.'; alertEl.style.display = ''; return; }
+      if (pwd !== pwd2) { alertEl.textContent = 'Les mots de passe ne correspondent pas.'; alertEl.style.display = ''; return; }
+      const btn = document.getElementById('btn-do-register');
+      btn.disabled = true; btn.textContent = '⏳ Création…';
+      try {
+        const res = await fetch('/api/portal/quote/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: TOKEN, password: pwd, displayName: name, companyName: name })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          // If account already exists, prompt to login instead
+          if (data.error && data.error.includes('existe')) {
+            alertEl.innerHTML = data.error + ' <a href="#" onclick="switchAuthTab(\'login\');return false;">Se connecter →</a>';
+          } else {
+            alertEl.textContent = data.error || 'Erreur lors de la création du compte.';
+          }
+          alertEl.style.display = '';
+          return;
+        }
+        portalToken = data.token;
+        portalClientName = data.client?.displayName || name;
+        sessionStorage.setItem('quotePortalToken', portalToken);
+        sessionStorage.setItem('quotePortalName', portalClientName);
+        showAuthenticatedBadge(portalClientName);
+        showUploadCard();
+      } catch(err) {
+        alertEl.textContent = 'Erreur réseau : ' + err.message;
+        alertEl.style.display = '';
+      } finally {
+        btn.disabled = false; btn.textContent = 'Créer mon compte';
+      }
+    });
+
+    // ── File upload UX (multiple files) ──────────────────────────────────────
+    let selectedFiles = [];  // Array of File objects
 
     const uploadZone = document.getElementById('upload-zone');
-    const fileInput = document.getElementById('file-input');
+    const fileInput  = document.getElementById('file-input');
+    const filesList  = document.getElementById('files-list');
 
     uploadZone.addEventListener('click', () => fileInput.click());
     uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
@@ -589,37 +818,49 @@
     uploadZone.addEventListener('drop', e => {
       e.preventDefault();
       uploadZone.classList.remove('drag-over');
-      const f = e.dataTransfer.files[0];
-      if (f) setFile(f);
+      Array.from(e.dataTransfer.files).forEach(f => addFile(f));
     });
     fileInput.addEventListener('change', () => {
-      if (fileInput.files[0]) setFile(fileInput.files[0]);
+      Array.from(fileInput.files).forEach(f => addFile(f));
+      fileInput.value = '';
     });
 
-    function setFile(f) {
+    function addFile(f) {
       if (!f.name.toLowerCase().endsWith('.pdf')) {
-        showAlert('Seuls les fichiers PDF sont acceptés.');
+        showAlert('Seuls les fichiers PDF sont acceptés (' + f.name + ').');
         return;
       }
       if (f.size > 500 * 1024 * 1024) {
-        showAlert('Le fichier est trop volumineux (max 500 Mo).');
+        showAlert('Le fichier est trop volumineux — max 500 Mo (' + f.name + ').');
         return;
       }
-      selectedFile = f;
-      document.getElementById('file-name-label').textContent = f.name;
-      hide('upload-zone');
-      show('file-preview');
-      hideAlert();
+      // Avoid duplicates by name
+      if (selectedFiles.find(x => x.name === f.name)) return;
+      selectedFiles.push(f);
+      renderFilesList();
       updateSubmitBtn();
     }
 
-    document.getElementById('btn-remove-file').addEventListener('click', () => {
-      selectedFile = null;
-      fileInput.value = '';
-      hide('file-preview');
-      show('upload-zone');
-      updateSubmitBtn();
-    });
+    function renderFilesList() {
+      filesList.innerHTML = '';
+      selectedFiles.forEach((f, i) => {
+        const div = document.createElement('div');
+        div.className = 'file-preview';
+        div.innerHTML = `<span style="font-size:18px;">📄</span><span class="file-name">${esc(f.name)}</span><button class="file-remove" title="Supprimer">✕</button>`;
+        div.querySelector('.file-remove').addEventListener('click', () => {
+          selectedFiles.splice(i, 1);
+          renderFilesList();
+          updateSubmitBtn();
+        });
+        filesList.appendChild(div);
+      });
+      // Hide/show upload zone hint
+      if (selectedFiles.length > 0) {
+        uploadZone.querySelector('p:first-of-type').innerHTML = '<strong>Ajouter un autre fichier</strong>';
+      } else {
+        uploadZone.querySelector('p:first-of-type').innerHTML = '<strong>Glissez vos PDF ici</strong>';
+      }
+    }
 
     // ── Optional fields toggle ────────────────────────────────────────────────
     document.getElementById('toggle-optional').addEventListener('click', () => {
@@ -638,9 +879,9 @@
     document.getElementById('confirm-cb').addEventListener('change', updateSubmitBtn);
 
     function updateSubmitBtn() {
-      const hasFile = !!selectedFile;
+      const hasFiles  = selectedFiles.length > 0;
       const confirmed = document.getElementById('confirm-cb').checked;
-      document.getElementById('btn-submit').disabled = !(hasFile && confirmed);
+      document.getElementById('btn-submit').disabled = !(hasFiles && confirmed);
     }
 
     // ── Alerts ────────────────────────────────────────────────────────────────
@@ -656,7 +897,7 @@
 
     // ── Submit ────────────────────────────────────────────────────────────────
     document.getElementById('btn-submit').addEventListener('click', async () => {
-      if (!selectedFile) { showAlert('Veuillez sélectionner un fichier PDF.'); return; }
+      if (selectedFiles.length === 0) { showAlert('Veuillez sélectionner au moins un fichier PDF.'); return; }
       if (!document.getElementById('confirm-cb').checked) { showAlert('Veuillez cocher la case de confirmation.'); return; }
 
       const btn = document.getElementById('btn-submit');
@@ -670,7 +911,7 @@
 
       try {
         const formData = new FormData();
-        formData.append('file', selectedFile);
+        selectedFiles.forEach(f => formData.append('file', f));
         const nom = document.getElementById('input-nom').value.trim();
         const tel = document.getElementById('input-tel').value.trim();
         const comments = document.getElementById('input-comments').value.trim();
@@ -678,10 +919,14 @@
         if (tel) formData.append('donneurTel', tel);
         if (comments) formData.append('comments', comments);
 
+        const headers = {};
+        if (portalToken) headers['X-Portal-Token'] = portalToken;
+
         // XHR for progress
         const result = await new Promise((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           xhr.open('POST', `/api/portal/quote/submit?token=${encodeURIComponent(TOKEN)}`);
+          Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
           xhr.upload.addEventListener('progress', e => {
             if (e.lengthComputable) {
               progressBar.style.width = Math.round(e.loaded / e.total * 100) + '%';
@@ -706,19 +951,29 @@
           }
           showAlert(result.error || 'Erreur lors de l\'envoi.');
           btn.disabled = false;
-          btn.textContent = 'Envoyer ma commande';
+          btn.textContent = 'Envoyer ma/mes commande(s)';
           return;
         }
 
+        const orders = result.orders || [{ orderNumber: result.orderNumber }];
+        const ordersList = orders.map(o => o.orderNumber).join(', ');
+        const countLabel = orders.length > 1 ? `${orders.length} commandes créées` : 'Commande créée';
+
         hide('block-main');
         show('block-success');
-        document.getElementById('success-order-number').textContent = result.orderNumber || '';
+        document.getElementById('success-msg').innerHTML =
+          `${countLabel} : <strong>${esc(ordersList)}</strong><br>Un email de confirmation vous a été envoyé.<br>Notre équipe prend votre dossier en charge.`;
+
+        // Show portal link if authenticated
+        if (portalToken) {
+          document.getElementById('success-portal-link').style.display = '';
+        }
 
       } catch (err) {
         progressWrapper.classList.add('hidden');
         showAlert('Erreur : ' + err.message);
         btn.disabled = false;
-        btn.textContent = 'Envoyer ma commande';
+        btn.textContent = 'Envoyer ma/mes commande(s)';
       }
     });
   </script>
