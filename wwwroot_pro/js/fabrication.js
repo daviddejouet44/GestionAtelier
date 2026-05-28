@@ -781,8 +781,128 @@ export function initFabrication() {
       fabExport.insertAdjacentElement('afterend', picker);
     };
   }
+  // ── Import XML → prefill fiche fields ────────────────────────────────────
+  const fabImportXmlBtn   = document.getElementById('fab-import-xml');
+  const fabImportXmlInput = document.getElementById('fab-import-xml-input');
+  if (fabImportXmlBtn && fabImportXmlInput) {
+    fabImportXmlBtn.addEventListener('click', () => fabImportXmlInput.click());
+    fabImportXmlInput.addEventListener('change', async () => {
+      const file = fabImportXmlInput.files[0];
+      if (!file) return;
+      fabImportXmlInput.value = '';
+      fabImportXmlBtn.disabled = true;
+      fabImportXmlBtn.textContent = '⏳ Import…';
+      try {
+        const fd = new FormData();
+        fd.append('xml', file);
+        const res = await fetch('/api/fabrication/import-xml', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + authToken },
+          body: fd
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          showNotification('❌ ' + (data.error || 'Erreur import XML'), 'error');
+          return;
+        }
+        applyXmlPrefillToForm(data.prefill || {});
+        showNotification('✅ Champs remplis depuis XML', 'success');
+      } catch (err) {
+        showNotification('❌ Erreur réseau : ' + err.message, 'error');
+      } finally {
+        fabImportXmlBtn.disabled = false;
+        fabImportXmlBtn.textContent = '📥 Importer XML';
+      }
+    });
+  }
+
+  // ── ERP/W2P lookup ────────────────────────────────────────────────────────
+  const fabErpLookup = document.getElementById('fab-erp-lookup');
+  if (fabErpLookup) {
+    // Show the button if ERP integration is configured
+    fetch('/api/settings/integrations-full', { headers: { 'Authorization': 'Bearer ' + authToken } })
+      .then(r => r.json())
+      .then(cfg => {
+        const hasPressero = cfg?.pressero?.enabled;
+        const hasW2p = cfg?.w2p?.enabled;
+        if (hasPressero || hasW2p) {
+          fabErpLookup.style.display = '';
+          const provider = hasPressero ? 'pressero' : 'w2p';
+          fabErpLookup.onclick = async () => {
+            const ndEl = gEl('numeroDossier');
+            const ref = ndEl ? ndEl.value.trim() : '';
+            if (!ref) {
+              showNotification('❌ Renseignez le numéro de dossier avant la recherche ERP', 'error');
+              return;
+            }
+            fabErpLookup.disabled = true;
+            fabErpLookup.textContent = '⏳ Recherche…';
+            try {
+              const res = await fetch('/api/external/' + provider + '/lookup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+                body: JSON.stringify({ ref })
+              });
+              const data = await res.json();
+              if (!data.ok) {
+                showNotification('❌ ' + (data.error || 'Commande introuvable dans ERP'), 'error');
+                return;
+              }
+              applyXmlPrefillToForm(data.fiche || {});
+              showNotification('✅ Champs remplis depuis ERP/W2P', 'success');
+            } catch (err) {
+              showNotification('❌ Erreur ERP : ' + err.message, 'error');
+            } finally {
+              fabErpLookup.disabled = false;
+              fabErpLookup.textContent = '🔗 ERP/W2P';
+            }
+          };
+        }
+      })
+      .catch(() => {});
+  }
+
   // Initialise the quote-send modal (must be here to guarantee DOM is ready)
   initQuoteSendModal();
+}
+
+// Apply a dictionary of prefill fields (from XML import or ERP lookup) onto the current fiche form.
+function applyXmlPrefillToForm(prefill) {
+  const fieldMap = {
+    numeroDossier:         'numeroDossier',
+    client:                'client',
+    quantite:              'quantite',
+    moteurImpression:      'moteurImpression',
+    machine:               'moteurImpression',
+    typeTravail:           'typeTravail',
+    format:                'formatFini',
+    impression:            'couleurs',
+    couleurs:              'couleurs',
+    pagination:            'pagination',
+    notes:                 'notes',
+    donneurOrdreNom:       'donneurOrdreNom',
+    donneurOrdrePrenom:    'donneurOrdrePrenom',
+    donneurOrdreTelephone: 'donneurOrdreTelephone',
+    donneurOrdreEmail:     'donneurOrdreEmail',
+    contactNom:            'donneurOrdreNom',
+    contactEmail:          'donneurOrdreEmail',
+    contactTelephone:      'donneurOrdreTelephone',
+    bascule:               'bascule',
+    process:               'process',
+    dateReceptionSouhaitee: 'dateReceptionSouhaitee',
+    devis:                 'numeroDossier',
+    of:                    'of',
+  };
+  for (const [srcKey, destKey] of Object.entries(fieldMap)) {
+    if (prefill[srcKey] !== undefined && prefill[srcKey] !== null && prefill[srcKey] !== '') {
+      const el = gEl(destKey);
+      if (el && el.tagName !== 'SELECT') el.value = prefill[srcKey];
+      else if (el && el.tagName === 'SELECT') {
+        const opt = Array.from(el.options).find(o => o.value === prefill[srcKey] || o.text === prefill[srcKey]);
+        if (opt) el.value = prefill[srcKey];
+      }
+    }
+  }
 }
 
 export async function openFabrication(fullPath, prefillData = null) {
@@ -813,15 +933,16 @@ export async function openFabrication(fullPath, prefillData = null) {
     fetch('/api/settings/output-options').then(r=>r.json()).catch(()=>({ok:false,options:[]}))
   ]);
 
-  // Auto-prefill from portal order when fiche is new and filename matches a web order (WEB-...)
+  // Auto-prefill from portal order when fiche is new and filename matches a web order (WEB-...) or quote order (DEVIS-...)
   // Only triggered when no existing fabrication data and no explicit prefillData provided
   let autoPrefill = null;
   const isNewSheet = !j || j.ok === false || (!j.numeroDossier && !j.client && !j.typeTravail);
   const _lcFileName = fabCurrentFileName.toLowerCase();
-  const _isWebFile = _lcFileName.startsWith('web-') || _lcFileName.startsWith('bat_web-');
-  if (isNewSheet && prefillData === null && _isWebFile) {
+  const _isWebFile  = _lcFileName.startsWith('web-') || _lcFileName.startsWith('bat_web-');
+  const _isDevisFile = _lcFileName.startsWith('devis-');
+  if (isNewSheet && prefillData === null && (_isWebFile || _isDevisFile)) {
     try {
-      // Strip BAT_ prefix if present, then extract order number (all lowercase — server uses case-insensitive regex)
+      // Strip BAT_ prefix if present, then extract order number
       const _baseName = _lcFileName.startsWith('bat_') ? _lcFileName.substring(4) : _lcFileName;
       const orderNum = _baseName.includes('__') ? _baseName.split('__')[0] : _baseName.split('.')[0];
       const byJobResp = await fetch('/api/admin/portal/orders/by-job?numeroDossier=' + encodeURIComponent(orderNum), {
@@ -833,52 +954,65 @@ export async function openFabrication(fullPath, prefillData = null) {
         }).then(r => r.json()).catch(() => ({}));
         if (detailResp.ok && detailResp.order) {
           const o = detailResp.order;
-          const notesArr = [o.notes, o.comments].filter(Boolean);
-          // Build ennoblissement array from portal finition fields
-          const ennobArr = [];
-          if (o.vernisSelectif) ennobArr.push('Vernis sélectif');
-          if (o.dorureAChaud && o.dorureAChaud !== 'Non' && o.dorureAChaud !== '') ennobArr.push(o.dorureAChaud);
-          if (Array.isArray(o.pelliculage)) ennobArr.push(...o.pelliculage);
-          // Map delivery points to repartitions
-          const repartitions = Array.isArray(o.deliveryPoints) && o.deliveryPoints.length > 0
-            ? o.deliveryPoints.map(pt => ({ quantite: pt.quantity, adresse: pt.address }))
-            : null;
-          autoPrefill = {
-            numeroDossier:          o.orderNumber || null,
-            client:                 detailResp.clientDisplayName || o.title || null,
-            quantite:               o.quantity || null,
-            typeTravail:            o.typeTravail || null,
-            format:                 o.formatFini || o.format || null,
-            rectoVerso:             o.recto || null,
-            faconnage:              Array.isArray(o.finitions) ? o.finitions : [],
-            retraitLivraison:       o.deliveryMode === 'livraison' ? 'Livraison' : o.deliveryMode === 'retrait' ? 'Retrait imprimerie' : (o.deliveryMode || null),
-            adresseLivraison:       o.deliveryAddress || null,
-            dateReception:          o.desiredDeliveryDate || null,
-            dateEnvoi:              o.dateEnvoi || null,
-            dateImpression:         o.dateImpression || null,
-            dateProductionFinitions: o.dateProductionFinitions || null,
-            donneurOrdreNom:        o.donneurOrdreNom || detailResp.clientDisplayName || null,
-            donneurOrdrePrenom:     o.donneurOrdrePrenom || null,
-            donneurOrdreTelephone:  o.donneurOrdreTelephone || null,
-            donneurOrdreEmail:      o.donneurOrdreEmail || detailResp.clientEmail || null,
-            media1:                 o.media1 || null,
-            media2:                 o.media2 || null,
-            media3:                 o.media3 || null,
-            media4:                 o.media4 || null,
-            mediaCouverture:        o.mediaCouverture || null,
-            bat:                    (o.bat === 'avec' ? 'Numérique' : o.bat === 'sans' ? 'Non' : o.bat) || null,
-            rainage:                !!o.rainage,
-            ennoblissement:         ennobArr,
-            plis:                   o.plis || null,
-            pagination:             o.pagination || null,
-            formatFeuille:          o.formatFeuille || null,
-            formeDecoupe:           o.formeDecoupe || null,
-            faconnageBinding:       o.faconnageBinding || null,
-            notes:                  notesArr.length > 0 ? notesArr.join('\n') : null,
-            justifsClientsQuantite: o.quantiteJustifs || null,
-            justifsClientsAdresse:  o.adresseJustifs || null,
-            repartitions:           repartitions,
-          };
+
+          if (_isDevisFile) {
+            // DEVIS orders: only pre-fill dossier number (= devis ref) + client/donneur d'ordre info
+            // Leave all product fields blank — staff will fill them manually or via XML/ERP import
+            autoPrefill = {
+              numeroDossier:         o.devisNumber || o.orderNumber || null,
+              client:                o.donneurOrdreSociete || detailResp.clientDisplayName || null,
+              donneurOrdreNom:       o.donneurOrdreNom || null,
+              donneurOrdrePrenom:    o.donneurOrdrePrenom || null,
+              donneurOrdreTelephone: o.donneurOrdreTelephone || null,
+              donneurOrdreEmail:     o.donneurOrdreEmail || detailResp.clientEmail || null,
+            };
+          } else {
+            // WEB orders: full prefill as before
+            const notesArr = [o.notes, o.comments].filter(Boolean);
+            const ennobArr = [];
+            if (o.vernisSelectif) ennobArr.push('Vernis sélectif');
+            if (o.dorureAChaud && o.dorureAChaud !== 'Non' && o.dorureAChaud !== '') ennobArr.push(o.dorureAChaud);
+            if (Array.isArray(o.pelliculage)) ennobArr.push(...o.pelliculage);
+            const repartitions = Array.isArray(o.deliveryPoints) && o.deliveryPoints.length > 0
+              ? o.deliveryPoints.map(pt => ({ quantite: pt.quantity, adresse: pt.address }))
+              : null;
+            autoPrefill = {
+              numeroDossier:          o.orderNumber || null,
+              client:                 detailResp.clientDisplayName || o.title || null,
+              quantite:               o.quantity || null,
+              typeTravail:            o.typeTravail || null,
+              format:                 o.formatFini || o.format || null,
+              rectoVerso:             o.recto || null,
+              faconnage:              Array.isArray(o.finitions) ? o.finitions : [],
+              retraitLivraison:       o.deliveryMode === 'livraison' ? 'Livraison' : o.deliveryMode === 'retrait' ? 'Retrait imprimerie' : (o.deliveryMode || null),
+              adresseLivraison:       o.deliveryAddress || null,
+              dateReception:          o.desiredDeliveryDate || null,
+              dateEnvoi:              o.dateEnvoi || null,
+              dateImpression:         o.dateImpression || null,
+              dateProductionFinitions: o.dateProductionFinitions || null,
+              donneurOrdreNom:        o.donneurOrdreNom || detailResp.clientDisplayName || null,
+              donneurOrdrePrenom:     o.donneurOrdrePrenom || null,
+              donneurOrdreTelephone:  o.donneurOrdreTelephone || null,
+              donneurOrdreEmail:      o.donneurOrdreEmail || detailResp.clientEmail || null,
+              media1:                 o.media1 || null,
+              media2:                 o.media2 || null,
+              media3:                 o.media3 || null,
+              media4:                 o.media4 || null,
+              mediaCouverture:        o.mediaCouverture || null,
+              bat:                    (o.bat === 'avec' ? 'Numérique' : o.bat === 'sans' ? 'Non' : o.bat) || null,
+              rainage:                !!o.rainage,
+              ennoblissement:         ennobArr,
+              plis:                   o.plis || null,
+              pagination:             o.pagination || null,
+              formatFeuille:          o.formatFeuille || null,
+              formeDecoupe:           o.formeDecoupe || null,
+              faconnageBinding:       o.faconnageBinding || null,
+              notes:                  notesArr.length > 0 ? notesArr.join('\n') : null,
+              justifsClientsQuantite: o.quantiteJustifs || null,
+              justifsClientsAdresse:  o.adresseJustifs || null,
+              repartitions:           repartitions,
+            };
+          }
         }
       }
     } catch(e) { /* non-blocking — prefill failure must not block fiche opening */ }
@@ -1007,7 +1141,6 @@ export function initQuoteSendModal() {
   const modal = document.getElementById('quote-send-modal');
   if (!modal) return;
 
-  const btnOpen   = document.getElementById('fab-send-quote');
   const btnCancel = document.getElementById('qs-cancel');
   const btnSend   = document.getElementById('qs-send');
   const uploadZone  = document.getElementById('qs-upload-zone');
@@ -1020,11 +1153,8 @@ export function initQuoteSendModal() {
 
   let _qsFile = null;
 
-  function openModal() { openQuoteSendModal(); }
-
   function closeModal() { modal.classList.add('hidden'); }
 
-  if (btnOpen)   btnOpen.addEventListener('click', openModal);
   if (btnCancel) btnCancel.addEventListener('click', closeModal);
 
   modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });

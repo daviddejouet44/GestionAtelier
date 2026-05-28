@@ -1033,6 +1033,7 @@ function setupProfileUI() {
   const btnDossiers = document.getElementById("btnViewDossiers");
   const btnBat = document.getElementById("btnViewBat");
   const btnRapport = document.getElementById("btnViewRapport");
+  const btnEnvoyerDevis = document.getElementById("btn-envoyer-devis");
   const userInfo = document.getElementById("user-info");
 
   const profileLabels = { 1: "Soumission", 2: "Opérateur", 3: "Admin", 4: "Finitions", 5: "Lecture plannings", 6: "Opérateur restreint" };
@@ -1048,6 +1049,7 @@ function setupProfileUI() {
     if (btnRapport) btnRapport.style.display = "none";
     if (btnSubmission) btnSubmission.style.display = "none";
     if (btnSettings) btnSettings.style.display = "none";
+    if (btnEnvoyerDevis) btnEnvoyerDevis.style.display = "none";
     const btnGlobalProd = document.getElementById("btnViewGlobalProd");
     if (btnGlobalProd) btnGlobalProd.style.display = "inline-block";
     setupKanbanActions();
@@ -1063,6 +1065,7 @@ function setupProfileUI() {
     if (btnRapport) btnRapport.style.display = "none";
     if (btnSubmission) btnSubmission.style.display = "none";
     if (btnSettings) btnSettings.style.display = "none";
+    if (btnEnvoyerDevis) btnEnvoyerDevis.style.display = "none";
     const btnGlobalProd = document.getElementById("btnViewGlobalProd");
     if (btnGlobalProd) btnGlobalProd.style.display = "none";
     setupKanbanActions();
@@ -1078,6 +1081,7 @@ function setupProfileUI() {
     if (btnRapport) btnRapport.style.display = "inline-block";
     if (btnSubmission) btnSubmission.style.display = "inline-block";
     if (btnSettings) btnSettings.style.display = "none";
+    if (btnEnvoyerDevis) btnEnvoyerDevis.style.display = "none";
     const btnGlobalProd = document.getElementById("btnViewGlobalProd");
     if (btnGlobalProd) btnGlobalProd.style.display = "inline-block";
     setupKanbanActions();
@@ -1098,11 +1102,14 @@ function setupProfileUI() {
 
   if (currentUser.profile === 1) {
     btnSubmission.style.display = "inline-block";
+    if (btnEnvoyerDevis) btnEnvoyerDevis.style.display = "none";
   } else if (currentUser.profile === 2) {
     btnSubmission.style.display = "inline-block";
+    if (btnEnvoyerDevis) btnEnvoyerDevis.style.display = "inline-block";
   } else if (currentUser.profile === 3) {
     btnSettings.style.display = "inline-block";
     btnSubmission.style.display = "inline-block";
+    if (btnEnvoyerDevis) btnEnvoyerDevis.style.display = "inline-block";
   }
 
   setupKanbanActions();
@@ -2181,6 +2188,8 @@ document.getElementById("btnViewCalendar").onclick = () => {
 };
 
 document.getElementById("btnViewSubmission").onclick = showSubmission;
+const btnEnvoyerDevisToolbar = document.getElementById("btn-envoyer-devis");
+if (btnEnvoyerDevisToolbar) btnEnvoyerDevisToolbar.onclick = () => openQuoteSendModal();
 document.getElementById("btnViewRecycle").onclick = showRecycle;
 document.getElementById("btnViewDashboard").onclick = showDashboard;
 document.getElementById("btnViewDossiers").onclick = showDossiers;

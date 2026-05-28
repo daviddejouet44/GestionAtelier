@@ -501,6 +501,86 @@ public static class QuoteLinksEndpoints
             return Results.File(link.QuotePdfStoredPath, "application/pdf");
         });
 
+        // ── PUBLIC: GET /api/portal/quote/check-account?email= ───────────────
+        // Returns whether a portal account exists for the given email.
+        app.MapGet("/api/portal/quote/check-account", (HttpContext ctx) =>
+        {
+            var email = ctx.Request.Query["email"].ToString().Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(email))
+                return Results.Json(new { ok = false, error = "Email requis" });
+
+            var col = MongoDbHelper.GetCollection<BsonDocument>("client_accounts");
+            var doc = col.Find(Builders<BsonDocument>.Filter.Eq("email", email)).FirstOrDefault();
+            return Results.Json(new { ok = true, exists = doc != null });
+        });
+
+        // ── PUBLIC: POST /api/portal/quote/register ───────────────────────────
+        // Creates a portal account for the quote recipient and returns an auth token.
+        // Body: { token: "...", password: "...", displayName: "...", companyName: "..." }
+        app.MapPost("/api/portal/quote/register", async (HttpContext ctx) =>
+        {
+            try
+            {
+                var body = await ctx.Request.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+                var quoteToken = body.TryGetProperty("token", out var tEl) ? tEl.GetString() ?? "" : "";
+                var password   = body.TryGetProperty("password", out var pEl) ? pEl.GetString() ?? "" : "";
+                var displayName = body.TryGetProperty("displayName", out var dnEl) ? dnEl.GetString() ?? "" : "";
+                var companyName = body.TryGetProperty("companyName", out var cnEl) ? cnEl.GetString() ?? "" : "";
+
+                if (string.IsNullOrWhiteSpace(quoteToken))
+                    return Results.Json(new { ok = false, error = "Token de devis manquant" });
+                if (string.IsNullOrWhiteSpace(password) || password.Length < 8)
+                    return Results.Json(new { ok = false, error = "Le mot de passe doit comporter au moins 8 caractères" });
+
+                var link = TokenToLink(quoteToken);
+                if (link == null || link.Status == "revoked")
+                    return Results.Json(new { ok = false, error = "Lien de devis invalide" });
+
+                var email = link.ClientEmail.ToLowerInvariant();
+                var accountCol = MongoDbHelper.GetCollection<BsonDocument>("client_accounts");
+
+                // Don't create duplicate accounts
+                var existing = accountCol.Find(Builders<BsonDocument>.Filter.Eq("email", email)).FirstOrDefault();
+                if (existing != null)
+                    return Results.Json(new { ok = false, error = "Un compte existe déjà avec cette adresse email. Veuillez vous connecter." });
+
+                var clientId = Guid.NewGuid().ToString("N");
+                var hash = BCrypt.Net.BCrypt.HashPassword(password);
+                var now = DateTime.UtcNow;
+
+                var clientDoc = new BsonDocument
+                {
+                    ["id"]          = clientId,
+                    ["email"]       = email,
+                    ["passwordHash"] = hash,
+                    ["displayName"] = string.IsNullOrWhiteSpace(displayName) ? link.ClientName : displayName,
+                    ["companyName"] = string.IsNullOrWhiteSpace(companyName) ? link.ClientName : companyName,
+                    ["contactPhone"] = "",
+                    ["defaultDeliveryAddress"] = "",
+                    ["enabled"]     = true,
+                    ["createdAt"]   = now,
+                    ["lastLoginAt"] = BsonNull.Value,
+                    ["failedLoginAttempts"] = 0,
+                    ["lockedUntil"] = BsonNull.Value,
+                    ["passwordResetToken"] = BsonNull.Value,
+                    ["passwordResetExpiry"] = BsonNull.Value,
+                };
+                accountCol.InsertOne(clientDoc);
+
+                var portalToken = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"portal:{clientId}:{email}"));
+                return Results.Json(new
+                {
+                    ok = true,
+                    token = portalToken,
+                    client = new { id = clientId, email, displayName = clientDoc["displayName"].AsString, companyName = clientDoc["companyName"].AsString }
+                });
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { ok = false, error = ex.Message });
+            }
+        });
+
         // ── PUBLIC: POST /api/portal/quote/decide?token= ─────────────────────
         // Body: { "decision": "accepted" | "refused" }
         // Records the client's decision on the quote and notifies staff.
@@ -534,21 +614,32 @@ public static class QuoteLinksEndpoints
                     .Set("clientDecisionAt", DateTime.UtcNow);
                 col.UpdateOne(filter, update);
 
-                // Create a staff notification
+                // Create a staff notification per manager/admin user so the bell lights up
                 var notifCol = MongoDbHelper.GetCollection<BsonDocument>("notifications");
                 var emoji = decision == "accepted" ? "✅" : "❌";
                 var actionLabel = decision == "accepted" ? "a ACCEPTÉ" : "a REFUSÉ";
-                var notif = new BsonDocument
+                var notifMessage = $"{emoji} {link.ClientName} {actionLabel} le devis n° {link.DevisNumber}";
+                var notifType = decision == "accepted" ? "quote_accepted" : "quote_refused";
+                var now = DateTime.UtcNow;
+                try
                 {
-                    ["type"] = decision == "accepted" ? "quote_accepted" : "quote_refused",
-                    ["message"] = $"{emoji} {link.ClientName} {actionLabel} le devis n° {link.DevisNumber}",
-                    ["devisNumber"] = link.DevisNumber,
-                    ["clientName"] = link.ClientName,
-                    ["token"] = token,
-                    ["read"] = false,
-                    ["createdAt"] = DateTime.UtcNow
-                };
-                notifCol.InsertOne(notif);
+                    var staffUsers = BackendUtils.LoadUsers();
+                    foreach (var u in staffUsers.Where(u => u.Profile == 2 || u.Profile == 3))
+                    {
+                        notifCol.InsertOne(new BsonDocument
+                        {
+                            ["type"]           = notifType,
+                            ["recipientLogin"] = u.Login,
+                            ["message"]        = notifMessage,
+                            ["devisNumber"]    = link.DevisNumber,
+                            ["clientName"]     = link.ClientName,
+                            ["token"]          = token,
+                            ["read"]           = false,
+                            ["timestamp"]      = now
+                        });
+                    }
+                }
+                catch { /* non-blocking — bell notifications best-effort */ }
 
                 // Try to send an email notification to a configured notification address (non-blocking)
                 // The notification email destination comes from portal SMTP settings "fromAddress"
@@ -577,7 +668,9 @@ public static class QuoteLinksEndpoints
         });
 
         // ── PUBLIC: POST /api/portal/quote/submit?token= ─────────────────────
-        // Multipart: production PDF file(s) + optional JSON fields (donneurOrdreNom, etc.)
+        // Multipart: production PDF file(s) + optional fields.
+        // Each PDF file creates its own ClientOrder so the client can track them individually.
+        // Accepts optional X-Portal-Token header to link orders to the client's portal account.
         app.MapPost("/api/portal/quote/submit", async (HttpContext ctx) =>
         {
             try
@@ -602,30 +695,46 @@ public static class QuoteLinksEndpoints
                 if (link.ExpiresAt.HasValue && link.ExpiresAt.Value < DateTime.UtcNow)
                     return Results.Json(new { ok = false, error = "Ce lien a expiré" });
 
+                // Resolve portal account from X-Portal-Token header (optional)
+                string clientAccountId = "";
+                var portalTokenRaw = ctx.Request.Headers["X-Portal-Token"].ToString().Trim();
+                if (!string.IsNullOrWhiteSpace(portalTokenRaw))
+                {
+                    try
+                    {
+                        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(portalTokenRaw));
+                        var parts = decoded.Split(':');
+                        if (parts.Length >= 3 && parts[0] == "portal")
+                        {
+                            var accountCol = MongoDbHelper.GetCollection<BsonDocument>("client_accounts");
+                            var accountDoc = accountCol.Find(Builders<BsonDocument>.Filter.Eq("id", parts[1])).FirstOrDefault();
+                            if (accountDoc != null)
+                                clientAccountId = parts[1];
+                        }
+                    }
+                    catch { /* ignore invalid portal token */ }
+                }
+
                 var form = await ctx.Request.ReadFormAsync();
 
                 // Optional donneur d'ordre overrides
-                var donneurNom = form["donneurNom"].ToString().Trim();
+                var donneurNom    = form["donneurNom"].ToString().Trim();
                 var donneurPrenom = form["donneurPrenom"].ToString().Trim();
-                var donneurEmail = form["donneurEmail"].ToString().Trim();
-                var donneurTel = form["donneurTel"].ToString().Trim();
+                var donneurEmail  = form["donneurEmail"].ToString().Trim();
+                var donneurTel    = form["donneurTel"].ToString().Trim();
                 var clientComments = form["comments"].ToString().Trim();
 
                 var settings = MongoDbHelper.GetSettings<PortalSettings>("portalSettings") ?? new PortalSettings();
-                var hotRoot = BackendUtils.HotfoldersRoot();
+                var hotRoot  = BackendUtils.HotfoldersRoot();
                 var webFolder = Path.Combine(hotRoot, settings.WebOrderKanbanFolder ?? "Commandes web");
                 Directory.CreateDirectory(webFolder);
 
-                // Generate order
-                var counter = MongoDbHelper.GetNextClientOrderNumber();
-                var orderNumber = $"DEVIS-{DateTime.Now:yyyyMMdd}-{counter:D4}";
-                var orderId = Guid.NewGuid().ToString("N");
                 var now = DateTime.UtcNow;
-
-                // Save uploaded production file(s) directly to kanban folder
-                var savedFiles = new List<ClientOrderFile>();
                 var titlePart = System.Text.RegularExpressions.Regex.Replace(link.DevisNumber, @"[^\w\-]", "_");
 
+                var createdOrders = new List<(string orderId, string orderNumber)>();
+
+                // Each valid PDF becomes its own ClientOrder
                 foreach (var file in form.Files)
                 {
                     var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
@@ -642,7 +751,11 @@ public static class QuoteLinksEndpoints
                     long maxBytes = (settings.MaxUploadSizeMb > 0 ? settings.MaxUploadSizeMb : 500) * 1024L * 1024L;
                     if (file.Length > maxBytes) continue;
 
-                    var num = MongoDbHelper.GetNextFileNumber();
+                    var counter    = MongoDbHelper.GetNextClientOrderNumber();
+                    var orderNumber = $"DEVIS-{DateTime.Now:yyyyMMdd}-{counter:D4}";
+                    var orderId    = Guid.NewGuid().ToString("N");
+
+                    var num      = MongoDbHelper.GetNextFileNumber();
                     var safeName = SanitizeForFs(Path.GetFileNameWithoutExtension(file.FileName)) + ".pdf";
                     var destName = $"{orderNumber}__{titlePart}__{num:D5}_{safeName}";
                     var destPath = Path.Combine(webFolder, destName);
@@ -650,89 +763,88 @@ public static class QuoteLinksEndpoints
                     using (var fs = File.Create(destPath))
                         await file.CopyToAsync(fs);
 
-                    savedFiles.Add(new ClientOrderFile
+                    var fileEntry = new BsonDocument
                     {
-                        FileName = destName,
-                        StoredPath = destPath,
-                        UploadedAt = now,
-                        Size = file.Length
+                        ["fileName"]   = destName,
+                        ["storedPath"] = destPath,
+                        ["uploadedAt"] = now,
+                        ["size"]       = file.Length
+                    };
+
+                    var historyArray = new BsonArray(new[]
+                    {
+                        new BsonDocument { ["status"] = "submitted", ["timestamp"] = now, ["comment"] = $"Commande soumise via lien devis {link.DevisNumber}" }
                     });
+
+                    var orderDoc = new BsonDocument
+                    {
+                        ["id"]             = orderId,
+                        ["clientAccountId"] = clientAccountId,
+                        ["quoteToken"]     = token,
+                        ["quoteLinkId"]    = link.Id,
+                        ["orderNumber"]    = orderNumber,
+                        ["title"]          = string.IsNullOrWhiteSpace(link.Title) ? link.DevisNumber : link.Title,
+                        ["quantity"]       = link.Quantity,
+                        ["format"]         = link.Format,
+                        ["paper"]          = link.Paper,
+                        ["encres"]         = link.Encres,
+                        ["recto"]          = link.Recto,
+                        ["finitions"]      = new BsonArray(link.Finitions.Select(f => (BsonValue)f)),
+                        ["deliveryMode"]   = "retrait",
+                        ["deliveryAddress"] = "",
+                        ["comments"]       = string.IsNullOrWhiteSpace(clientComments) ? "" : clientComments,
+                        ["status"]         = "submitted",
+                        ["atelierJobPath"] = "",
+                        ["createdAt"]      = now,
+                        ["updatedAt"]      = now,
+                        ["files"]          = new BsonArray(new[] { fileEntry }),
+                        ["statusHistory"]  = historyArray,
+                        ["donneurOrdreNom"]      = string.IsNullOrWhiteSpace(donneurNom) ? (BsonValue)link.ClientName : donneurNom,
+                        ["donneurOrdrePrenom"]   = string.IsNullOrWhiteSpace(donneurPrenom) ? BsonNull.Value : (BsonValue)donneurPrenom,
+                        ["donneurOrdreEmail"]    = string.IsNullOrWhiteSpace(donneurEmail) ? (BsonValue)link.ClientEmail : donneurEmail,
+                        ["donneurOrdreTelephone"] = string.IsNullOrWhiteSpace(donneurTel) ? BsonNull.Value : (BsonValue)donneurTel,
+                        ["donneurOrdreSociete"]  = (BsonValue)link.ClientName,
+                        ["devisNumber"]          = link.DevisNumber,
+                    };
+
+                    if (link.Pagination.HasValue) orderDoc["pagination"] = link.Pagination.Value;
+                    if (!string.IsNullOrWhiteSpace(link.Notes)) orderDoc["notes"] = link.Notes;
+
+                    var orderCol = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
+                    orderCol.InsertOne(orderDoc);
+                    createdOrders.Add((orderId, orderNumber));
                 }
 
-                var filesArray = new BsonArray(savedFiles.Select(f => new BsonDocument
-                {
-                    ["fileName"] = f.FileName,
-                    ["storedPath"] = f.StoredPath,
-                    ["uploadedAt"] = f.UploadedAt,
-                    ["size"] = f.Size
-                }));
+                if (createdOrders.Count == 0)
+                    return Results.Json(new { ok = false, error = "Aucun fichier PDF valide n'a été reçu" });
 
-                var historyArray = new BsonArray(new[]
-                {
-                    new BsonDocument { ["status"] = "submitted", ["timestamp"] = now, ["comment"] = $"Commande soumise via lien devis {link.DevisNumber}" }
-                });
-
-                // Build the order document
-                var orderDoc = new BsonDocument
-                {
-                    ["id"] = orderId,
-                    ["clientAccountId"] = "",   // no portal account required
-                    ["quoteToken"] = token,
-                    ["quoteLinkId"] = link.Id,
-                    ["orderNumber"] = orderNumber,
-                    ["title"] = string.IsNullOrWhiteSpace(link.Title) ? link.DevisNumber : link.Title,
-                    ["quantity"] = link.Quantity,
-                    ["format"] = link.Format,
-                    ["paper"] = link.Paper,
-                    ["encres"] = link.Encres,
-                    ["recto"] = link.Recto,
-                    ["finitions"] = new BsonArray(link.Finitions.Select(f => (BsonValue)f)),
-                    ["deliveryMode"] = "retrait",
-                    ["deliveryAddress"] = "",
-                    ["comments"] = string.IsNullOrWhiteSpace(clientComments) ? "" : clientComments,
-                    ["status"] = "submitted",
-                    ["atelierJobPath"] = "",
-                    ["createdAt"] = now,
-                    ["updatedAt"] = now,
-                    ["files"] = filesArray,
-                    ["statusHistory"] = historyArray,
-                    ["donneurOrdreNom"] = string.IsNullOrWhiteSpace(donneurNom) ? (BsonValue)link.ClientName : donneurNom,
-                    ["donneurOrdrePrenom"] = string.IsNullOrWhiteSpace(donneurPrenom) ? BsonNull.Value : (BsonValue)donneurPrenom,
-                    ["donneurOrdreEmail"] = string.IsNullOrWhiteSpace(donneurEmail) ? (BsonValue)link.ClientEmail : donneurEmail,
-                    ["donneurOrdreTelephone"] = string.IsNullOrWhiteSpace(donneurTel) ? BsonNull.Value : (BsonValue)donneurTel,
-                    ["donneurOrdreSociete"] = (BsonValue)link.ClientName,
-                    ["devisNumber"] = link.DevisNumber,
-                };
-
-                if (link.Pagination.HasValue) orderDoc["pagination"] = link.Pagination.Value;
-                if (!string.IsNullOrWhiteSpace(link.Notes)) orderDoc["notes"] = link.Notes;
-
-                var orderCol = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
-                orderCol.InsertOne(orderDoc);
-
-                // Mark link as used
+                // Mark link as used (first order is the reference)
+                var firstOrder = createdOrders[0];
                 col.UpdateOne(
                     Builders<BsonDocument>.Filter.Eq("token", token),
                     Builders<BsonDocument>.Update
                         .Set("status", "used")
                         .Set("usedAt", now)
-                        .Set("resultOrderId", orderId)
-                        .Set("resultOrderNumber", orderNumber));
+                        .Set("resultOrderId", firstOrder.orderId)
+                        .Set("resultOrderNumber", firstOrder.orderNumber));
 
                 // Notify atelier staff
                 try
                 {
                     var notifCol = MongoDbHelper.GetCollection<BsonDocument>("notifications");
                     var users = BackendUtils.LoadUsers();
+                    var ordersSummary = createdOrders.Count > 1
+                        ? $"{createdOrders.Count} commandes créées"
+                        : firstOrder.orderNumber;
                     foreach (var u in users.Where(u => u.Profile == 2 || u.Profile == 3))
                     {
                         notifCol.InsertOne(new BsonDocument
                         {
-                            ["type"] = "new_web_order",
+                            ["type"]           = "new_web_order",
                             ["recipientLogin"] = u.Login,
-                            ["message"] = $"📦 Nouvelle commande devis : {orderNumber} — {link.Title} (Client : {link.ClientName}) [Devis {link.DevisNumber}]",
-                            ["read"] = false,
-                            ["timestamp"] = now
+                            ["message"]        = $"📦 Commande(s) devis : {ordersSummary} — {link.Title} (Client : {link.ClientName}) [Devis {link.DevisNumber}]",
+                            ["read"]           = false,
+                            ["timestamp"]      = now
                         });
                     }
                 }
@@ -746,13 +858,14 @@ public static class QuoteLinksEndpoints
                         portalBase = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
                     var theme = MongoDbHelper.GetSettings<PortalThemeConfig>("portalTheme") ?? new PortalThemeConfig();
                     var companyName = string.IsNullOrWhiteSpace(theme.CompanyName) ? "Gestion d'Atelier" : theme.CompanyName;
-                    var confirmSubject = $"Commande confirmée — {orderNumber}";
+                    var ordersList = string.Join(", ", createdOrders.Select(o => o.orderNumber));
+                    var confirmSubject = $"Commande(s) confirmée(s) — {link.DevisNumber}";
                     var confirmHtml = $@"<!DOCTYPE html><html lang=""fr""><head><meta charset=""utf-8""></head>
 <body style=""font-family:system-ui,sans-serif;background:#f3f4f6;padding:32px 16px;"">
 <div style=""max-width:520px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;"">
-  <div style=""background:#16a34a;padding:24px 32px;""><h1 style=""margin:0;color:#fff;font-size:20px;"">✅ Commande confirmée</h1></div>
+  <div style=""background:#16a34a;padding:24px 32px;""><h1 style=""margin:0;color:#fff;font-size:20px;"">✅ Commande(s) confirmée(s)</h1></div>
   <div style=""padding:24px 32px;"">
-    <p style=""font-size:14px;color:#374151;"">Votre commande <strong>{System.Net.WebUtility.HtmlEncode(orderNumber)}</strong> liée au devis <strong>{System.Net.WebUtility.HtmlEncode(link.DevisNumber)}</strong> a bien été reçue.</p>
+    <p style=""font-size:14px;color:#374151;"">Votre/vos commande(s) (<strong>{System.Net.WebUtility.HtmlEncode(ordersList)}</strong>) liée(s) au devis <strong>{System.Net.WebUtility.HtmlEncode(link.DevisNumber)}</strong> ont bien été reçues.</p>
     <p style=""font-size:14px;color:#374151;"">Notre équipe va prendre en charge votre dossier dans les meilleurs délais.</p>
     <p style=""font-size:12px;color:#9ca3af;margin-top:24px;"">{System.Net.WebUtility.HtmlEncode(companyName)}</p>
   </div>
@@ -762,7 +875,13 @@ public static class QuoteLinksEndpoints
                 }
                 catch (Exception ex) { Console.WriteLine($"[WARN] Quote confirm email: {ex.Message}"); }
 
-                return Results.Json(new { ok = true, orderNumber, orderId });
+                return Results.Json(new
+                {
+                    ok = true,
+                    orderNumber = firstOrder.orderNumber,
+                    orderId = firstOrder.orderId,
+                    orders = createdOrders.Select(o => new { o.orderId, o.orderNumber }).ToList()
+                });
             }
             catch (Exception ex)
             {

@@ -70,6 +70,7 @@
         <option value="size_asc">Taille (petite → grosse)</option>
       </select>
       <div class="tab-buttons">
+        <button id="btn-envoyer-devis" class="tab-btn" style="display:none;">📧 Envoyer devis</button>
         <button id="btnViewSubmission" class="tab-btn" style="display:none;">Soumission</button>
         <button id="btnViewKanban" class="tab-btn active">Production</button>
         <button id="btnViewCalendar" class="tab-btn">Planning</button>
@@ -128,7 +129,9 @@
           <button id="fab-finprod" class="btn btn-primary">Fin de production</button>
           <button id="fab-delivery-remove" class="btn">Retirer du planning</button>
           <button id="fab-export" class="btn" title="Exporter la fiche (XML / CSV)">📤 Exporter</button>
-          <button id="fab-send-quote" class="btn" title="Envoyer le devis au client par email">📧 Envoyer devis</button>
+          <button id="fab-import-xml" class="btn" title="Importer un XML pour remplir les champs de la fiche">📥 Importer XML</button>
+          <button id="fab-erp-lookup" class="btn" title="Récupérer les informations de commande via l'API ERP/W2P" style="display:none;">🔗 ERP/W2P</button>
+          <input type="file" id="fab-import-xml-input" accept=".xml,text/xml,application/xml" style="display:none;" />
           <button id="fab-save" class="btn btn-primary">Enregistrer</button>
         </div>
       </div>
