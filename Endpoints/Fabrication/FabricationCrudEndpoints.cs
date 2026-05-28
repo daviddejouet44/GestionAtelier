@@ -1625,15 +1625,8 @@ app.MapGet("/api/fabrication/events", () =>
             {
                 try {
                     var dt = doc["dateProductionFinitions"].ToUniversalTime();
-                    // Build finitionTypes from faconnage array + ennoblissement for filter support
-                    var finitionTypes = new List<string>();
-                    if (doc.Contains("faconnage") && doc["faconnage"].IsBsonArray)
-                        finitionTypes.AddRange(doc["faconnage"].AsBsonArray.Select(x => x.AsString));
-                    if (doc.Contains("ennoblissement") && doc["ennoblissement"].IsBsonArray)
-                        finitionTypes.AddRange(doc["ennoblissement"].AsBsonArray.Select(x => x.AsString));
-                    if (doc.Contains("finitionsChecked") && doc["finitionsChecked"].IsBsonArray)
-                        finitionTypes.AddRange(doc["finitionsChecked"].AsBsonArray.Select(x => x.AsString));
-                    events.Add(new { type = "finitions", date = dt.ToString("yyyy-MM-dd"), title = $"✂️ {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeFinitions, locked, finitionTypes = finitionTypes.Distinct().ToList() });
+                    var finitionTypes = GetFabricationFinitionNames(doc);
+                    events.Add(new { type = "finitions", date = dt.ToString("yyyy-MM-dd"), title = $"✂️ {title}", fileName, fullPath, moteurImpression, operateur, tempsProduitMinutes, manualTime = manualTimeFinitions, locked, finitionTypes });
                 } catch { }
             }
             if (doc.Contains("dateReceptionSouhaitee") && doc["dateReceptionSouhaitee"] != BsonNull.Value)
@@ -1691,6 +1684,44 @@ app.MapGet("/api/fabrication/papers", (HttpContext ctx) =>
     catch (Exception ex)
     {
         return Results.Json(new { ok = false, error = ex.Message, papers = new List<string>() });
+    }
+});
+
+// ======================================================
+// FINITIONS — List unique finitions used in active fabrications
+// Returns sorted list from the production sheet "Finitions" section
+// ======================================================
+app.MapGet("/api/fabrication/finitions", (HttpContext ctx) =>
+{
+    try
+    {
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+        var filter = Builders<BsonDocument>.Filter.And(
+            Builders<BsonDocument>.Filter.Or(
+                Builders<BsonDocument>.Filter.Exists("rainage"),
+                Builders<BsonDocument>.Filter.Exists("ennoblissement"),
+                Builders<BsonDocument>.Filter.Exists("faconnageBinding"),
+                Builders<BsonDocument>.Filter.Exists("plis"),
+                Builders<BsonDocument>.Filter.Exists("sortie"),
+                Builders<BsonDocument>.Filter.Exists("faconnage"),
+                Builders<BsonDocument>.Filter.Exists("finitionsChecked")
+            ),
+            Builders<BsonDocument>.Filter.Ne("excludeFromPlanning", true)
+        );
+        var docs = fabCol.Find(filter).ToList();
+
+        var finitionsSet = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var doc in docs)
+        {
+            foreach (var name in GetFabricationFinitionNames(doc))
+                finitionsSet.Add(name);
+        }
+
+        return Results.Json(new { ok = true, finitions = finitionsSet.ToList() });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message, finitions = new List<string>() });
     }
 });
 
@@ -2099,6 +2130,55 @@ app.MapPut("/api/fabrication/key-date", async (HttpContext ctx) =>
 
     // Helper: build a MongoDB filter to match a fabrication record by fileName or fullPath.
     // Handles both new records (fileName stored lowercase) and legacy records (only fullPath stored).
+    static List<string> GetFabricationFinitionNames(BsonDocument doc)
+    {
+        var names = new List<string>();
+
+        AddBsonStringArray(doc, "ennoblissement", names);
+        if (doc.Contains("rainage") && doc["rainage"] != BsonNull.Value
+            && doc["rainage"].BsonType == BsonType.Boolean && doc["rainage"].AsBoolean)
+            names.Add("Rainage");
+        AddBsonString(doc, "faconnageBinding", names, skipValues: new[] { "Aucune" });
+        AddBsonString(doc, "plis", names);
+        AddBsonString(doc, "sortie", names);
+        AddBsonStringArray(doc, "faconnage", names);
+        AddBsonStringArray(doc, "finitionsChecked", names);
+
+        return names
+            .Select(x => x.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    static void AddBsonString(BsonDocument doc, string field, List<string> names, string[]? skipValues = null)
+    {
+        if (!doc.Contains(field) || doc[field] == BsonNull.Value || !doc[field].IsString)
+            return;
+
+        var value = doc[field].AsString?.Trim();
+        if (string.IsNullOrWhiteSpace(value))
+            return;
+
+        if (skipValues != null && skipValues.Any(x => string.Equals(x, value, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        names.Add(value);
+    }
+
+    static void AddBsonStringArray(BsonDocument doc, string field, List<string> names)
+    {
+        if (!doc.Contains(field) || doc[field] == BsonNull.Value || !doc[field].IsBsonArray)
+            return;
+
+        foreach (var item in doc[field].AsBsonArray)
+        {
+            if (item.IsString && !string.IsNullOrWhiteSpace(item.AsString))
+                names.Add(item.AsString.Trim());
+        }
+    }
+
     static FilterDefinition<BsonDocument> BuildFileNameFilter(string fileName)
     {
         var escaped = System.Text.RegularExpressions.Regex.Escape(fileName);
