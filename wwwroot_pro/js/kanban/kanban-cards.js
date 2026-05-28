@@ -1,8 +1,8 @@
 // kanban/kanban-cards.js — Kanban card rendering
 import { currentUser, authToken, deliveriesByPath, assignmentsByPath, fnKey, normalizePath, daysDiffFromToday, showNotification } from '../core.js';
 import { openBatChoiceModal } from '../bat.js';
-import { state, refreshKanban } from './kanban-core.js?v=33';
-import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js';
+import { state, refreshKanban } from './kanban-core.js?v=34';
+import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js?v=34';
 
 // Opens the quote send modal from Kanban context (prefill from fabrication data)
 async function openKanbanQuoteModal(fullPath, fab) {
@@ -489,6 +489,13 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         if (isActionVisible(folderName, "ouvrirFichier")) actions.appendChild(btnOpen);
         if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
         if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
+
+        // BAT button — available if admin enables it for this tile via settings
+        const btnBATDebut = document.createElement("button");
+        btnBATDebut.className = "btn btn-sm btn-primary";
+        btnBATDebut.innerHTML = "→ BAT";
+        btnBATDebut.onclick = () => { openBatChoiceModal(full, async () => { await refreshKanban(); }); };
+        if (isActionVisible(folderName, "bat")) actions.appendChild(btnBATDebut);
 
         // Bouton Preflight conditionnel — visible uniquement si les tuiles Preflight sont masquées
         if (state.preflightColumnsHidden) {
@@ -1113,6 +1120,14 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         if (isActionVisible(folderName, "ouvrirFichier")) actions.appendChild(btnOpen);
         if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
         if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
+
+        // BAT button — shown for any column where admin has enabled it
+        const btnBATElse = document.createElement("button");
+        btnBATElse.className = "btn btn-sm btn-primary";
+        btnBATElse.innerHTML = "→ BAT";
+        btnBATElse.onclick = () => { openBatChoiceModal(full, async () => { await refreshKanban(); }); };
+        if (isActionVisible(folderName, "bat")) actions.appendChild(btnBATElse);
+
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
           if (isActionVisible(folderName, "mailDebutProduction")) actions.appendChild(btnMailDebut);
           if (isActionVisible(folderName, "mailFinProduction")) actions.appendChild(btnMailFin);
