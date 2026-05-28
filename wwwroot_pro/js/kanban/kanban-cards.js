@@ -497,8 +497,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         btnBATDebut.onclick = () => { openBatChoiceModal(full, async () => { await refreshKanban(); }); };
         if (isActionVisible(folderName, "bat")) actions.appendChild(btnBATDebut);
 
-        // Bouton Preflight conditionnel — visible uniquement si les tuiles Preflight sont masquées
-        if (state.preflightColumnsHidden) {
+        // Bouton Preflight direct — piloté par les actions visibles de la tuile.
           const btnPreflightDirect = document.createElement("button");
           btnPreflightDirect.className = "btn btn-sm btn-primary";
           btnPreflightDirect.textContent = "▶ Preflight ▾";
@@ -576,7 +575,6 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             }, 10);
           };
           if (isActionVisible(folderName, "preflight")) actions.appendChild(btnPreflightDirect);
-        }
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
           if (isActionVisible(folderName, "mailDebutProduction")) actions.appendChild(btnMailDebut);
