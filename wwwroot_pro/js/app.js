@@ -11,11 +11,11 @@ import {
   initLogin, logout
 } from './core.js';
 
-import { buildKanban, refreshKanban, openAssignDropdown, startBatDecisionPolling, stopBatDecisionPolling } from './kanban.js?v=33';
-import { openFabrication, initFabrication, openQuoteSendModal } from './fabrication.js?v=33';
+import { buildKanban, refreshKanban, openAssignDropdown, startBatDecisionPolling, stopBatDecisionPolling } from './kanban.js?v=34';
+import { openFabrication, initFabrication, openQuoteSendModal } from './fabrication.js?v=34';
 import { initCalendar, ensureCalendar, calendar, submissionCalendar, initSubmissionCalendar, colorForEvent, openPlanificationCalendar, refreshOperatorView } from './calendar.js';
 import { initDossiersView, loadDossiersList, openDossierDetail } from './dossiers.js';
-import { initSettingsView } from './settings.js?v=33';
+import { initSettingsView } from './settings.js?v=34';
 import { pollNotifications, initNotificationBell } from './notifications.js';
 import { initGlobalProductionView, refreshProductionViewKanban, buildProductionView } from './production-view.js';
 import { STAGE_PROGRESS, STAGE_DISPLAY_LABELS } from './constants.js';
