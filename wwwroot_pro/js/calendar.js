@@ -406,17 +406,17 @@ export async function initCalendar() {
           : [];
         const operatorFilter = document.getElementById("planning-operator-filter")?.value || "";
 
-        // Get paper filter — pill buttons (empty selection = all papers)
-        const paperPillsEl = document.getElementById("planning-paper-pills");
-        const paperFilters = paperPillsEl
-          ? Array.from(paperPillsEl.querySelectorAll('.planning-engine-pill[data-selected="true"]')).map(p => p.dataset.value).filter(Boolean)
+        // Get paper filters — cumulative dropdowns (empty selection = all papers)
+        const paperSelectsEl = document.getElementById("planning-paper-selects");
+        const paperFilters = paperSelectsEl
+          ? Array.from(paperSelectsEl.querySelectorAll('select')).map(s => s.value).filter(Boolean)
           : [];
 
-        // Get finitions filters — pill buttons (empty selection = all types)
+        // Get finitions filters — cumulative dropdowns (empty selection = all types)
         const finOpFilter = document.getElementById("planning-finitions-operator-filter")?.value || "";
-        const finPillsEl = document.getElementById("planning-finitions-pills");
-        const finTypeFilters = finPillsEl
-          ? Array.from(finPillsEl.querySelectorAll('.planning-engine-pill[data-selected="true"]')).map(p => p.dataset.value).filter(Boolean)
+        const finSelectsEl = document.getElementById("planning-finitions-selects");
+        const finTypeFilters = finSelectsEl
+          ? Array.from(finSelectsEl.querySelectorAll('select')).map(s => s.value).filter(Boolean)
           : [];
 
         // Build events from fabrication key dates based on view mode
@@ -431,14 +431,17 @@ export async function initCalendar() {
               if (paperFilters.length > 0) {
                 const eventPapers = [fe.media1, fe.media2, fe.media3, fe.media4, fe.mediaCouverture]
                   .filter(p => p && p.trim());
-                if (!eventPapers.some(p => paperFilters.includes(p))) return false;
+                if (!paperFilters.every(selected => eventPapers.includes(selected))) return false;
               }
               return true;
             }
             if (_planningViewMode === 'finitions') {
               if (fe.type !== 'finitions') return false;
               if (finOpFilter && fe.operateur !== finOpFilter) return false;
-              if (finTypeFilters.length > 0 && !(fe.finitionTypes || []).some(t => finTypeFilters.includes(t))) return false;
+              if (finTypeFilters.length > 0) {
+                const eventFinitions = fe.finitionTypes || [];
+                if (!finTypeFilters.every(selected => eventFinitions.includes(selected))) return false;
+              }
               return true;
             }
             if (_planningViewMode === 'livraison') return fe.type === 'reception';
@@ -514,7 +517,7 @@ export async function initCalendar() {
             .filter(wm => {
               if (machineFilters.length > 0 && !machineFilters.includes(wm.machine)) return false;
               if (operatorFilter && wm.operateur !== operatorFilter) return false;
-              if (paperFilters.length > 0 && !wm.papers.some(p => paperFilters.includes(p))) return false;
+              if (paperFilters.length > 0 && !paperFilters.every(selected => wm.papers.includes(selected))) return false;
               return true;
             })
             .map(wm => wm.x);
@@ -764,7 +767,7 @@ async function addMachineFilter(calendarEl) {
     </div>
     <div style="display:flex;align-items:flex-start;gap:6px;flex-direction:column;">
       <label style="font-size:13px;font-weight:500;">Papier(s) :</label>
-      <div id="planning-paper-pills" style="display:flex;flex-wrap:wrap;gap:6px;max-width:600px;">
+      <div id="planning-paper-selects" style="display:flex;flex-wrap:wrap;gap:6px;max-width:600px;">
         <span style="font-size:12px;color:#9ca3af;font-style:italic;">Chargement...</span>
       </div>
     </div>`;
@@ -783,7 +786,7 @@ async function addMachineFilter(calendarEl) {
     </div>
     <div style="display:flex;align-items:flex-start;gap:6px;flex-direction:column;">
       <label style="font-size:13px;font-weight:500;">Type de finition :</label>
-      <div id="planning-finitions-pills" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+      <div id="planning-finitions-selects" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
     </div>`;
   calendarEl.parentNode?.insertBefore(finWrap, calendarEl);
 
@@ -814,12 +817,66 @@ async function addMachineFilter(calendarEl) {
     });
   }
 
+  /** Build cumulative dropdown filters. Selecting one value adds another dropdown. */
+  function buildCumulativeSelects(containerId, values, allLabel, addLabel, onChange) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const available = [...new Set((values || []).filter(Boolean))];
+    let selectedValues = [];
+
+    function render() {
+      container.innerHTML = "";
+      if (available.length === 0) {
+        container.innerHTML = '<span style="font-size:12px;color:#9ca3af;">Aucun élément</span>';
+        return;
+      }
+
+      const selectCount = Math.min(
+        available.length,
+        Math.max(1, selectedValues.length + (selectedValues.length < available.length ? 1 : 0))
+      );
+
+      for (let i = 0; i < selectCount; i++) {
+        const select = document.createElement("select");
+        select.className = "settings-input";
+        select.style.cssText = "font-size:13px;padding:4px 8px;min-width:180px;";
+
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = selectedValues.length === 0 && i === 0 ? allLabel : addLabel;
+        select.appendChild(placeholder);
+
+        available.forEach(val => {
+          const option = document.createElement("option");
+          option.value = val;
+          option.textContent = val;
+          if (selectedValues.includes(val) && selectedValues[i] !== val) option.disabled = true;
+          select.appendChild(option);
+        });
+
+        select.value = selectedValues[i] || "";
+        select.onchange = () => {
+          selectedValues = Array.from(container.querySelectorAll("select"))
+            .map(s => s.value)
+            .filter(Boolean)
+            .filter((value, index, arr) => arr.indexOf(value) === index);
+          render();
+          onChange();
+        };
+        container.appendChild(select);
+      }
+    }
+
+    render();
+  }
+
   try {
-    const [engines, usersResp, faconnageOpts, papersResp] = await Promise.all([
+    const [engines, usersResp, papersResp, finitionsResp] = await Promise.all([
       fetch("/api/config/print-engines").then(r => r.json()).catch(() => []),
       fetch("/api/auth/users", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, users: [] })),
-      fetch("/api/settings/faconnage-options", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => []),
-      fetch("/api/fabrication/papers", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, papers: [] }))
+      fetch("/api/fabrication/papers", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, papers: [] })),
+      fetch("/api/fabrication/finitions", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, finitions: [] }))
     ]);
 
     // Machine pills
@@ -836,9 +893,9 @@ async function addMachineFilter(calendarEl) {
     }).join('');
     opSel.onchange = () => calendar?.refetchEvents();
 
-    // Paper pills (loaded from active fabrications)
+    // Paper dropdowns (loaded from active fabrications)
     const paperNames = (papersResp.ok && Array.isArray(papersResp.papers)) ? papersResp.papers : [];
-    buildPills("planning-paper-pills", paperNames, () => calendar?.refetchEvents());
+    buildCumulativeSelects("planning-paper-selects", paperNames, "Tous papiers", "Ajouter un papier", () => calendar?.refetchEvents());
 
     // Finitions operator filter
     const finOpSel = finWrap.querySelector("#planning-finitions-operator-filter");
@@ -848,10 +905,9 @@ async function addMachineFilter(calendarEl) {
     }).join('');
     finOpSel.onchange = () => calendar?.refetchEvents();
 
-    // Finitions type pills
-    const finTypes = ['Embellissement','Rainage','Pliage','Façonnage','Coupe','Emballage','Départ','Livraison'];
-    if (Array.isArray(faconnageOpts)) faconnageOpts.forEach(o => { if (!finTypes.includes(o)) finTypes.push(o); });
-    buildPills("planning-finitions-pills", finTypes, () => calendar?.refetchEvents());
+    // Finitions type dropdowns loaded from active fabrication sheets
+    const finTypes = (finitionsResp.ok && Array.isArray(finitionsResp.finitions)) ? finitionsResp.finitions : [];
+    buildCumulativeSelects("planning-finitions-selects", finTypes, "Toutes finitions", "Ajouter une finition", () => calendar?.refetchEvents());
   } catch(e) { /* ignore */ }
 }
 
