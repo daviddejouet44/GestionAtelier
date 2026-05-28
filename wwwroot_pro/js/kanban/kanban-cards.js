@@ -1152,39 +1152,36 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         actions.appendChild(btnDevis);
       }
 
-      // 🔍 Lien BAT externe — for BAT folder, when external BAT links are enabled by admin
+      // 🔗 Lien BAT externe — for BAT folder, when external BAT links are enabled by admin toggle
       if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)
-          && folderName === "BAT" && isActionVisible(folderName, "batLienExterne")) {
-        // Check if external bat links are enabled (cached on state)
-        if (state.externalBatLinksEnabled) {
-          const btnBatLink = document.createElement("button");
-          btnBatLink.className = "btn btn-sm";
-          btnBatLink.textContent = "🔗 Lien BAT";
-          btnBatLink.title = "Envoyer un lien de validation BAT par email (client sans compte portail)";
-          btnBatLink.onclick = async (e) => {
-            e.stopPropagation();
-            // Fetch fiche to pre-fill
-            let fab = {};
-            try { fab = await fetch('/api/fabrication?fileName=' + encodeURIComponent(jobFileName), { headers: { 'Authorization': 'Bearer ' + authToken } }).then(r => r.json()).catch(() => ({})); } catch(ex) { /* non-blocking */ }
-            const clientEmail = prompt('Email du client pour le lien BAT :', fab?.donneurOrdreEmail || '');
-            if (!clientEmail || !clientEmail.trim()) return;
-            const clientName = fab?.client || fab?.donneurOrdreNom || '';
-            try {
-              const r = await fetch('/api/pro/bat/external-link', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-                body: JSON.stringify({ fileName: jobFileName, fullPath: full, clientEmail: clientEmail.trim(), clientName, numeroDossier: fab?.numeroDossier || '' })
-              }).then(res => res.json()).catch(() => ({ ok: false, error: 'Erreur réseau' }));
-              if (!r.ok) { showNotification('❌ ' + (r.error || 'Erreur'), 'error'); return; }
-              // Open mailto: with the BAT link
-              const subject = encodeURIComponent(`Validation BAT — ${fab?.numeroDossier || jobFileName}`);
-              const body = encodeURIComponent(`Bonjour,\n\nVeuillez consulter et valider votre BAT en cliquant sur le lien ci-dessous :\n\n${r.batUrl}\n\nCordialement`);
-              window.open(`mailto:${encodeURIComponent(r.clientEmail)}?subject=${subject}&body=${body}`, '_blank');
-              showNotification('✅ Messagerie ouverte avec le lien BAT', 'success');
-            } catch(ex) { showNotification('❌ ' + ex.message, 'error'); }
-          };
-          actions.appendChild(btnBatLink);
-        }
+          && folderName === "BAT" && state.externalBatLinksEnabled) {
+        const btnBatLink = document.createElement("button");
+        btnBatLink.className = "btn btn-sm";
+        btnBatLink.textContent = "🔗 Lien BAT";
+        btnBatLink.title = "Envoyer un lien de validation BAT par email (client sans compte portail)";
+        btnBatLink.onclick = async (e) => {
+          e.stopPropagation();
+          // Fetch fiche to pre-fill email/name/dossier
+          let fab = {};
+          try { fab = await fetch('/api/fabrication?fileName=' + encodeURIComponent(jobFileName), { headers: { 'Authorization': 'Bearer ' + authToken } }).then(r => r.json()).catch(() => ({})); } catch(ex) { /* non-blocking */ }
+          const clientEmail = prompt('Email du client pour le lien BAT :', fab?.donneurOrdreEmail || '');
+          if (!clientEmail || !clientEmail.trim()) return;
+          const clientName = fab?.client || fab?.donneurOrdreNom || '';
+          try {
+            const r = await fetch('/api/pro/bat/external-link', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+              body: JSON.stringify({ fileName: job.name || jobFileName, fullPath: full, clientEmail: clientEmail.trim(), clientName, numeroDossier: fab?.numeroDossier || '' })
+            }).then(res => res.json()).catch(() => ({ ok: false, error: 'Erreur réseau' }));
+            if (!r.ok) { showNotification('❌ ' + (r.error || 'Erreur'), 'error'); return; }
+            // Open mailto: with the BAT link
+            const subject = encodeURIComponent(`Validation BAT — ${fab?.numeroDossier || (job.name || jobFileName)}`);
+            const body = encodeURIComponent(`Bonjour,\n\nVeuillez consulter et valider votre BAT en cliquant sur le lien ci-dessous :\n\n${r.batUrl}\n\nCordialement`);
+            window.open(`mailto:${encodeURIComponent(r.clientEmail)}?subject=${subject}&body=${body}`, '_blank');
+            showNotification('✅ Messagerie ouverte avec le lien BAT', 'success');
+          } catch(ex) { showNotification('❌ ' + ex.message, 'error'); }
+        };
+        actions.appendChild(btnBatLink);
       }
 
       infoStack.appendChild(actions);

@@ -10,6 +10,9 @@ namespace GestionAtelier.Endpoints.Portal;
 
 public static class PortalBatEndpoints
 {
+    private static string NormalizePath(string? path) =>
+        string.IsNullOrEmpty(path) ? "" : path.Replace('\\', System.IO.Path.DirectorySeparatorChar);
+
     private static void SyncBatStatusValidated(string? batFileName, DateTime now)
     {
         if (string.IsNullOrEmpty(batFileName)) return;
@@ -32,6 +35,27 @@ public static class PortalBatEndpoints
         catch (Exception ex)
         {
             Console.WriteLine($"[WARN] BAT status sync failed: {ex.Message}");
+        }
+    }
+
+    private static void SyncBatStatusByPath(string? fullPath, string statusValue, DateTime now)
+    {
+        if (string.IsNullOrEmpty(fullPath)) return;
+        try
+        {
+            var batStatusCol = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
+            var update = statusValue == "validated"
+                ? Builders<BsonDocument>.Update.Set("status", "validated").Set("validatedAt", now)
+                : Builders<BsonDocument>.Update.Set("status", "refused").Set("rejectedAt", now);
+            batStatusCol.UpdateOne(
+                Builders<BsonDocument>.Filter.Eq("fullPath", fullPath),
+                update,
+                new UpdateOptions { IsUpsert = true });
+            Console.WriteLine($"[BAT] Synced batStatus → {statusValue} for path: {fullPath}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[WARN] BAT status sync by path failed: {ex.Message}");
         }
     }
 
@@ -631,19 +655,39 @@ public static class PortalBatEndpoints
                 var expiresAt = DateTime.UtcNow.AddDays(30);
 
                 // Determine BAT file path for viewing
+                // Normalize path separators coming from the JS client (which uses backslashes)
+                var osFullPath = NormalizePath(fullPath);
                 var hotRoot = BackendUtils.HotfoldersRoot();
                 var batDir = System.IO.Path.Combine(hotRoot, "BAT");
-                // Try to find the file in BAT folder
                 string? batFilePath = null;
-                if (!string.IsNullOrWhiteSpace(fullPath) && System.IO.File.Exists(fullPath))
-                    batFilePath = fullPath;
-                else
+                if (!string.IsNullOrWhiteSpace(osFullPath) && System.IO.File.Exists(osFullPath))
+                    batFilePath = osFullPath;
+                else if (System.IO.Directory.Exists(batDir))
                 {
-                    var candidates = new[] { fileName, "BAT_" + fileName };
-                    foreach (var c in candidates)
+                    // Case-insensitive file search in the BAT folder
+                    var justName = System.IO.Path.GetFileName(
+                        !string.IsNullOrWhiteSpace(osFullPath) ? osFullPath : fileName);
+                    if (!string.IsNullOrWhiteSpace(justName))
                     {
-                        var p = System.IO.Path.Combine(batDir, c);
-                        if (System.IO.File.Exists(p)) { batFilePath = p; break; }
+                        var found = System.IO.Directory.GetFiles(batDir)
+                            .FirstOrDefault(f => string.Equals(
+                                System.IO.Path.GetFileName(f), justName,
+                                StringComparison.OrdinalIgnoreCase));
+                        if (found != null)
+                            batFilePath = found;
+                    }
+                    // If still not found and name already has BAT_ prefix, try without; otherwise try with
+                    if (batFilePath == null && !string.IsNullOrWhiteSpace(justName))
+                    {
+                        var altName = justName.StartsWith("BAT_", StringComparison.OrdinalIgnoreCase)
+                            ? justName.Substring(4)
+                            : "BAT_" + justName;
+                        var found = System.IO.Directory.GetFiles(batDir)
+                            .FirstOrDefault(f => string.Equals(
+                                System.IO.Path.GetFileName(f), altName,
+                                StringComparison.OrdinalIgnoreCase));
+                        if (found != null)
+                            batFilePath = found;
                     }
                 }
 
@@ -700,13 +744,14 @@ public static class PortalBatEndpoints
             var clientDecision = (doc.Contains("clientDecision") && doc["clientDecision"] != BsonNull.Value)
                 ? doc["clientDecision"].AsString : null;
 
+            var storedPath = NormalizePath(doc.Contains("fullPath") ? doc["fullPath"].AsString : "");
             return Results.Json(new
             {
                 ok = true,
                 fileName = doc["fileName"].AsString,
                 clientName = doc.Contains("clientName") ? doc["clientName"].AsString : "",
                 numeroDossier = doc.Contains("numeroDossier") ? doc["numeroDossier"].AsString : "",
-                hasFile = !string.IsNullOrWhiteSpace(doc["fullPath"].AsString) && System.IO.File.Exists(doc["fullPath"].AsString),
+                hasFile = !string.IsNullOrWhiteSpace(storedPath) && System.IO.File.Exists(storedPath),
                 clientDecision,
                 expiresAt
             });
@@ -724,12 +769,13 @@ public static class PortalBatEndpoints
             if (doc == null || doc["status"].AsString == "revoked")
                 return Results.Json(new { ok = false, error = "Lien invalide" });
 
-            var filePath = doc["fullPath"].AsString;
+            var filePath = NormalizePath(doc["fullPath"].AsString);
             if (string.IsNullOrWhiteSpace(filePath) || !System.IO.File.Exists(filePath))
                 return Results.NotFound();
 
             var fn = System.IO.Path.GetFileName(filePath);
-            return Results.File(System.IO.File.OpenRead(filePath), "application/pdf", fn);
+            ctx.Response.Headers["Content-Disposition"] = "inline; filename=\"BAT.pdf\"";
+            return Results.File(System.IO.File.OpenRead(filePath), "application/pdf");
         });
 
         // ── PUBLIC: POST /api/portal/bat-external/decide?token= ─────────────
@@ -745,6 +791,18 @@ public static class PortalBatEndpoints
                 var doc = col.Find(Builders<BsonDocument>.Filter.Eq("token", token)).FirstOrDefault();
                 if (doc == null) return Results.Json(new { ok = false, error = "Lien invalide ou introuvable" });
                 if (doc["status"].AsString == "revoked") return Results.Json(new { ok = false, error = "Lien révoqué" });
+
+                // Prevent double-submission: check if decision was already recorded
+                var existingDecision = (doc.Contains("clientDecision") && doc["clientDecision"] != BsonNull.Value)
+                    ? doc["clientDecision"].AsString : null;
+                if (!string.IsNullOrEmpty(existingDecision))
+                    return Results.Json(new { ok = false, error = "Votre décision a déjà été enregistrée." });
+
+                // Check expiry
+                var expiresAt = doc.Contains("expiresAt") && doc["expiresAt"] != BsonNull.Value
+                    ? (DateTime?)doc["expiresAt"].ToUniversalTime() : null;
+                if (expiresAt.HasValue && expiresAt.Value < DateTime.UtcNow)
+                    return Results.Json(new { ok = false, error = "Ce lien a expiré." });
 
                 var body = await ctx.Request.ReadFromJsonAsync<System.Text.Json.JsonDocument>();
                 var decision = body?.RootElement.TryGetProperty("decision", out var decEl) == true ? decEl.GetString() ?? "" : "";
@@ -763,45 +821,73 @@ public static class PortalBatEndpoints
                     .Set("status", decision == "accepted" ? "validated" : "refused");
                 col.UpdateOne(filter, update);
 
-                // Sync batStatus if accepted
+                // Sync batStatus using the stored file path (normalized for OS)
+                var storedFilePath = NormalizePath(doc.Contains("fullPath") ? doc["fullPath"].AsString : "");
                 if (decision == "accepted")
                 {
-                    SyncBatStatusValidated(doc["fileName"].AsString, now);
+                    // Use stored path directly for exact match; fall back to filename-based sync
+                    if (!string.IsNullOrWhiteSpace(storedFilePath))
+                        SyncBatStatusByPath(storedFilePath, "validated", now);
+                    else
+                        SyncBatStatusValidated(doc["fileName"].AsString, now);
                 }
                 else
                 {
-                    // Mark as refused in batStatus
-                    var hotRoot = BackendUtils.HotfoldersRoot();
-                    var batStatusCol = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
-                    var fn = doc["fileName"].AsString;
-                    var paths = new List<string>
+                    if (!string.IsNullOrWhiteSpace(storedFilePath))
+                        SyncBatStatusByPath(storedFilePath, "refused", now);
+                    else
                     {
-                        System.IO.Path.Combine(hotRoot, "BAT", fn),
-                        System.IO.Path.Combine(hotRoot, "BAT", "BAT_" + fn)
-                    };
-                    foreach (var sp in paths)
-                    {
-                        batStatusCol.UpdateOne(
-                            Builders<BsonDocument>.Filter.Eq("fullPath", sp),
-                            Builders<BsonDocument>.Update.Set("status", "refused").Set("rejectedAt", now),
-                            new UpdateOptions { IsUpsert = true });
+                        // Fallback: reconstruct paths from filename
+                        var hotRoot = BackendUtils.HotfoldersRoot();
+                        var batStatusCol2 = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
+                        var fn = doc["fileName"].AsString;
+                        var paths = new List<string>
+                        {
+                            System.IO.Path.Combine(hotRoot, "BAT", fn),
+                            System.IO.Path.Combine(hotRoot, "BAT", "BAT_" + fn)
+                        };
+                        foreach (var sp in paths)
+                        {
+                            batStatusCol2.UpdateOne(
+                                Builders<BsonDocument>.Filter.Eq("fullPath", sp),
+                                Builders<BsonDocument>.Update.Set("status", "refused").Set("rejectedAt", now),
+                                new UpdateOptions { IsUpsert = true });
+                        }
                     }
                 }
 
-                // Create a staff notification
+                // Create a staff notification per operator/admin so it appears in each user's bell
                 var emoji = decision == "accepted" ? "✅" : "❌";
                 var clientName = doc.Contains("clientName") ? doc["clientName"].AsString : "";
                 var numDossier = doc.Contains("numeroDossier") ? doc["numeroDossier"].AsString : "";
                 var actionLabel = decision == "accepted" ? "a VALIDÉ" : "a REFUSÉ";
+                var notifMessage = $"{emoji} BAT {actionLabel} par {clientName} — dossier {numDossier}";
+                var notifType = decision == "accepted" ? "bat_validated" : "bat_refused";
                 var notifCol = MongoDbHelper.GetCollection<BsonDocument>("notifications");
-                notifCol.InsertOne(new BsonDocument
+                try
                 {
-                    ["type"] = decision == "accepted" ? "bat_validated" : "bat_refused",
-                    ["message"] = $"{emoji} BAT {actionLabel} par {clientName} — dossier {numDossier}",
-                    ["fileName"] = doc["fileName"].AsString,
-                    ["read"] = false,
-                    ["createdAt"] = now
-                });
+                    var usersCol = MongoDbHelper.GetCollection<BsonDocument>("users");
+                    var staffUsers = usersCol.Find(
+                        Builders<BsonDocument>.Filter.In("profile", new[] { 2, 3 })).ToList();
+                    foreach (var staffUser in staffUsers)
+                    {
+                        var recipientLogin = staffUser.Contains("login") ? staffUser["login"].AsString : "";
+                        if (string.IsNullOrEmpty(recipientLogin)) continue;
+                        notifCol.InsertOne(new BsonDocument
+                        {
+                            ["type"] = notifType,
+                            ["recipientLogin"] = recipientLogin,
+                            ["message"] = notifMessage,
+                            ["fileName"] = doc["fileName"].AsString,
+                            ["read"] = false,
+                            ["timestamp"] = now
+                        });
+                    }
+                }
+                catch (Exception exNotif)
+                {
+                    Console.WriteLine($"[WARN] External BAT notification failed: {exNotif.Message}");
+                }
 
                 return Results.Json(new { ok = true, decision });
             }
