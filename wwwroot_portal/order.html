@@ -591,14 +591,11 @@
       const finitions = (Array.isArray(o.finitions) && o.finitions.length) ? o.finitions : (info.finitions || []);
       const hasProductionInfo = format || paper || quantity || encres || notes || (finitions && finitions.length);
       if (!hasProductionInfo) return '';
-      const quantityLabel = typeof quantity === 'number'
-        ? quantity.toLocaleString('fr') + ' ex.'
-        : esc(String(quantity)) + ' ex.';
       return `
         <div class="card">
           <div class="card-header"><span class="card-title">📋 Informations de production</span></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;">
-            ${quantity ? row('Quantité', quantityLabel) : ''}
+            ${quantity ? row('Quantité', (typeof quantity === 'number' ? quantity.toLocaleString('fr') : esc(String(quantity))) + ' ex.') : ''}
             ${format ? row('Format', esc(format)) : ''}
             ${paper ? row('Support', esc(paper)) : ''}
             ${encres ? row('Couleurs', esc(encres)) : ''}
