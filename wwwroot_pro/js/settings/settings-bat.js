@@ -72,6 +72,11 @@ export async function renderSettingsBatConfig(panel) {
         <input type="checkbox" id="bat-validation-link-enabled" ${batValidationLinkCfg.enabled ? 'checked' : ''} />
         <label for="bat-validation-link-enabled" style="font-size:14px;font-weight:500;color:#374151;">Activer l'envoi de lien de validation BAT</label>
       </div>
+      <div class="settings-form-group" style="margin-top:10px;margin-bottom:12px;">
+        <label>URL publique du serveur (ex: https://portail.daviddejouet.com)</label>
+        <input type="text" id="bat-validation-link-base-url" value="${esc(batValidationLinkCfg.publicBaseUrl || '')}" class="settings-input" style="width:100%;max-width:480px;" placeholder="https://portail.daviddejouet.com" />
+        <p style="color:#6b7280;font-size:12px;margin-top:4px;">URL utilisée pour générer le lien envoyé au client. Si vide, utilise l'adresse locale du serveur (déconseillé si tunnel Cloudflare).</p>
+      </div>
       <div class="settings-form-group" style="margin-bottom:12px;">
         <label>Durée de validité du lien (heures)</label>
         <input type="number" id="bat-validation-link-expiry" min="1" class="settings-input" style="width:160px;" value="${batValidationLinkCfg.tokenExpiryHours || 72}" />
@@ -166,12 +171,13 @@ export async function renderSettingsBatConfig(panel) {
   panel.querySelector("#bat-validation-link-save").onclick = async () => {
     const enabled = panel.querySelector("#bat-validation-link-enabled").checked;
     const tokenExpiryHours = Math.max(1, parseInt(panel.querySelector("#bat-validation-link-expiry").value || "72", 10) || 72);
+    const publicBaseUrl = (panel.querySelector("#bat-validation-link-base-url")?.value || "").trim();
     const subjectTemplate = panel.querySelector("#bat-validation-link-subject").value || "";
     const bodyTemplate = panel.querySelector("#bat-validation-link-body").value || "";
     const r = await fetch("/api/settings/bat-validation-link", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + authToken },
-      body: JSON.stringify({ enabled, tokenExpiryHours, subjectTemplate, bodyTemplate })
+      body: JSON.stringify({ enabled, tokenExpiryHours, publicBaseUrl, subjectTemplate, bodyTemplate })
     }).then(r => r.json()).catch(() => ({ ok: false }));
     if (r.ok) {
       const savedEl = panel.querySelector("#bat-validation-link-saved");

@@ -148,6 +148,9 @@ public class BatValidationLinkConfig
     [JsonPropertyName("tokenExpiryHours")]
     public int TokenExpiryHours { get; set; } = 72;
 
+    [JsonPropertyName("publicBaseUrl")]
+    public string PublicBaseUrl { get; set; } = "";
+
     [JsonPropertyName("bodyTemplate")]
     public string BodyTemplate { get; set; } = "Bonjour,\n\nVeuillez consulter votre BAT et nous indiquer votre décision via ce lien :\n\n{{batLink}}\n\nCe lien est valable {{expiryHours}}h.\n\nCordialement";
 
