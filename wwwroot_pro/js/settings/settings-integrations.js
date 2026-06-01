@@ -25,7 +25,7 @@ function safeDomId(key) {
 async function loadFicheFields() {
   try {
     const r = await fetch('/api/settings/form-config', { headers: authH() }).then(r => r.json()).catch(() => ({}));
-    if (r.ok && Array.isArray(r.fields) && r.fields.length > 0) {
+    if (Array.isArray(r.fields) && r.fields.length > 0) {
       return r.fields.map(f => ({ key: f.key || f.id, label: f.label || f.key || f.id }));
     }
   } catch(e) { /* fallback */ }
