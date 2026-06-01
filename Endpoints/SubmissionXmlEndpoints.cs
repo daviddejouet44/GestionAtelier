@@ -150,6 +150,66 @@ public static class SubmissionXmlEndpoints
                     }
                 }
 
+                // --- Local helper: propagate parsed XML fields to client_orders ---
+                void TryPropagateToClientOrders()
+                {
+                    if (fichePrefill.Count == 0) return;
+
+                    // Collect candidate reference values to match against client_orders
+                    var refs = new List<string>();
+                    if (fichePrefill.TryGetValue("referenceCommande", out var r1) && !string.IsNullOrWhiteSpace(r1)) refs.Add(r1);
+                    if (fichePrefill.TryGetValue("devis",             out var r2) && !string.IsNullOrWhiteSpace(r2) && !refs.Contains(r2)) refs.Add(r2);
+                    if (fichePrefill.TryGetValue("numeroDossier",     out var r3) && !string.IsNullOrWhiteSpace(r3) && !refs.Contains(r3)) refs.Add(r3);
+                    if (refs.Count == 0) return;
+
+                    try
+                    {
+                        var clientOrderCol = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
+                        var filterClauses  = new List<FilterDefinition<BsonDocument>>();
+                        foreach (var r in refs)
+                        {
+                            filterClauses.Add(Builders<BsonDocument>.Filter.Eq("devisNumber",  r));
+                            filterClauses.Add(Builders<BsonDocument>.Filter.Eq("orderNumber",  r));
+                        }
+                        var clientOrderFilter = Builders<BsonDocument>.Filter.Or(filterClauses);
+                        if (clientOrderCol.Find(clientOrderFilter).Limit(1).FirstOrDefault() == null) return;
+
+                        fichePrefill.TryGetValue("typeTravail",  out var parsedTitle);
+                        if (string.IsNullOrWhiteSpace(parsedTitle))
+                            fichePrefill.TryGetValue("designation", out parsedTitle);
+                        fichePrefill.TryGetValue("format",       out var parsedFormat);
+                        fichePrefill.TryGetValue("support",      out var parsedPaper);
+                        if (string.IsNullOrWhiteSpace(parsedPaper))
+                            fichePrefill.TryGetValue("papier",   out parsedPaper);
+                        fichePrefill.TryGetValue("couleurs",     out var parsedEncres);
+                        if (string.IsNullOrWhiteSpace(parsedEncres))
+                            fichePrefill.TryGetValue("impression", out parsedEncres);
+                        int parsedQuantity = 0;
+                        if (fichePrefill.TryGetValue("quantite", out var qStr))
+                            int.TryParse(qStr, out parsedQuantity);
+
+                        var now = DateTime.UtcNow;
+                        var productionInfo = new BsonDocument { ["importedAt"] = now, ["importedBy"] = "submission-xml" };
+                        if (!string.IsNullOrWhiteSpace(parsedTitle))  productionInfo["title"]    = parsedTitle;
+                        if (!string.IsNullOrWhiteSpace(parsedFormat)) productionInfo["format"]   = parsedFormat;
+                        if (!string.IsNullOrWhiteSpace(parsedPaper))  productionInfo["paper"]    = parsedPaper;
+                        if (!string.IsNullOrWhiteSpace(parsedEncres)) productionInfo["encres"]   = parsedEncres;
+                        if (parsedQuantity > 0)                        productionInfo["quantity"] = parsedQuantity;
+
+                        var clientOrderUpdate = Builders<BsonDocument>.Update
+                            .Set("productionInfo", productionInfo)
+                            .Set("updatedAt", now);
+                        if (!string.IsNullOrWhiteSpace(parsedTitle))  clientOrderUpdate = clientOrderUpdate.Set("title",    parsedTitle);
+                        if (!string.IsNullOrWhiteSpace(parsedFormat)) clientOrderUpdate = clientOrderUpdate.Set("format",   parsedFormat);
+                        if (!string.IsNullOrWhiteSpace(parsedPaper))  clientOrderUpdate = clientOrderUpdate.Set("paper",    parsedPaper);
+                        if (!string.IsNullOrWhiteSpace(parsedEncres)) clientOrderUpdate = clientOrderUpdate.Set("encres",   parsedEncres);
+                        if (parsedQuantity > 0)                        clientOrderUpdate = clientOrderUpdate.Set("quantity", parsedQuantity);
+
+                        clientOrderCol.UpdateMany(clientOrderFilter, clientOrderUpdate);
+                    }
+                    catch { /* non-critical: fabrication update already succeeded */ }
+                }
+
                 // --- Save PDF files to Soumission folder ---
 
                 if (pdfFiles.Count == 0 && xmlFiles.Count > 0)
@@ -176,6 +236,8 @@ public static class SubmissionXmlEndpoints
                         }
                     }
                     if (!isUpdate) fabCol.InsertOne(fiche);
+
+                    TryPropagateToClientOrders();
 
                     return Results.Json(new
                     {
@@ -250,6 +312,8 @@ public static class SubmissionXmlEndpoints
                     }
                     catch { /* log failure is non-critical */ }
                 }
+
+                TryPropagateToClientOrders();
 
                 return Results.Json(new
                 {
