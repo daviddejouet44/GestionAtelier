@@ -1202,6 +1202,8 @@ export function initQuoteSendModal() {
       const fd = new FormData();
       fd.append('devisNumber', devisNumber);
       fd.append('clientEmail', clientEmail);
+      const inferredClientName = clientEmail.includes('@') ? clientEmail.split('@')[0] : '';
+      fd.append('clientName', inferredClientName || '');
       fd.append('notes',    document.getElementById('qs-notes').value.trim());
       fd.append('mailtoMode', 'true'); // don't send via SMTP — we'll open mailto:
       const filePath = modal.dataset.filePath || fabCurrentPath || '';

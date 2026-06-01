@@ -1154,8 +1154,13 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         actions.appendChild(btnDevis);
       }
 
-      // 📥 Importer XML — visible only for devis channel orders (DEVIS-* filenames)
-      if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3) && isDevisOrder) {
+      // 📥 Importer XML — visible for web/devis channel orders
+      const orderMeta = job?.order || {};
+      const canImportXml = isWebOrder
+        || isDevisOrder
+        || (orderMeta.orderNumber && orderMeta.orderNumber.startsWith('DEVIS-'))
+        || !!orderMeta.quoteLinkId;
+      if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3) && canImportXml) {
         const btnImportXml = document.createElement("button");
         btnImportXml.className = "btn btn-sm";
         btnImportXml.textContent = "📥 Importer XML";
