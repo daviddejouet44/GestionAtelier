@@ -160,8 +160,8 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
 
       const dossierEl = document.createElement("div");
       dossierEl.className = "kanban-card-dossier";
-      // For web orders, pre-fill immediately from filename (fallback before async fab fetch)
-      if (isWebOrder) {
+      // For web/devis orders, pre-fill immediately from filename (fallback before async fab fetch)
+      if (isWebOrder || isDevisOrder) {
         let webNum = _jfnLower;
         if (webNum.startsWith('bat_')) webNum = webNum.substring(4);
         const sepIdx = webNum.indexOf('__');
@@ -181,11 +181,11 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
 
       // Web/Manuel badge
       const orderBadge = document.createElement("span");
-      orderBadge.style.cssText = isWebOrder
+      orderBadge.style.cssText = (isWebOrder || isDevisOrder)
         ? "font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:#dbeafe;color:#1e40af;flex-shrink:0;"
         : "font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;background:#f3f4f6;color:#6b7280;flex-shrink:0;";
-      orderBadge.textContent = isWebOrder ? "🌐 Web" : "⚙️ Manuel";
-      orderBadge.title = isWebOrder ? "Commande portail web" : "Commande manuelle";
+      orderBadge.textContent = (isWebOrder || isDevisOrder) ? "🌐 Web" : "⚙️ Manuel";
+      orderBadge.title = (isWebOrder || isDevisOrder) ? "Commande portail web" : "Commande manuelle";
       topRowMain.appendChild(orderBadge);
 
       topRow.appendChild(topRowMain);
