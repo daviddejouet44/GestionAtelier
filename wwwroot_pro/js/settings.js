@@ -66,6 +66,7 @@ export async function initSettingsView() {
         <button class="settings-tab" data-tab="planning-colors">🎨 Couleurs Planning</button>
         <button class="settings-tab" data-tab="email-templates">📧 Templates email</button>
         <button class="settings-tab" data-tab="integrations">🔌 Intégrations</button>
+        <button class="settings-tab" data-tab="external-links">🔗 Liens externes</button>
         <button class="settings-tab" data-tab="portal">🌐 Portail client</button>
         <button class="settings-tab" data-tab="production-delay-alert">⚠️ Alertes retard</button>
         <button class="settings-tab" data-tab="backup">💾 Sauvegarde</button>
@@ -98,6 +99,7 @@ export async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-planning-colors"></div>
       <div class="settings-panel hidden" id="settings-panel-email-templates"></div>
       <div class="settings-panel hidden" id="settings-panel-integrations"></div>
+      <div class="settings-panel hidden" id="settings-panel-external-links"></div>
       <div class="settings-panel hidden" id="settings-panel-portal"></div>
       <div class="settings-panel hidden" id="settings-panel-production-delay-alert"></div>
       <div class="settings-panel hidden" id="settings-panel-backup"></div>
@@ -154,12 +156,79 @@ export async function loadSettingsPanel(tabName, panelEl) {
     case "planning-colors": await renderSettingsPlanningColors(panelEl); break;
     case "email-templates": await renderSettingsEmailTemplates(panelEl); break;
     case "integrations": await renderSettingsIntegrations(panelEl); break;
+    case "external-links": await renderSettingsExternalLinks(panelEl); break;
     case "portal": await renderSettingsPortal(panelEl); break;
     case "production-delay-alert": await renderSettingsProductionDelayAlert(panelEl); break;
     case "backup": await renderSettingsBackup(panelEl); break;
     case "logs": await renderSettingsLogs(panelEl); break;
   }
   panelEl._loaded = true;
+}
+
+async function renderSettingsExternalLinks(panel) {
+  panel.innerHTML = `
+    <h3>🔗 Liens externes</h3>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">Configurez les URLs des boutons de la barre de menu. Laissez vide pour masquer un bouton.</p>
+    <div class="settings-section-card" style="max-width:820px;">
+      <div class="settings-form-group">
+        <label>Remote Manager</label>
+        <input id="external-link-remote-manager" type="url" class="settings-input" placeholder="https://..." style="width:100%;" />
+      </div>
+      <div class="settings-form-group">
+        <label>Prismalytics</label>
+        <input id="external-link-prismalytics" type="url" class="settings-input" placeholder="https://..." style="width:100%;" />
+      </div>
+      <button id="external-links-save-btn" class="btn btn-primary">💾 Enregistrer</button>
+      <span id="external-links-status" style="margin-left:10px;font-size:13px;color:#6b7280;"></span>
+    </div>
+  `;
+
+  const remoteInput = panel.querySelector("#external-link-remote-manager");
+  const prismalyticsInput = panel.querySelector("#external-link-prismalytics");
+  const saveBtn = panel.querySelector("#external-links-save-btn");
+  const statusEl = panel.querySelector("#external-links-status");
+
+  try {
+    const resp = await fetch("/api/settings/external-links", {
+      headers: { "Authorization": "Bearer " + authToken }
+    }).then(r => r.json());
+    if (resp?.ok) {
+      remoteInput.value = resp.remoteManagerUrl || "";
+      prismalyticsInput.value = resp.primalyticsUrl || "";
+    }
+  } catch (e) { /* ignore */ }
+
+  saveBtn.onclick = async () => {
+    saveBtn.disabled = true;
+    statusEl.style.color = "#6b7280";
+    statusEl.textContent = "⏳ Enregistrement...";
+    try {
+      const r = await fetch("/api/settings/external-links", {
+        method: "PUT",
+        headers: {
+          "Authorization": "Bearer " + authToken,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          remoteManagerUrl: (remoteInput.value || "").trim(),
+          primalyticsUrl: (prismalyticsInput.value || "").trim()
+        })
+      }).then(x => x.json());
+      if (r?.ok) {
+        statusEl.style.color = "#16a34a";
+        statusEl.textContent = "✅ Enregistré";
+        showNotification("✅ Liens externes enregistrés", "success");
+      } else {
+        statusEl.style.color = "#dc2626";
+        statusEl.textContent = "❌ " + (r?.error || "Erreur");
+      }
+    } catch (e) {
+      statusEl.style.color = "#dc2626";
+      statusEl.textContent = "❌ Erreur réseau";
+    } finally {
+      saveBtn.disabled = false;
+    }
+  };
 }
 
 async function renderSettingsBackup(panel) {

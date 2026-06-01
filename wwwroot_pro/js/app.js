@@ -1175,6 +1175,36 @@ function setupProfileUI() {
   setupKanbanActions();
 }
 
+async function setupExternalLinksButtons() {
+  const btnRemoteManager = document.getElementById("btnRemoteManager");
+  const btnPrismalytics = document.getElementById("btnPrismalytics");
+  if (!btnRemoteManager || !btnPrismalytics) return;
+
+  btnRemoteManager.style.display = "none";
+  btnPrismalytics.style.display = "none";
+  btnRemoteManager.onclick = null;
+  btnPrismalytics.onclick = null;
+
+  try {
+    const r = await fetch("/api/settings/external-links", {
+      headers: { "Authorization": "Bearer " + authToken }
+    }).then(x => x.json());
+    if (!r?.ok) return;
+
+    const remoteManagerUrl = (r.remoteManagerUrl || "").trim();
+    const prismalyticsUrl = (r.primalyticsUrl || "").trim();
+
+    if (remoteManagerUrl) {
+      btnRemoteManager.style.display = "inline-block";
+      btnRemoteManager.onclick = () => window.open(remoteManagerUrl, "_blank", "noopener,noreferrer");
+    }
+    if (prismalyticsUrl) {
+      btnPrismalytics.style.display = "inline-block";
+      btnPrismalytics.onclick = () => window.open(prismalyticsUrl, "_blank", "noopener,noreferrer");
+    }
+  } catch (e) { /* ignore */ }
+}
+
 function setupKanbanActions() {
   const btnKanban = document.getElementById("btnViewKanban");
   const btnCalendar = document.getElementById("btnViewCalendar");
@@ -2192,6 +2222,7 @@ async function initApp() {
   applyHeaderBanner();
 
   setupProfileUI();
+  await setupExternalLinksButtons();
   initNotificationBell();
   initHelpPanel();
   initFabrication();

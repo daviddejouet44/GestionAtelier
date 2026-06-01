@@ -763,7 +763,7 @@ export function initFabrication() {
           const fn = fnKey(fabCurrentPath);
           try {
             const resp = await fetch(
-              `/api/integrations/export?format=${fmt}`,
+              `/api/fabrication/export?fileName=${encodeURIComponent(fn)}&format=${fmt}`,
               { headers: { 'Authorization': `Bearer ${authToken}` } }
             );
             if (!resp.ok) { showNotification('❌ Erreur export', 'error'); return; }

@@ -53,6 +53,15 @@ public class FabricationImportsSettings
     public string TypeDocumentPath { get; set; } = "";
 }
 
+public class ExternalLinksSettings
+{
+    [JsonPropertyName("remoteManagerUrl")]
+    public string RemoteManagerUrl { get; set; } = "";
+
+    [JsonPropertyName("primalyticsUrl")]
+    public string PrismalyticsUrl { get; set; } = "";
+}
+
 public class PreflightSettings
 {
     [JsonPropertyName("dropletStandard")]

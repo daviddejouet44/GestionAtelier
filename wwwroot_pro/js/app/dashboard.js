@@ -14,10 +14,12 @@ export async function initDashboardView() {
   destroyCharts();
   const dashEl = document.getElementById("dashboard");
   dashEl.innerHTML = `
-    <div class="settings-container" style="max-width:1200px;">
+    <div class="settings-container" style="max-width:100%;">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px;">
         <h2 style="margin:0;">📊 Tableau de bord production</h2>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input id="dashboard-export-from" type="date" class="settings-input" style="font-size:13px;min-height:34px;" />
+          <input id="dashboard-export-to" type="date" class="settings-input" style="font-size:13px;min-height:34px;" />
           <button id="dashboard-refresh-btn" class="btn" style="font-size:13px;">🔄 Actualiser</button>
           <button id="dashboard-export-csv-btn" class="btn btn-primary" style="font-size:13px;">📥 Exporter CSV</button>
         </div>
@@ -37,11 +39,17 @@ export async function initDashboardView() {
 
 async function exportCSV() {
   try {
+    const from = document.getElementById("dashboard-export-from")?.value || "";
+    const to = document.getElementById("dashboard-export-to")?.value || "";
+    const query = new URLSearchParams();
+    if (from) query.set("from", from);
+    if (to) query.set("to", to);
+    const apiUrl = "/api/dashboard/stats/export-csv" + (query.toString() ? `?${query}` : "");
+
     const a = document.createElement("a");
-    a.href = "/api/dashboard/stats/export-csv";
-    // Pass auth token as a query param via a hidden fetch + blob trick
-    const resp = await fetch("/api/dashboard/stats/export-csv", {
-      headers: { "Authorization": `Bearer ${authToken}` }
+    a.href = apiUrl;
+    const resp = await fetch(apiUrl, {
+      headers: { "Authorization": "Bearer " + authToken }
     });
     if (!resp.ok) { alert("Erreur lors de l'export"); return; }
     const blob = await resp.blob();
@@ -91,6 +99,12 @@ export async function loadDashboardData() {
   const paperConsumption = Array.isArray(stats.paperConsumption) ? stats.paperConsumption : [];
   const byOperateur = Array.isArray(stats.byOperateur) ? stats.byOperateur : [];
   const recentJobs = Array.isArray(stats.recentJobs) ? stats.recentJobs : [];
+  const byEnnoblissement = Array.isArray(stats.byEnnoblissement) ? stats.byEnnoblissement : [];
+  const byFaconnageBinding = Array.isArray(stats.byFaconnageBinding) ? stats.byFaconnageBinding : [];
+  const byRainage = Array.isArray(stats.byRainage) ? stats.byRainage : [];
+  const byPlis = Array.isArray(stats.byPlis) ? stats.byPlis : [];
+  const bySortie = Array.isArray(stats.bySortie) ? stats.bySortie : [];
+  const jobsWithTemps = Array.isArray(stats.jobsWithTemps) ? stats.jobsWithTemps : [];
 
   const generatedAt = stats.generatedAt
     ? new Date(stats.generatedAt).toLocaleString("fr-FR", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" })
@@ -108,15 +122,39 @@ export async function loadDashboardData() {
     </div>`;
   }
 
+  function formatMinutes(totalMinutes) {
+    const mins = Math.max(0, Number(totalMinutes) || 0);
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${h}h ${m}min`;
+  }
+
   const kpiHtml = `
-    <div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:24px;">
+    <div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:14px;">
       ${kpiCard("📄", s.totalActive ?? 0, "Dossiers actifs", "#2563eb", `${s.jobsWithFiche ?? 0} avec fiche`)}
       ${kpiCard("🖨️", s.totalFeuilles ? s.totalFeuilles.toLocaleString("fr-FR") : "0", "Feuilles en cours", "#7c3aed")}
       ${kpiCard("📦", s.totalQuantite ? s.totalQuantite.toLocaleString("fr-FR") : "0", "Exemplaires en cours", "#0891b2")}
       ${kpiCard("⚠️", s.retardsCount ?? 0, "En retard", s.retardsCount > 0 ? "#dc2626" : "#16a34a")}
-      ${kpiCard("🚨", s.urgencesCount ?? 0, "Urgences (3j)", s.urgencesCount > 0 ? "#ea580c" : "#16a34a")}
-      ${kpiCard("📅", s.plannedThisWeek ?? 0, "Planifiés (7j)", "#16a34a")}
-      ${kpiCard("🗓️", s.plannedThisMonth ?? 0, "Planifiés (30j)", "#0284c7")}
+    </div>
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:24px;">
+      <h4 style="margin:0 0 12px;font-size:14px;font-weight:700;color:#1e3a5f;">📅 Planifiés (7j / 30j)</h4>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;font-size:13px;align-items:center;">
+        <div style="color:#6b7280;font-weight:700;text-transform:uppercase;font-size:11px;">Étape</div>
+        <div style="color:#6b7280;font-weight:700;text-transform:uppercase;font-size:11px;text-align:right;">7 jours</div>
+        <div style="color:#6b7280;font-weight:700;text-transform:uppercase;font-size:11px;text-align:right;">30 jours</div>
+
+        <div style="font-weight:600;color:#374151;">🖨️ Impression</div>
+        <div style="text-align:right;font-weight:800;color:#16a34a;">${s.plannedImpression7 ?? 0}</div>
+        <div style="text-align:right;font-weight:800;color:#0284c7;">${s.plannedImpression30 ?? 0}</div>
+
+        <div style="font-weight:600;color:#374151;">✂️ Finitions</div>
+        <div style="text-align:right;font-weight:800;color:#16a34a;">${s.plannedFinitions7 ?? 0}</div>
+        <div style="text-align:right;font-weight:800;color:#0284c7;">${s.plannedFinitions30 ?? 0}</div>
+
+        <div style="font-weight:600;color:#374151;">🚚 Livraisons</div>
+        <div style="text-align:right;font-weight:800;color:#16a34a;">${s.plannedLivraisons7 ?? 0}</div>
+        <div style="text-align:right;font-weight:800;color:#0284c7;">${s.plannedLivraisons30 ?? 0}</div>
+      </div>
     </div>`;
 
   // ──────────────────────────────────────────────────────
@@ -125,15 +163,19 @@ export async function loadDashboardData() {
   const sectionStyle = "background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.06);";
 
   // Jobs par étape Kanban (progress bars)
-  const folderBars = byFolder.length === 0
+  const kanbanFolders = byFolder
+    .filter(f => (f.folder || "").toLowerCase() !== "quotes_pdf")
+    .map(f => ({ ...f, displayFolder: (f.folder || "") === "Façonnage" ? "Finitions" : (f.folder || "") }));
+
+  const folderBars = kanbanFolders.length === 0
     ? '<p style="color:#9ca3af;font-size:13px;">Aucun dossier actif.</p>'
-    : byFolder
+    : kanbanFolders
         .sort((a, b) => b.count - a.count)
         .map(f => {
-          const pct = Math.round((f.count / Math.max(1, ...byFolder.map(x => x.count))) * 100);
+          const pct = Math.round((f.count / Math.max(1, ...kanbanFolders.map(x => x.count))) * 100);
           return `<div style="margin-bottom:10px;">
             <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
-              <span style="font-weight:500;color:#374151;">${esc(f.folder)}</span>
+              <span style="font-weight:500;color:#374151;">${esc(f.displayFolder)}</span>
               <span style="color:#6b7280;font-weight:700;">${f.count}</span>
             </div>
             <div style="background:#f3f4f6;border-radius:6px;height:10px;overflow:hidden;">
@@ -176,6 +218,33 @@ export async function loadDashboardData() {
     : byOperateur.map(o => `<tr>
         <td style="padding:5px 10px;font-size:13px;color:#374151;">${esc(o.operateur)}</td>
         <td style="padding:5px 10px;font-size:13px;font-weight:700;color:#2563eb;text-align:right;">${o.count}</td>
+      </tr>`).join('');
+
+  const ennoblissementRows = byEnnoblissement.length === 0
+    ? '<tr><td colspan="2" style="text-align:center;color:#9ca3af;padding:12px;">Aucune donnée.</td></tr>'
+    : byEnnoblissement.map(i => `<tr><td style="padding:5px 10px;font-size:13px;color:#374151;">${esc(i.value)}</td><td style="padding:5px 10px;font-size:13px;text-align:right;font-weight:700;color:#1d4ed8;">${i.count}</td></tr>`).join('');
+
+  const bindingRows = byFaconnageBinding.length === 0
+    ? '<tr><td colspan="2" style="text-align:center;color:#9ca3af;padding:12px;">Aucune donnée.</td></tr>'
+    : byFaconnageBinding.map(i => `<tr><td style="padding:5px 10px;font-size:13px;color:#374151;">${esc(i.value)}</td><td style="padding:5px 10px;font-size:13px;text-align:right;font-weight:700;color:#1d4ed8;">${i.count}</td></tr>`).join('');
+
+  const plisRows = byPlis.length === 0
+    ? '<tr><td colspan="2" style="text-align:center;color:#9ca3af;padding:12px;">Aucune donnée.</td></tr>'
+    : byPlis.map(i => `<tr><td style="padding:5px 10px;font-size:13px;color:#374151;">${esc(i.value)}</td><td style="padding:5px 10px;font-size:13px;text-align:right;font-weight:700;color:#1d4ed8;">${i.count}</td></tr>`).join('');
+
+  const sortieRows = bySortie.length === 0
+    ? '<tr><td colspan="2" style="text-align:center;color:#9ca3af;padding:12px;">Aucune donnée.</td></tr>'
+    : bySortie.map(i => `<tr><td style="padding:5px 10px;font-size:13px;color:#374151;">${esc(i.value)}</td><td style="padding:5px 10px;font-size:13px;text-align:right;font-weight:700;color:#1d4ed8;">${i.count}</td></tr>`).join('');
+
+  const rainageValue = byRainage.length > 0 ? (byRainage[0].count || 0) : 0;
+
+  const tempsRows = jobsWithTemps.length === 0
+    ? '<tr><td colspan="4" style="text-align:center;color:#9ca3af;padding:12px;">Aucune donnée.</td></tr>'
+    : jobsWithTemps.map(j => `<tr>
+        <td style="padding:6px 10px;font-size:12px;color:#374151;">${j.numeroDossier ? `#${esc(j.numeroDossier)}` : esc(j.fileName)}</td>
+        <td style="padding:6px 10px;font-size:12px;color:#6b7280;">${esc(j.client || '—')}</td>
+        <td style="padding:6px 10px;font-size:12px;color:#374151;">${esc(j.moteurImpression || '—')}</td>
+        <td style="padding:6px 10px;font-size:12px;color:#1d4ed8;font-weight:700;text-align:right;">${formatMinutes(j.tempsProduitMinutes || 0)}</td>
       </tr>`).join('');
 
   // ──────────────────────────────────────────────────────
@@ -231,6 +300,46 @@ export async function loadDashboardData() {
           <tbody>${recentRows}</tbody>
         </table>
       </div>
+    </div>
+
+
+
+    <!-- Row 4: Reporting finitions -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-bottom:16px;">
+      <div style="${sectionStyle}">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e3a5f;">✂️ Reporting Finitions — Ennoblissements</h4>
+        <table style="width:100%;border-collapse:collapse;"><tbody>${ennoblissementRows}</tbody></table>
+      </div>
+      <div style="${sectionStyle}">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e3a5f;">📚 Façonnages / Reliures</h4>
+        <table style="width:100%;border-collapse:collapse;"><tbody>${bindingRows}</tbody></table>
+      </div>
+      <div style="${sectionStyle}">
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e3a5f;">📊 Rainage / Plis / Sortie</h4>
+        <div style="margin-bottom:10px;font-size:13px;"><strong>Rainage :</strong> <span style="color:#1d4ed8;font-weight:700;">${rainageValue}</span></div>
+        <h5 style="margin:8px 0;font-size:13px;color:#374151;">Plis</h5>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:10px;"><tbody>${plisRows}</tbody></table>
+        <h5 style="margin:8px 0;font-size:13px;color:#374151;">Sortie</h5>
+        <table style="width:100%;border-collapse:collapse;"><tbody>${sortieRows}</tbody></table>
+      </div>
+    </div>
+
+    <!-- Row 5: Temps production -->
+    <div style="${sectionStyle};margin-bottom:16px;">
+      <h4 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e3a5f;">⏱️ Temps de production par job</h4>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px;">
+        ${kpiCard("⏱️", formatMinutes(stats.totalTempsMinutes || 0), "Total temps", "#2563eb")}
+        ${kpiCard("📈", formatMinutes(stats.avgTempsMinutes || 0), "Moyenne", "#7c3aed")}
+      </div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr>
+          <th style="text-align:left;padding:6px 10px;font-size:11px;background:#f9fafb;color:#6b7280;font-weight:600;text-transform:uppercase;">N° dossier</th>
+          <th style="text-align:left;padding:6px 10px;font-size:11px;background:#f9fafb;color:#6b7280;font-weight:600;text-transform:uppercase;">Client</th>
+          <th style="text-align:left;padding:6px 10px;font-size:11px;background:#f9fafb;color:#6b7280;font-weight:600;text-transform:uppercase;">Moteur</th>
+          <th style="text-align:right;padding:6px 10px;font-size:11px;background:#f9fafb;color:#6b7280;font-weight:600;text-transform:uppercase;">Temps</th>
+        </tr></thead>
+        <tbody>${tempsRows}</tbody>
+      </table>
     </div>
 
     ${generatedAt ? `<p style="text-align:right;font-size:11px;color:#d1d5db;margin:4px 0 0;">Généré le ${generatedAt}</p>` : ''}
