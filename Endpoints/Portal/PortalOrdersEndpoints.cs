@@ -240,7 +240,33 @@ public static class PortalOrdersEndpoints
                 sentAt = b.Contains("sentAt") ? b["sentAt"].ToUniversalTime() : DateTime.UtcNow
             }).ToList();
 
-            return Results.Json(new { ok = true, order = OrderToDto(order), bats });
+            // Extract productionInfo from raw BsonDocument (not mapped through ClientOrder model)
+            object? productionInfo = null;
+            if (doc.Contains("productionInfo") && doc["productionInfo"].IsBsonDocument)
+            {
+                var pi = doc["productionInfo"].AsBsonDocument;
+                var finitionsList = new List<string>();
+                if (pi.Contains("finitions") && pi["finitions"].IsBsonArray)
+                    finitionsList = pi["finitions"].AsBsonArray.Select(v => v.AsString).ToList();
+                productionInfo = new
+                {
+                    title             = pi.Contains("title") && !pi["title"].IsBsonNull ? pi["title"].AsString : null,
+                    format            = pi.Contains("format") && !pi["format"].IsBsonNull ? pi["format"].AsString : null,
+                    paper             = pi.Contains("paper") && !pi["paper"].IsBsonNull ? pi["paper"].AsString : null,
+                    encres            = pi.Contains("encres") && !pi["encres"].IsBsonNull ? pi["encres"].AsString : null,
+                    quantity          = pi.Contains("quantity") && !pi["quantity"].IsBsonNull ? (int?)pi["quantity"].AsInt32 : null,
+                    pagination        = pi.Contains("pagination") && !pi["pagination"].IsBsonNull ? (int?)pi["pagination"].AsInt32 : null,
+                    recto             = pi.Contains("recto") && !pi["recto"].IsBsonNull ? pi["recto"].AsString : null,
+                    finitions         = finitionsList,
+                    notes             = pi.Contains("notes") && !pi["notes"].IsBsonNull ? pi["notes"].AsString : null,
+                    deliveryDate      = pi.Contains("deliveryDate") && !pi["deliveryDate"].IsBsonNull ? (DateTime?)pi["deliveryDate"].ToUniversalTime() : null,
+                    productionComment = pi.Contains("productionComment") && !pi["productionComment"].IsBsonNull ? pi["productionComment"].AsString : null,
+                    importedAt        = pi.Contains("importedAt") ? (DateTime?)pi["importedAt"].ToUniversalTime() : null,
+                    importedBy        = pi.Contains("importedBy") && !pi["importedBy"].IsBsonNull ? pi["importedBy"].AsString : null,
+                };
+            }
+
+            return Results.Json(new { ok = true, order = OrderToDto(order), bats, productionInfo });
         });
 
         // POST /api/portal/orders  — create new order (draft)

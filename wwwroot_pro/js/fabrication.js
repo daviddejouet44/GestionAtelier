@@ -1111,18 +1111,9 @@ export function openQuoteSendModal(prefillData = {}) {
 
   // Pre-fill from provided data OR current fabrication fiche
   const g = id => { const el = gEl(id); return el ? el.value : ''; };
-  document.getElementById('qs-client-name').value  = prefillData.client || g('client') || '';
   document.getElementById('qs-client-email').value = prefillData.email || g('donneurOrdreEmail') || '';
-  document.getElementById('qs-title').value         = prefillData.typeTravail || g('typeTravail') || '';
-  document.getElementById('qs-format').value        = prefillData.format || g('formatFini') || '';
-  document.getElementById('qs-encres').value        = prefillData.encres || g('encres') || g('couleurs') || '';
-  const qtyEl = gEl('quantite');
-  document.getElementById('qs-quantity').value     = prefillData.quantite || (qtyEl ? qtyEl.value : '') || '';
-  const paginEl = gEl('pagination');
-  document.getElementById('qs-pagination').value   = prefillData.pagination || (paginEl ? paginEl.value : '') || '';
   document.getElementById('qs-devis-number').value  = prefillData.numeroDossier || g('numeroDossier') || '';
   document.getElementById('qs-notes').value         = prefillData.notes || '';
-  document.getElementById('qs-finitions').value     = prefillData.finitions || '';
   // Store context path (used when submitting to link to the right fabrication)
   modal.dataset.filePath = prefillData.filePath || fabCurrentPath || '';
 
@@ -1201,10 +1192,8 @@ export function initQuoteSendModal() {
 
     const devisNumber = document.getElementById('qs-devis-number').value.trim();
     const clientEmail = document.getElementById('qs-client-email').value.trim();
-    const clientName  = document.getElementById('qs-client-name').value.trim();
     if (!devisNumber) { errDiv.textContent = 'Le numéro de devis est obligatoire.'; errDiv.style.display = ''; return; }
     if (!clientEmail)  { errDiv.textContent = 'L\'adresse email est obligatoire.'; errDiv.style.display = ''; return; }
-    if (!clientName)   { errDiv.textContent = 'Le nom du client est obligatoire.'; errDiv.style.display = ''; return; }
 
     btnSend.disabled = true;
     btnSend.textContent = '⏳ Génération du lien…';
@@ -1213,15 +1202,6 @@ export function initQuoteSendModal() {
       const fd = new FormData();
       fd.append('devisNumber', devisNumber);
       fd.append('clientEmail', clientEmail);
-      fd.append('clientName',  clientName);
-      fd.append('title',    document.getElementById('qs-title').value.trim());
-      fd.append('format',   document.getElementById('qs-format').value.trim());
-      fd.append('paper',    document.getElementById('qs-paper') ? document.getElementById('qs-paper').value.trim() : '');
-      fd.append('encres',   document.getElementById('qs-encres').value.trim());
-      fd.append('quantity', document.getElementById('qs-quantity').value.trim());
-      fd.append('pagination', document.getElementById('qs-pagination').value.trim());
-      fd.append('recto',    document.getElementById('qs-recto').value);
-      fd.append('finitions', document.getElementById('qs-finitions').value.trim());
       fd.append('notes',    document.getElementById('qs-notes').value.trim());
       fd.append('mailtoMode', 'true'); // don't send via SMTP — we'll open mailto:
       const filePath = modal.dataset.filePath || fabCurrentPath || '';
@@ -1246,7 +1226,7 @@ export function initQuoteSendModal() {
       // Build the mailto: link and open local mail application
       const subject = data.subject || `COMMANDE — Devis ${devisNumber}`;
       const bodyLines = [
-        `Bonjour ${clientName},`,
+        `Bonjour,`,
         '',
         `Veuillez trouver ci-dessous le lien pour valider votre devis n° ${devisNumber}.`,
         '',
