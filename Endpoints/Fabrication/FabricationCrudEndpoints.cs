@@ -1082,6 +1082,7 @@ app.MapGet("/api/settings/bat-validation-link", () =>
         {
             enabled = cfg.Enabled,
             tokenExpiryHours = cfg.TokenExpiryHours,
+            publicBaseUrl = cfg.PublicBaseUrl,
             subjectTemplate = cfg.SubjectTemplate,
             bodyTemplate = cfg.BodyTemplate
         }
@@ -1097,6 +1098,7 @@ app.MapPut("/api/settings/bat-validation-link", async (HttpContext ctx) =>
 
         var payload = await ctx.Request.ReadFromJsonAsync<BatValidationLinkConfig>() ?? new BatValidationLinkConfig();
         if (payload.TokenExpiryHours <= 0) payload.TokenExpiryHours = 72;
+        payload.PublicBaseUrl = payload.PublicBaseUrl?.Trim() ?? "";
         payload.SubjectTemplate = string.IsNullOrWhiteSpace(payload.SubjectTemplate) ? "Validation BAT — {{fileName}}" : payload.SubjectTemplate;
         payload.BodyTemplate = string.IsNullOrWhiteSpace(payload.BodyTemplate)
             ? "Bonjour,\n\nVeuillez consulter votre BAT et nous indiquer votre décision via ce lien :\n\n{{batLink}}\n\nCe lien est valable {{expiryHours}}h.\n\nCordialement"
@@ -1149,8 +1151,10 @@ app.MapPost("/api/bat/generate-link", async (HttpContext ctx) =>
             ["motif"] = BsonNull.Value
         });
 
-        var host = ctx.Request.Host.Value;
-        var link = $"https://{host}/bat-review.html?token={Uri.EscapeDataString(token)}";
+        var baseUrl = !string.IsNullOrWhiteSpace(cfg.PublicBaseUrl)
+            ? cfg.PublicBaseUrl.TrimEnd('/')
+            : $"https://{ctx.Request.Host.Value}";
+        var link = $"{baseUrl}/bat-review.html?token={Uri.EscapeDataString(token)}";
         return Results.Json(new { ok = true, token, link });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }

@@ -5,7 +5,7 @@ import { renderSettingsSchedule, getFrenchPublicHolidays } from './settings/sett
 import { renderSettingsPaths } from './settings/settings-paths.js';
 import { renderSettingsPreflight } from './settings/settings-preflight.js';
 import { renderSettingsKanbanColumns } from './settings/settings-kanban.js';
-import { renderSettingsBatConfig, renderSettingsBatCommand, renderSettingsActionButtons } from './settings/settings-bat.js?v=34';
+import { renderSettingsBatConfig, renderSettingsBatCommand, renderSettingsActionButtons } from './settings/settings-bat.js?v=35';
 import { renderSettingsPrintEngines, refreshPrintEnginesPanel, extractEngineName } from './settings/settings-engines.js';
 import { renderSettingsWorkTypes, refreshWorkTypesPanel } from './settings/settings-work-types.js';
 import { renderSettingsPrintRouting, refreshPrintRoutingPanel, renderSettingsHotfolderRouting, refreshHotfolderRoutingPanel } from './settings/settings-routing.js';
