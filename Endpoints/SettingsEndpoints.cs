@@ -37,5 +37,6 @@ public static class SettingsEndpointsExtensions
         app.MapIntegrationsEndpoints();
         app.MapOrderSourcesEndpoints();
         app.MapPortalAdminEndpoints();
+        app.MapExternalLinksEndpoints();
     }
 }

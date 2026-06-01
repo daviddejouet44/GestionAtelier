@@ -180,25 +180,36 @@ app.MapGet("/api/dashboard/stats", (HttpContext ctx) =>
             .ToList<object>();
 
         // ──────────────────────────────────────────────
-        // 3. Planning: retards, urgences, planifié cette semaine / ce mois
+        // 3. Planning + reporting finitions + temps
         // ──────────────────────────────────────────────
         var today = DateTime.UtcNow.Date;
         var endOfWeek = today.AddDays(7);
         var endOfMonth = today.AddDays(30);
 
         int retardsCount = 0;
-        int plannedThisWeek = 0;
-        int plannedThisMonth = 0;
+        int plannedImpression7 = 0;
+        int plannedImpression30 = 0;
+        int plannedFinitions7 = 0;
+        int plannedFinitions30 = 0;
+        int plannedLivraisons7 = 0;
+        int plannedLivraisons30 = 0;
 
-        var allFabsWithDates = fabCol.Find(
-            Builders<BsonDocument>.Filter.And(
-                Builders<BsonDocument>.Filter.Ne("excludeFromPlanning", true),
-                Builders<BsonDocument>.Filter.Exists("dateImpression"),
-                Builders<BsonDocument>.Filter.Ne("dateImpression", BsonNull.Value)
-            )
-        ).ToList();
+        var byEnnoblissementDict = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var byFaconnageBindingDict = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var byPlisDict = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var bySortieDict = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        int byRainageCount = 0;
 
-        foreach (var doc in allFabsWithDates)
+        int totalTempsMinutes = 0;
+        int totalTempsCount = 0;
+
+        DateTime? DateVal(BsonDocument doc, string key)
+        {
+            if (!doc.Contains(key) || doc[key] == BsonNull.Value) return null;
+            try { return doc[key].ToUniversalTime().Date; } catch { return null; }
+        }
+
+        foreach (var doc in activeFabs)
         {
             var fn = doc.Contains("fileName") && doc["fileName"] != BsonNull.Value ? doc["fileName"].AsString : "";
             if (!activeFileNames.Contains(fn)) continue;
@@ -210,18 +221,77 @@ app.MapGet("/api/dashboard/stats", (HttpContext ctx) =>
                 if (string.Equals(statut, "Fin de production", StringComparison.OrdinalIgnoreCase)) continue;
             }
 
-            DateTime dateImp;
-            try { dateImp = doc["dateImpression"].ToUniversalTime().Date; } catch { continue; }
+            var dateImp = DateVal(doc, "dateImpression");
+            var dateFinitions = DateVal(doc, "dateProductionFinitions");
+            var dateLivraison = DateVal(doc, "dateLivraison");
 
-            if (dateImp < today) retardsCount++;
-            if (dateImp >= today && dateImp < endOfWeek) plannedThisWeek++;
-            if (dateImp >= today && dateImp < endOfMonth) plannedThisMonth++;
+            if (dateImp.HasValue)
+            {
+                if (dateImp.Value < today) retardsCount++;
+                if (dateImp.Value >= today && dateImp.Value < endOfWeek) plannedImpression7++;
+                if (dateImp.Value >= today && dateImp.Value < endOfMonth) plannedImpression30++;
+            }
+            if (dateFinitions.HasValue)
+            {
+                if (dateFinitions.Value >= today && dateFinitions.Value < endOfWeek) plannedFinitions7++;
+                if (dateFinitions.Value >= today && dateFinitions.Value < endOfMonth) plannedFinitions30++;
+            }
+            if (dateLivraison.HasValue)
+            {
+                if (dateLivraison.Value >= today && dateLivraison.Value < endOfWeek) plannedLivraisons7++;
+                if (dateLivraison.Value >= today && dateLivraison.Value < endOfMonth) plannedLivraisons30++;
+            }
+
+            if (doc.Contains("ennoblissement") && doc["ennoblissement"].BsonType == BsonType.Array)
+            {
+                foreach (var v in doc["ennoblissement"].AsBsonArray.Select(x => x?.ToString()?.Trim()).Where(x => !string.IsNullOrWhiteSpace(x)))
+                {
+                    byEnnoblissementDict.TryGetValue(v!, out var c);
+                    byEnnoblissementDict[v!] = c + 1;
+                }
+            }
+
+            var binding = Str(doc, "faconnageBinding").Trim();
+            if (!string.IsNullOrWhiteSpace(binding))
+            {
+                byFaconnageBindingDict.TryGetValue(binding, out var c);
+                byFaconnageBindingDict[binding] = c + 1;
+            }
+
+            if (doc.Contains("rainage") && doc["rainage"] != BsonNull.Value && doc["rainage"].IsBoolean && doc["rainage"].AsBoolean)
+                byRainageCount++;
+
+            var plis = Str(doc, "plis").Trim();
+            if (!string.IsNullOrWhiteSpace(plis))
+            {
+                byPlisDict.TryGetValue(plis, out var c);
+                byPlisDict[plis] = c + 1;
+            }
+
+            var sortie = Str(doc, "sortie").Trim();
+            if (!string.IsNullOrWhiteSpace(sortie))
+            {
+                bySortieDict.TryGetValue(sortie, out var c);
+                bySortieDict[sortie] = c + 1;
+            }
+
+            var temps = IntVal(doc, "tempsProduitMinutes");
+            if (temps > 0)
+            {
+                totalTempsMinutes += temps;
+                totalTempsCount++;
+            }
         }
 
-        // Urgences: deliveries within 3 days
-        var deliveries = BackendUtils.LoadDeliveries();
-        var endUrgence = today.AddDays(3);
-        int urgencesCount = deliveries.Values.Count(d => d.Date.Date >= today && d.Date.Date <= endUrgence);
+        var byEnnoblissement = byEnnoblissementDict.OrderByDescending(x => x.Value)
+            .Select(x => new { value = x.Key, count = x.Value }).ToList<object>();
+        var byFaconnageBinding = byFaconnageBindingDict.OrderByDescending(x => x.Value)
+            .Select(x => new { value = x.Key, count = x.Value }).ToList<object>();
+        var byPlis = byPlisDict.OrderByDescending(x => x.Value)
+            .Select(x => new { value = x.Key, count = x.Value }).ToList<object>();
+        var bySortie = bySortieDict.OrderByDescending(x => x.Value)
+            .Select(x => new { value = x.Key, count = x.Value }).ToList<object>();
+        var byRainage = new List<object> { new { value = "Oui", count = byRainageCount } };
 
         // ──────────────────────────────────────────────
         // 4. 5 Most recently modified jobs
@@ -245,13 +315,29 @@ app.MapGet("/api/dashboard/stats", (HttpContext ctx) =>
                 var fn = Path.GetFileName(path);
                 var folder = Path.GetFileName(Path.GetDirectoryName(path) ?? "");
                 // Try to get fabrication data
-                var fk = fn.ToLowerInvariant();
                 var fabDoc = activeFabs.FirstOrDefault(d => string.Equals(Str(d, "fileName"), fn, StringComparison.OrdinalIgnoreCase));
                 var numeroDossier = fabDoc != null ? Str(fabDoc, "numeroDossier") : "";
                 var client = fabDoc != null ? Str(fabDoc, "client") : "";
-                recentJobs.Add(new { fileName = fn, folder, modified = modified.ToString("yyyy-MM-ddTHH:mm:ss"), numeroDossier, client });
+                var tempsProduitMinutes = fabDoc != null ? IntVal(fabDoc, "tempsProduitMinutes") : 0;
+                recentJobs.Add(new { fileName = fn, folder, modified = modified.ToString("yyyy-MM-ddTHH:mm:ss"), numeroDossier, client, tempsProduitMinutes });
             }
         }
+
+        var jobsWithTemps = activeFabs
+            .Select(doc => new
+            {
+                numeroDossier = Str(doc, "numeroDossier"),
+                client = Str(doc, "client"),
+                fileName = Str(doc, "fileName"),
+                moteurImpression = Str(doc, "moteurImpression"),
+                tempsProduitMinutes = IntVal(doc, "tempsProduitMinutes")
+            })
+            .Where(j => j.tempsProduitMinutes > 0)
+            .OrderByDescending(j => j.tempsProduitMinutes)
+            .Take(20)
+            .ToList<object>();
+
+        var avgTempsMinutes = totalTempsCount > 0 ? (int)Math.Round((double)totalTempsMinutes / totalTempsCount) : 0;
 
         return Results.Json(new
         {
@@ -263,9 +349,12 @@ app.MapGet("/api/dashboard/stats", (HttpContext ctx) =>
                 totalQuantite,
                 totalFeuilles,
                 retardsCount,
-                urgencesCount,
-                plannedThisWeek,
-                plannedThisMonth,
+                plannedImpression7,
+                plannedImpression30,
+                plannedFinitions7,
+                plannedFinitions30,
+                plannedLivraisons7,
+                plannedLivraisons30,
                 jobsWithFiche = activeFabs.Count
             },
             byFolder,
@@ -274,7 +363,15 @@ app.MapGet("/api/dashboard/stats", (HttpContext ctx) =>
             byProcess,
             paperConsumption,
             byOperateur,
-            recentJobs
+            recentJobs,
+            byEnnoblissement,
+            byFaconnageBinding,
+            byRainage,
+            byPlis,
+            bySortie,
+            totalTempsMinutes,
+            avgTempsMinutes,
+            jobsWithTemps
         });
     }
     catch (Exception ex)
@@ -329,6 +426,31 @@ app.MapGet("/api/dashboard/stats/export-csv", (HttpContext ctx) =>
             var fn = doc.Contains("fileName") && doc["fileName"] != BsonNull.Value ? doc["fileName"].AsString : "";
             return !string.IsNullOrWhiteSpace(fn) && activeFileNames.Contains(fn);
         }).ToList();
+
+        DateTime? fromDate = null;
+        DateTime? toDate = null;
+        if (ctx.Request.Query.TryGetValue("from", out var fromRaw) && DateTime.TryParse(fromRaw.ToString(), out var fromParsed))
+            fromDate = fromParsed.Date;
+        if (ctx.Request.Query.TryGetValue("to", out var toRaw) && DateTime.TryParse(toRaw.ToString(), out var toParsed))
+            toDate = toParsed.Date;
+
+        if (fromDate.HasValue || toDate.HasValue)
+        {
+            DateTime? ReadDate(BsonDocument doc, string key)
+            {
+                if (!doc.Contains(key) || doc[key] == BsonNull.Value) return null;
+                try { return doc[key].ToUniversalTime().Date; } catch { return null; }
+            }
+
+            activeFabs = activeFabs.Where(doc =>
+            {
+                var date = ReadDate(doc, "dateImpression") ?? ReadDate(doc, "dateReception");
+                if (!date.HasValue) return false;
+                if (fromDate.HasValue && date.Value < fromDate.Value) return false;
+                if (toDate.HasValue && date.Value > toDate.Value) return false;
+                return true;
+            }).ToList();
+        }
 
         static string Str(BsonDocument doc, string key)
         {

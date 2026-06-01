@@ -8,6 +8,7 @@ public static class FabricationEndpointsExtensions
     {
         app.MapFabricationCrudEndpoints();
         app.MapFabricationPdfEndpoints();
+        app.MapFabricationExportEndpoints();
         app.MapFinitionStepsEndpoints();
     }
 }
