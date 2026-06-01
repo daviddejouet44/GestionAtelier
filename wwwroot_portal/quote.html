@@ -603,15 +603,7 @@
         quoteClientEmail = data.clientEmail || '';
         document.getElementById('devis-title').textContent = `Devis ${data.devisNumber}`;
         document.title = `Commande — Devis ${data.devisNumber}`;
-        addRow('Client', data.clientName);
-        if (data.title) addRow('Produit', data.title);
-        if (data.format) addRow('Format', data.format);
-        if (data.paper) addRow('Support', data.paper);
-        if (data.encres) addRow('Couleurs', data.encres);
-        if (data.quantity) addRow('Quantité', data.quantity.toLocaleString('fr') + ' ex.');
-        if (data.pagination) addRow('Pagination', data.pagination + ' pages');
-        if (data.recto && data.recto !== 'recto') addRow('Impression', data.recto === 'recto-verso' ? 'Recto / Verso' : data.recto);
-        if (data.finitions && data.finitions.length > 0) addRow('Finitions', data.finitions.join(', '));
+        if (data.clientEmail) addRow('Email', data.clientEmail);
         if (data.notes) addRow('Remarques', data.notes);
 
         if (data.hasQuotePdf) {

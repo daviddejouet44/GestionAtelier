@@ -469,6 +469,7 @@ public static class QuoteLinksEndpoints
                 id = link.Id,
                 devisNumber = link.DevisNumber,
                 clientName = link.ClientName,
+                clientEmail = link.ClientEmail,
                 title = link.Title,
                 format = link.Format,
                 paper = link.Paper,
@@ -1013,6 +1014,107 @@ public static class QuoteLinksEndpoints
             catch (Exception ex)
             {
                 Console.WriteLine($"[ERROR] /api/pro/quotes/orders/import-xml: {ex.Message}");
+                return Results.Json(new { ok = false, error = ex.Message });
+            }
+        });
+
+        // ── STAFF: POST /api/pro/orders/{id}/import-production-xml ──────────────
+        // Accepts JSON body with production fields; saves to productionInfo sub-document
+        app.MapPost("/api/pro/orders/{id}/import-production-xml", async (HttpContext ctx, string id) =>
+        {
+            try
+            {
+                if (!IsStaffAuth(ctx, out var login))
+                    return Results.Json(new { ok = false, error = "Non autorisé" });
+
+                using var reader = new System.IO.StreamReader(ctx.Request.Body);
+                var body = await reader.ReadToEndAsync();
+                var json = System.Text.Json.JsonDocument.Parse(body).RootElement;
+
+                string? GetStr(string key) =>
+                    json.TryGetProperty(key, out var el) && el.ValueKind == System.Text.Json.JsonValueKind.String
+                        ? el.GetString()?.Trim() is { Length: > 0 } s ? s : null
+                        : null;
+                int? GetInt(string key) =>
+                    json.TryGetProperty(key, out var el) && el.ValueKind == System.Text.Json.JsonValueKind.Number
+                        ? el.GetInt32() : null;
+
+                var title          = GetStr("title");
+                var format         = GetStr("format");
+                var paper          = GetStr("paper");
+                var encres         = GetStr("encres");
+                var recto          = GetStr("recto");
+                var prodComment    = GetStr("productionComment");
+                var quantity       = GetInt("quantity");
+                var pagination     = GetInt("pagination");
+
+                DateTime? deliveryDate = null;
+                if (json.TryGetProperty("deliveryDate", out var ddEl) && ddEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    var ddRaw = ddEl.GetString();
+                    if (!string.IsNullOrWhiteSpace(ddRaw) &&
+                        DateTime.TryParse(ddRaw, null, System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var ddParsed))
+                        deliveryDate = ddParsed;
+                }
+
+                var finitions = new List<string>();
+                if (json.TryGetProperty("finitions", out var finEl) && finEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    finitions = finEl.EnumerateArray()
+                        .Where(e => e.ValueKind == System.Text.Json.JsonValueKind.String)
+                        .Select(e => e.GetString()!)
+                        .Where(s => !string.IsNullOrWhiteSpace(s))
+                        .ToList();
+
+                var orderCol = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
+                var orderDoc = orderCol.Find(Builders<BsonDocument>.Filter.Eq("id", id)).FirstOrDefault();
+                if (orderDoc == null)
+                    return Results.Json(new { ok = false, error = "Commande non trouvée" });
+
+                var now = DateTime.UtcNow;
+
+                var productionInfo = new BsonDocument
+                {
+                    ["importedAt"] = now,
+                    ["importedBy"] = login
+                };
+                if (title != null)          productionInfo["title"]             = title;
+                if (format != null)         productionInfo["format"]            = format;
+                if (paper != null)          productionInfo["paper"]             = paper;
+                if (encres != null)         productionInfo["encres"]            = encres;
+                if (quantity.HasValue)      productionInfo["quantity"]          = quantity.Value;
+                if (pagination.HasValue)    productionInfo["pagination"]        = pagination.Value;
+                if (recto != null)          productionInfo["recto"]             = recto;
+                if (finitions.Count > 0)    productionInfo["finitions"]         = new BsonArray(finitions.Select(f => (BsonValue)f));
+                if (deliveryDate.HasValue)  productionInfo["deliveryDate"]      = deliveryDate.Value;
+                if (prodComment != null)    productionInfo["productionComment"] = prodComment;
+
+                var updateDef = Builders<BsonDocument>.Update
+                    .Set("productionInfo", productionInfo)
+                    .Set("updatedAt", now);
+                if (title != null)       updateDef = updateDef.Set("title", title);
+                if (format != null)      updateDef = updateDef.Set("format", format);
+                if (paper != null)       updateDef = updateDef.Set("paper", paper);
+                if (encres != null)      updateDef = updateDef.Set("encres", encres);
+                if (quantity.HasValue)   updateDef = updateDef.Set("quantity", quantity.Value);
+                if (pagination.HasValue) updateDef = updateDef.Set("pagination", pagination.Value);
+                if (recto != null)       updateDef = updateDef.Set("recto", recto);
+                if (finitions.Count > 0) updateDef = updateDef.Set("finitions", new BsonArray(finitions.Select(f => (BsonValue)f)));
+
+                var historyEntry = new BsonDocument
+                {
+                    ["status"]    = "production_info_updated",
+                    ["timestamp"] = now,
+                    ["comment"]   = "Informations de production importées"
+                };
+                updateDef = updateDef.Push("statusHistory", historyEntry);
+
+                orderCol.UpdateOne(Builders<BsonDocument>.Filter.Eq("id", id), updateDef);
+
+                return Results.Json(new { ok = true });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] /api/pro/orders/import-production-xml: {ex.Message}");
                 return Results.Json(new { ok = false, error = ex.Message });
             }
         });

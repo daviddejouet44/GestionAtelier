@@ -730,10 +730,23 @@ public static class PortalOrdersEndpoints
             var fileEntry = order.Files.FirstOrDefault(f => f.FileName == fileName);
             if (fileEntry == null) return Results.Json(new { ok = false, error = "Fichier non trouvé" });
 
-            if (!File.Exists(fileEntry.StoredPath))
+            // Resolve file path — fall back to searching hotfolder tree if the stored path is stale
+            // (e.g. operator moved the file to a different kanban folder after submission)
+            string resolvedPath = fileEntry.StoredPath;
+            if (!File.Exists(resolvedPath))
+            {
+                var hotRoot = BackendUtils.HotfoldersRoot();
+                if (Directory.Exists(hotRoot))
+                {
+                    var safeFileName = Path.GetFileName(fileEntry.FileName);
+                    var found = Directory.EnumerateFiles(hotRoot, safeFileName, SearchOption.AllDirectories).FirstOrDefault();
+                    if (found != null) resolvedPath = found;
+                }
+            }
+            if (!File.Exists(resolvedPath))
                 return Results.Json(new { ok = false, error = "Fichier non trouvé sur le serveur" });
 
-            return Results.File(fileEntry.StoredPath, "application/pdf", fileName);
+            return Results.File(resolvedPath, "application/pdf", fileName);
         });
 
         // GET /api/portal/config/form-options
@@ -823,13 +836,17 @@ public static class PortalOrdersEndpoints
                 if (order.ClientAccountId != client.Id)
                     return Results.Json(new { ok = false, error = "Accès refusé" });
 
+                BsonDocument? piDoc = null;
+                if (doc.Contains("productionInfo") && doc["productionInfo"].IsBsonDocument)
+                    piDoc = doc["productionInfo"].AsBsonDocument;
+
                 var theme = MongoDbHelper.GetSettings<PortalThemeConfig>("portalTheme") ?? new PortalThemeConfig();
                 var companyName = string.IsNullOrWhiteSpace(theme.CompanyName) ? "Gestion d'Atelier" : theme.CompanyName;
 
                 byte[] pdfBytes;
                 try
                 {
-                    pdfBytes = GenerateOrderRecapPdf(order, client, companyName);
+                    pdfBytes = GenerateOrderRecapPdf(order, client, companyName, piDoc);
                 }
                 catch (Exception pdfEx)
                 {
@@ -881,7 +898,11 @@ public static class PortalOrdersEndpoints
                 var theme = MongoDbHelper.GetSettings<PortalThemeConfig>("portalTheme") ?? new PortalThemeConfig();
                 var companyName = string.IsNullOrWhiteSpace(theme.CompanyName) ? "Gestion d'Atelier" : theme.CompanyName;
 
-                var pdfBytes = GenerateOrderRecapPdf(order, clientAcc, companyName);
+                BsonDocument? piDoc2 = null;
+                if (doc.Contains("productionInfo") && doc["productionInfo"].IsBsonDocument)
+                    piDoc2 = doc["productionInfo"].AsBsonDocument;
+
+                var pdfBytes = GenerateOrderRecapPdf(order, clientAcc, companyName, piDoc2);
 
                 var safeOrderNum2 = System.Text.RegularExpressions.Regex.Replace(order.OrderNumber ?? "", @"[^\w\-]", "_");
                 ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"Recapitulatif-{safeOrderNum2}.pdf\"";
@@ -1058,7 +1079,7 @@ public static class PortalOrdersEndpoints
     }
 
     // ── Récapitulatif commande PDF ────────────────────────────────────────────
-    private static byte[] GenerateOrderRecapPdf(ClientOrder order, ClientAccount client, string companyName)
+    private static byte[] GenerateOrderRecapPdf(ClientOrder order, ClientAccount client, string companyName, BsonDocument? productionInfo = null)
     {
         var statusLabels = new Dictionary<string, string>
         {
@@ -1162,6 +1183,36 @@ public static class PortalOrdersEndpoints
                     {
                         Section("Commentaires");
                         col.Item().PaddingTop(4).Text(order.Comments).FontSize(10);
+                    }
+
+                    // Informations de production (importées par l'opérateur)
+                    if (productionInfo != null)
+                    {
+                        string? PiStr(string key) => productionInfo.Contains(key) && !productionInfo[key].IsBsonNull ? productionInfo[key].AsString : null;
+                        int? PiInt(string key) => productionInfo.Contains(key) && !productionInfo[key].IsBsonNull ? (int?)productionInfo[key].AsInt32 : null;
+
+                        Section("Informations de production");
+                        Row("Intitulé", PiStr("title"));
+                        Row("Format", PiStr("format"));
+                        Row("Papier", PiStr("paper"));
+                        Row("Encres", PiStr("encres"));
+                        var piQty = PiInt("quantity");
+                        if (piQty.HasValue) Row("Quantité", piQty.Value.ToString("N0"));
+                        var piPag = PiInt("pagination");
+                        if (piPag.HasValue) Row("Pagination", piPag.Value.ToString());
+                        Row("Recto / Verso", PiStr("recto"));
+                        if (productionInfo.Contains("finitions") && productionInfo["finitions"].IsBsonArray)
+                        {
+                            var piFinitions = productionInfo["finitions"].AsBsonArray.Select(v => v.AsString).ToList();
+                            if (piFinitions.Count > 0) Row("Finitions", string.Join(", ", piFinitions));
+                        }
+                        if (productionInfo.Contains("deliveryDate") && !productionInfo["deliveryDate"].IsBsonNull)
+                            Row("Date de livraison", productionInfo["deliveryDate"].ToUniversalTime().ToString("dd/MM/yyyy"));
+                        var piComment = PiStr("productionComment");
+                        if (!string.IsNullOrWhiteSpace(piComment))
+                        {
+                            col.Item().PaddingTop(4).Text(piComment).FontSize(10).Italic();
+                        }
                     }
 
                     // Historique statuts
