@@ -147,6 +147,8 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       // jobFileName is already lowercased by fnKey(), but use explicit toLowerCase() for clarity.
       const _jfnLower = jobFileName.toLowerCase();
       const isWebOrder = _jfnLower.startsWith('web-') || _jfnLower.startsWith('bat_web-');
+      // Devis channel orders have DEVIS-YYYYMMDD-NNNN prefix
+      const isDevisOrder = _jfnLower.startsWith('devis-') || _jfnLower.startsWith('bat_devis-');
 
       // Top row: dossier N° + presse + operator + web badge (loaded async below)
       const topRow = document.createElement("div");
@@ -1150,6 +1152,124 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           await openKanbanQuoteModal(full, fab);
         };
         actions.appendChild(btnDevis);
+      }
+
+      // 📥 Importer XML — visible only for devis channel orders (DEVIS-* filenames)
+      if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3) && isDevisOrder) {
+        const btnImportXml = document.createElement("button");
+        btnImportXml.className = "btn btn-sm";
+        btnImportXml.textContent = "📥 Importer XML";
+        btnImportXml.title = "Importer les informations de production depuis un fichier XML";
+        btnImportXml.onclick = async (e) => {
+          e.stopPropagation();
+
+          // Resolve orderId via admin by-job lookup
+          let orderNum = _jfnLower.startsWith('bat_') ? _jfnLower.substring(4) : _jfnLower;
+          if (orderNum.includes('__')) orderNum = orderNum.split('__')[0];
+          else if (orderNum.includes('.')) orderNum = orderNum.substring(0, orderNum.lastIndexOf('.'));
+          orderNum = orderNum.toUpperCase();
+
+          let orderId = null;
+          try {
+            const byJobRes = await fetch('/api/admin/portal/orders/by-job?numeroDossier=' + encodeURIComponent(orderNum), {
+              headers: { 'Authorization': 'Bearer ' + authToken }
+            }).then(r => r.json()).catch(() => ({}));
+            if (byJobRes.ok && byJobRes.found && byJobRes.order?.id) orderId = byJobRes.order.id;
+          } catch(_) { /* non-blocking */ }
+
+          if (!orderId) {
+            showNotification('❌ Commande non trouvée dans le portail (order ID manquant)', 'error');
+            return;
+          }
+
+          // Build inline modal for XML file selection
+          const overlay = document.createElement('div');
+          overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+          const modal = document.createElement('div');
+          modal.style.cssText = 'background:white;border-radius:12px;padding:24px 28px;min-width:340px;max-width:480px;width:90%;box-shadow:0 10px 40px rgba(0,0,0,.3);';
+          modal.innerHTML = `
+            <div style="font-size:16px;font-weight:700;color:#111827;margin-bottom:6px;">📥 Importer XML de production</div>
+            <div style="font-size:12px;color:#6b7280;margin-bottom:16px;">Commande : ${orderNum}</div>
+            <div id="xml-import-error" style="display:none;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:8px 12px;font-size:13px;color:#dc2626;margin-bottom:12px;"></div>
+            <div id="xml-import-success" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;font-size:13px;color:#15803d;margin-bottom:12px;"></div>
+            <div style="border:2px dashed #d1d5db;border-radius:8px;padding:20px;text-align:center;cursor:pointer;background:#fafafa;" id="xml-drop-zone">
+              <div style="font-size:24px;margin-bottom:6px;">📄</div>
+              <p style="margin:0;font-size:13px;color:#6b7280;">Glissez le fichier XML ici ou <strong style="color:#1d4ed8;">cliquez pour sélectionner</strong></p>
+            </div>
+            <input type="file" id="xml-file-input" accept=".xml,text/xml,application/xml" style="display:none;" />
+            <div id="xml-file-preview" style="display:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:8px 12px;font-size:13px;color:#1d4ed8;margin-top:8px;">
+              📄 <span id="xml-file-name"></span>
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid #e5e7eb;">
+              <button id="xml-cancel-btn" class="btn">Annuler</button>
+              <button id="xml-send-btn" class="btn btn-primary" disabled>📥 Importer</button>
+            </div>
+          `;
+          overlay.appendChild(modal);
+          document.body.appendChild(overlay);
+
+          const errDiv = modal.querySelector('#xml-import-error');
+          const succDiv = modal.querySelector('#xml-import-success');
+          const dropZone = modal.querySelector('#xml-drop-zone');
+          const fileInput = modal.querySelector('#xml-file-input');
+          const filePreview = modal.querySelector('#xml-file-preview');
+          const fileNameEl = modal.querySelector('#xml-file-name');
+          const sendBtn = modal.querySelector('#xml-send-btn');
+          const cancelBtn = modal.querySelector('#xml-cancel-btn');
+          let _xmlFile = null;
+
+          const closeModal = () => overlay.remove();
+          cancelBtn.onclick = closeModal;
+          overlay.onclick = (ev) => { if (ev.target === overlay) closeModal(); };
+
+          dropZone.onclick = () => fileInput.click();
+          dropZone.addEventListener('dragover', ev => { ev.preventDefault(); dropZone.style.borderColor = '#1d4ed8'; dropZone.style.background = '#eff6ff'; });
+          dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = '#d1d5db'; dropZone.style.background = '#fafafa'; });
+          dropZone.addEventListener('drop', ev => {
+            ev.preventDefault(); dropZone.style.borderColor = '#d1d5db'; dropZone.style.background = '#fafafa';
+            const f = ev.dataTransfer.files[0]; if (f) setXmlFile(f);
+          });
+          fileInput.addEventListener('change', () => { if (fileInput.files[0]) setXmlFile(fileInput.files[0]); });
+
+          function setXmlFile(f) {
+            if (!f.name.toLowerCase().endsWith('.xml')) {
+              errDiv.textContent = 'Seuls les fichiers XML sont acceptés.'; errDiv.style.display = ''; return;
+            }
+            _xmlFile = f;
+            fileNameEl.textContent = f.name;
+            filePreview.style.display = '';
+            sendBtn.disabled = false;
+            errDiv.style.display = 'none';
+          }
+
+          sendBtn.onclick = async () => {
+            if (!_xmlFile) return;
+            sendBtn.disabled = true; sendBtn.textContent = '⏳ Import en cours…';
+            errDiv.style.display = 'none'; succDiv.style.display = 'none';
+            try {
+              const fd = new FormData();
+              fd.append('file', _xmlFile);
+              const res = await fetch(`/api/pro/quotes/orders/${orderId}/import-xml`, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + authToken },
+                body: fd
+              });
+              const data = await res.json();
+              if (!data.ok) {
+                errDiv.textContent = data.error || 'Erreur lors de l\'import.'; errDiv.style.display = '';
+                sendBtn.disabled = false; sendBtn.textContent = '📥 Importer';
+              } else {
+                succDiv.textContent = '✅ Informations de production importées avec succès.'; succDiv.style.display = '';
+                sendBtn.textContent = '✅ Importé';
+                setTimeout(() => { closeModal(); refreshKanban(); }, 1500);
+              }
+            } catch (err) {
+              errDiv.textContent = 'Erreur : ' + err.message; errDiv.style.display = '';
+              sendBtn.disabled = false; sendBtn.textContent = '📥 Importer';
+            }
+          };
+        };
+        actions.appendChild(btnImportXml);
       }
 
       // 🔗 Lien BAT externe — for BAT folder, when external BAT links are enabled by admin toggle

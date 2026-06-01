@@ -805,6 +805,7 @@ public static class QuoteLinksEndpoints
                         ["donneurOrdreTelephone"] = string.IsNullOrWhiteSpace(donneurTel) ? BsonNull.Value : (BsonValue)donneurTel,
                         ["donneurOrdreSociete"]  = (BsonValue)link.ClientName,
                         ["devisNumber"]          = link.DevisNumber,
+                        ["workflow"]             = "web",
                     };
 
                     if (link.Pagination.HasValue) orderDoc["pagination"] = link.Pagination.Value;
@@ -886,6 +887,132 @@ public static class QuoteLinksEndpoints
             catch (Exception ex)
             {
                 Console.WriteLine($"[ERROR] /api/portal/quote/submit: {ex.Message}");
+                return Results.Json(new { ok = false, error = ex.Message });
+            }
+        });
+
+        // ── STAFF: POST /api/pro/quotes/orders/{orderId}/import-xml ───────────
+        // Multipart: XML file in "file" field. Parses production info and updates
+        // the client_orders document.
+        app.MapPost("/api/pro/quotes/orders/{orderId}/import-xml", async (HttpContext ctx, string orderId) =>
+        {
+            try
+            {
+                if (!IsStaffAuth(ctx, out var login))
+                    return Results.Json(new { ok = false, error = "Non autorisé" });
+
+                var form = await ctx.Request.ReadFormAsync();
+                var xmlFile = form.Files.GetFile("file");
+                if (xmlFile == null || xmlFile.Length == 0)
+                    return Results.Json(new { ok = false, error = "Fichier XML manquant" });
+
+                var ext = Path.GetExtension(xmlFile.FileName).ToLowerInvariant();
+                if (ext != ".xml")
+                    return Results.Json(new { ok = false, error = "Le fichier doit être un XML" });
+
+                // Parse XML
+                System.Xml.Linq.XDocument xdoc;
+                using (var stream = xmlFile.OpenReadStream())
+                    xdoc = System.Xml.Linq.XDocument.Load(stream);
+
+                var root = xdoc.Root;
+                if (root == null)
+                    return Results.Json(new { ok = false, error = "XML invalide ou vide" });
+
+                string? GetNode(string name) => root.Element(name)?.Value?.Trim() is { Length: > 0 } v ? v : null;
+
+                var title   = GetNode("Title");
+                var format  = GetNode("Format");
+                var paper   = GetNode("Paper");
+                var encres  = GetNode("Encres");
+                var recto   = GetNode("Recto");
+                var notes   = GetNode("Notes");
+                var prodComment = GetNode("ProductionComment");
+                int? quantity = null;
+                if (int.TryParse(GetNode("Quantity"), out var qi) && qi > 0) quantity = qi;
+                int? pagination = null;
+                if (int.TryParse(GetNode("Pagination"), out var pi) && pi > 0) pagination = pi;
+                DateTime? deliveryDate = null;
+                var deliveryDateRaw = GetNode("DeliveryDate");
+                if (!string.IsNullOrWhiteSpace(deliveryDateRaw) && DateTime.TryParse(deliveryDateRaw, null, System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var dd))
+                    deliveryDate = dd;
+                var finitionsRaw = GetNode("Finitions");
+                var finitions = string.IsNullOrWhiteSpace(finitionsRaw)
+                    ? new List<string>()
+                    : finitionsRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+                // Find the order in MongoDB
+                var orderCol = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
+                var orderDoc = orderCol.Find(Builders<BsonDocument>.Filter.Eq("id", orderId)).FirstOrDefault();
+                if (orderDoc == null)
+                    return Results.Json(new { ok = false, error = "Commande non trouvée" });
+
+                var now = DateTime.UtcNow;
+
+                // Build productionInfo sub-document
+                var productionInfo = new BsonDocument
+                {
+                    ["importedAt"]  = now,
+                    ["importedBy"]  = login
+                };
+                if (title != null) productionInfo["title"] = title;
+                if (format != null) productionInfo["format"] = format;
+                if (paper != null) productionInfo["paper"] = paper;
+                if (encres != null) productionInfo["encres"] = encres;
+                if (quantity.HasValue) productionInfo["quantity"] = quantity.Value;
+                if (pagination.HasValue) productionInfo["pagination"] = pagination.Value;
+                if (recto != null) productionInfo["recto"] = recto;
+                if (finitions.Count > 0) productionInfo["finitions"] = new BsonArray(finitions.Select(f => (BsonValue)f));
+                if (notes != null) productionInfo["notes"] = notes;
+                if (deliveryDate.HasValue) productionInfo["deliveryDate"] = deliveryDate.Value;
+                if (prodComment != null) productionInfo["productionComment"] = prodComment;
+
+                // Build root-level field updates (synchronise top-level fields)
+                var updateDef = Builders<BsonDocument>.Update
+                    .Set("productionInfo", productionInfo)
+                    .Set("updatedAt", now);
+                if (title != null) updateDef = updateDef.Set("title", title);
+                if (format != null) updateDef = updateDef.Set("format", format);
+                if (paper != null) updateDef = updateDef.Set("paper", paper);
+                if (encres != null) updateDef = updateDef.Set("encres", encres);
+                if (quantity.HasValue) updateDef = updateDef.Set("quantity", quantity.Value);
+                if (pagination.HasValue) updateDef = updateDef.Set("pagination", pagination.Value);
+                if (recto != null) updateDef = updateDef.Set("recto", recto);
+                if (finitions.Count > 0) updateDef = updateDef.Set("finitions", new BsonArray(finitions.Select(f => (BsonValue)f)));
+                if (title != null) updateDef = updateDef.Set("title", title);
+
+                // Append to statusHistory
+                var historyEntry = new BsonDocument
+                {
+                    ["status"]    = "production_info_updated",
+                    ["timestamp"] = now,
+                    ["comment"]   = "Informations de production importées via XML"
+                };
+                updateDef = updateDef.Push("statusHistory", historyEntry);
+
+                orderCol.UpdateOne(Builders<BsonDocument>.Filter.Eq("id", orderId), updateDef);
+
+                // Return the saved productionInfo
+                var piResult = new Dictionary<string, object?>();
+                if (title != null) piResult["title"] = title;
+                if (format != null) piResult["format"] = format;
+                if (paper != null) piResult["paper"] = paper;
+                if (encres != null) piResult["encres"] = encres;
+                if (quantity.HasValue) piResult["quantity"] = quantity.Value;
+                if (pagination.HasValue) piResult["pagination"] = pagination.Value;
+                if (recto != null) piResult["recto"] = recto;
+                if (finitions.Count > 0) piResult["finitions"] = finitions;
+                if (notes != null) piResult["notes"] = notes;
+                if (deliveryDate.HasValue) piResult["deliveryDate"] = deliveryDate.Value;
+                if (prodComment != null) piResult["productionComment"] = prodComment;
+                piResult["importedAt"] = now;
+                piResult["importedBy"] = login;
+
+                return Results.Json(new { ok = true, productionInfo = piResult });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] /api/pro/quotes/orders/import-xml: {ex.Message}");
                 return Results.Json(new { ok = false, error = ex.Message });
             }
         });
