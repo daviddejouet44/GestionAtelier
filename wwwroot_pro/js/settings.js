@@ -176,7 +176,7 @@ async function renderSettingsExternalLinks(panel) {
       </div>
       <div class="settings-form-group">
         <label>Prismalytics</label>
-        <input id="external-link-primalytics" type="url" class="settings-input" placeholder="https://..." style="width:100%;" />
+        <input id="external-link-prismalytics" type="url" class="settings-input" placeholder="https://..." style="width:100%;" />
       </div>
       <button id="external-links-save-btn" class="btn btn-primary">💾 Enregistrer</button>
       <span id="external-links-status" style="margin-left:10px;font-size:13px;color:#6b7280;"></span>
@@ -184,7 +184,7 @@ async function renderSettingsExternalLinks(panel) {
   `;
 
   const remoteInput = panel.querySelector("#external-link-remote-manager");
-  const primalyticsInput = panel.querySelector("#external-link-primalytics");
+  const prismalyticsInput = panel.querySelector("#external-link-prismalytics");
   const saveBtn = panel.querySelector("#external-links-save-btn");
   const statusEl = panel.querySelector("#external-links-status");
 
@@ -194,7 +194,7 @@ async function renderSettingsExternalLinks(panel) {
     }).then(r => r.json());
     if (resp?.ok) {
       remoteInput.value = resp.remoteManagerUrl || "";
-      primalyticsInput.value = resp.primalyticsUrl || "";
+      prismalyticsInput.value = resp.primalyticsUrl || "";
     }
   } catch (e) { /* ignore */ }
 
@@ -211,7 +211,7 @@ async function renderSettingsExternalLinks(panel) {
         },
         body: JSON.stringify({
           remoteManagerUrl: (remoteInput.value || "").trim(),
-          primalyticsUrl: (primalyticsInput.value || "").trim()
+          primalyticsUrl: (prismalyticsInput.value || "").trim()
         })
       }).then(x => x.json());
       if (r?.ok) {

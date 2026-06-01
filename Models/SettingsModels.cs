@@ -59,7 +59,7 @@ public class ExternalLinksSettings
     public string RemoteManagerUrl { get; set; } = "";
 
     [JsonPropertyName("primalyticsUrl")]
-    public string PrimalyticsUrl { get; set; } = "";
+    public string PrismalyticsUrl { get; set; } = "";
 }
 
 public class PreflightSettings

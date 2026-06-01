@@ -34,7 +34,7 @@ public static class ExternalLinksEndpoints
                 {
                     ok = true,
                     remoteManagerUrl = cfg.RemoteManagerUrl ?? "",
-                    primalyticsUrl = cfg.PrimalyticsUrl ?? ""
+                    primalyticsUrl = cfg.PrismalyticsUrl ?? ""
                 });
             }
             catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
@@ -63,7 +63,7 @@ public static class ExternalLinksEndpoints
                 if (json.TryGetProperty("remoteManagerUrl", out var remoteEl))
                     cfg.RemoteManagerUrl = remoteEl.GetString()?.Trim() ?? "";
                 if (json.TryGetProperty("primalyticsUrl", out var prismaEl))
-                    cfg.PrimalyticsUrl = prismaEl.GetString()?.Trim() ?? "";
+                    cfg.PrismalyticsUrl = prismaEl.GetString()?.Trim() ?? "";
 
                 MongoDbHelper.UpsertSettings("externalLinks", cfg);
 
@@ -71,7 +71,7 @@ public static class ExternalLinksEndpoints
                 {
                     ok = true,
                     remoteManagerUrl = cfg.RemoteManagerUrl ?? "",
-                    primalyticsUrl = cfg.PrimalyticsUrl ?? ""
+                    primalyticsUrl = cfg.PrismalyticsUrl ?? ""
                 });
             }
             catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }

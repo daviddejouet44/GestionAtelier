@@ -1177,13 +1177,13 @@ function setupProfileUI() {
 
 async function setupExternalLinksButtons() {
   const btnRemoteManager = document.getElementById("btnRemoteManager");
-  const btnPrimalytics = document.getElementById("btnPrimalytics");
-  if (!btnRemoteManager || !btnPrimalytics) return;
+  const btnPrismalytics = document.getElementById("btnPrismalytics");
+  if (!btnRemoteManager || !btnPrismalytics) return;
 
   btnRemoteManager.style.display = "none";
-  btnPrimalytics.style.display = "none";
+  btnPrismalytics.style.display = "none";
   btnRemoteManager.onclick = null;
-  btnPrimalytics.onclick = null;
+  btnPrismalytics.onclick = null;
 
   try {
     const r = await fetch("/api/settings/external-links", {
@@ -1192,15 +1192,15 @@ async function setupExternalLinksButtons() {
     if (!r?.ok) return;
 
     const remoteManagerUrl = (r.remoteManagerUrl || "").trim();
-    const primalyticsUrl = (r.primalyticsUrl || "").trim();
+    const prismalyticsUrl = (r.primalyticsUrl || "").trim();
 
     if (remoteManagerUrl) {
       btnRemoteManager.style.display = "inline-block";
       btnRemoteManager.onclick = () => window.open(remoteManagerUrl, "_blank", "noopener,noreferrer");
     }
-    if (primalyticsUrl) {
-      btnPrimalytics.style.display = "inline-block";
-      btnPrimalytics.onclick = () => window.open(primalyticsUrl, "_blank", "noopener,noreferrer");
+    if (prismalyticsUrl) {
+      btnPrismalytics.style.display = "inline-block";
+      btnPrismalytics.onclick = () => window.open(prismalyticsUrl, "_blank", "noopener,noreferrer");
     }
   } catch (e) { /* ignore */ }
 }
