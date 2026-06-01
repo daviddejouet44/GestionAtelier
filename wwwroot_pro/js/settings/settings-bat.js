@@ -26,7 +26,12 @@ export async function renderSettingsBatConfig(panel) {
   let routings = [];
   let types = [];
   let batPapierCfg = { enabled: false, hotfolder: "" };
-  let externalBatLinksEnabled = false;
+  let batValidationLinkCfg = {
+    enabled: false,
+    tokenExpiryHours: 72,
+    subjectTemplate: "Validation BAT — {{fileName}}",
+    bodyTemplate: "Bonjour,\n\nVeuillez consulter votre BAT et nous indiquer votre décision via ce lien :\n\n{{batLink}}\n\nCe lien est valable {{expiryHours}}h.\n\nCordialement"
+  };
   try {
     const [r1, r2, r3, r4, r9, r10] = await Promise.all([
       fetch("/api/config/integrations", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
@@ -34,14 +39,14 @@ export async function renderSettingsBatConfig(panel) {
       fetch("/api/config/hotfolder-routing").then(r => r.json()).catch(() => []),
       fetch("/api/config/work-types").then(r => r.json()).catch(() => []),
       fetch("/api/settings/bat-papier-config", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({})),
-      fetch("/api/pro/bat/external-link-enabled", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ enabled: false }))
+      fetch("/api/settings/bat-validation-link", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, config: {} }))
     ]);
     if (r1.ok && r1.config) intCfg = r1.config;
     if (r2.ok) { batCmd = r2.command || ""; batAlertDelayHours = r2.batAlertDelayHours ?? 48; batSimpleDropletPath = r2.batSimpleDropletPath || ""; }
     if (Array.isArray(r3)) routings = r3;
     if (Array.isArray(r4)) types = r4;
     if (r9.ok && r9.config) batPapierCfg = r9.config;
-    externalBatLinksEnabled = !!(r10.enabled);
+    if (r10.ok && r10.config) batValidationLinkCfg = { ...batValidationLinkCfg, ...r10.config };
   } catch(e) { /* use defaults */ }
 
   const typeOptions = types.map(t => `<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join("");
@@ -61,14 +66,28 @@ export async function renderSettingsBatConfig(panel) {
     <p style="color:#6b7280;font-size:13px;margin-bottom:24px;">Paramétrez l'ensemble du workflow BAT : chemins de travail, routage hotfolder et commandes.</p>
 
     <div class="settings-section-card">
-      <h4>Lien BAT externe (clients sans compte portail)</h4>
-      <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">Permet d'envoyer un lien de validation BAT par email à des clients qui n'ont pas de compte sur le portail. Un bouton "Lien BAT" apparaîtra sur les cartes Kanban en colonne BAT.</p>
+      <h4>Lien de validation BAT (clients non-web)</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:16px;">Activez l'envoi d'un lien public de validation BAT pour les clients hors portail.</p>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-        <input type="checkbox" id="bat-external-link-enabled" ${externalBatLinksEnabled ? 'checked' : ''} />
-        <label for="bat-external-link-enabled" style="font-size:14px;font-weight:500;color:#374151;">Activer les liens BAT pour clients non-portail</label>
+        <input type="checkbox" id="bat-validation-link-enabled" ${batValidationLinkCfg.enabled ? 'checked' : ''} />
+        <label for="bat-validation-link-enabled" style="font-size:14px;font-weight:500;color:#374151;">Activer l'envoi de lien de validation BAT</label>
       </div>
-      <button id="bat-external-link-save" class="btn btn-primary">Enregistrer</button>
-      <span id="bat-external-link-saved" style="display:none;color:#16a34a;font-size:13px;margin-left:10px;">✅ Enregistré</span>
+      <div class="settings-form-group" style="margin-bottom:12px;">
+        <label>Durée de validité du lien (heures)</label>
+        <input type="number" id="bat-validation-link-expiry" min="1" class="settings-input" style="width:160px;" value="${batValidationLinkCfg.tokenExpiryHours || 72}" />
+      </div>
+      <div class="settings-form-group" style="margin-bottom:12px;">
+        <label>Objet du mail</label>
+        <input type="text" id="bat-validation-link-subject" class="settings-input settings-input-wide" value="${esc(batValidationLinkCfg.subjectTemplate || '')}" />
+        <p style="color:#6b7280;font-size:12px;margin-top:4px;">Variables : <code>{{fileName}}</code>, <code>{{numeroDossier}}</code></p>
+      </div>
+      <div class="settings-form-group" style="margin-bottom:12px;">
+        <label>Corps du mail</label>
+        <textarea id="bat-validation-link-body" class="settings-input settings-input-wide" rows="7">${esc(batValidationLinkCfg.bodyTemplate || '')}</textarea>
+        <p style="color:#6b7280;font-size:12px;margin-top:4px;">Variables : <code>{{batLink}}</code>, <code>{{expiryHours}}</code>, <code>{{fileName}}</code>, <code>{{numeroDossier}}</code></p>
+      </div>
+      <button id="bat-validation-link-save" class="btn btn-primary">Enregistrer</button>
+      <span id="bat-validation-link-saved" style="display:none;color:#16a34a;font-size:13px;margin-left:10px;">✅ Enregistré</span>
     </div>
 
     <div class="settings-section-card">
@@ -143,18 +162,21 @@ export async function renderSettingsBatConfig(panel) {
     </div>
   `;
 
-  // BAT Papier config save
-  panel.querySelector("#bat-external-link-save").onclick = async () => {
-    const enabled = panel.querySelector("#bat-external-link-enabled").checked;
-    const r = await fetch("/api/settings/production", {
+  // Lien de validation BAT save
+  panel.querySelector("#bat-validation-link-save").onclick = async () => {
+    const enabled = panel.querySelector("#bat-validation-link-enabled").checked;
+    const tokenExpiryHours = Math.max(1, parseInt(panel.querySelector("#bat-validation-link-expiry").value || "72", 10) || 72);
+    const subjectTemplate = panel.querySelector("#bat-validation-link-subject").value || "";
+    const bodyTemplate = panel.querySelector("#bat-validation-link-body").value || "";
+    const r = await fetch("/api/settings/bat-validation-link", {
       method: "PUT",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ enableExternalBatLinks: enabled })
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + authToken },
+      body: JSON.stringify({ enabled, tokenExpiryHours, subjectTemplate, bodyTemplate })
     }).then(r => r.json()).catch(() => ({ ok: false }));
     if (r.ok) {
-      const savedEl = panel.querySelector("#bat-external-link-saved");
+      const savedEl = panel.querySelector("#bat-validation-link-saved");
       if (savedEl) { savedEl.style.display = ''; setTimeout(() => { savedEl.style.display = 'none'; }, 2500); }
-      showNotification("✅ Paramètre Liens BAT externes enregistré", "success");
+      showNotification("✅ Paramètre lien de validation BAT enregistré", "success");
     } else showNotification("❌ " + (r.error || "Erreur"), "error");
   };
 

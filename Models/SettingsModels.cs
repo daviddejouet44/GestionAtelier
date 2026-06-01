@@ -140,6 +140,21 @@ public class BatMailTemplate
     public string Body { get; set; } = "Bonjour,\n\nVeuillez trouver ci-joint le BAT pour le dossier {{numeroDossier}}.\n\nCordialement,";
 }
 
+public class BatValidationLinkConfig
+{
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; } = false;
+
+    [JsonPropertyName("tokenExpiryHours")]
+    public int TokenExpiryHours { get; set; } = 72;
+
+    [JsonPropertyName("bodyTemplate")]
+    public string BodyTemplate { get; set; } = "Bonjour,\n\nVeuillez consulter votre BAT et nous indiquer votre décision via ce lien :\n\n{{batLink}}\n\nCe lien est valable {{expiryHours}}h.\n\nCordialement";
+
+    [JsonPropertyName("subjectTemplate")]
+    public string SubjectTemplate { get; set; } = "Validation BAT — {{fileName}}";
+}
+
 
 public class CoverProductsSettings
 {

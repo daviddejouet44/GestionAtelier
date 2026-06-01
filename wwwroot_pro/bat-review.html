@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Validation BAT</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f8fafc; color: #0f172a; }
+    .wrap { max-width: 980px; margin: 24px auto; padding: 0 16px; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; box-shadow: 0 2px 10px rgba(15,23,42,.06); }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .muted { color: #475569; font-size: 14px; }
+    .err { color: #b91c1c; background: #fee2e2; border: 1px solid #fecaca; padding: 12px; border-radius: 10px; }
+    .ok { color: #166534; background: #dcfce7; border: 1px solid #86efac; padding: 12px; border-radius: 10px; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+    button { border: 1px solid #cbd5e1; background: #fff; color: #0f172a; border-radius: 8px; padding: 10px 14px; font-weight: 600; cursor: pointer; }
+    button:hover { background: #f8fafc; }
+    button.primary { background: #16a34a; border-color: #16a34a; color: #fff; }
+    button.danger { background: #dc2626; border-color: #dc2626; color: #fff; }
+    textarea { width: 100%; min-height: 100px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; font-family: inherit; }
+    iframe { width: 100%; height: 72vh; border: 1px solid #cbd5e1; border-radius: 8px; margin-top: 14px; background: #fff; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Validation BAT</h1>
+      <div id="status" class="muted">Chargement…</div>
+      <div id="meta" class="muted" style="margin-top:8px;"></div>
+      <div id="decision-info" style="margin-top:12px;"></div>
+      <div id="viewer" class="hidden">
+        <iframe id="pdf-frame" title="BAT PDF"></iframe>
+      </div>
+      <div id="actions" class="actions hidden">
+        <button id="btn-validate" class="primary">✅ Valider le BAT</button>
+        <button id="btn-refuse" class="danger">❌ Refuser le BAT</button>
+      </div>
+      <div id="refuse-box" class="hidden" style="margin-top:12px;">
+        <label for="motif" style="font-weight:600;display:block;margin-bottom:6px;">Motif du refus (obligatoire)</label>
+        <textarea id="motif" placeholder="Précisez la correction attendue..."></textarea>
+        <div class="actions" style="margin-top:8px;">
+          <button id="btn-refuse-confirm" class="danger">Confirmer le refus</button>
+          <button id="btn-refuse-cancel">Annuler</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const qs = new URLSearchParams(window.location.search);
+    const token = qs.get('token') || '';
+    const statusEl = document.getElementById('status');
+    const metaEl = document.getElementById('meta');
+    const decisionInfoEl = document.getElementById('decision-info');
+    const viewerEl = document.getElementById('viewer');
+    const frameEl = document.getElementById('pdf-frame');
+    const actionsEl = document.getElementById('actions');
+    const refuseBoxEl = document.getElementById('refuse-box');
+
+    function setError(msg) {
+      statusEl.className = 'err';
+      statusEl.textContent = msg || 'Erreur';
+    }
+
+    function setSuccess(msg) {
+      statusEl.className = 'ok';
+      statusEl.textContent = msg || 'OK';
+    }
+
+    function setLoading(msg) {
+      statusEl.className = 'muted';
+      statusEl.textContent = msg || 'Chargement…';
+    }
+
+    async function loadReview() {
+      if (!token) { setError('Lien invalide : token manquant.'); return; }
+      setLoading('Chargement du BAT…');
+      const r = await fetch(`/api/bat/review?token=${encodeURIComponent(token)}`).then(x => x.json()).catch(() => ({ ok: false, error: 'Erreur réseau' }));
+      if (!r.ok) { setError(r.error || 'Lien invalide ou expiré.'); return; }
+
+      const dossier = r.numeroDossier ? ` · Dossier: ${r.numeroDossier}` : '';
+      const client = r.client ? ` · Client: ${r.client}` : '';
+      metaEl.textContent = `Fichier: ${r.fileName || 'BAT'}${dossier}${client}`;
+
+      if (r.alreadyDecided) {
+        const when = r.decidedAt ? new Date(r.decidedAt).toLocaleString('fr-FR') : '';
+        const decisionLabel = r.decision === 'validated' ? '✅ BAT validé' : '❌ BAT refusé';
+        const motif = r.motif ? `\nMotif: ${r.motif}` : '';
+        setSuccess(`${decisionLabel}${when ? ' le ' + when : ''}`);
+        decisionInfoEl.className = 'muted';
+        decisionInfoEl.textContent = motif.trim();
+        return;
+      }
+
+      frameEl.src = `/api/bat/file-by-token?token=${encodeURIComponent(token)}`;
+      viewerEl.classList.remove('hidden');
+      actionsEl.classList.remove('hidden');
+      setLoading('Veuillez consulter votre BAT puis valider ou refuser.');
+    }
+
+    async function decide(decision, motif) {
+      const r = await fetch('/api/bat/review/decide', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, decision, motif: motif || '' })
+      }).then(x => x.json()).catch(() => ({ ok: false, error: 'Erreur réseau' }));
+
+      if (!r.ok) {
+        setError(r.error || 'Impossible d\'enregistrer la décision.');
+        return;
+      }
+
+      const done = decision === 'validated'
+        ? '✅ Votre validation a bien été enregistrée.'
+        : '✅ Votre refus a bien été enregistré.';
+      setSuccess(done);
+      actionsEl.classList.add('hidden');
+      refuseBoxEl.classList.add('hidden');
+      await loadReview();
+    }
+
+    document.getElementById('btn-validate').onclick = () => decide('validated', '');
+    document.getElementById('btn-refuse').onclick = () => refuseBoxEl.classList.remove('hidden');
+    document.getElementById('btn-refuse-cancel').onclick = () => {
+      refuseBoxEl.classList.add('hidden');
+      document.getElementById('motif').value = '';
+    };
+    document.getElementById('btn-refuse-confirm').onclick = () => {
+      const motif = (document.getElementById('motif').value || '').trim();
+      if (!motif) {
+        setError('Le motif du refus est obligatoire.');
+        return;
+      }
+      decide('refused', motif);
+    };
+
+    loadReview();
+  </script>
+</body>
+</html>

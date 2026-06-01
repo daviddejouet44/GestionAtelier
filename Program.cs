@@ -99,6 +99,12 @@ if (Directory.Exists(proPath))
         RequestPath         = "/pro",
         ContentTypeProvider = proContentTypes
     });
+
+    app.MapGet("/bat-review.html", async (HttpContext ctx) =>
+    {
+        ctx.Response.ContentType = "text/html; charset=utf-8";
+        await ctx.Response.SendFileAsync(Path.Combine(proPath, "bat-review.html"));
+    });
 }
 else
 {
