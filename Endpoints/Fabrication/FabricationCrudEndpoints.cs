@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Collections.Generic;
+using System.Security.Cryptography;
 using System.Xml.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -1039,6 +1040,253 @@ app.MapPost("/api/bat/reject", async (HttpContext ctx) =>
     var update = Builders<BsonDocument>.Update.Set("status", "rejected").Set("rejectedAt", DateTime.UtcNow);
     col.UpdateOne(filter, update, new UpdateOptions { IsUpsert = true });
     return Results.Json(new { ok = true });
+});
+
+// ======================================================
+// BAT VALIDATION LINK (non-web clients)
+// ======================================================
+
+static bool TryReadTokenProfile(HttpContext ctx, out int profile)
+{
+    profile = 0;
+    var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+    if (string.IsNullOrWhiteSpace(token)) return false;
+    try
+    {
+        var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3) return false;
+        int.TryParse(parts[2], out profile);
+        return true;
+    }
+    catch { return false; }
+}
+
+static bool IsPathInsideBatFolder(string fullPath)
+{
+    if (string.IsNullOrWhiteSpace(fullPath)) return false;
+    var normalizedPath = Path.GetFullPath(fullPath);
+    var batFolder = Path.GetFullPath(Path.Combine(BackendUtils.HotfoldersRoot(), "BAT"));
+    var batFolderWithSep = batFolder.EndsWith(Path.DirectorySeparatorChar) ? batFolder : batFolder + Path.DirectorySeparatorChar;
+    return normalizedPath.Equals(batFolder, StringComparison.OrdinalIgnoreCase)
+        || normalizedPath.StartsWith(batFolderWithSep, StringComparison.OrdinalIgnoreCase);
+}
+
+app.MapGet("/api/settings/bat-validation-link", () =>
+{
+    var cfg = MongoDbHelper.GetSettings<BatValidationLinkConfig>("batValidationLink") ?? new BatValidationLinkConfig();
+    return Results.Json(new
+    {
+        ok = true,
+        config = new
+        {
+            enabled = cfg.Enabled,
+            tokenExpiryHours = cfg.TokenExpiryHours,
+            subjectTemplate = cfg.SubjectTemplate,
+            bodyTemplate = cfg.BodyTemplate
+        }
+    });
+});
+
+app.MapPut("/api/settings/bat-validation-link", async (HttpContext ctx) =>
+{
+    try
+    {
+        if (!TryReadTokenProfile(ctx, out var profile) || profile != 3)
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var payload = await ctx.Request.ReadFromJsonAsync<BatValidationLinkConfig>() ?? new BatValidationLinkConfig();
+        if (payload.TokenExpiryHours <= 0) payload.TokenExpiryHours = 72;
+        payload.SubjectTemplate = string.IsNullOrWhiteSpace(payload.SubjectTemplate) ? "Validation BAT — {{fileName}}" : payload.SubjectTemplate;
+        payload.BodyTemplate = string.IsNullOrWhiteSpace(payload.BodyTemplate)
+            ? "Bonjour,\n\nVeuillez consulter votre BAT et nous indiquer votre décision via ce lien :\n\n{{batLink}}\n\nCe lien est valable {{expiryHours}}h.\n\nCordialement"
+            : payload.BodyTemplate;
+        MongoDbHelper.UpsertSettings("batValidationLink", payload);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapPost("/api/bat/generate-link", async (HttpContext ctx) =>
+{
+    try
+    {
+        if (!TryReadTokenProfile(ctx, out _))
+            return Results.Json(new { ok = false, error = "Authentification requise" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var fullPath = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
+        var fileName = json.TryGetProperty("fileName", out var fn) ? fn.GetString() ?? "" : "";
+        var numeroDossier = "";
+        var client = "";
+        if (json.TryGetProperty("fabInfo", out var fabInfo) && fabInfo.ValueKind == JsonValueKind.Object)
+        {
+            numeroDossier = fabInfo.TryGetProperty("numeroDossier", out var nd) ? nd.GetString() ?? "" : "";
+            client = fabInfo.TryGetProperty("client", out var cl) ? cl.GetString() ?? "" : "";
+        }
+
+        if (!IsPathInsideBatFolder(fullPath) || !File.Exists(fullPath))
+            return Results.Json(new { ok = false, error = "Fichier BAT introuvable" });
+
+        var cfg = MongoDbHelper.GetSettings<BatValidationLinkConfig>("batValidationLink") ?? new BatValidationLinkConfig();
+        var expiryHours = cfg.TokenExpiryHours > 0 ? cfg.TokenExpiryHours : 72;
+
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+        var now = DateTime.UtcNow;
+        var linksCol = MongoDbHelper.GetCollection<BsonDocument>("batValidationLinks");
+        linksCol.InsertOne(new BsonDocument
+        {
+            ["token"] = token,
+            ["fullPath"] = fullPath,
+            ["fileName"] = string.IsNullOrWhiteSpace(fileName) ? Path.GetFileName(fullPath) : fileName,
+            ["numeroDossier"] = numeroDossier,
+            ["client"] = client,
+            ["createdAt"] = now,
+            ["expiresAt"] = now.AddHours(expiryHours),
+            ["used"] = false,
+            ["decidedAt"] = BsonNull.Value,
+            ["decision"] = BsonNull.Value,
+            ["motif"] = BsonNull.Value
+        });
+
+        var host = ctx.Request.Host.Value;
+        var link = $"https://{host}/bat-review.html?token={Uri.EscapeDataString(token)}";
+        return Results.Json(new { ok = true, token, link });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapGet("/api/bat/review", (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Query["token"].ToString();
+        if (string.IsNullOrWhiteSpace(token))
+            return Results.Json(new { ok = false, error = "token manquant" });
+
+        var linksCol = MongoDbHelper.GetCollection<BsonDocument>("batValidationLinks");
+        var doc = linksCol.Find(Builders<BsonDocument>.Filter.Eq("token", token)).FirstOrDefault();
+        if (doc == null) return Results.Json(new { ok = false, error = "Lien invalide" });
+
+        var expiresAt = doc.Contains("expiresAt") && doc["expiresAt"] != BsonNull.Value
+            ? doc["expiresAt"].ToUniversalTime()
+            : DateTime.MinValue;
+        if (expiresAt <= DateTime.UtcNow) return Results.Json(new { ok = false, error = "Lien expiré" });
+
+        var fullPath = doc.Contains("fullPath") ? doc["fullPath"].AsString : "";
+        if (!IsPathInsideBatFolder(fullPath) || !File.Exists(fullPath))
+            return Results.Json(new { ok = false, error = "Fichier BAT introuvable" });
+
+        var alreadyDecided = doc.Contains("used") && doc["used"].ToBoolean();
+        var decision = doc.Contains("decision") && doc["decision"] != BsonNull.Value ? doc["decision"].AsString : "";
+        var motif = doc.Contains("motif") && doc["motif"] != BsonNull.Value ? doc["motif"].AsString : "";
+        DateTime? decidedAt = doc.Contains("decidedAt") && doc["decidedAt"] != BsonNull.Value ? doc["decidedAt"].ToUniversalTime() : null;
+
+        return Results.Json(new
+        {
+            ok = true,
+            fileName = doc.Contains("fileName") ? doc["fileName"].AsString : Path.GetFileName(fullPath),
+            fullPath,
+            numeroDossier = doc.Contains("numeroDossier") ? doc["numeroDossier"].AsString : "",
+            client = doc.Contains("client") ? doc["client"].AsString : "",
+            alreadyDecided,
+            decision,
+            motif,
+            decidedAt
+        });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapPost("/api/bat/review/decide", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var token = json.TryGetProperty("token", out var t) ? t.GetString() ?? "" : "";
+        var decision = json.TryGetProperty("decision", out var d) ? d.GetString() ?? "" : "";
+        var motif = json.TryGetProperty("motif", out var m) ? m.GetString() ?? "" : "";
+
+        if (string.IsNullOrWhiteSpace(token)) return Results.Json(new { ok = false, error = "token manquant" });
+        if (decision != "validated" && decision != "refused")
+            return Results.Json(new { ok = false, error = "decision invalide" });
+        if (decision == "refused" && string.IsNullOrWhiteSpace(motif))
+            return Results.Json(new { ok = false, error = "Motif obligatoire pour un refus" });
+
+        var linksCol = MongoDbHelper.GetCollection<BsonDocument>("batValidationLinks");
+        var doc = linksCol.Find(Builders<BsonDocument>.Filter.Eq("token", token)).FirstOrDefault();
+        if (doc == null) return Results.Json(new { ok = false, error = "Lien invalide" });
+
+        var expiresAt = doc.Contains("expiresAt") && doc["expiresAt"] != BsonNull.Value
+            ? doc["expiresAt"].ToUniversalTime()
+            : DateTime.MinValue;
+        if (expiresAt <= DateTime.UtcNow) return Results.Json(new { ok = false, error = "Lien expiré" });
+        if (doc.Contains("used") && doc["used"].ToBoolean())
+            return Results.Json(new { ok = false, error = "Décision déjà enregistrée" });
+
+        var fullPath = doc.Contains("fullPath") ? doc["fullPath"].AsString : "";
+        if (!IsPathInsideBatFolder(fullPath) || !File.Exists(fullPath))
+            return Results.Json(new { ok = false, error = "Fichier BAT introuvable" });
+
+        var now = DateTime.UtcNow;
+        var consumeFilter = Builders<BsonDocument>.Filter.And(
+            Builders<BsonDocument>.Filter.Eq("token", token),
+            Builders<BsonDocument>.Filter.Ne("used", true),
+            Builders<BsonDocument>.Filter.Gt("expiresAt", now)
+        );
+        var consumeUpdate = Builders<BsonDocument>.Update
+            .Set("used", true)
+            .Set("decidedAt", now)
+            .Set("decision", decision)
+            .Set("motif", string.IsNullOrWhiteSpace(motif) ? (BsonValue)BsonNull.Value : new BsonString(motif));
+        var consumeResult = linksCol.UpdateOne(consumeFilter, consumeUpdate);
+        if (consumeResult.ModifiedCount == 0)
+            return Results.Json(new { ok = false, error = "Lien invalide, expiré ou déjà utilisé" });
+
+        var batCol = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
+        var batFilter = Builders<BsonDocument>.Filter.Eq("fullPath", fullPath);
+        if (decision == "validated")
+        {
+            var batUpdate = Builders<BsonDocument>.Update.Set("status", "validated").Set("validatedAt", now);
+            batCol.UpdateOne(batFilter, batUpdate, new UpdateOptions { IsUpsert = true });
+        }
+        else
+        {
+            var batUpdate = Builders<BsonDocument>.Update.Set("status", "rejected").Set("rejectedAt", now);
+            batCol.UpdateOne(batFilter, batUpdate, new UpdateOptions { IsUpsert = true });
+        }
+
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
+app.MapGet("/api/bat/file-by-token", (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Query["token"].ToString();
+        if (string.IsNullOrWhiteSpace(token))
+            return Results.Json(new { ok = false, error = "token manquant" });
+
+        var linksCol = MongoDbHelper.GetCollection<BsonDocument>("batValidationLinks");
+        var doc = linksCol.Find(Builders<BsonDocument>.Filter.Eq("token", token)).FirstOrDefault();
+        if (doc == null) return Results.Json(new { ok = false, error = "Lien invalide" });
+
+        var expiresAt = doc.Contains("expiresAt") && doc["expiresAt"] != BsonNull.Value
+            ? doc["expiresAt"].ToUniversalTime()
+            : DateTime.MinValue;
+        if (expiresAt <= DateTime.UtcNow) return Results.Json(new { ok = false, error = "Lien expiré" });
+        if (doc.Contains("used") && doc["used"].ToBoolean())
+            return Results.Json(new { ok = false, error = "Lien déjà utilisé" });
+
+        var fullPath = doc.Contains("fullPath") ? doc["fullPath"].AsString : "";
+        if (!IsPathInsideBatFolder(fullPath) || !File.Exists(fullPath))
+            return Results.Json(new { ok = false, error = "Fichier BAT introuvable" });
+
+        return Results.File(fullPath, "application/pdf", enableRangeProcessing: true);
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
 // Process pending BAT output renames: rename "Epreuve PDF.pdf" → {sourceFileName}.Epreuve.pdf

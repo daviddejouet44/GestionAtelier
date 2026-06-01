@@ -406,6 +406,13 @@ async function buildBatView(_filterStatus, _sortField) {
       if (o.orderNumber) portalOrderMap[o.orderNumber.toLowerCase()] = o;
     });
 
+    // Charger la config du lien de validation BAT
+    let batLinkConfig = { enabled: false };
+    try {
+      const cfgResp = await fetch("/api/settings/bat-validation-link").then(r => r.json()).catch(() => ({}));
+      if (cfgResp.ok) batLinkConfig = cfgResp.config || { enabled: false };
+    } catch(e) { /* ignore */ }
+
     // Combine jobs with their status
     let items = jobs.map((job, i) => ({ job, status: statuses[i], fab: fabs[i] }));
 
@@ -604,6 +611,59 @@ async function buildBatView(_filterStatus, _sortField) {
           }
         };
         actionsDiv.appendChild(btnPortalBat);
+      }
+
+      // Bouton lien de validation BAT (non-web) — visible seulement si activé par l'admin ET si PAS déjà une commande portail
+      if (batLinkConfig.enabled && !portalOrder) {
+        const btnSendLink = document.createElement("button");
+        btnSendLink.className = "btn btn-sm";
+        btnSendLink.style.cssText = "background:#f0f9ff;border:1px solid #7dd3fc;color:#0369a1;font-weight:600;";
+        btnSendLink.innerHTML = "📧 Envoyer lien de validation";
+        btnSendLink.title = "Générer un lien de validation BAT et ouvrir la messagerie";
+        btnSendLink.onclick = async () => {
+          btnSendLink.disabled = true;
+          btnSendLink.textContent = "⏳ Génération…";
+          try {
+            const r = await fetch("/api/bat/generate-link", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": "Bearer " + authToken },
+              body: JSON.stringify({
+                fullPath: full,
+                fileName: job.name || "",
+                fabInfo: { numeroDossier: fab?.numeroDossier || "", client: fab?.client || "" }
+              })
+            }).then(r => r.json());
+            if (!r.ok) {
+              showNotification("❌ Erreur : " + (r.error || "Erreur inconnue"), "error");
+              btnSendLink.disabled = false;
+              btnSendLink.innerHTML = "📧 Envoyer lien de validation";
+              return;
+            }
+            // Construire le sujet et le corps du mail avec les variables
+            const subject = (batLinkConfig.subjectTemplate || "Validation BAT — {{fileName}}")
+              .replace("{{fileName}}", job.name || "")
+              .replace("{{numeroDossier}}", fab?.numeroDossier || "");
+            const body = (batLinkConfig.bodyTemplate || "Veuillez valider votre BAT : {{batLink}}")
+              .replace("{{batLink}}", r.link)
+              .replace("{{expiryHours}}", String(batLinkConfig.tokenExpiryHours || 72))
+              .replace("{{fileName}}", job.name || "")
+              .replace("{{numeroDossier}}", fab?.numeroDossier || "");
+            window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            // Marquer comme envoyé dans le tracking
+            await fetch("/api/bat/send", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ fullPath: full })
+            });
+            showNotification("✅ Lien généré — envoyez le mail depuis votre application mail", "success");
+            buildBatView();
+          } catch(e) {
+            showNotification("❌ Erreur réseau", "error");
+            btnSendLink.disabled = false;
+            btnSendLink.innerHTML = "📧 Envoyer lien de validation";
+          }
+        };
+        actionsDiv.appendChild(btnSendLink);
       }
 
       innerDiv.appendChild(thumbDiv);
