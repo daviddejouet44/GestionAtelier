@@ -299,11 +299,11 @@
           </div>
         </div>
 
+        <!-- Production info -->
+        ${renderProductionInfo(o, productionInfo)}
+
         <!-- Files -->
         ${renderFiles(o.files || [], o.id)}
-
-        <!-- Production info (shown when imported by operator) -->
-        ${renderProductionInfo(productionInfo)}
 
         <!-- BAT History -->
         ${renderBatHistory(bats)}
@@ -579,26 +579,30 @@
       return `<div class="card"><div class="card-header"><span class="card-title">Historique des BAT</span></div><div class="file-list">${rows}</div></div>`;
     }
 
-    function renderProductionInfo(info) {
-      if (!info) return '';
-      const rows = [];
-      if (info.title) rows.push(row('Produit', esc(info.title)));
-      if (info.format) rows.push(row('Format', esc(info.format)));
-      if (info.paper) rows.push(row('Papier', esc(info.paper)));
-      if (info.encres) rows.push(row('Couleurs', esc(info.encres)));
-      if (info.quantity) rows.push(row('Quantité', info.quantity));
-      if (info.pagination) rows.push(row('Pagination', info.pagination + ' pages'));
-      if (info.recto) rows.push(row('Impression', info.recto === 'recto-verso' ? 'Recto-verso' : 'Recto'));
-      if (info.finitions && info.finitions.length) rows.push(row('Finitions', info.finitions.map(f => `<span class="badge badge-gray">${esc(f)}</span>`).join(' ')));
-      if (info.notes) rows.push(row('Notes de production', esc(info.notes).replace(/\n/g, '<br/>')));
-      if (info.deliveryDate) rows.push(row('Date de livraison prévue', fmtDate(info.deliveryDate)));
-      if (info.productionComment) rows.push(row('Commentaire de production', esc(info.productionComment).replace(/\n/g, '<br/>')));
-      if (!rows.length) return '';
+    function renderProductionInfo(o, productionInfo) {
+      const info = productionInfo || o.productionInfo || {};
+      const format = o.format || info.format;
+      const paper = o.paper || info.paper;
+      const quantity = o.quantity || info.quantity;
+      const encres = o.encres || info.encres;
+      const recto = o.recto || info.recto;
+      const notes = o.notes || info.notes;
+      const devisNumber = o.devisNumber || info.devisNumber;
+      const finitions = (Array.isArray(o.finitions) && o.finitions.length) ? o.finitions : (info.finitions || []);
+      const hasProductionInfo = format || paper || quantity || encres || notes || (finitions && finitions.length);
+      if (!hasProductionInfo) return '';
       return `
         <div class="card">
-          <div class="card-header"><span class="card-title">🏭 Informations de production</span></div>
+          <div class="card-header"><span class="card-title">📋 Informations de production</span></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;">
-            ${rows.join('')}
+            ${quantity ? row('Quantité', (typeof quantity === 'number' ? quantity.toLocaleString('fr') : esc(String(quantity))) + ' ex.') : ''}
+            ${format ? row('Format', esc(format)) : ''}
+            ${paper ? row('Support', esc(paper)) : ''}
+            ${encres ? row('Couleurs', esc(encres)) : ''}
+            ${recto && recto !== 'recto' ? row('Impression', recto === 'recto-verso' ? 'Recto / Verso' : esc(recto)) : ''}
+            ${finitions && finitions.length ? row('Finitions', finitions.map(f => `<span class="badge badge-gray">${esc(f)}</span>`).join(' ')) : ''}
+            ${notes ? row('Remarques', esc(notes).replace(/\n/g, '<br/>')) : ''}
+            ${devisNumber ? row('N° devis', esc(devisNumber)) : ''}
           </div>
         </div>
       `;

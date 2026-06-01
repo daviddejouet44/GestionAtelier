@@ -980,7 +980,9 @@ public static class QuoteLinksEndpoints
                 if (pagination.HasValue) updateDef = updateDef.Set("pagination", pagination.Value);
                 if (recto != null) updateDef = updateDef.Set("recto", recto);
                 if (finitions.Count > 0) updateDef = updateDef.Set("finitions", new BsonArray(finitions.Select(f => (BsonValue)f)));
-                if (title != null) updateDef = updateDef.Set("title", title);
+                if (notes != null) updateDef = updateDef.Set("notes", notes);
+                if (deliveryDate.HasValue) updateDef = updateDef.Set("deliveryDate", deliveryDate.Value);
+                if (prodComment != null) updateDef = updateDef.Set("productionComment", prodComment);
 
                 // Append to statusHistory
                 var historyEntry = new BsonDocument
@@ -1044,6 +1046,7 @@ public static class QuoteLinksEndpoints
                 var paper          = GetStr("paper");
                 var encres         = GetStr("encres");
                 var recto          = GetStr("recto");
+                var notes          = GetStr("notes");
                 var prodComment    = GetStr("productionComment");
                 var quantity       = GetInt("quantity");
                 var pagination     = GetInt("pagination");
@@ -1085,6 +1088,7 @@ public static class QuoteLinksEndpoints
                 if (pagination.HasValue)    productionInfo["pagination"]        = pagination.Value;
                 if (recto != null)          productionInfo["recto"]             = recto;
                 if (finitions.Count > 0)    productionInfo["finitions"]         = new BsonArray(finitions.Select(f => (BsonValue)f));
+                if (notes != null)          productionInfo["notes"]             = notes;
                 if (deliveryDate.HasValue)  productionInfo["deliveryDate"]      = deliveryDate.Value;
                 if (prodComment != null)    productionInfo["productionComment"] = prodComment;
 
@@ -1099,6 +1103,9 @@ public static class QuoteLinksEndpoints
                 if (pagination.HasValue) updateDef = updateDef.Set("pagination", pagination.Value);
                 if (recto != null)       updateDef = updateDef.Set("recto", recto);
                 if (finitions.Count > 0) updateDef = updateDef.Set("finitions", new BsonArray(finitions.Select(f => (BsonValue)f)));
+                if (notes != null)       updateDef = updateDef.Set("notes", notes);
+                if (deliveryDate.HasValue) updateDef = updateDef.Set("deliveryDate", deliveryDate.Value);
+                if (prodComment != null) updateDef = updateDef.Set("productionComment", prodComment);
 
                 var historyEntry = new BsonDocument
                 {
