@@ -979,7 +979,6 @@ public static class QuoteLinksEndpoints
                 if (pagination.HasValue) updateDef = updateDef.Set("pagination", pagination.Value);
                 if (recto != null) updateDef = updateDef.Set("recto", recto);
                 if (finitions.Count > 0) updateDef = updateDef.Set("finitions", new BsonArray(finitions.Select(f => (BsonValue)f)));
-                if (title != null) updateDef = updateDef.Set("title", title);
 
                 // Append to statusHistory
                 var historyEntry = new BsonDocument

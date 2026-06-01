@@ -587,7 +587,7 @@
       if (info.paper) rows.push(row('Papier', esc(info.paper)));
       if (info.encres) rows.push(row('Couleurs', esc(info.encres)));
       if (info.quantity) rows.push(row('Quantité', info.quantity));
-      if (info.pagination) rows.push(row('Pagination', info.pagination + ' pages'));
+      if (info.pagination) rows.push(row('Pagination', info.pagination + (info.pagination === 1 ? ' page' : ' pages')));
       if (info.recto) rows.push(row('Impression', info.recto === 'recto-verso' ? 'Recto-verso' : 'Recto'));
       if (info.finitions && info.finitions.length) rows.push(row('Finitions', info.finitions.map(f => `<span class="badge badge-gray">${esc(f)}</span>`).join(' ')));
       if (info.notes) rows.push(row('Notes de production', esc(info.notes).replace(/\n/g, '<br/>')));
