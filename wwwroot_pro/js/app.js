@@ -619,6 +619,7 @@ async function buildBatView(_filterStatus, _sortField) {
         btnSendLink.className = "btn btn-sm";
         btnSendLink.style.cssText = "background:#f0f9ff;border:1px solid #7dd3fc;color:#0369a1;font-weight:600;";
         btnSendLink.innerHTML = "📧 Envoyer lien de validation";
+        btnSendLink.setAttribute("aria-label", "Envoyer lien de validation BAT");
         btnSendLink.title = "Générer un lien de validation BAT et ouvrir la messagerie";
         btnSendLink.onclick = async () => {
           btnSendLink.disabled = true;
