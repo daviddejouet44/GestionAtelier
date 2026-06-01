@@ -7,6 +7,9 @@ export let submissionCalendar = null;
 // Current planning view mode: 'machine' | 'finitions' | 'global' | 'livraison'
 let _planningViewMode = 'machine';
 
+// Callback to refresh paper selects with a given date range (set by addMachineFilter)
+let _refreshPaperSelectsFn = null;
+
 // ======================================================
 // CALENDRIER PRINCIPAL
 // ======================================================
@@ -740,6 +743,13 @@ export async function initCalendar() {
       const full = normalizePath(info.event.extendedProps.fullPath);
       // openFabrication is registered via callback from app.js
       if (full && window._openFabrication) window._openFabrication(full);
+    },
+    datesSet: (dateInfo) => {
+      if (_refreshPaperSelectsFn) {
+        const start = dateInfo.startStr.slice(0, 10);
+        const end   = dateInfo.endStr.slice(0, 10);
+        _refreshPaperSelectsFn(start, end);
+      }
     }
   });
 
@@ -872,10 +882,9 @@ async function addMachineFilter(calendarEl) {
   }
 
   try {
-    const [engines, usersResp, papersResp, finitionsResp] = await Promise.all([
+    const [engines, usersResp, finitionsResp] = await Promise.all([
       fetch("/api/config/print-engines").then(r => r.json()).catch(() => []),
       fetch("/api/auth/users", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, users: [] })),
-      fetch("/api/fabrication/papers", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, papers: [] })),
       fetch("/api/fabrication/finitions", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, finitions: [] }))
     ]);
 
@@ -893,9 +902,22 @@ async function addMachineFilter(calendarEl) {
     }).join('');
     opSel.onchange = () => calendar?.refetchEvents();
 
-    // Paper dropdowns (loaded from active fabrications)
-    const paperNames = (papersResp.ok && Array.isArray(papersResp.papers)) ? papersResp.papers : [];
-    buildCumulativeSelects("planning-paper-selects", paperNames, "Tous papiers", "Ajouter un papier", () => calendar?.refetchEvents());
+    // Paper dropdowns — refreshed dynamically per visible date range
+    _refreshPaperSelectsFn = async (startDate, endDate) => {
+      try {
+        let url = "/api/fabrication/papers";
+        if (startDate && endDate) url += `?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`;
+        const papersResp = await fetch(url, { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, papers: [] }));
+        const paperNames = (papersResp.ok && Array.isArray(papersResp.papers)) ? papersResp.papers : [];
+        buildCumulativeSelects("planning-paper-selects", paperNames, "Tous papiers", "Ajouter un papier", () => calendar?.refetchEvents());
+      } catch(e) { /* ignore */ }
+    };
+    // Load papers for the current calendar view immediately
+    const currentStart = calendar?.view?.currentStart;
+    const currentEnd   = calendar?.view?.currentEnd;
+    const startStr = currentStart ? currentStart.toLocaleDateString('sv-SE') : null;
+    const endStr   = currentEnd   ? currentEnd.toLocaleDateString('sv-SE')   : null;
+    _refreshPaperSelectsFn(startStr, endStr);
 
     // Finitions operator filter
     const finOpSel = finWrap.querySelector("#planning-finitions-operator-filter");

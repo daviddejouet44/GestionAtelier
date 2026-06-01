@@ -1647,14 +1647,24 @@ app.MapGet("/api/fabrication/events", () =>
 
 // ======================================================
 // PAPERS — List unique papers used in active fabrications
-// Returns sorted list of all non-empty media1/2/3/4/mediaCouverture values
+// Returns ordered list of all non-empty media1/mediaCouverture/media2/media3/media4 values
+// Supports optional startDate/endDate (YYYY-MM-DD) query params to filter by dateImpression
 // ======================================================
 app.MapGet("/api/fabrication/papers", (HttpContext ctx) =>
 {
     try
     {
+        var startStr = ctx.Request.Query["startDate"].ToString();
+        var endStr   = ctx.Request.Query["endDate"].ToString();
+
+        DateTime? startDate = DateTime.TryParse(startStr, out var sd)
+            ? DateTime.SpecifyKind(sd.Date, DateTimeKind.Utc) : (DateTime?)null;
+        DateTime? endDate = DateTime.TryParse(endStr, out var ed)
+            ? DateTime.SpecifyKind(ed.Date.AddDays(1), DateTimeKind.Utc) : (DateTime?)null;
+
         var fabCol = MongoDbHelper.GetFabricationsCollection();
-        var filter = Builders<BsonDocument>.Filter.And(
+        var filterConditions = new List<FilterDefinition<BsonDocument>>
+        {
             Builders<BsonDocument>.Filter.Or(
                 Builders<BsonDocument>.Filter.Exists("media1"),
                 Builders<BsonDocument>.Filter.Exists("media2"),
@@ -1662,24 +1672,43 @@ app.MapGet("/api/fabrication/papers", (HttpContext ctx) =>
                 Builders<BsonDocument>.Filter.Exists("media4"),
                 Builders<BsonDocument>.Filter.Exists("mediaCouverture")
             ),
-            Builders<BsonDocument>.Filter.Ne("excludeFromPlanning", true)
-        );
+            Builders<BsonDocument>.Filter.Ne("excludeFromPlanning", true),
+            Builders<BsonDocument>.Filter.Ne("locked", true),
+            Builders<BsonDocument>.Filter.Or(
+                Builders<BsonDocument>.Filter.Not(Builders<BsonDocument>.Filter.Exists("statutProduction")),
+                Builders<BsonDocument>.Filter.Eq("statutProduction", BsonNull.Value),
+                Builders<BsonDocument>.Filter.Not(Builders<BsonDocument>.Filter.Eq("statutProduction", "Fin de production"))
+            )
+        };
+
+        if (startDate.HasValue && endDate.HasValue)
+        {
+            filterConditions.Add(Builders<BsonDocument>.Filter.And(
+                Builders<BsonDocument>.Filter.Exists("dateImpression"),
+                Builders<BsonDocument>.Filter.Ne("dateImpression", BsonNull.Value),
+                Builders<BsonDocument>.Filter.Gte("dateImpression", new BsonDateTime(startDate.Value)),
+                Builders<BsonDocument>.Filter.Lt("dateImpression",  new BsonDateTime(endDate.Value))
+            ));
+        }
+
+        var filter = Builders<BsonDocument>.Filter.And(filterConditions);
         var docs = fabCol.Find(filter).ToList();
 
-        var papersSet = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var doc in docs)
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var papersList = new List<string>();
+        foreach (var field in new[] { "media1", "mediaCouverture", "media2", "media3", "media4" })
         {
-            foreach (var field in new[] { "media1", "media2", "media3", "media4", "mediaCouverture" })
+            foreach (var doc in docs)
             {
-                if (doc.Contains(field) && doc[field] != BsonNull.Value)
+                if (doc.Contains(field) && doc[field] != BsonNull.Value && doc[field].IsString)
                 {
-                    var val = doc[field].AsString;
-                    if (!string.IsNullOrWhiteSpace(val))
-                        papersSet.Add(val.Trim());
+                    var val = doc[field].AsString?.Trim();
+                    if (!string.IsNullOrWhiteSpace(val) && seen.Add(val))
+                        papersList.Add(val);
                 }
             }
         }
-        return Results.Json(new { ok = true, papers = papersSet.ToList() });
+        return Results.Json(new { ok = true, papers = papersList });
     }
     catch (Exception ex)
     {
