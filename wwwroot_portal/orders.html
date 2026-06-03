@@ -102,7 +102,7 @@
         if (typeTravail) extras.push(esc(typeTravail));
         if (format) extras.push(esc(format));
         if (paper) extras.push(esc(paper));
-        if (quantity !== '') extras.push(`Qté ${esc(String(quantity))}`);
+        if (quantity != null && quantity !== '') extras.push(`Qté ${esc(String(quantity))}`);
 
         return `
         <tr>

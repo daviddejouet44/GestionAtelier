@@ -244,6 +244,7 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
                 var filter = filters.Count == 1 ? filters[0] : Builders<BsonDocument>.Filter.Or(filters);
                 var pi = new BsonDocument
                 {
+                    // "title" intentionally mirrors TypeTravail for portal display fallback consistency.
                     ["title"] = string.IsNullOrWhiteSpace(sheet.TypeTravail) ? BsonNull.Value : (BsonValue)sheet.TypeTravail,
                     ["format"] = string.IsNullOrWhiteSpace(sheet.Format) ? BsonNull.Value : (BsonValue)sheet.Format,
                     ["paper"] = string.IsNullOrWhiteSpace(sheet.Media1) ? BsonNull.Value : (BsonValue)sheet.Media1,

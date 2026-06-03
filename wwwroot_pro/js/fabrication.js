@@ -1166,10 +1166,13 @@ export function initQuoteSendModal() {
   if (btnCloseX) btnCloseX.addEventListener('click', resetAndClose);
 
   modal.addEventListener('click', e => { if (e.target === modal) resetAndClose(); });
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !modal.classList.contains('hidden'))
-      resetAndClose();
-  });
+  if (modal.dataset.qsEscapeBound !== '1') {
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !modal.classList.contains('hidden'))
+        resetAndClose();
+    });
+    modal.dataset.qsEscapeBound = '1';
+  }
 
   // File handling
   if (uploadZone) {

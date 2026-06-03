@@ -14,6 +14,15 @@ namespace GestionAtelier.Endpoints.Portal;
 
 public static class PortalOrdersEndpoints
 {
+    private static int? ReadNullableInt(BsonDocument doc, string field, bool allowStringFallback = false)
+    {
+        if (!doc.Contains(field) || doc[field].IsBsonNull) return null;
+        if (doc[field].IsInt32) return doc[field].AsInt32;
+        if (doc[field].IsInt64) return (int)doc[field].AsInt64;
+        if (allowStringFallback && int.TryParse(doc[field].ToString(), out var parsed)) return parsed;
+        return null;
+    }
+
     // Mapper -----------------------------------------------------------------
     private static object? ExtractProductionInfo(BsonDocument? rawDoc)
     {
@@ -31,14 +40,8 @@ public static class PortalOrdersEndpoints
             format            = pi.Contains("format") && !pi["format"].IsBsonNull ? pi["format"].AsString : null,
             paper             = pi.Contains("paper") && !pi["paper"].IsBsonNull ? pi["paper"].AsString : null,
             encres            = pi.Contains("encres") && !pi["encres"].IsBsonNull ? pi["encres"].AsString : null,
-            quantity          = pi.Contains("quantity") && !pi["quantity"].IsBsonNull
-                ? (pi["quantity"].IsInt32 ? (int?)pi["quantity"].AsInt32 : (pi["quantity"].IsInt64 ? (int?)pi["quantity"].AsInt64 : null))
-                : null,
-            pagination        = pi.Contains("pagination") && !pi["pagination"].IsBsonNull
-                ? (pi["pagination"].IsInt32
-                    ? (int?)pi["pagination"].AsInt32
-                    : (int.TryParse(pi["pagination"].ToString(), out var parsedPagination) ? parsedPagination : null))
-                : null,
+            quantity          = ReadNullableInt(pi, "quantity"),
+            pagination        = ReadNullableInt(pi, "pagination", allowStringFallback: true),
             recto             = pi.Contains("recto") && !pi["recto"].IsBsonNull ? pi["recto"].AsString : null,
             finitions         = finitionsList,
             notes             = pi.Contains("notes") && !pi["notes"].IsBsonNull ? pi["notes"].AsString : null,
