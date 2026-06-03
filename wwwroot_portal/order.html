@@ -615,7 +615,7 @@
             ${hasValue(info.encres) ? row('Encres', esc(String(info.encres))) : ''}
             ${hasValue(info.quantity) ? row('Quantité', typeof info.quantity === 'number' ? `${info.quantity.toLocaleString('fr')} ex.` : esc(String(info.quantity))) : ''}
             ${hasValue(info.pagination) ? row('Pagination', esc(String(info.pagination))) : ''}
-            ${hasValue(info.recto) ? row('Recto', info.recto === 'recto-verso' ? 'Recto-verso' : esc(String(info.recto))) : ''}
+            ${hasValue(info.recto) ? row('Impression', info.recto === 'recto-verso' ? 'Recto-verso' : esc(String(info.recto))) : ''}
             ${finitions.length ? row('Finitions', finitions.map(f => `<span class="badge badge-gray">${esc(String(f))}</span>`).join(' ')) : ''}
             ${hasValue(info.notes) ? row('Notes', esc(String(info.notes)).replace(/\n/g, '<br/>')) : ''}
             ${hasValue(info.productionComment) ? row('Commentaire production', esc(String(info.productionComment)).replace(/\n/g, '<br/>')) : ''}
