@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using MongoDB.Driver;
 using MongoDB.Bson;
@@ -346,62 +347,41 @@ FileSystemWatcher? tempCopyWatcher = null;
                     await HandleEpreuve(e.FullPath);
             };
 
-            // ── Second watcher : PDFs générés par PrismaPrepare via le flux "En attente → Ouvrir dans PrismaPrepare"
-            // Détecte tout PDF dans outputDir (sauf Epreuve.pdf), le renomme avec le vrai nom de TEMP_COPY_Prepare,
-            // le déplace dans PreparePath, et nettoie TEMP_COPY_Prepare.
-            FileSystemWatcher? prepareDirectWatcher = null;
+            // ── Second watcher : PDFs renommés par PrismaPrepare (suffixe _OK/_Warning/_Error etc.)
+            // Détecte le renommage dans Sortie_PrepareDirect, supprime le suffixe, déplace vers PreparePath.
             try
             {
                 var prepareDirectSem = new SemaphoreSlim(1, 1);
-
-                prepareDirectWatcher = new FileSystemWatcher(outputDir)
+                _prepareDirectWatcher = new FileSystemWatcher(outputDir)
                 {
                     Filter = "*.pdf",
-                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite,
+                    NotifyFilter = NotifyFilters.FileName,
                     EnableRaisingEvents = true
                 };
+
+                // Regex pour détecter et supprimer les suffixes ajoutés par PrismaPrepare
+                var prismaSuffixRegex = new System.Text.RegularExpressions.Regex(
+                    @"^(.+?)(_OK|_WARNING|_WARN|_ERROR|_ERREUR|_SUCCESS|_AVERTISSEMENT|_FAILED|_FAIL)\.pdf$",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
                 async Task HandlePrepareDirectOutput(string outputPdfPath)
                 {
                     // Ignorer Epreuve.pdf — géré par le watcher BAT existant
-                    if (Path.GetFileName(outputPdfPath).Equals("Epreuve.pdf", StringComparison.OrdinalIgnoreCase))
+                    var pdfName = Path.GetFileName(outputPdfPath);
+                    if (pdfName.Equals("Epreuve.pdf", StringComparison.OrdinalIgnoreCase))
                         return;
+
+                    // Vérifier que le nom contient un suffixe PrismaPrepare
+                    var match = prismaSuffixRegex.Match(pdfName);
+                    if (!match.Success)
+                        return; // Pas encore renommé par PrismaPrepare, ignorer
 
                     await prepareDirectSem.WaitAsync();
                     try
                     {
+                        // Attendre que le fichier soit stable
                         await Task.Delay(BackendUtils.FileSystemSettleDelayMs * 2);
                         if (!File.Exists(outputPdfPath)) return;
-
-                        var tempCopyDir2 = !string.IsNullOrWhiteSpace(integCfg?.TempCopyPath)
-                            ? integCfg!.TempCopyPath
-                            : @"C:\FluxAtelier\Base\TEMP_COPY_Prepare";
-
-                        if (!Directory.Exists(tempCopyDir2))
-                        {
-                            Console.WriteLine($"[PREPARE_FSW][WARN] TEMP_COPY_Prepare introuvable : {tempCopyDir2}");
-                            return;
-                        }
-
-                        // Trouver le fichier source (vrai nom) dans TEMP_COPY_Prepare
-                        var tempFiles = Directory.GetFiles(tempCopyDir2, "*.pdf")
-                            .OrderByDescending(f => new FileInfo(f).LastWriteTime)
-                            .ToList();
-
-                        if (tempFiles.Count == 0)
-                        {
-                            Console.WriteLine("[PREPARE_FSW][WARN] Aucun fichier dans TEMP_COPY_Prepare, impossible de déterminer le vrai nom.");
-                            return;
-                        }
-
-                        var trueName = Path.GetFileName(tempFiles.First());
-                        Console.WriteLine($"[PREPARE_FSW] Vrai nom récupéré depuis TEMP_COPY_Prepare : {trueName}");
-
-                        // Destination : PreparePath (configuré) ou C:\Flux\PrismaPrepare par défaut
-                        var prepareDestDir = !string.IsNullOrWhiteSpace(integCfg?.PreparePath)
-                            ? integCfg!.PreparePath
-                            : @"C:\Flux\PrismaPrepare";
-                        Directory.CreateDirectory(prepareDestDir);
 
                         // Attendre que le fichier ne soit plus verrouillé
                         for (int retry = 0; retry < 10; retry++)
@@ -413,24 +393,36 @@ FileSystemWatcher? tempCopyWatcher = null;
                             }
                             catch (IOException) { await Task.Delay(500); }
                         }
-
                         if (!File.Exists(outputPdfPath)) return;
 
-                        // Renommer et déplacer
-                        var destPath2 = Path.Combine(prepareDestDir, trueName);
-                        File.Move(outputPdfPath, destPath2, overwrite: true);
-                        Console.WriteLine($"[PREPARE_FSW] PDF renommé et déplacé : {outputPdfPath} → {destPath2}");
+                        // Nom d'origine = groupe 1 + ".pdf" (suffixe supprimé)
+                        var originalName = match.Groups[1].Value + ".pdf";
+                        Console.WriteLine($"[PREPARE_FSW] Renommage détecté : {pdfName} → nom d'origine : {originalName}");
 
-                        // Supprimer la copie dans TEMP_COPY_Prepare
-                        foreach (var tempFile in tempFiles)
+                        // Destination : PreparePath (configuré dans IntegrationsSettings) ou C:\Flux\PrismaPrepare par défaut
+                        var integCfgPrepare = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations");
+                        var prepareDestDir = !string.IsNullOrWhiteSpace(integCfgPrepare?.PreparePath)
+                            ? integCfgPrepare!.PreparePath
+                            : @"C:\Flux\PrismaPrepare";
+                        Directory.CreateDirectory(prepareDestDir);
+
+                        var destPath = Path.Combine(prepareDestDir, originalName);
+                        File.Move(outputPdfPath, destPath, overwrite: true);
+                        Console.WriteLine($"[PREPARE_FSW] PDF déplacé : {outputPdfPath} → {destPath}");
+
+                        // Journalisation activité
+                        try
                         {
-                            try
+                            MongoDbHelper.InsertActivityLog(new ActivityLogEntry
                             {
-                                File.Delete(tempFile);
-                                Console.WriteLine($"[PREPARE_FSW] Suppression TEMP_COPY : {tempFile}");
-                            }
-                            catch (Exception exDel) { Console.WriteLine($"[PREPARE_FSW][WARN] Delete temp: {exDel.Message}"); }
+                                Timestamp = DateTime.Now,
+                                UserLogin = "system",
+                                UserName = "GestionAtelier",
+                                Action = "PRISMA_PREPARE_OUTPUT",
+                                Details = $"PrismaPrepare : {pdfName} → {originalName} déplacé dans {prepareDestDir}"
+                            });
                         }
+                        catch (Exception exLog) { Console.WriteLine($"[PREPARE_FSW][WARN] ActivityLog: {exLog.Message}"); }
                     }
                     catch (Exception ex)
                     {
@@ -442,12 +434,12 @@ FileSystemWatcher? tempCopyWatcher = null;
                     }
                 }
 
-                prepareDirectWatcher.Created += async (_, e) => await HandlePrepareDirectOutput(e.FullPath);
-                prepareDirectWatcher.Renamed += async (_, e) => await HandlePrepareDirectOutput(e.FullPath);
-                prepareDirectWatcher.Changed += async (_, e) => await HandlePrepareDirectOutput(e.FullPath);
+                // Surveiller les renommages (PrismaPrepare renomme le fichier quand il a fini)
+                _prepareDirectWatcher.Renamed += async (_, e) => await HandlePrepareDirectOutput(e.FullPath);
+                // Surveiller aussi Created au cas où PrismaPrepare écrit directement avec le suffixe
+                _prepareDirectWatcher.Created += async (_, e) => await HandlePrepareDirectOutput(e.FullPath);
 
-                _prepareDirectWatcher = prepareDirectWatcher;
-                Console.WriteLine($"[INFO] PrismaPrepare direct output watcher started on {outputDir} (*.pdf sauf Epreuve.pdf)");
+                Console.WriteLine($"[INFO] PrismaPrepare direct output watcher started on {outputDir} (renommage suffixe _OK/_Warning/_Error → PreparePath)");
             }
             catch (Exception exPrepDirect)
             {
