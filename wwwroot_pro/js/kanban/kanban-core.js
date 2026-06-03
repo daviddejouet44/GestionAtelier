@@ -9,14 +9,12 @@ const sortBy = document.getElementById("sortBy");
 
 // Shared mutable state (imported by kanban-cards.js)
 export const state = {
-  dateFilter: "",        // was _kanbanDateFilter
-  operatorFilter: "",    // was _kanbanOperatorFilter
   preflightColumnsHidden: false,  // was _preflightColumnsHidden
   columnCache: {},       // was _columnCache
   visibleActionsMap: {}, // folder → string[] | null (null = show all)
   emailTemplatesMap: {},  // folder → string[] | null (null = no extra templates)
   externalBatLinksEnabled: false, // admin toggle for external BAT links
-  colFilters: {},        // folderName → { nameFilter: string, dateFilter: string }
+  colFilters: {},        // folderName → { nameFilter: string }
   colSorts: {}           // folderName → "date_asc" | "date_desc" | "name_asc" | "name_desc"
 };
 
@@ -94,7 +92,7 @@ export async function buildKanban() {
     labelSpan.style.flex = "1";
     title.appendChild(labelSpan);
 
-    // Filtres locaux par colonne (nom + date de livraison)
+    // Filtres locaux par colonne (nom)
     const colNameInput = document.createElement("input");
     colNameInput.type = "text";
     colNameInput.placeholder = "Nom…";
@@ -102,7 +100,7 @@ export async function buildKanban() {
     colNameInput.style.cssText = "width:80px;padding:2px 5px;font-size:11px;border:1px solid rgba(255,255,255,0.4);border-radius:4px;background:rgba(255,255,255,0.15);color:inherit;margin-right:4px;flex-shrink:0;";
     colNameInput.value = (state.colFilters[cfg.folder]?.nameFilter) || "";
     colNameInput.oninput = () => {
-      if (!state.colFilters[cfg.folder]) state.colFilters[cfg.folder] = { nameFilter: "", dateFilter: "" };
+      if (!state.colFilters[cfg.folder]) state.colFilters[cfg.folder] = { nameFilter: "" };
       state.colFilters[cfg.folder].nameFilter = colNameInput.value;
       const selectedSort = state.colSorts[cfg.folder] || sortBy?.value || "date_desc";
       const ck = cfg.folder + '|' + (searchInput?.value || "").trim().toLowerCase() + '|' + selectedSort;
@@ -112,23 +110,6 @@ export async function buildKanban() {
     };
     colNameInput.onclick = e => e.stopPropagation();
     title.appendChild(colNameInput);
-
-    const colDateInput = document.createElement("input");
-    colDateInput.type = "date";
-    colDateInput.title = "Filtrer par date de livraison dans cette colonne";
-    colDateInput.style.cssText = "width:110px;padding:2px 4px;font-size:11px;border:1px solid rgba(255,255,255,0.4);border-radius:4px;background:rgba(255,255,255,0.15);color:inherit;margin-right:4px;flex-shrink:0;";
-    colDateInput.value = (state.colFilters[cfg.folder]?.dateFilter) || "";
-    colDateInput.onchange = () => {
-      if (!state.colFilters[cfg.folder]) state.colFilters[cfg.folder] = { nameFilter: "", dateFilter: "" };
-      state.colFilters[cfg.folder].dateFilter = colDateInput.value;
-      const selectedSort = state.colSorts[cfg.folder] || sortBy?.value || "date_desc";
-      const ck = cfg.folder + '|' + (searchInput?.value || "").trim().toLowerCase() + '|' + selectedSort;
-      delete state.columnCache[ck];
-      const colEl = kanbanDiv.querySelector(`.kanban-col-operator[data-folder="${CSS.escape(cfg.folder)}"]`);
-      if (colEl) refreshKanbanColumnOperator(cfg.folder, (searchInput?.value || "").trim().toLowerCase(), selectedSort, colEl, currentUser?.profile === 1 || (currentUser?.profile === 4 && cfg.folder !== "Façonnage"), cfg.folderPath || null);
-    };
-    colDateInput.onclick = e => e.stopPropagation();
-    title.appendChild(colDateInput);
 
     // Bouton "Ouvrir dans Acrobat Pro" dans l'en-tête des colonnes Preflight
     if (cfg.folder === "Corrections" || cfg.folder === "Corrections et fond perdu") {
@@ -279,7 +260,7 @@ export async function buildKanban() {
   const summaryEl = document.getElementById("kanban-summary");
   if (summaryEl) summaryEl.style.display = "none"; // hidden until updateKanbanSummary populates it
 
-  // Filter bar (date + operator) — uses static #kanban-filter-bar from HTML
+  // Filter bar — no local controls, global name + sort are in header
   buildKanbanFilterBar();
 
   // Clear column cache so new settings (visibleActions, etc.) take effect immediately
@@ -305,134 +286,7 @@ function buildKanbanFilterBar() {
 
   }
   filterBar.innerHTML = "";
-
-  // Date filter
-  const dateLabel = document.createElement("label");
-  dateLabel.style.cssText = "font-weight:600;color:#374151;white-space:nowrap;";
-  dateLabel.textContent = "Filtrer par jour :";
-  filterBar.appendChild(dateLabel);
-
-  const dateInput = document.createElement("input");
-  dateInput.type = "date";
-  dateInput.id = "kanban-date-filter";
-  dateInput.className = "settings-input";
-  dateInput.style.cssText = "padding:4px 8px;font-size:13px;";
-  dateInput.value = state.dateFilter;
-  dateInput.onchange = () => {
-    state.dateFilter = dateInput.value;
-    Object.keys(state.columnCache).forEach(k => delete state.columnCache[k]);
-    updateFilterIndicator();
-    refreshKanban();
-  };
-  filterBar.appendChild(dateInput);
-
-  const btnToday = document.createElement("button");
-  btnToday.className = "btn btn-sm";
-  btnToday.textContent = "Aujourd'hui";
-  btnToday.onclick = () => {
-    const today = new Date().toISOString().slice(0, 10);
-    dateInput.value = today;
-    state.dateFilter = today;
-    Object.keys(state.columnCache).forEach(k => delete state.columnCache[k]);
-    updateFilterIndicator();
-    refreshKanban();
-  };
-  filterBar.appendChild(btnToday);
-
-  // Separator
-  const sep = document.createElement("span");
-  sep.style.cssText = "color:#d1d5db;margin:0 4px;";
-  sep.textContent = "|";
-  filterBar.appendChild(sep);
-
-  // Operator filter
-  const opLabel = document.createElement("label");
-  opLabel.style.cssText = "font-weight:600;color:#374151;white-space:nowrap;";
-  opLabel.textContent = "Opérateur :";
-  filterBar.appendChild(opLabel);
-
-  const opSelect = document.createElement("select");
-  opSelect.id = "kanban-operator-filter";
-  opSelect.className = "settings-input";
-  opSelect.style.cssText = "padding:4px 8px;font-size:13px;min-width:140px;";
-
-  const optAll = document.createElement("option");
-  optAll.value = "all";
-  optAll.textContent = "Tous";
-  opSelect.appendChild(optAll);
-
-  const optMine = document.createElement("option");
-  optMine.value = "mine";
-  optMine.textContent = "Mes jobs";
-  opSelect.appendChild(optMine);
-
-  // Load operators for admin/operator
-  fetch("/api/operators").then(r => r.json()).then(resp => {
-    const operators = resp.operators || [];
-    operators.forEach(op => {
-      const opt = document.createElement("option");
-      opt.value = op.id;
-      opt.textContent = op.name;
-      opSelect.appendChild(opt);
-    });
-    opSelect.value = state.operatorFilter || "all";
-  }).catch(() => {});
-
-  opSelect.value = state.operatorFilter || "all";
-  opSelect.onchange = () => {
-    state.operatorFilter = opSelect.value;
-    Object.keys(state.columnCache).forEach(k => delete state.columnCache[k]);
-    updateFilterIndicator();
-    refreshKanban();
-  };
-  filterBar.appendChild(opSelect);
-
-  // Reset all filters button
-  const btnReset = document.createElement("button");
-  btnReset.id = "kanban-filter-reset";
-  btnReset.className = "btn btn-sm";
-  btnReset.textContent = "Réinitialiser";
-  btnReset.style.display = (state.dateFilter || (state.operatorFilter && state.operatorFilter !== "all")) ? "inline-block" : "none";
-  btnReset.onclick = () => {
-    state.dateFilter = "";
-    state.operatorFilter = "all";
-    dateInput.value = "";
-    opSelect.value = "all";
-    Object.keys(state.columnCache).forEach(k => delete state.columnCache[k]);
-    updateFilterIndicator();
-    refreshKanban();
-  };
-  filterBar.appendChild(btnReset);
-
-  // Filter indicator
-  const indicator = document.createElement("span");
-  indicator.id = "kanban-filter-indicator";
-  indicator.style.cssText = "font-size:12px;color:#6b7280;margin-left:4px;";
-  filterBar.appendChild(indicator);
-
-  updateFilterIndicator();
-}
-
-function updateFilterIndicator() {
-  const indicator = document.getElementById("kanban-filter-indicator");
-  const resetBtn = document.getElementById("kanban-filter-reset");
-  if (!indicator) return;
-
-  const parts = [];
-  if (state.dateFilter) {
-    parts.push(`Jour : ${new Date(state.dateFilter + "T00:00:00").toLocaleDateString("fr-FR")}`);
-  }
-  if (state.operatorFilter && state.operatorFilter !== "all") {
-    parts.push(state.operatorFilter === "mine" ? "Mes jobs" : "Opérateur sélectionné");
-  }
-
-  if (parts.length > 0) {
-    indicator.textContent = "Filtré : " + parts.join(" · ");
-    if (resetBtn) resetBtn.style.display = "inline-block";
-  } else {
-    indicator.textContent = "";
-    if (resetBtn) resetBtn.style.display = "none";
-  }
+  filterBar.style.display = "none";
 }
 
 // ======================================================

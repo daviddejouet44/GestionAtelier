@@ -78,8 +78,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       return (j.name || '') + '|' + j.modified + '|' + j.size
         + '|' + ((assignmentsByPath[fn] || {}).operatorName || '')
         + '|' + (deliveriesByPath[fn] || '');
-    })) + '|' + state.dateFilter + '|' + (state.operatorFilter || 'all')
-      + '|vis:' + JSON.stringify(state.visibleActionsMap[folderName] ?? null)
+    })) + '|vis:' + JSON.stringify(state.visibleActionsMap[folderName] ?? null)
       + '|cf:' + JSON.stringify(state.colFilters?.[folderName] ?? null);
     const cacheKey = folderName + '|' + q + '|' + sort;
     if (state.columnCache[cacheKey] === fingerprint) return;
@@ -95,47 +94,10 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       filtered = filtered.filter(j => (j.name || "").toLowerCase().includes(q.toLowerCase()));
     }
 
-    // Date filter — only show jobs whose deliveryDate matches selected date
-    if (state.dateFilter) {
-      filtered = filtered.filter(j => {
-        const fn = fnKey(j.fullPath || j.name || '');
-        const iso = deliveriesByPath[fn];
-        return iso && iso === state.dateFilter;
-      });
-    }
-
-    // Operator filter
-    if (state.operatorFilter && state.operatorFilter !== "all") {
-      filtered = filtered.filter(j => {
-        const fn = fnKey(j.fullPath || j.name || '');
-        const asgn = assignmentsByPath[fn];
-        if (!asgn) return false;
-        if (state.operatorFilter === "mine") {
-          // Only match if current user has a non-empty identity
-          const myId = currentUser?.id || "";
-          const myLogin = currentUser?.login || "";
-          const myName = currentUser?.name || "";
-          if (!myId && !myLogin && !myName) return false;
-          return (myId && asgn.operatorId === myId)
-            || (myLogin && asgn.operatorId === myLogin)
-            || (myName && asgn.operatorName === myName)
-            || (myLogin && asgn.operatorName === myLogin);
-        }
-        return asgn.operatorId === state.operatorFilter;
-      });
-    }
-
-    // Local column filters (name + delivery date per column)
+    // Local column filters (name)
     const colFilter = state.colFilters?.[folderName];
     if (colFilter?.nameFilter) {
       filtered = filtered.filter(j => (j.name || "").toLowerCase().includes(colFilter.nameFilter.toLowerCase()));
-    }
-    if (colFilter?.dateFilter) {
-      filtered = filtered.filter(j => {
-        const fn = fnKey(j.fullPath || j.name || '');
-        const iso = deliveriesByPath[fn];
-        return iso && iso === colFilter.dateFilter;
-      });
     }
 
     if (sort === "name_asc")       filtered.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -221,11 +183,14 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       const isKnownWebFolder = folderName === "Commandes web";
       const isPortalOrder = isWebOrder || isDevisOrder || isKnownWebFolder;
       const orderBadge = document.createElement("span");
-      orderBadge.style.cssText = isPortalOrder
-        ? "font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:#dbeafe;color:#1e40af;flex-shrink:0;"
-        : "font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;background:#f3f4f6;color:#6b7280;flex-shrink:0;";
-      orderBadge.textContent = isPortalOrder ? "🌐 Web" : "⚙️ Manuel";
-      orderBadge.title = isPortalOrder ? "Commande portail web" : "Commande manuelle";
+      const setOrderBadge = (isWebPortalOrder) => {
+        orderBadge.style.cssText = isWebPortalOrder
+          ? "font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:#dbeafe;color:#1e40af;flex-shrink:0;"
+          : "font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;background:#f3f4f6;color:#6b7280;flex-shrink:0;";
+        orderBadge.textContent = isWebPortalOrder ? "🌐 Web" : "⚙️ Manuel";
+        orderBadge.title = isWebPortalOrder ? "Commande portail web" : "Commande manuelle";
+      };
+      setOrderBadge(isPortalOrder);
       topRowMain.appendChild(orderBadge);
 
       topRow.appendChild(topRowMain);
@@ -291,19 +256,16 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         try { d = await fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName)).then(r => r.json()); } catch(_) {}
         if (d && d.numeroDossier) {
           dossierEl.textContent = "N° " + d.numeroDossier;
-        } else if (!isWebOrder && !isDevisOrder && isKnownWebFolder) {
-          // For devis-workflow or portal orders with non-WEB- prefix filenames, fetch the
-          // order number from client_orders so the dossier element is populated immediately.
+        } else if (!isWebOrder && !isDevisOrder) {
+          // For portal/devis orders with non-WEB-prefix filenames, fetch client_orders metadata
+          // from the job filename so web tagging remains stable across Kanban moves.
           try {
             const byJob = await fetch('/api/admin/portal/orders/by-job?fileName=' + encodeURIComponent(jobFileName), {
               headers: { 'Authorization': 'Bearer ' + authToken }
             }).then(r => r.json()).catch(() => ({}));
             if (byJob.ok && byJob.found && byJob.order) {
               if (byJob.order.orderNumber) dossierEl.textContent = "N° " + byJob.order.orderNumber;
-              // Ensure badge reflects web origin when confirmed via portal lookup
-              orderBadge.style.cssText = "font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:#dbeafe;color:#1e40af;flex-shrink:0;";
-              orderBadge.textContent = "🌐 Web";
-              orderBadge.title = "Commande portail web";
+              setOrderBadge(true);
             }
           } catch(_) {}
         }
