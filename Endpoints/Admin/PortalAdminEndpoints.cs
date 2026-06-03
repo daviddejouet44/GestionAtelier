@@ -716,18 +716,43 @@ public static class PortalAdminEndpoints
             var col = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
             BsonDocument? orderDoc = null;
 
-            // Try to match by orderNumber first
+            // Try exact dossier/order matching first.
             if (!string.IsNullOrWhiteSpace(numeroDossier))
             {
-                orderDoc = col.Find(Builders<BsonDocument>.Filter.Regex("orderNumber",
-                    new MongoDB.Bson.BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(numeroDossier), "i")))
+                orderDoc = col.Find(Builders<BsonDocument>.Filter.Or(
+                        Builders<BsonDocument>.Filter.Eq("orderNumber", numeroDossier),
+                        Builders<BsonDocument>.Filter.Eq("numeroDossier", numeroDossier),
+                        Builders<BsonDocument>.Filter.Eq("devisNumber", numeroDossier)))
                     .FirstOrDefault();
             }
-            // Fallback: try to match by title or job ID fragment from fileName
+
+            // Fallback: try to match by uploaded job file name.
+            if (orderDoc == null && !string.IsNullOrWhiteSpace(numeroDossier))
+            {
+                orderDoc = col.Find(Builders<BsonDocument>.Filter.Or(
+                        Builders<BsonDocument>.Filter.Regex("files.fileName",
+                            new MongoDB.Bson.BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(numeroDossier), "i")),
+                        Builders<BsonDocument>.Filter.Regex("atelierJobPath",
+                            new MongoDB.Bson.BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(numeroDossier), "i"))))
+                    .FirstOrDefault();
+            }
+
             if (orderDoc == null && !string.IsNullOrWhiteSpace(fileName))
             {
-                orderDoc = col.Find(Builders<BsonDocument>.Filter.Regex("orderNumber",
-                    new MongoDB.Bson.BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(fileName), "i")))
+                var fileNameBase = Path.GetFileNameWithoutExtension(fileName);
+                var fileTokens = new[] { fileName, fileNameBase }
+                    .Where(v => !string.IsNullOrWhiteSpace(v))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                var fileFilters = fileTokens.Select(token => Builders<BsonDocument>.Filter.Or(
+                        Builders<BsonDocument>.Filter.Regex("files.fileName",
+                            new MongoDB.Bson.BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(token), "i")),
+                        Builders<BsonDocument>.Filter.Regex("atelierJobPath",
+                            new MongoDB.Bson.BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(token), "i"))))
+                    .ToList();
+
+                orderDoc = col.Find(fileFilters.Count == 1 ? fileFilters[0] : Builders<BsonDocument>.Filter.Or(fileFilters))
                     .FirstOrDefault();
             }
 
