@@ -1,8 +1,8 @@
 // kanban/kanban-cards.js — Kanban card rendering
 import { currentUser, authToken, deliveriesByPath, assignmentsByPath, fnKey, normalizePath, daysDiffFromToday, showNotification } from '../core.js';
 import { openBatChoiceModal } from '../bat.js';
-import { state, refreshKanban } from './kanban-core.js?v=34';
-import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js?v=34';
+import { state, refreshKanban } from './kanban-core.js?v=35';
+import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js?v=35';
 
 // Opens the quote send modal from Kanban context (prefill from fabrication data)
 async function openKanbanQuoteModal(fullPath, fab) {
@@ -79,7 +79,8 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         + '|' + ((assignmentsByPath[fn] || {}).operatorName || '')
         + '|' + (deliveriesByPath[fn] || '');
     })) + '|' + state.dateFilter + '|' + (state.operatorFilter || 'all')
-      + '|vis:' + JSON.stringify(state.visibleActionsMap[folderName] ?? null);
+      + '|vis:' + JSON.stringify(state.visibleActionsMap[folderName] ?? null)
+      + '|cf:' + JSON.stringify(state.colFilters?.[folderName] ?? null);
     const cacheKey = folderName + '|' + q + '|' + sort;
     if (state.columnCache[cacheKey] === fingerprint) return;
     state.columnCache[cacheKey] = fingerprint;
@@ -121,6 +122,19 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             || (myLogin && asgn.operatorName === myLogin);
         }
         return asgn.operatorId === state.operatorFilter;
+      });
+    }
+
+    // Local column filters (name + delivery date per column)
+    const colFilter = state.colFilters?.[folderName];
+    if (colFilter?.nameFilter) {
+      filtered = filtered.filter(j => (j.name || "").toLowerCase().includes(colFilter.nameFilter.toLowerCase()));
+    }
+    if (colFilter?.dateFilter) {
+      filtered = filtered.filter(j => {
+        const fn = fnKey(j.fullPath || j.name || '');
+        const iso = deliveriesByPath[fn];
+        return iso && iso === colFilter.dateFilter;
       });
     }
 
@@ -1154,12 +1168,14 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         actions.appendChild(btnDevis);
       }
 
-      // 📥 Importer XML — visible for web/devis channel orders
+      // 📥 Importer XML — visible for web/devis channel orders in designated folders only
+      const IMPORT_XML_FOLDERS = ["Commandes web", "Soumissions", "Soumission"];
       const orderMeta = job?.order || {};
-      const canImportXml = isWebOrder
+      const canImportXml = (isWebOrder
         || isDevisOrder
         || (orderMeta.orderNumber && orderMeta.orderNumber.startsWith('DEVIS-'))
-        || !!orderMeta.quoteLinkId;
+        || !!orderMeta.quoteLinkId)
+        && IMPORT_XML_FOLDERS.includes(folderName);
       if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3) && canImportXml) {
         const btnImportXml = document.createElement("button");
         btnImportXml.className = "btn btn-sm";

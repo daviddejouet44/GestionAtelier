@@ -1,7 +1,7 @@
 // kanban/kanban-core.js — Build, refresh, summary
 import { currentUser, deliveriesByPath, fnKey, normalizePath, isLight, darkenColor, showNotification, FOLDER_FIN_PRODUCTION } from '../core.js';
-import { refreshKanbanColumnOperator } from './kanban-cards.js?v=34';
-import { showFaconnageAlerts } from './kanban-actions.js?v=34';
+import { refreshKanbanColumnOperator } from './kanban-cards.js?v=35';
+import { showFaconnageAlerts } from './kanban-actions.js?v=35';
 
 const kanbanDiv = document.getElementById("kanban");
 const searchInput = document.getElementById("searchInput");
@@ -15,7 +15,8 @@ export const state = {
   columnCache: {},       // was _columnCache
   visibleActionsMap: {}, // folder → string[] | null (null = show all)
   emailTemplatesMap: {},  // folder → string[] | null (null = no extra templates)
-  externalBatLinksEnabled: false // admin toggle for external BAT links
+  externalBatLinksEnabled: false, // admin toggle for external BAT links
+  colFilters: {}         // folderName → { nameFilter: string, dateFilter: string }
 };
 
 // Default kanban columns (used as fallback if API fails)
@@ -91,6 +92,40 @@ export async function buildKanban() {
     labelSpan.textContent = cfg.label;
     labelSpan.style.flex = "1";
     title.appendChild(labelSpan);
+
+    // Filtres locaux par colonne (nom + date de livraison)
+    const colNameInput = document.createElement("input");
+    colNameInput.type = "text";
+    colNameInput.placeholder = "Nom…";
+    colNameInput.title = "Filtrer par nom dans cette colonne";
+    colNameInput.style.cssText = "width:80px;padding:2px 5px;font-size:11px;border:1px solid rgba(255,255,255,0.4);border-radius:4px;background:rgba(255,255,255,0.15);color:inherit;margin-right:4px;flex-shrink:0;";
+    colNameInput.value = (state.colFilters[cfg.folder]?.nameFilter) || "";
+    colNameInput.oninput = () => {
+      if (!state.colFilters[cfg.folder]) state.colFilters[cfg.folder] = { nameFilter: "", dateFilter: "" };
+      state.colFilters[cfg.folder].nameFilter = colNameInput.value;
+      const ck = cfg.folder + '|' + (searchInput?.value || "").trim().toLowerCase() + '|' + (sortBy?.value || "date_desc");
+      delete state.columnCache[ck];
+      const colEl = kanbanDiv.querySelector(`.kanban-col-operator[data-folder="${CSS.escape(cfg.folder)}"]`);
+      if (colEl) refreshKanbanColumnOperator(cfg.folder, (searchInput?.value || "").trim().toLowerCase(), sortBy?.value || "date_desc", colEl, currentUser?.profile === 1 || (currentUser?.profile === 4 && cfg.folder !== "Façonnage"), cfg.folderPath || null);
+    };
+    colNameInput.onclick = e => e.stopPropagation();
+    title.appendChild(colNameInput);
+
+    const colDateInput = document.createElement("input");
+    colDateInput.type = "date";
+    colDateInput.title = "Filtrer par date de livraison dans cette colonne";
+    colDateInput.style.cssText = "width:110px;padding:2px 4px;font-size:11px;border:1px solid rgba(255,255,255,0.4);border-radius:4px;background:rgba(255,255,255,0.15);color:inherit;margin-right:4px;flex-shrink:0;";
+    colDateInput.value = (state.colFilters[cfg.folder]?.dateFilter) || "";
+    colDateInput.onchange = () => {
+      if (!state.colFilters[cfg.folder]) state.colFilters[cfg.folder] = { nameFilter: "", dateFilter: "" };
+      state.colFilters[cfg.folder].dateFilter = colDateInput.value;
+      const ck = cfg.folder + '|' + (searchInput?.value || "").trim().toLowerCase() + '|' + (sortBy?.value || "date_desc");
+      delete state.columnCache[ck];
+      const colEl = kanbanDiv.querySelector(`.kanban-col-operator[data-folder="${CSS.escape(cfg.folder)}"]`);
+      if (colEl) refreshKanbanColumnOperator(cfg.folder, (searchInput?.value || "").trim().toLowerCase(), sortBy?.value || "date_desc", colEl, currentUser?.profile === 1 || (currentUser?.profile === 4 && cfg.folder !== "Façonnage"), cfg.folderPath || null);
+    };
+    colDateInput.onclick = e => e.stopPropagation();
+    title.appendChild(colDateInput);
 
     // Bouton "Ouvrir dans Acrobat Pro" dans l'en-tête des colonnes Preflight
     if (cfg.folder === "Corrections" || cfg.folder === "Corrections et fond perdu") {

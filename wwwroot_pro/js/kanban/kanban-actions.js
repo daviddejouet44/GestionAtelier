@@ -1,6 +1,6 @@
 // kanban/kanban-actions.js — Print dialog, actions dropdown, assign dropdown, façonnage alerts
 import { authToken, fnKey, showNotification, assignmentsByPath } from '../core.js';
-import { refreshKanban } from './kanban-core.js?v=34';
+import { refreshKanban } from './kanban-core.js?v=35';
 
 // ======================================================
 // DIALOG IMPRESSION — remplacé par openActionsDropdown
