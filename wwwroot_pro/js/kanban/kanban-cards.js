@@ -216,12 +216,16 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       topRowMain.appendChild(presseEl);
 
       // Web/Manuel badge
+      // Also treat all files in "Commandes web" as web/portal orders — devis-workflow PDFs
+      // land in this folder but have a plain numeric prefix (00001_…) instead of WEB-…
+      const isKnownWebFolder = folderName === "Commandes web";
+      const isPortalOrder = isWebOrder || isDevisOrder || isKnownWebFolder;
       const orderBadge = document.createElement("span");
-      orderBadge.style.cssText = (isWebOrder || isDevisOrder)
+      orderBadge.style.cssText = isPortalOrder
         ? "font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:#dbeafe;color:#1e40af;flex-shrink:0;"
         : "font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;background:#f3f4f6;color:#6b7280;flex-shrink:0;";
-      orderBadge.textContent = (isWebOrder || isDevisOrder) ? "🌐 Web" : "⚙️ Manuel";
-      orderBadge.title = (isWebOrder || isDevisOrder) ? "Commande portail web" : "Commande manuelle";
+      orderBadge.textContent = isPortalOrder ? "🌐 Web" : "⚙️ Manuel";
+      orderBadge.title = isPortalOrder ? "Commande portail web" : "Commande manuelle";
       topRowMain.appendChild(orderBadge);
 
       topRow.appendChild(topRowMain);
@@ -282,20 +286,38 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       // so they appear directly under the PDF name (next to the thumbnail) instead of at card bottom.
 
       // Load dossier number, presse and planningMachine asynchronously
-      fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName))
-        .then(r => r.json()).then(d => {
-          if (d && d.numeroDossier) dossierEl.textContent = "N° " + d.numeroDossier;
-          if (d && d.moteurImpression) {
-            presseEl.textContent = d.moteurImpression;
-          }
-          // Show operator under press name (in top row)
-          const opName = (d && d.operateur) ? d.operateur : (assignment ? assignment.operatorName : "");
-          if (opName) operatorTopEl.textContent = "👤 " + opName;
-          if (d && d.planningMachine) {
-            const dt = new Date(d.planningMachine);
-            machineEl.textContent = "Machine: " + dt.toLocaleDateString("fr-FR");
-          }
-        }).catch(() => {});
+      (async () => {
+        let d = {};
+        try { d = await fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName)).then(r => r.json()); } catch(_) {}
+        if (d && d.numeroDossier) {
+          dossierEl.textContent = "N° " + d.numeroDossier;
+        } else if (!isWebOrder && !isDevisOrder && isKnownWebFolder) {
+          // For devis-workflow or portal orders with non-WEB- prefix filenames, fetch the
+          // order number from client_orders so the dossier element is populated immediately.
+          try {
+            const byJob = await fetch('/api/admin/portal/orders/by-job?fileName=' + encodeURIComponent(jobFileName), {
+              headers: { 'Authorization': 'Bearer ' + authToken }
+            }).then(r => r.json()).catch(() => ({}));
+            if (byJob.ok && byJob.found && byJob.order) {
+              if (byJob.order.orderNumber) dossierEl.textContent = "N° " + byJob.order.orderNumber;
+              // Ensure badge reflects web origin when confirmed via portal lookup
+              orderBadge.style.cssText = "font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:#dbeafe;color:#1e40af;flex-shrink:0;";
+              orderBadge.textContent = "🌐 Web";
+              orderBadge.title = "Commande portail web";
+            }
+          } catch(_) {}
+        }
+        if (d && d.moteurImpression) {
+          presseEl.textContent = d.moteurImpression;
+        }
+        // Show operator under press name (in top row)
+        const opName = (d && d.operateur) ? d.operateur : (assignment ? assignment.operatorName : "");
+        if (opName) operatorTopEl.textContent = "👤 " + opName;
+        if (d && d.planningMachine) {
+          const dt = new Date(d.planningMachine);
+          machineEl.textContent = "Machine: " + dt.toLocaleDateString("fr-FR");
+        }
+      })();
 
       const actions = document.createElement("div");
       actions.className = "kanban-card-operator-actions";
@@ -1190,14 +1212,10 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         actions.appendChild(btnDevis);
       }
 
-      // 📥 Importer XML — visible for web/devis channel orders in designated folders only
+      // 📥 Importer XML — visible for all files in web/soumission folders regardless of filename prefix
       const IMPORT_XML_FOLDERS = ["Commandes web", "Soumissions", "Soumission"];
       const orderMeta = job?.order || {};
-      const canImportXml = (isWebOrder
-        || isDevisOrder
-        || (orderMeta.orderNumber && orderMeta.orderNumber.startsWith('DEVIS-'))
-        || !!orderMeta.quoteLinkId)
-        && IMPORT_XML_FOLDERS.includes(folderName);
+      const canImportXml = IMPORT_XML_FOLDERS.includes(folderName);
       if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3) && canImportXml) {
         const btnImportXml = document.createElement("button");
         btnImportXml.className = "btn btn-sm";
@@ -1214,9 +1232,11 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
 
           let orderId = null;
           try {
-            const byJobRes = await fetch('/api/admin/portal/orders/by-job?numeroDossier=' + encodeURIComponent(orderNum), {
-              headers: { 'Authorization': 'Bearer ' + authToken }
-            }).then(r => r.json()).catch(() => ({}));
+            const byJobRes = await fetch(
+              '/api/admin/portal/orders/by-job?numeroDossier=' + encodeURIComponent(orderNum)
+              + '&fileName=' + encodeURIComponent(jobFileName),
+              { headers: { 'Authorization': 'Bearer ' + authToken } }
+            ).then(r => r.json()).catch(() => ({}));
             if (byJobRes.ok && byJobRes.found && byJobRes.order?.id) orderId = byJobRes.order.id;
           } catch(_) { /* non-blocking */ }
 
