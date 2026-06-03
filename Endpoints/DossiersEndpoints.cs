@@ -390,7 +390,7 @@ app.MapGet("/api/production/summary", () =>
                                 dateReceptionSouhaitee = raw.Substring(0, 10);
                         }
                     }
-                    catch { }
+                    catch { /* date parsing failure is non-fatal; leave as empty string */ }
                 }
 
                 // Resolve BAT sub-status (envoyé / validé / refusé) when stage is BAT
