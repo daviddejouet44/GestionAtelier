@@ -813,7 +813,9 @@ public static class QuoteLinksEndpoints
                         ["donneurOrdreSociete"]  = (BsonValue)link.ClientName,
                         ["devisNumber"]          = link.DevisNumber,
                         ["numeroDossier"]        = link.DevisNumber,
-                        ["workflow"]             = "web",
+                        ["workflow"]             = "Web",
+                        ["tag"]                  = "Web",
+                        ["kanbanFolder"]         = settings.WebOrderKanbanFolder ?? "Commandes web",
                     };
 
                     if (link.Pagination.HasValue) orderDoc["pagination"] = link.Pagination.Value;

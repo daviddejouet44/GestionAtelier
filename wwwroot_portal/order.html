@@ -287,10 +287,8 @@
             ${row('Statut', statusBadge(o.status))}
             ${row('Date de création', fmtDate(o.createdAt))}
             ${row('Dernière mise à jour', fmtDate(o.updatedAt))}
-            ${row('Quantité', o.quantity)}
             ${o.format ? row('Format', esc(o.format)) : ''}
             ${o.paper ? row('Papier', esc(o.paper)) : ''}
-            ${row('Impression', o.recto === 'recto-verso' ? 'Recto-verso' : 'Recto')}
             ${o.finitions && o.finitions.length ? row('Finitions', o.finitions.map(f => `<span class="badge badge-gray">${esc(f)}</span>`).join(' ')) : ''}
             ${o.desiredDeliveryDate ? row('Date souhaitée', fmtDate(o.desiredDeliveryDate)) : ''}
             ${row('Mode de livraison', o.deliveryMode === 'livraison' ? 'Livraison' : 'Retrait imprimerie')}
@@ -555,7 +553,6 @@
               <span class="file-item-icon">📄</span>
               <span class="file-item-name">${esc(f.fileName)}</span>
               <span class="file-item-size">${fmtSize(f.size)}</span>
-              <a href="/api/portal/orders/${esc(oId)}/files/${encodeURIComponent(f.fileName)}" target="_blank" class="btn btn-secondary btn-sm" download>Télécharger</a>
             </div>`).join('')}
         </div>
       </div>`;
@@ -615,7 +612,6 @@
             ${hasValue(info.encres) ? row('Encres', esc(String(info.encres))) : ''}
             ${hasValue(info.quantity) ? row('Quantité', typeof info.quantity === 'number' ? `${info.quantity.toLocaleString('fr')} ex.` : esc(String(info.quantity))) : ''}
             ${hasValue(info.pagination) ? row('Pagination', esc(String(info.pagination))) : ''}
-            ${hasValue(info.recto) ? row('Impression', info.recto === 'recto-verso' ? 'Recto-verso' : esc(String(info.recto))) : ''}
             ${finitions.length ? row('Finitions', finitions.map(f => `<span class="badge badge-gray">${esc(String(f))}</span>`).join(' ')) : ''}
             ${hasValue(info.notes) ? row('Notes', esc(String(info.notes)).replace(/\n/g, '<br/>')) : ''}
             ${hasValue(info.productionComment) ? row('Commentaire production', esc(String(info.productionComment)).replace(/\n/g, '<br/>')) : ''}

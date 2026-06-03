@@ -14,12 +14,14 @@ namespace GestionAtelier.Endpoints.Portal;
 
 public static class PortalOrdersEndpoints
 {
-    private static int? ReadNullableInt(BsonDocument doc, string field, bool allowStringFallback = false)
+    private static int? ReadNullableInt(BsonDocument doc, string field)
     {
         if (!doc.Contains(field) || doc[field].IsBsonNull) return null;
-        if (doc[field].IsInt32) return doc[field].AsInt32;
-        if (doc[field].IsInt64) return (int)doc[field].AsInt64;
-        if (allowStringFallback && int.TryParse(doc[field].ToString(), out var parsed)) return parsed;
+        var value = doc[field];
+        if (value.BsonType == BsonType.Int32) return value.AsInt32;
+        if (value.BsonType == BsonType.Int64) return (int)value.AsInt64;
+        if (value.BsonType == BsonType.Double) return (int)value.AsDouble;
+        if (value.BsonType == BsonType.String && int.TryParse(value.AsString, out var parsed)) return parsed;
         return null;
     }
 
@@ -41,7 +43,7 @@ public static class PortalOrdersEndpoints
             paper             = pi.Contains("paper") && !pi["paper"].IsBsonNull ? pi["paper"].AsString : null,
             encres            = pi.Contains("encres") && !pi["encres"].IsBsonNull ? pi["encres"].AsString : null,
             quantity          = ReadNullableInt(pi, "quantity"),
-            pagination        = ReadNullableInt(pi, "pagination", allowStringFallback: true),
+            pagination        = ReadNullableInt(pi, "pagination"),
             recto             = pi.Contains("recto") && !pi["recto"].IsBsonNull ? pi["recto"].AsString : null,
             finitions         = finitionsList,
             notes             = pi.Contains("notes") && !pi["notes"].IsBsonNull ? pi["notes"].AsString : null,
@@ -130,7 +132,7 @@ public static class PortalOrdersEndpoints
                     {
                         Id = pd.Contains("id") ? pd["id"].AsString : Guid.NewGuid().ToString("N"),
                         Address = pd.Contains("address") ? pd["address"].AsString : "",
-                        Quantity = pd.Contains("quantity") ? pd["quantity"].AsInt32 : 0,
+                        Quantity = ReadNullableInt(pd, "quantity") ?? 0,
                         Notes = pd.Contains("notes") && !pd["notes"].IsBsonNull ? pd["notes"].AsString : null
                     });
                 }
@@ -180,7 +182,7 @@ public static class PortalOrdersEndpoints
             ClientAccountId = d.Contains("clientAccountId") ? d["clientAccountId"].AsString : "",
             OrderNumber = d.Contains("orderNumber") ? d["orderNumber"].AsString : "",
             Title = d.Contains("title") ? d["title"].AsString : "",
-            Quantity = d.Contains("quantity") ? d["quantity"].AsInt32 : 0,
+            Quantity = ReadNullableInt(d, "quantity") ?? 0,
             Format = d.Contains("format") ? d["format"].AsString : "",
             Paper = d.Contains("paper") ? d["paper"].AsString : "",
             Recto = d.Contains("recto") ? d["recto"].AsString : "recto",
@@ -190,7 +192,7 @@ public static class PortalOrdersEndpoints
             DeliveryAddress = d.Contains("deliveryAddress") ? d["deliveryAddress"].AsString : "",
             Comments = d.Contains("comments") ? d["comments"].AsString : "",
             TypeTravail = d.Contains("typeTravail") && !d["typeTravail"].IsBsonNull ? d["typeTravail"].AsString : null,
-            Pagination = d.Contains("pagination") && !d["pagination"].IsBsonNull ? d["pagination"].AsInt32 : null,
+            Pagination = ReadNullableInt(d, "pagination"),
             Encres = d.Contains("encres") && !d["encres"].IsBsonNull ? d["encres"].AsString : null,
             FormatFeuille = d.Contains("formatFeuille") && !d["formatFeuille"].IsBsonNull ? d["formatFeuille"].AsString : null,
             FormeDecoupe = d.Contains("formeDecoupe") && !d["formeDecoupe"].IsBsonNull ? d["formeDecoupe"].AsString : null,
@@ -199,7 +201,7 @@ public static class PortalOrdersEndpoints
             NumeroAffaire = d.Contains("numeroAffaire") && !d["numeroAffaire"].IsBsonNull ? d["numeroAffaire"].AsString : null,
             Notes = d.Contains("notes") && !d["notes"].IsBsonNull ? d["notes"].AsString : null,
             Bat = d.Contains("bat") && !d["bat"].IsBsonNull ? d["bat"].AsString : null,
-            QuantiteJustifs = d.Contains("quantiteJustifs") && !d["quantiteJustifs"].IsBsonNull ? d["quantiteJustifs"].AsInt32 : null,
+            QuantiteJustifs = ReadNullableInt(d, "quantiteJustifs"),
             AdresseJustifs = d.Contains("adresseJustifs") && !d["adresseJustifs"].IsBsonNull ? d["adresseJustifs"].AsString : null,
             Media1 = d.Contains("media1") && !d["media1"].IsBsonNull ? d["media1"].AsString : null,
             Media2 = d.Contains("media2") && !d["media2"].IsBsonNull ? d["media2"].AsString : null,
@@ -1206,7 +1208,7 @@ public static class PortalOrdersEndpoints
                     if (productionInfo != null)
                     {
                         string? PiStr(string key) => productionInfo.Contains(key) && !productionInfo[key].IsBsonNull ? productionInfo[key].AsString : null;
-                        int? PiInt(string key) => productionInfo.Contains(key) && !productionInfo[key].IsBsonNull ? (int?)productionInfo[key].AsInt32 : null;
+                        int? PiInt(string key) => ReadNullableInt(productionInfo, key);
 
                         Section("Informations de production");
                         Row("Intitulé", PiStr("title"));
