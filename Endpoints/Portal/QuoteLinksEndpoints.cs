@@ -733,7 +733,7 @@ public static class QuoteLinksEndpoints
                 var now = DateTime.UtcNow;
                 var titlePart = System.Text.RegularExpressions.Regex.Replace(link.DevisNumber, @"[^\w\-]", "_");
 
-                var createdOrders = new List<(string orderId, string orderNumber)>();
+                var createdOrders = new List<(string orderId, string orderNumber, string title)>();
 
                 // Each valid PDF becomes its own ClientOrder
                 foreach (var file in form.Files)
@@ -777,6 +777,7 @@ public static class QuoteLinksEndpoints
                         new BsonDocument { ["status"] = "submitted", ["timestamp"] = now, ["comment"] = $"Commande soumise via lien devis {link.DevisNumber}" }
                     });
 
+                    var orderTitle = string.IsNullOrWhiteSpace(link.Title) ? link.DevisNumber : link.Title;
                     var orderDoc = new BsonDocument
                     {
                         ["id"]             = orderId,
@@ -784,7 +785,7 @@ public static class QuoteLinksEndpoints
                         ["quoteToken"]     = token,
                         ["quoteLinkId"]    = link.Id,
                         ["orderNumber"]    = orderNumber,
-                        ["title"]          = string.IsNullOrWhiteSpace(link.Title) ? link.DevisNumber : link.Title,
+                        ["title"]          = orderTitle,
                         ["quantity"]       = link.Quantity,
                         ["format"]         = link.Format,
                         ["paper"]          = link.Paper,
@@ -814,7 +815,7 @@ public static class QuoteLinksEndpoints
 
                     var orderCol = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
                     orderCol.InsertOne(orderDoc);
-                    createdOrders.Add((orderId, orderNumber));
+                    createdOrders.Add((orderId, orderNumber, orderTitle));
                 }
 
                 if (createdOrders.Count == 0)
@@ -852,28 +853,37 @@ public static class QuoteLinksEndpoints
                 }
                 catch { /* non-blocking */ }
 
+                // Send atelier email notification (same style as portal web orders)
+                try
+                {
+                    var first = createdOrders[0];
+                    var atelierSubject = $"📦 Nouvelle commande web : {first.orderNumber} — {first.title}";
+                    var atelierBody = createdOrders.Count > 1
+                        ? $"Nouvelles commandes créées depuis un lien devis ({link.DevisNumber}) : {string.Join(", ", createdOrders.Select(o => o.orderNumber))}\nClient : {link.ClientName}"
+                        : $"Nouvelle commande créée depuis un lien devis ({link.DevisNumber}).\nCommande : {first.orderNumber}\nIntitulé : {first.title}\nClient : {link.ClientName}";
+                    PortalEmailHelper.SendAtelierNotification(atelierSubject, atelierBody);
+                }
+                catch (Exception ex) { Console.WriteLine($"[WARN] Quote atelier email failed: {ex.Message}"); }
+
                 // Send confirmation email to client
                 try
                 {
                     var portalBase = PortalEmailHelper.SanitizePortalBaseUrl(settings.PortalUrl);
                     if (string.IsNullOrWhiteSpace(portalBase))
                         portalBase = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
-                    var theme = MongoDbHelper.GetSettings<PortalThemeConfig>("portalTheme") ?? new PortalThemeConfig();
-                    var companyName = string.IsNullOrWhiteSpace(theme.CompanyName) ? "Gestion d'Atelier" : theme.CompanyName;
-                    var ordersList = string.Join(", ", createdOrders.Select(o => o.orderNumber));
-                    var confirmSubject = $"Commande(s) confirmée(s) — {link.DevisNumber}";
-                    var confirmHtml = $@"<!DOCTYPE html><html lang=""fr""><head><meta charset=""utf-8""></head>
-<body style=""font-family:system-ui,sans-serif;background:#f3f4f6;padding:32px 16px;"">
-<div style=""max-width:520px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;"">
-  <div style=""background:#16a34a;padding:24px 32px;""><h1 style=""margin:0;color:#fff;font-size:20px;"">✅ Commande(s) confirmée(s)</h1></div>
-  <div style=""padding:24px 32px;"">
-    <p style=""font-size:14px;color:#374151;"">Votre/vos commande(s) (<strong>{System.Net.WebUtility.HtmlEncode(ordersList)}</strong>) liée(s) au devis <strong>{System.Net.WebUtility.HtmlEncode(link.DevisNumber)}</strong> ont bien été reçues.</p>
-    <p style=""font-size:14px;color:#374151;"">Notre équipe va prendre en charge votre dossier dans les meilleurs délais.</p>
-    <p style=""font-size:12px;color:#9ca3af;margin-top:24px;"">{System.Net.WebUtility.HtmlEncode(companyName)}</p>
-  </div>
-</div>
-</body></html>";
-                    PortalEmailHelper.SendHtmlEmail(link.ClientEmail, confirmSubject, confirmHtml);
+                    var first = createdOrders[0];
+                    var vars = new Dictionary<string, string>
+                    {
+                        ["{clientName}"] = string.IsNullOrWhiteSpace(link.ClientName) ? link.ClientEmail : link.ClientName,
+                        ["{orderNumber}"] = first.orderNumber,
+                        ["{orderTitle}"] = first.title,
+                        ["{portalLink}"] = $"{portalBase}/portal/order.html?id={first.orderId}"
+                    };
+                    var (subj, body) = PortalEmailHelper.RenderTemplate("order_received",
+                        "Commande reçue — {orderNumber}",
+                        "Bonjour {clientName},\n\nVotre commande {orderNumber} \"{orderTitle}\" a bien été reçue.\n\nConsultez votre espace client : {portalLink}\n\nCordialement,",
+                        vars);
+                    PortalEmailHelper.SendEmail(link.ClientEmail, subj, body);
                 }
                 catch (Exception ex) { Console.WriteLine($"[WARN] Quote confirm email: {ex.Message}"); }
 
