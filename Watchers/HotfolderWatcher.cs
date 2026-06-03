@@ -223,64 +223,6 @@ public static class HotfolderWatcherExtensions
                     return;
                 }
 
-                // PrismaPrepare: rename files back to original name (PrismaPrepare often adds suffixes)
-                if (folder.Equals("PrismaPrepare", StringComparison.OrdinalIgnoreCase)
-                    && fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
-                {
-                    try
-                    {
-                        await Task.Delay(3000); // wait for PrismaPrepare to finish writing
-                        if (!File.Exists(newPath)) return;
-
-                        var fabCol2 = MongoDbHelper.GetFabricationsCollection();
-                        var baseName = Path.GetFileNameWithoutExtension(fileName);
-
-                        // Find best match: longest origBase that is a prefix of baseName
-                        var filter = Builders<BsonDocument>.Filter.And(
-                            Builders<BsonDocument>.Filter.Exists("fileName"),
-                            Builders<BsonDocument>.Filter.Ne("fileName", BsonNull.Value));
-                        string? bestOrigFn = null;
-                        int bestLen = 0;
-                        using (var cursor = fabCol2.Find(filter).ToCursor())
-                        {
-                            while (cursor.MoveNext())
-                            {
-                                foreach (var doc in cursor.Current)
-                                {
-                                    var origFn = doc["fileName"].AsString;
-                                    if (string.IsNullOrEmpty(origFn)) continue;
-                                    var origBase = Path.GetFileNameWithoutExtension(origFn);
-                                    if (baseName.StartsWith(origBase, StringComparison.OrdinalIgnoreCase)
-                                        && baseName.Length > origBase.Length
-                                        && origBase.Length > bestLen)
-                                    {
-                                        bestOrigFn = origFn;
-                                        bestLen = origBase.Length;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (bestOrigFn != null)
-                        {
-                            var targetName = bestOrigFn.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ? bestOrigFn : bestOrigFn + ".pdf";
-                            var originalPath = Path.Combine(Path.GetDirectoryName(newPath)!, targetName);
-                            if (!string.Equals(newPath, originalPath, StringComparison.OrdinalIgnoreCase))
-                            {
-                                if (File.Exists(originalPath))
-                                {
-                                    var backupPath = originalPath + $".bak_{DateTime.Now:yyyyMMddHHmmss}";
-                                    File.Move(originalPath, backupPath);
-                                    Console.WriteLine($"[FSW] PrismaPrepare: backup existing {Path.GetFileName(originalPath)} → {Path.GetFileName(backupPath)}");
-                                }
-                                File.Move(newPath, originalPath);
-                                Console.WriteLine($"[FSW] PrismaPrepare rename: {fileName} → {Path.GetFileName(originalPath)}");
-                            }
-                        }
-                    }
-                    catch (Exception exPP) { Console.WriteLine($"[FSW][WARN] PrismaPrepare rename: {exPP.Message}"); }
-                }
-
                 // Reconcile assignments
                 try
                 {
