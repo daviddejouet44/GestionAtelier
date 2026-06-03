@@ -319,7 +319,7 @@ app.MapGet("/api/config/integrations", (HttpContext ctx) =>
 
         var cfg = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations")
             ?? new IntegrationsSettings();
-        return Results.Json(new { ok = true, config = new { preparePath = cfg.PreparePath, fieryPath = cfg.FieryPath, tempCopyPath = cfg.TempCopyPath, prismaPrepareExePath = cfg.PrismaPrepareExePath, prismaPrepareOutputPath = cfg.PrismaPrepareOutputPath } });
+        return Results.Json(new { ok = true, config = new { preparePath = cfg.PreparePath, fieryPath = cfg.FieryPath, tempCopyPath = cfg.TempCopyPath, prismaPrepareExePath = cfg.PrismaPrepareExePath, prismaPrepareOutputPath = cfg.PrismaPrepareOutputPath, prismaPrepareDirectOutputPath = cfg.PrismaPrepareDirectOutputPath } });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
@@ -343,6 +343,7 @@ app.MapPut("/api/config/integrations", async (HttpContext ctx) =>
         if (json.TryGetProperty("tempCopyPath", out var tcp)) existing.TempCopyPath = tcp.GetString() ?? "";
         if (json.TryGetProperty("prismaPrepareExePath", out var ppe)) existing.PrismaPrepareExePath = ppe.GetString() ?? "";
         if (json.TryGetProperty("prismaPrepareOutputPath", out var ppop)) existing.PrismaPrepareOutputPath = ppop.GetString() ?? IntegrationsSettings.DefaultPrismaPrepareOutputPath;
+        if (json.TryGetProperty("prismaPrepareDirectOutputPath", out var ppdop)) existing.PrismaPrepareDirectOutputPath = ppdop.GetString() ?? IntegrationsSettings.DefaultPrismaPrepareDirectOutputPath;
 
         MongoDbHelper.UpsertSettings("integrations", existing);
         return Results.Json(new { ok = true });

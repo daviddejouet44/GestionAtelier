@@ -352,10 +352,15 @@ FileSystemWatcher? tempCopyWatcher = null;
             // puis supprimer le suffixe PrismaPrepare (_OK/_Warning/_Error/etc.) et déplacer vers PreparePath.
             try
             {
+                var directOutputDir = !string.IsNullOrWhiteSpace(integCfg?.PrismaPrepareDirectOutputPath)
+                    ? integCfg.PrismaPrepareDirectOutputPath
+                    : IntegrationsSettings.DefaultPrismaPrepareDirectOutputPath;
+                Directory.CreateDirectory(directOutputDir);
+
                 // Utiliser un dictionnaire thread-safe pour suivre les fichiers en cours
                 var prepareInProgressDict = new System.Collections.Concurrent.ConcurrentDictionary<string, byte>();
 
-                _prepareDirectWatcher = new FileSystemWatcher(outputDir)
+                _prepareDirectWatcher = new FileSystemWatcher(directOutputDir)
                 {
                     Filter = "*.pdf",
                     // Écouter à la fois les créations, renommages ET modifications
@@ -482,7 +487,7 @@ FileSystemWatcher? tempCopyWatcher = null;
                     await HandlePrepareDirectOutput(e.FullPath);
                 };
 
-                Console.WriteLine($"[INFO] PrismaPrepare direct output watcher started on {outputDir} (tous PDFs sauf Epreuve.pdf → suppression suffixe → PreparePath)");
+                Console.WriteLine($"[INFO] PrismaPrepare direct output watcher started on {directOutputDir} (tous PDFs sauf Epreuve.pdf → suppression suffixe → PreparePath)");
             }
             catch (Exception exPrepDirect)
             {
