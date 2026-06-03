@@ -394,7 +394,8 @@ FileSystemWatcher? tempCopyWatcher = null;
 
                     try
                     {
-                        // Attendre que le fichier soit stable
+                        // Attendre que le fichier soit stable.
+                        // PrismaPrepare peut enchaîner plusieurs écritures/renommages très rapprochés.
                         await Task.Delay(BackendUtils.FileSystemSettleDelayMs * 3);
                         if (!File.Exists(outputPdfPath))
                         {
@@ -415,7 +416,10 @@ FileSystemWatcher? tempCopyWatcher = null;
                             catch (IOException) { await Task.Delay(500); }
                         }
                         if (!fileReady)
+                        {
                             Console.WriteLine($"[PREPARE_FSW][WARN] Fichier toujours verrouillé après retries : {pdfName}");
+                            return;
+                        }
 
                         if (!File.Exists(outputPdfPath)) return;
 
@@ -472,6 +476,7 @@ FileSystemWatcher? tempCopyWatcher = null;
                 _prepareDirectWatcher.Changed += async (_, e) =>
                 {
                     // Changed peut indiquer que PrismaPrepare a fini d'écrire le fichier renommé
+                    Console.WriteLine($"[PREPARE_FSW] Changed: {e.Name}");
                     await HandlePrepareDirectOutput(e.FullPath);
                 };
 
