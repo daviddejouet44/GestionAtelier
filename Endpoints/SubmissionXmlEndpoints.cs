@@ -151,61 +151,77 @@ public static class SubmissionXmlEndpoints
                 }
 
                 // --- Local helper: propagate parsed XML fields to client_orders ---
-                void TryPropagateToClientOrders()
+                // When savedFileName is provided (PDF+XML upload), targets only the specific
+                // client_order whose files array contains that filename, preventing the data
+                // from overwriting sibling orders that share the same numeroDossier.
+                void TryPropagateToClientOrders(string? savedFileName = null)
                 {
                     if (fichePrefill.Count == 0) return;
 
-                    // Collect candidate reference values to match against client_orders
-                    var refs = new List<string>();
-                    if (fichePrefill.TryGetValue("referenceCommande", out var r1) && !string.IsNullOrWhiteSpace(r1)) refs.Add(r1);
-                    if (fichePrefill.TryGetValue("devis",             out var r2) && !string.IsNullOrWhiteSpace(r2) && !refs.Contains(r2)) refs.Add(r2);
-                    if (fichePrefill.TryGetValue("numeroDossier",     out var r3) && !string.IsNullOrWhiteSpace(r3) && !refs.Contains(r3)) refs.Add(r3);
-                    if (refs.Count == 0) return;
+                    fichePrefill.TryGetValue("typeTravail",  out var parsedTitle);
+                    if (string.IsNullOrWhiteSpace(parsedTitle))
+                        fichePrefill.TryGetValue("designation", out parsedTitle);
+                    fichePrefill.TryGetValue("format",       out var parsedFormat);
+                    fichePrefill.TryGetValue("support",      out var parsedPaper);
+                    if (string.IsNullOrWhiteSpace(parsedPaper))
+                        fichePrefill.TryGetValue("papier",   out parsedPaper);
+                    fichePrefill.TryGetValue("couleurs",     out var parsedEncres);
+                    if (string.IsNullOrWhiteSpace(parsedEncres))
+                        fichePrefill.TryGetValue("impression", out parsedEncres);
+                    int parsedQuantity = 0;
+                    if (fichePrefill.TryGetValue("quantite", out var qStr))
+                        int.TryParse(qStr, out parsedQuantity);
+
+                    var now = DateTime.UtcNow;
+                    var productionInfo = new BsonDocument { ["importedAt"] = now, ["importedBy"] = "submission-xml" };
+                    if (!string.IsNullOrWhiteSpace(parsedTitle))  productionInfo["title"]    = parsedTitle;
+                    if (!string.IsNullOrWhiteSpace(parsedFormat)) productionInfo["format"]   = parsedFormat;
+                    if (!string.IsNullOrWhiteSpace(parsedPaper))  productionInfo["paper"]    = parsedPaper;
+                    if (!string.IsNullOrWhiteSpace(parsedEncres)) productionInfo["encres"]   = parsedEncres;
+                    if (parsedQuantity > 0)                        productionInfo["quantity"] = parsedQuantity;
+
+                    var clientOrderUpdate = Builders<BsonDocument>.Update
+                        .Set("productionInfo", productionInfo)
+                        .Set("updatedAt", now);
+                    if (!string.IsNullOrWhiteSpace(parsedTitle))  clientOrderUpdate = clientOrderUpdate.Set("title",    parsedTitle);
+                    if (!string.IsNullOrWhiteSpace(parsedFormat)) clientOrderUpdate = clientOrderUpdate.Set("format",   parsedFormat);
+                    if (!string.IsNullOrWhiteSpace(parsedPaper))  clientOrderUpdate = clientOrderUpdate.Set("paper",    parsedPaper);
+                    if (!string.IsNullOrWhiteSpace(parsedEncres)) clientOrderUpdate = clientOrderUpdate.Set("encres",   parsedEncres);
+                    if (parsedQuantity > 0)                        clientOrderUpdate = clientOrderUpdate.Set("quantity", parsedQuantity);
 
                     try
                     {
                         var clientOrderCol = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
-                        var filterClauses  = new List<FilterDefinition<BsonDocument>>();
-                        foreach (var r in refs)
+
+                        if (!string.IsNullOrWhiteSpace(savedFileName))
                         {
-                            filterClauses.Add(Builders<BsonDocument>.Filter.Eq("devisNumber",  r));
-                            filterClauses.Add(Builders<BsonDocument>.Filter.Eq("orderNumber",  r));
+                            // Target only the specific order whose files array contains this filename.
+                            // This prevents propagating to all orders sharing the same numeroDossier.
+                            var fileFilter = Builders<BsonDocument>.Filter.Or(
+                                Builders<BsonDocument>.Filter.Regex("files.fileName",  new BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(savedFileName), "i")),
+                                Builders<BsonDocument>.Filter.Regex("atelierJobPath", new BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(savedFileName), "i"))
+                            );
+                            clientOrderCol.UpdateOne(fileFilter, clientOrderUpdate);
                         }
-                        var clientOrderFilter = Builders<BsonDocument>.Filter.Or(filterClauses);
-                        if (clientOrderCol.Find(clientOrderFilter).Limit(1).FirstOrDefault() == null) return;
+                        else
+                        {
+                            // XML-only upload: fall back to numeroDossier matching (may update multiple orders).
+                            var refs = new List<string>();
+                            if (fichePrefill.TryGetValue("referenceCommande", out var r1) && !string.IsNullOrWhiteSpace(r1)) refs.Add(r1);
+                            if (fichePrefill.TryGetValue("devis",             out var r2) && !string.IsNullOrWhiteSpace(r2) && !refs.Contains(r2)) refs.Add(r2);
+                            if (fichePrefill.TryGetValue("numeroDossier",     out var r3) && !string.IsNullOrWhiteSpace(r3) && !refs.Contains(r3)) refs.Add(r3);
+                            if (refs.Count == 0) return;
 
-                        fichePrefill.TryGetValue("typeTravail",  out var parsedTitle);
-                        if (string.IsNullOrWhiteSpace(parsedTitle))
-                            fichePrefill.TryGetValue("designation", out parsedTitle);
-                        fichePrefill.TryGetValue("format",       out var parsedFormat);
-                        fichePrefill.TryGetValue("support",      out var parsedPaper);
-                        if (string.IsNullOrWhiteSpace(parsedPaper))
-                            fichePrefill.TryGetValue("papier",   out parsedPaper);
-                        fichePrefill.TryGetValue("couleurs",     out var parsedEncres);
-                        if (string.IsNullOrWhiteSpace(parsedEncres))
-                            fichePrefill.TryGetValue("impression", out parsedEncres);
-                        int parsedQuantity = 0;
-                        if (fichePrefill.TryGetValue("quantite", out var qStr))
-                            int.TryParse(qStr, out parsedQuantity);
-
-                        var now = DateTime.UtcNow;
-                        var productionInfo = new BsonDocument { ["importedAt"] = now, ["importedBy"] = "submission-xml" };
-                        if (!string.IsNullOrWhiteSpace(parsedTitle))  productionInfo["title"]    = parsedTitle;
-                        if (!string.IsNullOrWhiteSpace(parsedFormat)) productionInfo["format"]   = parsedFormat;
-                        if (!string.IsNullOrWhiteSpace(parsedPaper))  productionInfo["paper"]    = parsedPaper;
-                        if (!string.IsNullOrWhiteSpace(parsedEncres)) productionInfo["encres"]   = parsedEncres;
-                        if (parsedQuantity > 0)                        productionInfo["quantity"] = parsedQuantity;
-
-                        var clientOrderUpdate = Builders<BsonDocument>.Update
-                            .Set("productionInfo", productionInfo)
-                            .Set("updatedAt", now);
-                        if (!string.IsNullOrWhiteSpace(parsedTitle))  clientOrderUpdate = clientOrderUpdate.Set("title",    parsedTitle);
-                        if (!string.IsNullOrWhiteSpace(parsedFormat)) clientOrderUpdate = clientOrderUpdate.Set("format",   parsedFormat);
-                        if (!string.IsNullOrWhiteSpace(parsedPaper))  clientOrderUpdate = clientOrderUpdate.Set("paper",    parsedPaper);
-                        if (!string.IsNullOrWhiteSpace(parsedEncres)) clientOrderUpdate = clientOrderUpdate.Set("encres",   parsedEncres);
-                        if (parsedQuantity > 0)                        clientOrderUpdate = clientOrderUpdate.Set("quantity", parsedQuantity);
-
-                        clientOrderCol.UpdateMany(clientOrderFilter, clientOrderUpdate);
+                            var filterClauses = new List<FilterDefinition<BsonDocument>>();
+                            foreach (var r in refs)
+                            {
+                                filterClauses.Add(Builders<BsonDocument>.Filter.Eq("devisNumber", r));
+                                filterClauses.Add(Builders<BsonDocument>.Filter.Eq("orderNumber", r));
+                            }
+                            var clientOrderFilter = Builders<BsonDocument>.Filter.Or(filterClauses);
+                            if (clientOrderCol.Find(clientOrderFilter).Limit(1).FirstOrDefault() == null) return;
+                            clientOrderCol.UpdateMany(clientOrderFilter, clientOrderUpdate);
+                        }
                     }
                     catch { /* non-critical: fabrication update already succeeded */ }
                 }
@@ -313,7 +329,9 @@ public static class SubmissionXmlEndpoints
                     catch { /* log failure is non-critical */ }
                 }
 
-                TryPropagateToClientOrders();
+                // Pass the single saved filename so only that specific client_order is updated.
+                // When multiple PDFs are in the batch, fall back to numeroDossier matching.
+                TryPropagateToClientOrders(savedJobs.Count == 1 ? savedJobs[0].FileName : null);
 
                 return Results.Json(new
                 {
