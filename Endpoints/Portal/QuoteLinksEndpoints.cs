@@ -731,7 +731,9 @@ public static class QuoteLinksEndpoints
                 Directory.CreateDirectory(webFolder);
 
                 var now = DateTime.UtcNow;
-                var titlePart = System.Text.RegularExpressions.Regex.Replace(link.DevisNumber, @"[^\w\-]", "_");
+
+                if (string.IsNullOrWhiteSpace(link.DevisNumber))
+                    return Results.Json(new { ok = false, error = "Le numéro de devis est manquant." });
 
                 var createdOrders = new List<(string orderId, string orderNumber, string title)>();
 
@@ -752,13 +754,12 @@ public static class QuoteLinksEndpoints
                     long maxBytes = (settings.MaxUploadSizeMb > 0 ? settings.MaxUploadSizeMb : 500) * 1024L * 1024L;
                     if (file.Length > maxBytes) continue;
 
-                    var counter    = MongoDbHelper.GetNextClientOrderNumber();
-                    var orderNumber = $"DEVIS-{DateTime.Now:yyyyMMdd}-{counter:D4}";
-                    var orderId    = Guid.NewGuid().ToString("N");
+                    var orderNumber = link.DevisNumber.Trim();
+                    var orderId = Guid.NewGuid().ToString("N");
 
-                    var num      = MongoDbHelper.GetNextFileNumber();
-                    var safeName = SanitizeForFs(Path.GetFileNameWithoutExtension(file.FileName)) + ".pdf";
-                    var destName = $"{orderNumber}__{titlePart}__{num:D5}_{safeName}";
+                    var num = MongoDbHelper.GetNextFileNumber();
+                    var safeName = SanitizeForFs(Path.GetFileName(file.FileName));
+                    var destName = $"{num:D5}_{safeName}";
                     var destPath = Path.Combine(webFolder, destName);
 
                     using (var fs = File.Create(destPath))
@@ -777,7 +778,11 @@ public static class QuoteLinksEndpoints
                         new BsonDocument { ["status"] = "submitted", ["timestamp"] = now, ["comment"] = $"Commande soumise via lien devis {link.DevisNumber}" }
                     });
 
-                    var orderTitle = string.IsNullOrWhiteSpace(link.Title) ? link.DevisNumber : link.Title;
+                    var orderTitle = Path.GetFileNameWithoutExtension(file.FileName)?.Trim();
+                    if (string.IsNullOrWhiteSpace(orderTitle))
+                        orderTitle = Path.GetFileName(file.FileName)?.Trim();
+                    if (string.IsNullOrWhiteSpace(orderTitle))
+                        orderTitle = string.IsNullOrWhiteSpace(link.Title) ? link.DevisNumber : link.Title;
                     var orderDoc = new BsonDocument
                     {
                         ["id"]             = orderId,
@@ -807,6 +812,7 @@ public static class QuoteLinksEndpoints
                         ["donneurOrdreTelephone"] = string.IsNullOrWhiteSpace(donneurTel) ? BsonNull.Value : (BsonValue)donneurTel,
                         ["donneurOrdreSociete"]  = (BsonValue)link.ClientName,
                         ["devisNumber"]          = link.DevisNumber,
+                        ["numeroDossier"]        = link.DevisNumber,
                         ["workflow"]             = "web",
                     };
 
@@ -859,7 +865,7 @@ public static class QuoteLinksEndpoints
                     var first = createdOrders[0];
                     var atelierSubject = $"📦 Nouvelle commande web : {first.orderNumber} — {first.title}";
                     var atelierBody = createdOrders.Count > 1
-                        ? $"Nouvelles commandes créées depuis un lien devis ({link.DevisNumber}) : {string.Join(", ", createdOrders.Select(o => o.orderNumber))}\nClient : {link.ClientName}"
+                        ? $"Nouvelles commandes créées depuis un lien devis ({link.DevisNumber}) : {string.Join(", ", createdOrders.Select(o => o.title))}\nRéférence : {first.orderNumber}\nClient : {link.ClientName}"
                         : $"Nouvelle commande créée depuis un lien devis ({link.DevisNumber}).\nCommande : {first.orderNumber}\nIntitulé : {first.title}\nClient : {link.ClientName}";
                     PortalEmailHelper.SendAtelierNotification(atelierSubject, atelierBody);
                 }

@@ -951,12 +951,13 @@ export async function openFabrication(fullPath, prefillData = null) {
   const _lcFileName = fabCurrentFileName.toLowerCase();
   const _isWebFile  = _lcFileName.startsWith('web-') || _lcFileName.startsWith('bat_web-');
   const _isDevisFile = _lcFileName.startsWith('devis-');
-  if (isNewSheet && prefillData === null && (_isWebFile || _isDevisFile)) {
+  const _isQuoteUploadFile = /^\d{5}_/.test(_lcFileName);
+  if (isNewSheet && prefillData === null && (_isWebFile || _isDevisFile || _isQuoteUploadFile)) {
     try {
       // Strip BAT_ prefix if present, then extract order number
       const _baseName = _lcFileName.startsWith('bat_') ? _lcFileName.substring(4) : _lcFileName;
       const orderNum = _baseName.includes('__') ? _baseName.split('__')[0] : _baseName.split('.')[0];
-      const byJobResp = await fetch('/api/admin/portal/orders/by-job?numeroDossier=' + encodeURIComponent(orderNum), {
+      const byJobResp = await fetch('/api/admin/portal/orders/by-job?numeroDossier=' + encodeURIComponent(orderNum) + '&fileName=' + encodeURIComponent(fabCurrentFileName), {
         headers: { 'Authorization': 'Bearer ' + authToken }
       }).then(r => r.json()).catch(() => ({}));
       if (byJobResp.ok && byJobResp.found && byJobResp.order && byJobResp.order.id) {
@@ -965,8 +966,9 @@ export async function openFabrication(fullPath, prefillData = null) {
         }).then(r => r.json()).catch(() => ({}));
         if (detailResp.ok && detailResp.order) {
           const o = detailResp.order;
+          const isQuotePortalOrder = !!o.devisNumber;
 
-          if (_isDevisFile) {
+          if (isQuotePortalOrder) {
             // DEVIS orders: only pre-fill dossier number (= devis ref) + client/donneur d'ordre info
             // Leave all product fields blank — staff will fill them manually or via XML/ERP import
             autoPrefill = {

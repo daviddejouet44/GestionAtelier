@@ -234,27 +234,47 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             var filters = new List<FilterDefinition<BsonDocument>>();
 
             if (!string.IsNullOrWhiteSpace(sheet.NumeroDossier))
+            {
                 filters.Add(Builders<BsonDocument>.Filter.Eq("numeroDossier", sheet.NumeroDossier));
+                filters.Add(Builders<BsonDocument>.Filter.Eq("orderNumber", sheet.NumeroDossier));
+                filters.Add(Builders<BsonDocument>.Filter.Eq("devisNumber", sheet.NumeroDossier));
+            }
 
             if (!string.IsNullOrWhiteSpace(sheet.FileName))
+            {
                 filters.Add(Builders<BsonDocument>.Filter.Regex("atelierJobPath", new BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(sheet.FileName), "i")));
+                filters.Add(Builders<BsonDocument>.Filter.Regex("files.fileName", new BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(sheet.FileName), "i")));
+            }
 
             if (filters.Count > 0)
             {
                 var filter = filters.Count == 1 ? filters[0] : Builders<BsonDocument>.Filter.Or(filters);
+                var now = DateTime.UtcNow;
                 var pi = new BsonDocument
                 {
-                    // "title" intentionally mirrors TypeTravail for portal display fallback consistency.
                     ["title"] = string.IsNullOrWhiteSpace(sheet.TypeTravail) ? BsonNull.Value : (BsonValue)sheet.TypeTravail,
                     ["format"] = string.IsNullOrWhiteSpace(sheet.Format) ? BsonNull.Value : (BsonValue)sheet.Format,
                     ["paper"] = string.IsNullOrWhiteSpace(sheet.Media1) ? BsonNull.Value : (BsonValue)sheet.Media1,
                     ["encres"] = string.IsNullOrWhiteSpace(sheet.Couleurs) ? BsonNull.Value : (BsonValue)sheet.Couleurs,
                     ["quantity"] = sheet.Quantite.HasValue ? (BsonValue)sheet.Quantite.Value : BsonNull.Value,
                     ["pagination"] = string.IsNullOrWhiteSpace(sheet.Pagination) ? BsonNull.Value : (BsonValue)sheet.Pagination,
+                    ["recto"] = string.IsNullOrWhiteSpace(sheet.Bascule) ? BsonNull.Value : (BsonValue)sheet.Bascule,
+                    ["notes"] = string.IsNullOrWhiteSpace(sheet.Notes) ? BsonNull.Value : (BsonValue)sheet.Notes,
+                    ["productionComment"] = string.IsNullOrWhiteSpace(sheet.Notes) ? BsonNull.Value : (BsonValue)sheet.Notes,
+                    ["deliveryDate"] = sheet.DateEnvoi.HasValue ? (BsonValue)sheet.DateEnvoi.Value : BsonNull.Value,
+                    ["importedAt"] = now,
+                    ["importedBy"] = string.IsNullOrWhiteSpace(userName) ? BsonNull.Value : (BsonValue)userName,
                     ["typeTravail"] = string.IsNullOrWhiteSpace(sheet.TypeTravail) ? BsonNull.Value : (BsonValue)sheet.TypeTravail,
                     ["numeroDossier"] = string.IsNullOrWhiteSpace(sheet.NumeroDossier) ? BsonNull.Value : (BsonValue)sheet.NumeroDossier,
                 };
-                clientOrderCol.UpdateMany(filter, Builders<BsonDocument>.Update.Set("productionInfo", pi));
+                var update = Builders<BsonDocument>.Update
+                    .Set("productionInfo", pi)
+                    .Set("updatedAt", now);
+
+                if (!string.IsNullOrWhiteSpace(sheet.NumeroDossier))
+                    update = update.Set("numeroDossier", sheet.NumeroDossier);
+
+                clientOrderCol.UpdateMany(filter, update);
             }
         }
         catch (Exception exOrderSync)
