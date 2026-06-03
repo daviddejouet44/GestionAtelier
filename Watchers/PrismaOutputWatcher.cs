@@ -347,57 +347,87 @@ FileSystemWatcher? tempCopyWatcher = null;
                     await HandleEpreuve(e.FullPath);
             };
 
-            // ── Second watcher : PDFs renommés par PrismaPrepare (suffixe _OK/_Warning/_Error etc.)
-            // Détecte le renommage dans Sortie_PrepareDirect, supprime le suffixe, déplace vers PreparePath.
+            // ── Second watcher : PDFs produits par PrismaPrepare dans Sortie_PrepareDirect
+            // Stratégie : surveiller TOUS les PDFs (sauf Epreuve.pdf), attendre qu'ils soient stables,
+            // puis supprimer le suffixe PrismaPrepare (_OK/_Warning/_Error/etc.) et déplacer vers PreparePath.
             try
             {
-                var prepareDirectSem = new SemaphoreSlim(1, 1);
+                // Utiliser un dictionnaire thread-safe pour suivre les fichiers en cours
+                var prepareInProgressDict = new System.Collections.Concurrent.ConcurrentDictionary<string, byte>();
+
                 _prepareDirectWatcher = new FileSystemWatcher(outputDir)
                 {
                     Filter = "*.pdf",
-                    NotifyFilter = NotifyFilters.FileName,
+                    // Écouter à la fois les créations, renommages ET modifications
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
                     EnableRaisingEvents = true
                 };
 
-                // Regex pour détecter et supprimer les suffixes ajoutés par PrismaPrepare
+                // Regex large : supprime les suffixes PrismaPrepare connus ajoutés après le nom de base
                 var prismaSuffixRegex = new System.Text.RegularExpressions.Regex(
                     @"^(.+?)(_OK|_WARNING|_WARN|_ERROR|_ERREUR|_SUCCESS|_AVERTISSEMENT|_FAILED|_FAIL)\.pdf$",
                     System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
                 async Task HandlePrepareDirectOutput(string outputPdfPath)
                 {
-                    // Ignorer Epreuve.pdf — géré par le watcher BAT existant
                     var pdfName = Path.GetFileName(outputPdfPath);
+
+                    // Ignorer Epreuve.pdf — géré par le watcher BAT existant
                     if (pdfName.Equals("Epreuve.pdf", StringComparison.OrdinalIgnoreCase))
                         return;
 
-                    // Vérifier que le nom contient un suffixe PrismaPrepare
+                    // Log de debug : on sait que le handler est appelé
+                    Console.WriteLine($"[PREPARE_FSW] Événement détecté : {pdfName}");
+
+                    // Vérifier que le nom contient un suffixe PrismaPrepare connu
                     var match = prismaSuffixRegex.Match(pdfName);
                     if (!match.Success)
-                        return; // Pas encore renommé par PrismaPrepare, ignorer
+                    {
+                        Console.WriteLine($"[PREPARE_FSW] Ignoré (pas de suffixe PrismaPrepare reconnu) : {pdfName}");
+                        return;
+                    }
 
-                    await prepareDirectSem.WaitAsync();
+                    // Anti-doublon : éviter de traiter deux fois le même fichier
+                    var normalizedPath = Path.GetFullPath(outputPdfPath);
+                    if (OperatingSystem.IsWindows())
+                        normalizedPath = normalizedPath.ToUpperInvariant();
+                    if (!prepareInProgressDict.TryAdd(normalizedPath, 0))
+                        return;
+
                     try
                     {
-                        // Attendre que le fichier soit stable
-                        await Task.Delay(BackendUtils.FileSystemSettleDelayMs * 2);
-                        if (!File.Exists(outputPdfPath)) return;
+                        // Attendre que le fichier soit stable.
+                        // PrismaPrepare peut enchaîner plusieurs écritures/renommages très rapprochés.
+                        await Task.Delay(BackendUtils.FileSystemSettleDelayMs * 3);
+                        if (!File.Exists(outputPdfPath))
+                        {
+                            Console.WriteLine($"[PREPARE_FSW] Fichier disparu après délai : {pdfName}");
+                            return;
+                        }
 
                         // Attendre que le fichier ne soit plus verrouillé
+                        bool fileReady = false;
                         for (int retry = 0; retry < 10; retry++)
                         {
                             try
                             {
                                 using var fs = File.Open(outputPdfPath, FileMode.Open, FileAccess.Read, FileShare.None);
+                                fileReady = true;
                                 break;
                             }
                             catch (IOException) { await Task.Delay(500); }
                         }
+                        if (!fileReady)
+                        {
+                            Console.WriteLine($"[PREPARE_FSW][WARN] Fichier toujours verrouillé après retries : {pdfName}");
+                            return;
+                        }
+
                         if (!File.Exists(outputPdfPath)) return;
 
                         // Nom d'origine = groupe 1 + ".pdf" (suffixe supprimé)
                         var originalName = match.Groups[1].Value + ".pdf";
-                        Console.WriteLine($"[PREPARE_FSW] Renommage détecté : {pdfName} → nom d'origine : {originalName}");
+                        Console.WriteLine($"[PREPARE_FSW] Traitement : {pdfName} → nom d'origine : {originalName}");
 
                         // Destination : PreparePath (configuré dans IntegrationsSettings) ou C:\Flux\PrismaPrepare par défaut
                         var integCfgPrepare = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations");
@@ -408,7 +438,7 @@ FileSystemWatcher? tempCopyWatcher = null;
 
                         var destPath = Path.Combine(prepareDestDir, originalName);
                         File.Move(outputPdfPath, destPath, overwrite: true);
-                        Console.WriteLine($"[PREPARE_FSW] PDF déplacé : {outputPdfPath} → {destPath}");
+                        Console.WriteLine($"[PREPARE_FSW] ✅ PDF déplacé : {outputPdfPath} → {destPath}");
 
                         // Journalisation activité
                         try
@@ -426,20 +456,33 @@ FileSystemWatcher? tempCopyWatcher = null;
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"[PREPARE_FSW][ERROR] HandlePrepareDirectOutput: {ex.Message}");
+                        Console.WriteLine($"[PREPARE_FSW][ERROR] HandlePrepareDirectOutput({pdfName}): {ex.Message}");
                     }
                     finally
                     {
-                        prepareDirectSem.Release();
+                        prepareInProgressDict.TryRemove(normalizedPath, out _);
                     }
                 }
 
-                // Surveiller les renommages (PrismaPrepare renomme le fichier quand il a fini)
-                _prepareDirectWatcher.Renamed += async (_, e) => await HandlePrepareDirectOutput(e.FullPath);
-                // Surveiller aussi Created au cas où PrismaPrepare écrit directement avec le suffixe
-                _prepareDirectWatcher.Created += async (_, e) => await HandlePrepareDirectOutput(e.FullPath);
+                // Écouter TOUS les types d'événements pour ne rien rater
+                _prepareDirectWatcher.Renamed += async (_, e) =>
+                {
+                    Console.WriteLine($"[PREPARE_FSW] Renamed: {e.OldName} → {e.Name}");
+                    await HandlePrepareDirectOutput(e.FullPath);
+                };
+                _prepareDirectWatcher.Created += async (_, e) =>
+                {
+                    Console.WriteLine($"[PREPARE_FSW] Created: {e.Name}");
+                    await HandlePrepareDirectOutput(e.FullPath);
+                };
+                _prepareDirectWatcher.Changed += async (_, e) =>
+                {
+                    // Changed peut indiquer que PrismaPrepare a fini d'écrire le fichier renommé
+                    Console.WriteLine($"[PREPARE_FSW] Changed: {e.Name}");
+                    await HandlePrepareDirectOutput(e.FullPath);
+                };
 
-                Console.WriteLine($"[INFO] PrismaPrepare direct output watcher started on {outputDir} (renommage suffixe _OK/_Warning/_Error → PreparePath)");
+                Console.WriteLine($"[INFO] PrismaPrepare direct output watcher started on {outputDir} (tous PDFs sauf Epreuve.pdf → suppression suffixe → PreparePath)");
             }
             catch (Exception exPrepDirect)
             {
