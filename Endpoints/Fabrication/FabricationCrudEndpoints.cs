@@ -227,6 +227,41 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
 
         BackendUtils.UpsertFabrication(sheet);
 
+        // Sync productionInfo into client_orders so portal "Mes commandes" shows latest operator-enriched data
+        try
+        {
+            var clientOrderCol = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
+            var filters = new List<FilterDefinition<BsonDocument>>();
+
+            if (!string.IsNullOrWhiteSpace(sheet.NumeroDossier))
+                filters.Add(Builders<BsonDocument>.Filter.Eq("numeroDossier", sheet.NumeroDossier));
+
+            if (!string.IsNullOrWhiteSpace(sheet.FileName))
+                filters.Add(Builders<BsonDocument>.Filter.Regex("atelierJobPath", new BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(sheet.FileName), "i")));
+
+            if (filters.Count > 0)
+            {
+                var filter = filters.Count == 1 ? filters[0] : Builders<BsonDocument>.Filter.Or(filters);
+                var pi = new BsonDocument
+                {
+                    // "title" intentionally mirrors TypeTravail for portal display fallback consistency.
+                    ["title"] = string.IsNullOrWhiteSpace(sheet.TypeTravail) ? BsonNull.Value : (BsonValue)sheet.TypeTravail,
+                    ["format"] = string.IsNullOrWhiteSpace(sheet.Format) ? BsonNull.Value : (BsonValue)sheet.Format,
+                    ["paper"] = string.IsNullOrWhiteSpace(sheet.Media1) ? BsonNull.Value : (BsonValue)sheet.Media1,
+                    ["encres"] = string.IsNullOrWhiteSpace(sheet.Couleurs) ? BsonNull.Value : (BsonValue)sheet.Couleurs,
+                    ["quantity"] = sheet.Quantite.HasValue ? (BsonValue)sheet.Quantite.Value : BsonNull.Value,
+                    ["pagination"] = string.IsNullOrWhiteSpace(sheet.Pagination) ? BsonNull.Value : (BsonValue)sheet.Pagination,
+                    ["typeTravail"] = string.IsNullOrWhiteSpace(sheet.TypeTravail) ? BsonNull.Value : (BsonValue)sheet.TypeTravail,
+                    ["numeroDossier"] = string.IsNullOrWhiteSpace(sheet.NumeroDossier) ? BsonNull.Value : (BsonValue)sheet.NumeroDossier,
+                };
+                clientOrderCol.UpdateMany(filter, Builders<BsonDocument>.Update.Set("productionInfo", pi));
+            }
+        }
+        catch (Exception exOrderSync)
+        {
+            Console.WriteLine($"[WARN] Sync productionInfo to client_orders failed: {exOrderSync.Message}");
+        }
+
         // Sync numeroDossier to productionFolders and rename physical folder if needed
         if (!string.IsNullOrWhiteSpace(sheet.NumeroDossier))
         {

@@ -14,8 +14,47 @@ namespace GestionAtelier.Endpoints.Portal;
 
 public static class PortalOrdersEndpoints
 {
+    private static int? ReadNullableInt(BsonDocument doc, string field, bool allowStringFallback = false)
+    {
+        if (!doc.Contains(field) || doc[field].IsBsonNull) return null;
+        if (doc[field].IsInt32) return doc[field].AsInt32;
+        if (doc[field].IsInt64) return (int)doc[field].AsInt64;
+        if (allowStringFallback && int.TryParse(doc[field].ToString(), out var parsed)) return parsed;
+        return null;
+    }
+
     // Mapper -----------------------------------------------------------------
-    private static object OrderToDto(ClientOrder o, bool includeFiles = true) => new
+    private static object? ExtractProductionInfo(BsonDocument? rawDoc)
+    {
+        if (rawDoc == null || !rawDoc.Contains("productionInfo") || !rawDoc["productionInfo"].IsBsonDocument)
+            return null;
+
+        var pi = rawDoc["productionInfo"].AsBsonDocument;
+        var finitionsList = new List<string>();
+        if (pi.Contains("finitions") && pi["finitions"].IsBsonArray)
+            finitionsList = pi["finitions"].AsBsonArray.Select(v => v.AsString).ToList();
+
+        return new
+        {
+            title             = pi.Contains("title") && !pi["title"].IsBsonNull ? pi["title"].AsString : null,
+            format            = pi.Contains("format") && !pi["format"].IsBsonNull ? pi["format"].AsString : null,
+            paper             = pi.Contains("paper") && !pi["paper"].IsBsonNull ? pi["paper"].AsString : null,
+            encres            = pi.Contains("encres") && !pi["encres"].IsBsonNull ? pi["encres"].AsString : null,
+            quantity          = ReadNullableInt(pi, "quantity"),
+            pagination        = ReadNullableInt(pi, "pagination", allowStringFallback: true),
+            recto             = pi.Contains("recto") && !pi["recto"].IsBsonNull ? pi["recto"].AsString : null,
+            finitions         = finitionsList,
+            notes             = pi.Contains("notes") && !pi["notes"].IsBsonNull ? pi["notes"].AsString : null,
+            deliveryDate      = pi.Contains("deliveryDate") && !pi["deliveryDate"].IsBsonNull ? (DateTime?)pi["deliveryDate"].ToUniversalTime() : null,
+            productionComment = pi.Contains("productionComment") && !pi["productionComment"].IsBsonNull ? pi["productionComment"].AsString : null,
+            importedAt        = pi.Contains("importedAt") ? (DateTime?)pi["importedAt"].ToUniversalTime() : null,
+            importedBy        = pi.Contains("importedBy") && !pi["importedBy"].IsBsonNull ? pi["importedBy"].AsString : null,
+            typeTravail       = pi.Contains("typeTravail") && !pi["typeTravail"].IsBsonNull ? pi["typeTravail"].AsString : null,
+            numeroDossier     = pi.Contains("numeroDossier") && !pi["numeroDossier"].IsBsonNull ? pi["numeroDossier"].AsString : null,
+        };
+    }
+
+    private static object OrderToDto(ClientOrder o, bool includeFiles = true, BsonDocument? rawDoc = null) => new
     {
         id = o.Id,
         orderNumber = o.OrderNumber,
@@ -66,6 +105,7 @@ public static class PortalOrdersEndpoints
         updatedAt = o.UpdatedAt,
         statusHistory = o.StatusHistory,
         files = includeFiles ? o.Files.Select(f => new { fileName = f.FileName, uploadedAt = f.UploadedAt, size = f.Size }).ToList() : null,
+        productionInfo = ExtractProductionInfo(rawDoc),
     };
 
     internal static ClientOrder DocToOrder(BsonDocument d)
@@ -204,7 +244,7 @@ public static class PortalOrdersEndpoints
                 .Sort(Builders<BsonDocument>.Sort.Descending("createdAt"))
                 .ToList();
 
-            var orders = docs.Select(DocToOrder).Select(o => OrderToDto(o, false)).ToList();
+            var orders = docs.Select(d => OrderToDto(DocToOrder(d), false, d)).ToList();
             return Results.Json(new { ok = true, orders });
         });
 
@@ -241,30 +281,7 @@ public static class PortalOrdersEndpoints
             }).ToList();
 
             // Extract productionInfo from raw BsonDocument (not mapped through ClientOrder model)
-            object? productionInfo = null;
-            if (doc.Contains("productionInfo") && doc["productionInfo"].IsBsonDocument)
-            {
-                var pi = doc["productionInfo"].AsBsonDocument;
-                var finitionsList = new List<string>();
-                if (pi.Contains("finitions") && pi["finitions"].IsBsonArray)
-                    finitionsList = pi["finitions"].AsBsonArray.Select(v => v.AsString).ToList();
-                productionInfo = new
-                {
-                    title             = pi.Contains("title") && !pi["title"].IsBsonNull ? pi["title"].AsString : null,
-                    format            = pi.Contains("format") && !pi["format"].IsBsonNull ? pi["format"].AsString : null,
-                    paper             = pi.Contains("paper") && !pi["paper"].IsBsonNull ? pi["paper"].AsString : null,
-                    encres            = pi.Contains("encres") && !pi["encres"].IsBsonNull ? pi["encres"].AsString : null,
-                    quantity          = pi.Contains("quantity") && !pi["quantity"].IsBsonNull ? (int?)pi["quantity"].AsInt32 : null,
-                    pagination        = pi.Contains("pagination") && !pi["pagination"].IsBsonNull ? (int?)pi["pagination"].AsInt32 : null,
-                    recto             = pi.Contains("recto") && !pi["recto"].IsBsonNull ? pi["recto"].AsString : null,
-                    finitions         = finitionsList,
-                    notes             = pi.Contains("notes") && !pi["notes"].IsBsonNull ? pi["notes"].AsString : null,
-                    deliveryDate      = pi.Contains("deliveryDate") && !pi["deliveryDate"].IsBsonNull ? (DateTime?)pi["deliveryDate"].ToUniversalTime() : null,
-                    productionComment = pi.Contains("productionComment") && !pi["productionComment"].IsBsonNull ? pi["productionComment"].AsString : null,
-                    importedAt        = pi.Contains("importedAt") ? (DateTime?)pi["importedAt"].ToUniversalTime() : null,
-                    importedBy        = pi.Contains("importedBy") && !pi["importedBy"].IsBsonNull ? pi["importedBy"].AsString : null,
-                };
-            }
+            var productionInfo = ExtractProductionInfo(doc);
 
             return Results.Json(new { ok = true, order = OrderToDto(order), bats, productionInfo });
         });

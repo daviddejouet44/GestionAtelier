@@ -91,10 +91,28 @@
         return;
       }
 
-      const rows = orders.map(o => `
+      const rows = orders.map(o => {
+        const pi = o.productionInfo || {};
+        const format = pi.format || o.format || '';
+        const paper = pi.paper || o.paper || '';
+        const quantity = (pi.quantity ?? o.quantity ?? '');
+        const typeTravail = pi.typeTravail || o.typeTravail || '';
+
+        const extras = [];
+        if (typeTravail) extras.push(esc(typeTravail));
+        if (format) extras.push(esc(format));
+        if (paper) extras.push(esc(paper));
+        if (quantity != null && quantity !== '') extras.push(`Qté ${esc(String(quantity))}`);
+
+        return `
         <tr>
           <td><strong>${esc(o.orderNumber)}</strong></td>
-          <td>${esc(o.title)}</td>
+          <td>
+            ${esc(o.title)}
+            <div style="font-size:12px;color:#6b7280;margin-top:2px;">
+              ${extras.join(' · ')}
+            </div>
+          </td>
           <td>${fmtDate(o.createdAt)}</td>
           <td>${statusBadge(o.status)}</td>
           <td>
@@ -103,7 +121,8 @@
               <a href="/portal/order-new.html?reorder=${esc(o.id)}" class="btn btn-secondary btn-sm">Re-commander</a>
             </div>
           </td>
-        </tr>`).join('');
+        </tr>`;
+      }).join('');
 
       container.innerHTML = `
         <div class="portal-table-wrap">

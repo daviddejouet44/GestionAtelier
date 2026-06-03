@@ -1133,6 +1133,7 @@ export function initQuoteSendModal() {
   if (!modal) return;
 
   const btnCancel = document.getElementById('qs-cancel');
+  const btnCloseX = document.getElementById('qs-close-x');
   const btnSend   = document.getElementById('qs-send');
   const uploadZone  = document.getElementById('qs-upload-zone');
   const fileInput   = document.getElementById('qs-file-input');
@@ -1144,11 +1145,34 @@ export function initQuoteSendModal() {
 
   let _qsFile = null;
 
-  function closeModal() { modal.classList.add('hidden'); }
+  function resetAndClose() {
+    document.getElementById('qs-devis-number').value = '';
+    document.getElementById('qs-client-email').value = '';
+    document.getElementById('qs-notes').value = '';
+    if (fileInput) fileInput.value = '';
+    _qsFile = null;
+    if (filePreview) filePreview.style.display = 'none';
+    if (uploadZone) uploadZone.style.display = '';
+    if (errDiv) errDiv.style.display = 'none';
+    if (successDiv) successDiv.style.display = 'none';
+    if (btnSend) {
+      btnSend.disabled = false;
+      btnSend.textContent = '📧 Ouvrir dans ma messagerie';
+    }
+    modal.classList.add('hidden');
+  }
 
-  if (btnCancel) btnCancel.addEventListener('click', closeModal);
+  if (btnCancel) btnCancel.addEventListener('click', resetAndClose);
+  if (btnCloseX) btnCloseX.addEventListener('click', resetAndClose);
 
-  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+  modal.addEventListener('click', e => { if (e.target === modal) resetAndClose(); });
+  if (modal.dataset.qsEscapeBound !== '1') {
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !modal.classList.contains('hidden'))
+        resetAndClose();
+    });
+    modal.dataset.qsEscapeBound = '1';
+  }
 
   // File handling
   if (uploadZone) {
