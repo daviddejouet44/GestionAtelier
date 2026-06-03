@@ -200,6 +200,27 @@ app.MapPost("/api/jobs/move", async (HttpContext ctx) =>
                     Console.WriteLine($"[WARN] UpdateFabricationPath failed: {exFab.Message}");
                 }
 
+                // Preserve explicit web source marker after move.
+                try
+                {
+                    var movedFileName = Path.GetFileName(moved).ToLowerInvariant();
+                    var fabCol = MongoDbHelper.GetFabricationsCollection();
+                    var webFilter = Builders<BsonDocument>.Filter.And(
+                        Builders<BsonDocument>.Filter.Eq("fileName", movedFileName),
+                        Builders<BsonDocument>.Filter.Eq("source", "web"));
+                    var hasWebSource = fabCol.Find(webFilter).Any();
+                    if (hasWebSource)
+                    {
+                        fabCol.UpdateMany(
+                            Builders<BsonDocument>.Filter.Eq("fileName", movedFileName),
+                            Builders<BsonDocument>.Update.Set("source", "web"));
+                    }
+                }
+                catch (Exception exSource)
+                {
+                    Console.WriteLine($"[WARN] Preserve web source failed: {exSource.Message}");
+                }
+
                 // Log file move activity
                 var token2 = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
                 var userLogin2 = "?";

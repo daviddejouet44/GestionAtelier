@@ -256,6 +256,9 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         try { d = await fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName)).then(r => r.json()); } catch(_) {}
         if (d && d.numeroDossier) {
           dossierEl.textContent = "N° " + d.numeroDossier;
+        }
+        if (d && d.source === "web") {
+          setOrderBadge(true);
         } else if (!isWebOrder && !isDevisOrder) {
           // For portal/devis orders with non-WEB-prefix filenames, fetch client_orders metadata
           // from the job filename so web tagging remains stable across Kanban moves.

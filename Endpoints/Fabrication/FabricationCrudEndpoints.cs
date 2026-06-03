@@ -60,8 +60,12 @@ app.MapGet("/api/fabrication", (string? fullPath, string? fileName) =>
         // Serialize sheet then append locked field to JSON string to avoid JsonDocument disposal issues
         var opts = new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
         var json = System.Text.Json.JsonSerializer.Serialize(sheet, opts);
+        var source = rawDoc != null && rawDoc.Contains("source") && rawDoc["source"] != BsonNull.Value
+            ? rawDoc["source"].AsString
+            : "";
+        var sourceJson = System.Text.Json.JsonSerializer.Serialize(source);
         var resultJson = json.EndsWith("}")
-            ? json[..^1] + ",\"locked\":" + (locked ? "true" : "false") + "}"
+            ? json[..^1] + ",\"locked\":" + (locked ? "true" : "false") + ",\"source\":" + sourceJson + "}"
             : json;
         return Results.Content(resultJson, "application/json");
     }
@@ -124,6 +128,17 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
         // even when the file was moved to a different folder (fullPath changes but fileName doesn't)
         if (old == null && !string.IsNullOrWhiteSpace(input.FileName))
             old = BackendUtils.FindFabricationByName(input.FileName);
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+        var sourceFilterName = string.IsNullOrWhiteSpace(input.FileName)
+            ? Path.GetFileName(input.FullPath)?.ToLowerInvariant() ?? ""
+            : input.FileName.ToLowerInvariant();
+        var existingSourceDoc = !string.IsNullOrWhiteSpace(sourceFilterName)
+            ? fabCol.Find(BuildFileNameFilter(sourceFilterName)).SortByDescending(x => x["_id"]).FirstOrDefault()
+            : null;
+        var keepWebSource = existingSourceDoc != null
+            && existingSourceDoc.Contains("source")
+            && existingSourceDoc["source"] != BsonNull.Value
+            && string.Equals(existingSourceDoc["source"].AsString, "web", StringComparison.OrdinalIgnoreCase);
 
         // Admin-only fields: only profile 3 can update TypeDocument, NombreFeuilles
         var isAdmin = (userProfile == 3);
@@ -226,6 +241,16 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
         });
 
         BackendUtils.UpsertFabrication(sheet);
+        if (keepWebSource)
+        {
+            try
+            {
+                fabCol.UpdateMany(
+                    BuildFileNameFilter(sheet.FileName),
+                    Builders<BsonDocument>.Update.Set("source", "web"));
+            }
+            catch { /* non-blocking source preservation */ }
+        }
 
         // Sync productionInfo into client_orders so portal "Mes commandes" shows latest operator-enriched data
         try
