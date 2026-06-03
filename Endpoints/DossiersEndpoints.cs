@@ -375,8 +375,23 @@ app.MapGet("/api/production/summary", () =>
                 var numeroDossier = fab != null && fab.Contains("numeroDossier") && fab["numeroDossier"] != BsonNull.Value ? fab["numeroDossier"].AsString : "";
                 var client = fab != null && fab.Contains("client") && fab["client"] != BsonNull.Value ? fab["client"].AsString : "";
                 var typeTravail = fab != null && fab.Contains("typeTravail") && fab["typeTravail"] != BsonNull.Value ? fab["typeTravail"].AsString : "";
-                var dateReceptionSouhaitee = fab != null && fab.Contains("dateReceptionSouhaitee") && fab["dateReceptionSouhaitee"] != BsonNull.Value
-                    ? fab["dateReceptionSouhaitee"].AsString : "";
+                var dateReceptionSouhaitee = "";
+                if (fab != null && fab.Contains("dateReceptionSouhaitee") && fab["dateReceptionSouhaitee"] != BsonNull.Value)
+                {
+                    try
+                    {
+                        var bv = fab["dateReceptionSouhaitee"];
+                        if (bv.BsonType == BsonType.DateTime)
+                            dateReceptionSouhaitee = bv.ToUniversalTime().ToString("yyyy-MM-dd");
+                        else if (bv.BsonType == BsonType.String)
+                        {
+                            var raw = bv.AsString;
+                            if (!string.IsNullOrWhiteSpace(raw) && raw.Length >= 10)
+                                dateReceptionSouhaitee = raw.Substring(0, 10);
+                        }
+                    }
+                    catch { /* date parsing failure is non-fatal; leave as empty string */ }
+                }
 
                 // Resolve BAT sub-status (envoyé / validé / refusé) when stage is BAT
                 string? batStatus = null;

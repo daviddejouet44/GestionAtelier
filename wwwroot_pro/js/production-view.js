@@ -26,14 +26,11 @@ export async function initGlobalProductionView() {
 }
 
 async function buildGlobalProgressView(container) {
-  const [jobs, assignments, deliveries] = await Promise.all([
+  const [jobs, assignments] = await Promise.all([
     fetch("/api/production/summary", {
       headers: { "Authorization": `Bearer ${authToken}` }
     }).then(r => r.json()).catch(() => []),
     fetch("/api/assignments", {
-      headers: { "Authorization": `Bearer ${authToken}` }
-    }).then(r => r.json()).catch(() => []),
-    fetch("/api/delivery", {
       headers: { "Authorization": `Bearer ${authToken}` }
     }).then(r => r.json()).catch(() => [])
   ]);
@@ -49,15 +46,6 @@ async function buildGlobalProgressView(container) {
     assignments.forEach(a => {
       const key = (a.fileName || (a.fullPath || "").split(/[/\\]/).pop() || "").toLowerCase();
       if (key) assignMap[key] = a.operatorName || "";
-    });
-  }
-
-  // Build delivery date lookup
-  const deliveryMap = {};
-  if (Array.isArray(deliveries)) {
-    deliveries.forEach(d => {
-      const key = (d.fileName || "").toLowerCase();
-      if (key) deliveryMap[key] = d.deliveryDate || d.date || "";
     });
   }
 
@@ -81,12 +69,12 @@ async function buildGlobalProgressView(container) {
 
   container.querySelector("#global-prod-refresh").onclick = () => buildGlobalProgressView(container);
   const sortSel = container.querySelector("#global-prod-sort");
-  sortSel.onchange = () => renderGlobalProdTable(jobs, assignMap, deliveryMap, sortSel.value, container.querySelector("#global-prod-table-wrap"));
+  sortSel.onchange = () => renderGlobalProdTable(jobs, assignMap, sortSel.value, container.querySelector("#global-prod-table-wrap"));
 
-  renderGlobalProdTable(jobs, assignMap, deliveryMap, "stage", container.querySelector("#global-prod-table-wrap"));
+  renderGlobalProdTable(jobs, assignMap, "stage", container.querySelector("#global-prod-table-wrap"));
 }
 
-function renderGlobalProdTable(jobs, assignMap, deliveryMap, sortMode, wrap) {
+function renderGlobalProdTable(jobs, assignMap, sortMode, wrap) {
   // Sort jobs based on mode
   const sorted = [...jobs].sort((a, b) => {
     switch(sortMode) {
@@ -99,8 +87,8 @@ function renderGlobalProdTable(jobs, assignMap, deliveryMap, sortMode, wrap) {
         return getStageProgress(a.currentStage) - getStageProgress(b.currentStage);
       }
       case "delivery": {
-        const da = a.dateReceptionSouhaitee || deliveryMap[(a.fileName || "").toLowerCase()] || "9999";
-        const db = b.dateReceptionSouhaitee || deliveryMap[(b.fileName || "").toLowerCase()] || "9999";
+        const da = a.dateReceptionSouhaitee || "9999";
+        const db = b.dateReceptionSouhaitee || "9999";
         return da.localeCompare(db);
       }
       case "operator": {
@@ -135,7 +123,7 @@ function renderGlobalProdTable(jobs, assignMap, deliveryMap, sortMode, wrap) {
     const displayNum = job.numeroDossier || job.fileName || "—";
     const fileKey = (job.fileName || "").toLowerCase();
     const operatorName = assignMap[fileKey] || "";
-    const deliveryDate = job.dateReceptionSouhaitee || deliveryMap[fileKey] || "";
+    const deliveryDate = job.dateReceptionSouhaitee || "";
 
     // Build stage display label, including BAT sub-status when available (centralized in constants.js)
     const stageDisplay = getStageLabelDisplay(job.currentStage, job.batStatus) || '—';
