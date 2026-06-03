@@ -580,29 +580,46 @@
     }
 
     function renderProductionInfo(o, productionInfo) {
-      const info = productionInfo || o.productionInfo || {};
-      const format = o.format || info.format;
-      const paper = o.paper || info.paper;
-      const quantity = o.quantity || info.quantity;
-      const encres = o.encres || info.encres;
-      const recto = o.recto || info.recto;
-      const notes = o.notes || info.notes;
-      const devisNumber = o.devisNumber || info.devisNumber;
-      const finitions = (Array.isArray(o.finitions) && o.finitions.length) ? o.finitions : (info.finitions || []);
-      const hasProductionInfo = format || paper || quantity || encres || notes || (finitions && finitions.length);
-      if (!hasProductionInfo) return '';
+      const info = productionInfo || o.productionInfo;
+      if (!info) return '';
+      const hasValue = v => {
+        if (v === null || v === undefined) return false;
+        if (typeof v === 'string') return v.trim().length > 0;
+        if (Array.isArray(v)) return v.length > 0;
+        return true;
+      };
+
+      const fields = [
+        info.title,
+        info.format,
+        info.paper,
+        info.encres,
+        info.quantity,
+        info.pagination,
+        info.recto,
+        info.finitions,
+        info.notes,
+        info.productionComment,
+        info.deliveryDate
+      ];
+      if (!fields.some(hasValue)) return '';
+
+      const finitions = Array.isArray(info.finitions) ? info.finitions : [];
       return `
         <div class="card">
           <div class="card-header"><span class="card-title">📋 Informations de production</span></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;">
-            ${quantity ? row('Quantité', (typeof quantity === 'number' ? quantity.toLocaleString('fr') : esc(String(quantity))) + ' ex.') : ''}
-            ${format ? row('Format', esc(format)) : ''}
-            ${paper ? row('Support', esc(paper)) : ''}
-            ${encres ? row('Couleurs', esc(encres)) : ''}
-            ${recto && recto !== 'recto' ? row('Impression', recto === 'recto-verso' ? 'Recto / Verso' : esc(recto)) : ''}
-            ${finitions && finitions.length ? row('Finitions', finitions.map(f => `<span class="badge badge-gray">${esc(f)}</span>`).join(' ')) : ''}
-            ${notes ? row('Remarques', esc(notes).replace(/\n/g, '<br/>')) : ''}
-            ${devisNumber ? row('N° devis', esc(devisNumber)) : ''}
+            ${hasValue(info.title) ? row('Intitulé', esc(String(info.title))) : ''}
+            ${hasValue(info.format) ? row('Format', esc(String(info.format))) : ''}
+            ${hasValue(info.paper) ? row('Papier', esc(String(info.paper))) : ''}
+            ${hasValue(info.encres) ? row('Encres', esc(String(info.encres))) : ''}
+            ${hasValue(info.quantity) ? row('Quantité', typeof info.quantity === 'number' ? `${info.quantity.toLocaleString('fr')} ex.` : esc(String(info.quantity))) : ''}
+            ${hasValue(info.pagination) ? row('Pagination', esc(String(info.pagination))) : ''}
+            ${hasValue(info.recto) ? row('Recto', info.recto === 'recto-verso' ? 'Recto-verso' : esc(String(info.recto))) : ''}
+            ${finitions.length ? row('Finitions', finitions.map(f => `<span class="badge badge-gray">${esc(String(f))}</span>`).join(' ')) : ''}
+            ${hasValue(info.notes) ? row('Notes', esc(String(info.notes)).replace(/\n/g, '<br/>')) : ''}
+            ${hasValue(info.productionComment) ? row('Commentaire production', esc(String(info.productionComment)).replace(/\n/g, '<br/>')) : ''}
+            ${hasValue(info.deliveryDate) ? row('Date de livraison', fmtDate(info.deliveryDate)) : ''}
           </div>
         </div>
       `;
