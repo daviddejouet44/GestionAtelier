@@ -868,13 +868,17 @@ public static class QuoteLinksEndpoints
                 // Send confirmation email to client
                 try
                 {
+                    var clientEmail = string.IsNullOrWhiteSpace(donneurEmail) ? link.ClientEmail : donneurEmail;
+                    if (string.IsNullOrWhiteSpace(clientEmail))
+                        throw new Exception("Email client manquant pour l'envoi de confirmation.");
+
                     var portalBase = PortalEmailHelper.SanitizePortalBaseUrl(settings.PortalUrl);
                     if (string.IsNullOrWhiteSpace(portalBase))
                         portalBase = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
                     var first = createdOrders[0];
                     var vars = new Dictionary<string, string>
                     {
-                        ["{clientName}"] = string.IsNullOrWhiteSpace(link.ClientName) ? link.ClientEmail : link.ClientName,
+                        ["{clientName}"] = string.IsNullOrWhiteSpace(link.ClientName) ? clientEmail : link.ClientName,
                         ["{orderNumber}"] = first.orderNumber,
                         ["{orderTitle}"] = first.title,
                         ["{portalLink}"] = $"{portalBase}/portal/order.html?id={first.orderId}"
@@ -883,7 +887,7 @@ public static class QuoteLinksEndpoints
                         "Commande reçue — {orderNumber}",
                         "Bonjour {clientName},\n\nVotre commande {orderNumber} \"{orderTitle}\" a bien été reçue.\n\nConsultez votre espace client : {portalLink}\n\nCordialement,",
                         vars);
-                    PortalEmailHelper.SendEmail(link.ClientEmail, subj, body);
+                    PortalEmailHelper.SendEmail(clientEmail, subj, body);
                 }
                 catch (Exception ex) { Console.WriteLine($"[WARN] Quote confirm email: {ex.Message}"); }
 

@@ -1181,13 +1181,18 @@ export function initQuoteSendModal() {
     if (fileInput) fileInput.value = '';
     _qsFile = null;
     if (filePreview) filePreview.style.display = 'none';
-    if (uploadZone) uploadZone.style.display = '';
+    if (uploadZone) {
+      uploadZone.style.display = '';
+      uploadZone.style.borderColor = '#d1d5db';
+      uploadZone.style.background = '#fafafa';
+    }
     if (errDiv) errDiv.style.display = 'none';
     if (successDiv) successDiv.style.display = 'none';
     if (btnSend) {
       btnSend.disabled = false;
       btnSend.textContent = '📧 Ouvrir dans ma messagerie';
     }
+    modal.dataset.filePath = '';
     modal.classList.add('hidden');
   }
 
