@@ -11,6 +11,8 @@ namespace GestionAtelier.Watchers;
 
 public static class PrismaOutputWatcherExtensions
 {
+    // Held in a static field so the GC never collects the secondary watcher
+    private static FileSystemWatcher? _prepareDirectWatcher;
     public static FileSystemWatcher? UsePrismaOutputWatcher(this WebApplication app)
     {
         // ======================================================
@@ -343,6 +345,89 @@ FileSystemWatcher? tempCopyWatcher = null;
                 if (e.Name != null && e.Name.Equals("Epreuve.pdf", StringComparison.OrdinalIgnoreCase))
                     await HandleEpreuve(e.FullPath);
             };
+
+            // -------------------------------------------------------
+            // Second watcher: handle PDFs produced by "Ouvrir dans PrismaPrepare" from "En attente"
+            // Detects any non-Epreuve PDF in outputDir, renames it using the source file found
+            // in TEMP_COPY_Prepare, moves it to PreparePath, then deletes the TEMP_COPY file.
+            // -------------------------------------------------------
+            var prepareDirectSem = new SemaphoreSlim(1, 1);
+            async Task HandlePrepareDirectOutput(string outputPdfPath)
+            {
+                // Epreuve.pdf is handled by the BAT watcher above — skip it here
+                if (Path.GetFileName(outputPdfPath).Equals("Epreuve.pdf", StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                // Double the settle delay to give PrismaPrepare time to fully write the output PDF
+                await Task.Delay(BackendUtils.FileSystemSettleDelayMs * 2);
+                if (!File.Exists(outputPdfPath)) return;
+
+                await prepareDirectSem.WaitAsync();
+                try
+                {
+                    var tempDir = !string.IsNullOrWhiteSpace(integCfg?.TempCopyPath)
+                        ? integCfg!.TempCopyPath
+                        : @"C:\FluxAtelier\Base\TEMP_COPY_Prepare";
+
+                    if (!Directory.Exists(tempDir))
+                    {
+                        Console.WriteLine("[PREPARE_FSW][WARN] Répertoire TEMP_COPY_Prepare introuvable, ignoré.");
+                        return;
+                    }
+
+                    var tempFiles = Directory.GetFiles(tempDir, "*.pdf")
+                        .OrderByDescending(f => File.GetLastWriteTime(f))
+                        .ToList();
+
+                    if (tempFiles.Count == 0)
+                    {
+                        Console.WriteLine("[PREPARE_FSW][WARN] Aucun fichier dans TEMP_COPY_Prepare, impossible de déterminer le vrai nom.");
+                        return;
+                    }
+
+                    var sourceFileName = Path.GetFileName(tempFiles[0]);
+
+                    var prepareDir = !string.IsNullOrWhiteSpace(integCfg?.PreparePath)
+                        ? integCfg!.PreparePath
+                        : @"C:\Flux\PrismaPrepare";
+                    Directory.CreateDirectory(prepareDir);
+
+                    var destPath = Path.Combine(prepareDir, sourceFileName);
+                    try
+                    {
+                        File.Move(outputPdfPath, destPath, overwrite: true);
+                        Console.WriteLine($"[PREPARE_FSW] PDF renommé et déplacé : {sourceFileName} → {destPath}");
+                    }
+                    catch (Exception exMove)
+                    {
+                        Console.WriteLine($"[PREPARE_FSW][ERROR] Déplacement vers PreparePath : {exMove.Message}");
+                        return;
+                    }
+
+                    try
+                    {
+                        File.Delete(tempFiles[0]);
+                        Console.WriteLine($"[PREPARE_FSW] Suppression TEMP_COPY : {tempFiles[0]}");
+                    }
+                    catch (Exception exDel)
+                    {
+                        Console.WriteLine($"[PREPARE_FSW][WARN] Delete TEMP_COPY : {exDel.Message}");
+                    }
+                }
+                finally
+                {
+                    prepareDirectSem.Release();
+                }
+            }
+
+            _prepareDirectWatcher = new FileSystemWatcher(outputDir)
+            {
+                Filter = "*.pdf",
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite,
+                EnableRaisingEvents = true
+            };
+            _prepareDirectWatcher.Created += async (_, e) => await HandlePrepareDirectOutput(e.FullPath);
+            _prepareDirectWatcher.Renamed += async (_, e) => await HandlePrepareDirectOutput(e.FullPath);
 
             Console.WriteLine($"[INFO] PrismaPrepare output FileSystemWatcher started on {outputDir}");
         }
