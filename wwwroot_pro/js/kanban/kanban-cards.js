@@ -1,8 +1,8 @@
 // kanban/kanban-cards.js — Kanban card rendering
 import { currentUser, authToken, deliveriesByPath, assignmentsByPath, fnKey, normalizePath, daysDiffFromToday, showNotification } from '../core.js';
 import { openBatChoiceModal } from '../bat.js';
-import { state, refreshKanban } from './kanban-core.js?v=35';
-import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js?v=35';
+import { state, refreshKanban } from './kanban-core.js?v=36';
+import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js?v=36';
 
 // Opens the quote send modal from Kanban context (prefill from fabrication data)
 async function openKanbanQuoteModal(fullPath, fab) {
@@ -138,11 +138,33 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       });
     }
 
-    if (sort === "name_asc") filtered.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    if (sort === "name_asc")       filtered.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     else if (sort === "name_desc") filtered.sort((a, b) => (b.name || "").localeCompare(a.name || ""));
-    else if (sort === "size_asc") filtered.sort((a, b) => (a.size || 0) - (b.size || 0));
+    else if (sort === "size_asc")  filtered.sort((a, b) => (a.size || 0) - (b.size || 0));
     else if (sort === "size_desc") filtered.sort((a, b) => (b.size || 0) - (a.size || 0));
-    else filtered.sort((a, b) => new Date(b.modified) - new Date(a.modified));
+    else if (sort === "date_asc") {
+      filtered.sort((a, b) => {
+        const fa = fnKey(a.fullPath || a.name || '');
+        const fb = fnKey(b.fullPath || b.name || '');
+        const da = deliveriesByPath[fa] || "";
+        const db = deliveriesByPath[fb] || "";
+        if (!da && !db) return 0;
+        if (!da) return 1;
+        if (!db) return -1;
+        return da.localeCompare(db);
+      });
+    } else { // date_desc (défaut)
+      filtered.sort((a, b) => {
+        const fa = fnKey(a.fullPath || a.name || '');
+        const fb = fnKey(b.fullPath || b.name || '');
+        const da = deliveriesByPath[fa] || "";
+        const db = deliveriesByPath[fb] || "";
+        if (!da && !db) return new Date(b.modified) - new Date(a.modified);
+        if (!da) return 1;
+        if (!db) return -1;
+        return db.localeCompare(da);
+      });
+    }
 
     for (const job of filtered) {
       const card = document.createElement("div");

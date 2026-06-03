@@ -526,30 +526,39 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
         }
         else if (action == "prisma-prepare")
         {
-            var integCfg = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations") ?? new IntegrationsSettings();
-            var tempCopyDir = !string.IsNullOrWhiteSpace(integCfg.TempCopyPath)
-                ? integCfg.TempCopyPath
+            // Routage PrismaPrepare: trouver le hotfolder configuré dans prismaPrepareRouting
+            var ppCol = MongoDbHelper.GetCollection<BsonDocument>("prismaPrepareRouting");
+            var ppDoc = ppCol.Find(Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail)).FirstOrDefault();
+            if (ppDoc == null || !ppDoc.Contains("hotfolderPath") || string.IsNullOrEmpty(ppDoc["hotfolderPath"].AsString))
+                return Results.Json(new { ok = false, error = $"Aucun hotfolder PrismaPrepare configuré pour le type de travail \"{typeTravail}\". Configurez-le dans Paramétrage > Routage Impression." });
+
+            var ppHotfolder = ppDoc["hotfolderPath"].AsString;
+
+            // 1. Déplacer le fichier dans le hotfolder PrismaPrepare
+            if (!Directory.Exists(ppHotfolder))
+                Directory.CreateDirectory(ppHotfolder);
+            var ppDest = Path.Combine(ppHotfolder, Path.GetFileName(fullPath));
+            File.Move(fullPath, ppDest, overwrite: true);
+            Console.WriteLine($"[ACTION] prisma-prepare: déplacé vers hotfolder {ppDest}");
+
+            // 2. Faire une copie dans TEMP_COPY_Prepare pour conserver le vrai nom
+            var integCfg2 = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations") ?? new IntegrationsSettings();
+            var tempCopyDir = !string.IsNullOrWhiteSpace(integCfg2.TempCopyPath)
+                ? integCfg2.TempCopyPath
                 : @"C:\FluxAtelier\Base\TEMP_COPY_Prepare";
-
-            // 1. Copier le PDF dans TEMP_COPY_Prepare
-            Directory.CreateDirectory(tempCopyDir);
-            var tempCopyDest = Path.Combine(tempCopyDir, Path.GetFileName(fullPath));
-            File.Copy(fullPath, tempCopyDest, overwrite: true);
-            Console.WriteLine($"[ACTION] prisma-prepare: copie dans TEMP_COPY_Prepare → {tempCopyDest}");
-
-            // 2. Ouvrir PrismaPrepare avec le fichier original
-            var prismaPrepPath = integCfg.PrismaPrepareExePath ?? "";
-            if (!string.IsNullOrWhiteSpace(prismaPrepPath) && File.Exists(prismaPrepPath))
+            try
             {
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = prismaPrepPath,
-                    Arguments = $"\"{fullPath}\"",
-                    UseShellExecute = true
-                });
+                Directory.CreateDirectory(tempCopyDir);
+                var tempCopyDest = Path.Combine(tempCopyDir, Path.GetFileName(ppDest));
+                File.Copy(ppDest, tempCopyDest, overwrite: true);
+                Console.WriteLine($"[ACTION] prisma-prepare: copie TEMP_COPY → {tempCopyDest}");
+            }
+            catch (Exception exCopy)
+            {
+                Console.WriteLine($"[ACTION][WARN] prisma-prepare: impossible de copier dans TEMP_COPY_Prepare : {exCopy.Message}");
             }
 
-            return Results.Json(new { ok = true, message = "Fichier ouvert dans PrismaPrepare, copie enregistrée dans TEMP_COPY_Prepare", tempCopy = tempCopyDest });
+            return Results.Json(new { ok = true, message = "Fichier envoyé dans le hotfolder PrismaPrepare", destination = ppDest });
         }
         else if (action == "direct-print")
         {

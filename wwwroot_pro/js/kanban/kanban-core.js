@@ -1,7 +1,7 @@
 // kanban/kanban-core.js — Build, refresh, summary
 import { currentUser, deliveriesByPath, fnKey, normalizePath, isLight, darkenColor, showNotification, FOLDER_FIN_PRODUCTION } from '../core.js';
-import { refreshKanbanColumnOperator } from './kanban-cards.js?v=35';
-import { showFaconnageAlerts } from './kanban-actions.js?v=35';
+import { refreshKanbanColumnOperator } from './kanban-cards.js?v=36';
+import { showFaconnageAlerts } from './kanban-actions.js?v=36';
 
 const kanbanDiv = document.getElementById("kanban");
 const searchInput = document.getElementById("searchInput");
@@ -16,7 +16,8 @@ export const state = {
   visibleActionsMap: {}, // folder → string[] | null (null = show all)
   emailTemplatesMap: {},  // folder → string[] | null (null = no extra templates)
   externalBatLinksEnabled: false, // admin toggle for external BAT links
-  colFilters: {}         // folderName → { nameFilter: string, dateFilter: string }
+  colFilters: {},        // folderName → { nameFilter: string, dateFilter: string }
+  colSorts: {}           // folderName → "date_asc" | "date_desc" | "name_asc" | "name_desc"
 };
 
 // Default kanban columns (used as fallback if API fails)
@@ -103,10 +104,11 @@ export async function buildKanban() {
     colNameInput.oninput = () => {
       if (!state.colFilters[cfg.folder]) state.colFilters[cfg.folder] = { nameFilter: "", dateFilter: "" };
       state.colFilters[cfg.folder].nameFilter = colNameInput.value;
-      const ck = cfg.folder + '|' + (searchInput?.value || "").trim().toLowerCase() + '|' + (sortBy?.value || "date_desc");
+      const selectedSort = state.colSorts[cfg.folder] || sortBy?.value || "date_desc";
+      const ck = cfg.folder + '|' + (searchInput?.value || "").trim().toLowerCase() + '|' + selectedSort;
       delete state.columnCache[ck];
       const colEl = kanbanDiv.querySelector(`.kanban-col-operator[data-folder="${CSS.escape(cfg.folder)}"]`);
-      if (colEl) refreshKanbanColumnOperator(cfg.folder, (searchInput?.value || "").trim().toLowerCase(), sortBy?.value || "date_desc", colEl, currentUser?.profile === 1 || (currentUser?.profile === 4 && cfg.folder !== "Façonnage"), cfg.folderPath || null);
+      if (colEl) refreshKanbanColumnOperator(cfg.folder, (searchInput?.value || "").trim().toLowerCase(), selectedSort, colEl, currentUser?.profile === 1 || (currentUser?.profile === 4 && cfg.folder !== "Façonnage"), cfg.folderPath || null);
     };
     colNameInput.onclick = e => e.stopPropagation();
     title.appendChild(colNameInput);
@@ -119,10 +121,11 @@ export async function buildKanban() {
     colDateInput.onchange = () => {
       if (!state.colFilters[cfg.folder]) state.colFilters[cfg.folder] = { nameFilter: "", dateFilter: "" };
       state.colFilters[cfg.folder].dateFilter = colDateInput.value;
-      const ck = cfg.folder + '|' + (searchInput?.value || "").trim().toLowerCase() + '|' + (sortBy?.value || "date_desc");
+      const selectedSort = state.colSorts[cfg.folder] || sortBy?.value || "date_desc";
+      const ck = cfg.folder + '|' + (searchInput?.value || "").trim().toLowerCase() + '|' + selectedSort;
       delete state.columnCache[ck];
       const colEl = kanbanDiv.querySelector(`.kanban-col-operator[data-folder="${CSS.escape(cfg.folder)}"]`);
-      if (colEl) refreshKanbanColumnOperator(cfg.folder, (searchInput?.value || "").trim().toLowerCase(), sortBy?.value || "date_desc", colEl, currentUser?.profile === 1 || (currentUser?.profile === 4 && cfg.folder !== "Façonnage"), cfg.folderPath || null);
+      if (colEl) refreshKanbanColumnOperator(cfg.folder, (searchInput?.value || "").trim().toLowerCase(), selectedSort, colEl, currentUser?.profile === 1 || (currentUser?.profile === 4 && cfg.folder !== "Façonnage"), cfg.folderPath || null);
     };
     colDateInput.onclick = e => e.stopPropagation();
     title.appendChild(colDateInput);
@@ -183,6 +186,34 @@ export async function buildKanban() {
     drop.className = "kanban-col-operator__drop";
     drop.dataset.folder = cfg.folder;
     col.appendChild(drop);
+
+    const colSortSelect = document.createElement("select");
+    colSortSelect.className = "kanban-col-sort-select";
+    colSortSelect.style.cssText = "font-size:10px;padding:1px 4px;border-radius:4px;border:1px solid rgba(255,255,255,0.4);background:rgba(255,255,255,0.15);color:inherit;cursor:pointer;max-width:110px;flex-shrink:0;margin-right:4px;";
+    colSortSelect.title = "Trier les cartes de cette colonne";
+    [
+      { value: "date_desc", label: "Date ↓" },
+      { value: "date_asc",  label: "Date ↑" },
+      { value: "name_asc",  label: "Nom A→Z" },
+      { value: "name_desc", label: "Nom Z→A" },
+    ].forEach(opt => {
+      const o = document.createElement("option");
+      o.value = opt.value;
+      o.textContent = opt.label;
+      colSortSelect.appendChild(o);
+    });
+    colSortSelect.value = state.colSorts[cfg.folder] || "date_desc";
+    colSortSelect.onchange = (e) => {
+      e.stopPropagation();
+      state.colSorts[cfg.folder] = colSortSelect.value;
+      Object.keys(state.columnCache)
+        .filter(k => k.startsWith(cfg.folder + '|'))
+        .forEach(k => delete state.columnCache[k]);
+      const readOnly = currentUser?.profile === 1 ||
+                       (currentUser?.profile === 4 && cfg.folder !== "Façonnage");
+      refreshKanbanColumnOperator(cfg.folder, (document.getElementById("searchInput")?.value || "").trim().toLowerCase(), colSortSelect.value, col, readOnly, cfg.folderPath || null);
+    };
+    title.insertBefore(colSortSelect, counter);
 
     if (cfg.folder === "BAT") {
       // BAT column removed from kanban (now a separate view)
@@ -416,7 +447,8 @@ export async function refreshKanban() {
     // Profile 1 (Production lecture seule) and Profile 4 (Façonnage): read-only for all but Façonnage
     const readOnly = currentUser?.profile === 1 ||
                      (currentUser?.profile === 4 && col.dataset.folder !== "Façonnage");
-    await refreshKanbanColumnOperator(col.dataset.folder, q, sort, col, readOnly, col.dataset.folderPath || null);
+    const colSort = state.colSorts[col.dataset.folder] || sort;
+    await refreshKanbanColumnOperator(col.dataset.folder, q, colSort, col, readOnly, col.dataset.folderPath || null);
   }
   await updateKanbanSummary();
 
@@ -635,12 +667,28 @@ export function _openKanbanColumnModal(cfg, sourceCol) {
 
   // Force re-render by clearing cache for this column, then render with functional buttons
   const q = (document.getElementById("searchInput") || {}).value || "";
-  const sort = (document.getElementById("sortBy") || {}).value || "modified_desc";
+  const sort = state.colSorts[cfg.folder] || (document.getElementById("sortBy") || {}).value || "date_desc";
   const cacheKey = (cfg.folder || "") + '|' + q + '|' + sort;
   const savedCache = state.columnCache[cacheKey];
   delete state.columnCache[cacheKey];
 
-  refreshKanbanColumnOperator(cfg.folder || "", q, sort, fakeColWrapper, false, cfg.folderPath || null)
+  const modalSortSelect = document.createElement("select");
+  modalSortSelect.style.cssText = "font-size:12px;padding:3px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.4);background:rgba(255,255,255,0.2);color:inherit;cursor:pointer;margin-right:10px;";
+  [
+    { value: "date_desc", label: "Date ↓" },
+    { value: "date_asc",  label: "Date ↑" },
+    { value: "name_asc",  label: "Nom A→Z" },
+    { value: "name_desc", label: "Nom Z→A" },
+  ].forEach(opt => {
+    const o = document.createElement("option");
+    o.value = opt.value;
+    o.textContent = opt.label;
+    modalSortSelect.appendChild(o);
+  });
+  modalSortSelect.value = state.colSorts[cfg.folder] || "date_desc";
+  hdr.insertBefore(modalSortSelect, btnClose);
+
+  const renderModalColumn = (selectedSort) => refreshKanbanColumnOperator(cfg.folder || "", q, selectedSort, fakeColWrapper, false, cfg.folderPath || null)
     .catch(() => {})
     .finally(() => {
       // Restore cache so main kanban doesn't re-render unnecessarily on next tick
@@ -662,4 +710,15 @@ export function _openKanbanColumnModal(cfg, sourceCol) {
         }
       });
     });
+
+  modalSortSelect.onchange = () => {
+    state.colSorts[cfg.folder || ""] = modalSortSelect.value;
+    Object.keys(state.columnCache)
+      .filter(k => k.startsWith((cfg.folder || "") + '|'))
+      .forEach(k => delete state.columnCache[k]);
+    fakeDropZone.innerHTML = "";
+    renderModalColumn(modalSortSelect.value);
+  };
+
+  renderModalColumn(sort);
 }
