@@ -235,6 +235,9 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
 
             if (!string.IsNullOrWhiteSpace(sheet.NumeroDossier))
             {
+                // Quote-link orders may store the operator reference under different fields depending on
+                // when they were created. Matching all reference fields is intentional, and several
+                // PDF-derived client orders can legitimately share the same dossier/order number.
                 filters.Add(Builders<BsonDocument>.Filter.Eq("numeroDossier", sheet.NumeroDossier));
                 filters.Add(Builders<BsonDocument>.Filter.Eq("orderNumber", sheet.NumeroDossier));
                 filters.Add(Builders<BsonDocument>.Filter.Eq("devisNumber", sheet.NumeroDossier));
@@ -260,6 +263,8 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
                     ["pagination"] = string.IsNullOrWhiteSpace(sheet.Pagination) ? BsonNull.Value : (BsonValue)sheet.Pagination,
                     ["recto"] = string.IsNullOrWhiteSpace(sheet.Bascule) ? BsonNull.Value : (BsonValue)sheet.Bascule,
                     ["notes"] = string.IsNullOrWhiteSpace(sheet.Notes) ? BsonNull.Value : (BsonValue)sheet.Notes,
+                    // The fabrication sheet has no dedicated "production comment" field; reuse Notes so the
+                    // portal detail view surfaces the operator's latest comment consistently.
                     ["productionComment"] = string.IsNullOrWhiteSpace(sheet.Notes) ? BsonNull.Value : (BsonValue)sheet.Notes,
                     ["deliveryDate"] = sheet.DateEnvoi.HasValue ? (BsonValue)sheet.DateEnvoi.Value : BsonNull.Value,
                     ["importedAt"] = now,

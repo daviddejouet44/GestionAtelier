@@ -951,6 +951,8 @@ export async function openFabrication(fullPath, prefillData = null) {
   const _lcFileName = fabCurrentFileName.toLowerCase();
   const _isWebFile  = _lcFileName.startsWith('web-') || _lcFileName.startsWith('bat_web-');
   const _isDevisFile = _lcFileName.startsWith('devis-');
+  // Quote-link uploads now keep the original PDF name and only receive the auto-incremented "{num:D5}_"
+  // prefix from QuoteLinksEndpoints.cs (for example "00042_monFichier.pdf").
   const _isQuoteUploadFile = /^\d{5}_/.test(_lcFileName);
   if (isNewSheet && prefillData === null && (_isWebFile || _isDevisFile || _isQuoteUploadFile)) {
     try {

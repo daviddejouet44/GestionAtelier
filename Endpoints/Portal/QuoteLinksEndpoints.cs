@@ -758,7 +758,7 @@ public static class QuoteLinksEndpoints
                     var orderId = Guid.NewGuid().ToString("N");
 
                     var num = MongoDbHelper.GetNextFileNumber();
-                    var safeName = SanitizeForFs(Path.GetFileName(file.FileName));
+                    var safeName = SanitizeForFs(Path.GetFileNameWithoutExtension(file.FileName)) + ext;
                     var destName = $"{num:D5}_{safeName}";
                     var destPath = Path.Combine(webFolder, destName);
 
