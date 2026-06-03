@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using MongoDB.Driver;
 using MongoDB.Bson;
 using GestionAtelier.Services;
+using GestionAtelier.Models;
 using Microsoft.AspNetCore.Builder;
 
 namespace GestionAtelier.Watchers;
@@ -12,7 +13,101 @@ public static class HotfolderWatcherExtensions
 {
     public static void UseHotfolderWatcher(this WebApplication app)
     {
-            var watchRoot = BackendUtils.HotfoldersRoot();
+        var appPathSettings = MongoDbHelper.GetSettings<AppPathSettings>("app_path_settings") ?? new AppPathSettings();
+        var prismaTempCopyPath = !string.IsNullOrWhiteSpace(appPathSettings.PrismaTempCopyPath)
+            ? appPathSettings.PrismaTempCopyPath
+            : AppPathSettings.DefaultPrismaTempCopyPath;
+        var prismaTargetPath = !string.IsNullOrWhiteSpace(appPathSettings.PrismaTargetPath)
+            ? appPathSettings.PrismaTargetPath
+            : AppPathSettings.DefaultPrismaTargetPath;
+
+        try
+        {
+            Directory.CreateDirectory(prismaTempCopyPath);
+            var prismaTempWatcher = new FileSystemWatcher(prismaTempCopyPath)
+            {
+                Filter = "*.pdf",
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite,
+                EnableRaisingEvents = true
+            };
+
+            async Task HandlePrismaTempCopyPdf(string incomingPath)
+            {
+                try
+                {
+                    await Task.Delay(3000);
+                    if (!File.Exists(incomingPath)) return;
+
+                    var incomingFileName = Path.GetFileName(incomingPath);
+                    var incomingBaseName = Path.GetFileNameWithoutExtension(incomingFileName);
+                    if (string.IsNullOrWhiteSpace(incomingBaseName)) return;
+
+                    var fabCol = MongoDbHelper.GetFabricationsCollection();
+                    var filter = Builders<BsonDocument>.Filter.And(
+                        Builders<BsonDocument>.Filter.Exists("fileName"),
+                        Builders<BsonDocument>.Filter.Ne("fileName", BsonNull.Value));
+
+                    string? bestOrigFn = null;
+                    int bestLen = 0;
+                    using (var cursor = fabCol.Find(filter).ToCursor())
+                    {
+                        while (cursor.MoveNext())
+                        {
+                            foreach (var doc in cursor.Current)
+                            {
+                                var origFn = doc["fileName"].AsString;
+                                if (string.IsNullOrWhiteSpace(origFn)) continue;
+                                var origBase = Path.GetFileNameWithoutExtension(origFn);
+                                if (string.IsNullOrWhiteSpace(origBase)) continue;
+
+                                if (incomingBaseName.StartsWith(origBase, StringComparison.OrdinalIgnoreCase)
+                                    && origBase.Length > bestLen)
+                                {
+                                    bestOrigFn = origFn;
+                                    bestLen = origBase.Length;
+                                }
+                            }
+                        }
+                    }
+
+                    var targetFileName = bestOrigFn;
+                    if (string.IsNullOrWhiteSpace(targetFileName))
+                        targetFileName = incomingFileName;
+                    else if (!targetFileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                        targetFileName += ".pdf";
+
+                    var renamedPath = incomingPath;
+                    var expectedRenamedPath = Path.Combine(prismaTempCopyPath, targetFileName);
+                    if (!string.Equals(incomingPath, expectedRenamedPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        BackupIfExists(expectedRenamedPath);
+                        File.Move(incomingPath, expectedRenamedPath);
+                        renamedPath = expectedRenamedPath;
+                        Console.WriteLine($"[FSW] Prisma TEMP_COPY rename: {incomingFileName} → {Path.GetFileName(renamedPath)}");
+                    }
+
+                    Directory.CreateDirectory(prismaTargetPath);
+                    var targetPath = Path.Combine(prismaTargetPath, Path.GetFileName(renamedPath));
+                    BackupIfExists(targetPath);
+                    File.Move(renamedPath, targetPath);
+                    Console.WriteLine($"[FSW] Prisma TEMP_COPY move: {Path.GetFileName(renamedPath)} → {targetPath}");
+                }
+                catch (Exception exTemp)
+                {
+                    Console.WriteLine($"[FSW][WARN] Prisma TEMP_COPY processing: {exTemp.Message}");
+                }
+            }
+
+            prismaTempWatcher.Created += async (_, e) => await HandlePrismaTempCopyPdf(e.FullPath);
+            prismaTempWatcher.Renamed += async (_, e) => await HandlePrismaTempCopyPdf(e.FullPath);
+            Console.WriteLine($"[INFO] Prisma TEMP_COPY watcher started on {prismaTempCopyPath}");
+        }
+        catch (Exception exTempWatcher)
+        {
+            Console.WriteLine($"[FSW][WARN] Prisma TEMP_COPY watcher init: {exTempWatcher.Message}");
+        }
+
+        var watchRoot = BackendUtils.HotfoldersRoot();
     if (Directory.Exists(watchRoot))
     {
         var watcher = new FileSystemWatcher(watchRoot)
@@ -302,5 +397,13 @@ public static class HotfolderWatcherExtensions
 
         Console.WriteLine($"[INFO] FileSystemWatcher started on {watchRoot}");
     }
+    }
+
+    private static void BackupIfExists(string path)
+    {
+        if (!File.Exists(path)) return;
+        var backupPath = path + $".bak_{DateTime.Now:yyyyMMddHHmmss}";
+        File.Move(path, backupPath);
+        Console.WriteLine($"[FSW] Backup existing {Path.GetFileName(path)} → {Path.GetFileName(backupPath)}");
     }
 }
