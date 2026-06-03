@@ -731,6 +731,12 @@ export function initFabrication() {
     const moveResp=await fetch('/api/jobs/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:fabCurrentPath,destination:FIN_PROD_FOLDER,overwrite:true})}).then(r=>r.json()).catch(()=>({ok:false}));
     if(!moveResp.ok){alert('Erreur : '+(moveResp.error||''));return;}
     const movedPath=moveResp.moved||fabCurrentPath;
+    const movedFileName = fnKey(movedPath);
+    await fetch('/api/fabrication/statut-production',{
+      method:'PUT',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+authToken},
+      body:JSON.stringify({fileName:movedFileName,statut:'termine'})
+    }).catch(()=>({ok:false}));
     await fetch('/api/jobs/lock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fullPath:movedPath})}).catch(err=>console.warn('[fabrication] Lock failed:',err));
     fabModal.classList.add('hidden');alert('Fin de production marquée');
     if(window._refreshKanban)await window._refreshKanban();
