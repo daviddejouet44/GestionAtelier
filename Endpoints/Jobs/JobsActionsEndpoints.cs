@@ -526,34 +526,13 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
         }
         else if (action == "prisma-prepare")
         {
-            // Routage PrismaPrepare: trouver le hotfolder configuré dans prismaPrepareRouting
+            // Routage PrismaPrepare: déplacer directement dans le hotfolder configuré.
             var ppCol = MongoDbHelper.GetCollection<BsonDocument>("prismaPrepareRouting");
             var ppDoc = ppCol.Find(Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail)).FirstOrDefault();
             if (ppDoc == null || !ppDoc.Contains("hotfolderPath") || string.IsNullOrEmpty(ppDoc["hotfolderPath"].AsString))
                 return Results.Json(new { ok = false, error = $"Aucun hotfolder PrismaPrepare configuré pour le type de travail \"{typeTravail}\". Configurez-le dans Paramétrage > Routage Impression." });
 
             var ppHotfolder = ppDoc["hotfolderPath"].AsString;
-
-            // 1. EN PREMIER : copier dans TEMP_COPY_Prepare AVANT de déplacer dans le hotfolder
-            //    (si on déplace d'abord, PrismaPrepare peut traiter le fichier avant qu'on ait eu
-            //    le temps de copier, et la copie échoue silencieusement)
-            var integCfg2 = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations") ?? new IntegrationsSettings();
-            var tempCopyDir = !string.IsNullOrWhiteSpace(integCfg2.TempCopyPath)
-                ? integCfg2.TempCopyPath
-                : @"C:\FluxAtelier\Base\TEMP_COPY_Prepare";
-            try
-            {
-                Directory.CreateDirectory(tempCopyDir);
-                var tempCopyDest = Path.Combine(tempCopyDir, Path.GetFileName(fullPath));
-                File.Copy(fullPath, tempCopyDest, overwrite: true);
-                Console.WriteLine($"[ACTION] prisma-prepare: copie TEMP_COPY → {tempCopyDest}");
-            }
-            catch (Exception exCopy)
-            {
-                Console.WriteLine($"[ACTION][WARN] prisma-prepare: impossible de copier dans TEMP_COPY_Prepare : {exCopy.Message}");
-            }
-
-            // 2. Déplacer le fichier dans le hotfolder PrismaPrepare (après la copie)
             if (!Directory.Exists(ppHotfolder))
                 Directory.CreateDirectory(ppHotfolder);
             var ppDest = Path.Combine(ppHotfolder, Path.GetFileName(fullPath));
