@@ -388,7 +388,9 @@ FileSystemWatcher? tempCopyWatcher = null;
                     }
 
                     // Anti-doublon : éviter de traiter deux fois le même fichier
-                    var normalizedPath = outputPdfPath.ToLowerInvariant();
+                    var normalizedPath = Path.GetFullPath(outputPdfPath);
+                    if (OperatingSystem.IsWindows())
+                        normalizedPath = normalizedPath.ToUpperInvariant();
                     if (!prepareInProgressDict.TryAdd(normalizedPath, 0))
                         return;
 
