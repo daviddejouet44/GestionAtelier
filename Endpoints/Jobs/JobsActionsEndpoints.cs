@@ -534,14 +534,9 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
 
             var ppHotfolder = ppDoc["hotfolderPath"].AsString;
 
-            // 1. Déplacer le fichier dans le hotfolder PrismaPrepare
-            if (!Directory.Exists(ppHotfolder))
-                Directory.CreateDirectory(ppHotfolder);
-            var ppDest = Path.Combine(ppHotfolder, Path.GetFileName(fullPath));
-            File.Move(fullPath, ppDest, overwrite: true);
-            Console.WriteLine($"[ACTION] prisma-prepare: déplacé vers hotfolder {ppDest}");
-
-            // 2. Faire une copie dans TEMP_COPY_Prepare pour conserver le vrai nom
+            // 1. EN PREMIER : copier dans TEMP_COPY_Prepare AVANT de déplacer dans le hotfolder
+            //    (si on déplace d'abord, PrismaPrepare peut traiter le fichier avant qu'on ait eu
+            //    le temps de copier, et la copie échoue silencieusement)
             var integCfg2 = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations") ?? new IntegrationsSettings();
             var tempCopyDir = !string.IsNullOrWhiteSpace(integCfg2.TempCopyPath)
                 ? integCfg2.TempCopyPath
@@ -549,14 +544,21 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
             try
             {
                 Directory.CreateDirectory(tempCopyDir);
-                var tempCopyDest = Path.Combine(tempCopyDir, Path.GetFileName(ppDest));
-                File.Copy(ppDest, tempCopyDest, overwrite: true);
+                var tempCopyDest = Path.Combine(tempCopyDir, Path.GetFileName(fullPath));
+                File.Copy(fullPath, tempCopyDest, overwrite: true);
                 Console.WriteLine($"[ACTION] prisma-prepare: copie TEMP_COPY → {tempCopyDest}");
             }
             catch (Exception exCopy)
             {
                 Console.WriteLine($"[ACTION][WARN] prisma-prepare: impossible de copier dans TEMP_COPY_Prepare : {exCopy.Message}");
             }
+
+            // 2. Déplacer le fichier dans le hotfolder PrismaPrepare (après la copie)
+            if (!Directory.Exists(ppHotfolder))
+                Directory.CreateDirectory(ppHotfolder);
+            var ppDest = Path.Combine(ppHotfolder, Path.GetFileName(fullPath));
+            File.Move(fullPath, ppDest, overwrite: true);
+            Console.WriteLine($"[ACTION] prisma-prepare: déplacé vers hotfolder {ppDest}");
 
             return Results.Json(new { ok = true, message = "Fichier envoyé dans le hotfolder PrismaPrepare", destination = ppDest });
         }
