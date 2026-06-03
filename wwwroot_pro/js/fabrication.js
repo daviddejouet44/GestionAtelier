@@ -767,6 +767,12 @@ export function initFabrication() {
               { headers: { 'Authorization': `Bearer ${authToken}` } }
             );
             if (!resp.ok) { showNotification('❌ Erreur export', 'error'); return; }
+            const contentType = resp.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+              const data = await resp.json();
+              showNotification('❌ ' + (data.error || 'Erreur export'), 'error');
+              return;
+            }
             const blob = await resp.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -826,6 +832,7 @@ export function initFabrication() {
         const hasPressero = cfg?.pressero?.enabled;
         const hasW2p = cfg?.w2p?.enabled;
         if (hasPressero || hasW2p) {
+          fabErpLookup.dataset.erpEnabled = 'true';
           fabErpLookup.style.display = '';
           const provider = hasPressero ? 'pressero' : 'w2p';
           fabErpLookup.onclick = async () => {
@@ -857,6 +864,9 @@ export function initFabrication() {
               fabErpLookup.textContent = '🔗 ERP/W2P';
             }
           };
+        }
+        else {
+          fabErpLookup.dataset.erpEnabled = 'false';
         }
       })
       .catch(() => {});
@@ -907,6 +917,7 @@ function applyXmlPrefillToForm(prefill) {
 
 export async function openFabrication(fullPath, prefillData = null) {
   fabCurrentPath=normalizePath(fullPath);
+  updateFabActionButtonsByFolder();
   const fabCurrentFileName=fnKey(fabCurrentPath);
   if(fabDynamicForm){fabDynamicForm.style.opacity='0.5';fabDynamicForm.style.pointerEvents='none';}
   if(fabStageBanner)fabStageBanner.style.display='none';
@@ -1073,6 +1084,7 @@ export async function openFabrication(fullPath, prefillData = null) {
   if(delaiEl){const dd=deliveriesByPath[fabCurrentFileName];delaiEl.value=d.delai?fmtDate2(d.delai):dd||'';}
   if(fabHistory){fabHistory.innerHTML='';(d.history||[]).forEach(h=>{const div=document.createElement('div');div.textContent=new Date(h.date).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})+' — '+h.user+' — '+h.action;fabHistory.appendChild(div);});}
   if(fabStageBanner&&stageData&&stageData.ok&&stageData.folder){fabStageBanner.textContent='📍 Étape actuelle : '+stageData.folder;fabStageBanner.style.display='block';if(stageData.fullPath)fabCurrentPath=normalizePath(stageData.fullPath);}
+  updateFabActionButtonsByFolder();
   fabRemove.onclick=async()=>{
     if(!fabCurrentFileName)return;if(!confirm('Retirer du planning ?'))return;
     // Try to delete delivery entry (may not exist if job was not in manual planning)
@@ -1094,6 +1106,23 @@ export async function openFabrication(fullPath, prefillData = null) {
   const jdfSection=document.getElementById('fab-jdf-section');
   if(jdfSection) jdfSection.style.display=_jdfEnabled?'':'none';
   if(fabDynamicForm){fabDynamicForm.style.opacity='';fabDynamicForm.style.pointerEvents='';}
+}
+
+function updateFabActionButtonsByFolder() {
+  const importBtn = document.getElementById('fab-import-xml');
+  const erpBtn = document.getElementById('fab-erp-lookup');
+  const folder = (fabCurrentPath || '').replace(/\\/g, '/').split('/').slice(-2, -1)[0] || '';
+  const allowed = ['soumission', 'commandes web', 'commandesweb'].includes(folder.toLowerCase());
+
+  if (importBtn) importBtn.style.display = allowed ? '' : 'none';
+  if (!erpBtn) return;
+  if (!allowed) {
+    erpBtn.style.display = 'none';
+    return;
+  }
+  if (erpBtn.dataset.erpEnabled === 'true') {
+    erpBtn.style.display = '';
+  }
 }
 
 // ── Quote-send modal ──────────────────────────────────────────────────────────

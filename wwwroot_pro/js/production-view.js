@@ -99,8 +99,8 @@ function renderGlobalProdTable(jobs, assignMap, deliveryMap, sortMode, wrap) {
         return getStageProgress(a.currentStage) - getStageProgress(b.currentStage);
       }
       case "delivery": {
-        const da = deliveryMap[(a.fileName || "").toLowerCase()] || "9999";
-        const db = deliveryMap[(b.fileName || "").toLowerCase()] || "9999";
+        const da = a.dateReceptionSouhaitee || deliveryMap[(a.fileName || "").toLowerCase()] || "9999";
+        const db = b.dateReceptionSouhaitee || deliveryMap[(b.fileName || "").toLowerCase()] || "9999";
         return da.localeCompare(db);
       }
       case "operator": {
@@ -135,7 +135,7 @@ function renderGlobalProdTable(jobs, assignMap, deliveryMap, sortMode, wrap) {
     const displayNum = job.numeroDossier || job.fileName || "—";
     const fileKey = (job.fileName || "").toLowerCase();
     const operatorName = assignMap[fileKey] || "";
-    const deliveryDate = deliveryMap[fileKey] || "";
+    const deliveryDate = job.dateReceptionSouhaitee || deliveryMap[fileKey] || "";
 
     // Build stage display label, including BAT sub-status when available (centralized in constants.js)
     const stageDisplay = getStageLabelDisplay(job.currentStage, job.batStatus) || '—';
@@ -567,4 +567,3 @@ export function stopProductionAutoRefresh() {
     _productionRefreshInterval = null;
   }
 }
-

@@ -35,6 +35,18 @@ public class PathsSettings
     public List<string> FieryPaths { get; set; } = new();
 }
 
+public class AppPathSettings
+{
+    public const string DefaultPrismaTempCopyPath = @"C:\FluxAtelier\Base\TEMP_COPY_Prepare";
+    public const string DefaultPrismaTargetPath = @"C:\Flux\PrismaPrepare";
+
+    [JsonPropertyName("prisma_temp_copy_path")]
+    public string PrismaTempCopyPath { get; set; } = DefaultPrismaTempCopyPath;
+
+    [JsonPropertyName("prisma_target_path")]
+    public string PrismaTargetPath { get; set; } = DefaultPrismaTargetPath;
+}
+
 public class FabricationImportsSettings
 {
     [JsonPropertyName("media1Path")]

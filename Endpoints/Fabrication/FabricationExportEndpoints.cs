@@ -38,6 +38,10 @@ public static class FabricationExportEndpoints
                 var col = MongoDbHelper.GetFabricationsCollection();
                 var doc = col.Find(Builders<BsonDocument>.Filter.Eq("fileName", fileName)).FirstOrDefault();
                 if (doc == null)
+                    doc = col.Find(Builders<BsonDocument>.Filter.Regex("fileName",
+                        new MongoDB.Bson.BsonRegularExpression("^" + System.Text.RegularExpressions.Regex.Escape(fileName) + "$", "i")))
+                        .SortByDescending(x => x["_id"]).FirstOrDefault();
+                if (doc == null)
                     return Results.Json(new { ok = false, error = "Fiche introuvable" });
 
                 var exportFormat = (format ?? "xml").Trim().ToLowerInvariant();
