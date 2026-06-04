@@ -250,21 +250,21 @@ export function buildProductionView() {
     });
   }).catch(() => {});
 
-  fetch("/api/settings/users").then(r => r.json()).then(data => {
-    const users = (Array.isArray(data) ? data : (Array.isArray(data?.users) ? data.users : []))
-      .filter(u => u.profile !== 1 && u.profile !== 5);
-    const uniqueUsers = [...new Set(users
-      .map(u => (typeof u === "string" ? u : (u?.name || u?.login || "")))
-      .map(v => (v || "").trim())
-      .filter(Boolean))]
-      .sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
-    uniqueUsers.forEach(name => {
-      const opt = document.createElement("option");
-      opt.value = name;
-      opt.textContent = name;
-      opSelect.appendChild(opt);
-    });
-  }).catch(() => {});
+  fetch("/api/auth/users", { headers: { "Authorization": `Bearer ${authToken}` } })
+    .then(async r => { if (!r.ok) return { ok: false, users: [] }; return r.json(); })
+    .then(data => {
+      const users = (data.ok && Array.isArray(data.users) ? data.users : [])
+        .filter(u => u.profile !== 1 && u.profile !== 5);
+      const uniqueUsers = [...new Set(
+        users.map(u => (typeof u === "string" ? u : (u.name || u.login || "")).trim()).filter(Boolean)
+      )].sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
+      uniqueUsers.forEach(name => {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        opSelect.appendChild(opt);
+      });
+    }).catch(() => {});
 
   machineSelect.onchange = applyProductionFilters;
   opSelect.onchange = applyProductionFilters;
@@ -298,6 +298,10 @@ export function buildProductionView() {
     kanbanGrid.appendChild(col);
   }
 
+  // Reset thumbnail queue on full rebuild
+  _roQueue = [];
+  _roActive = 0;
+  if (_roThumbObserver) { _roThumbObserver.disconnect(); _roThumbObserver = null; }
   refreshProductionViewKanban().catch(err => console.error("Erreur production kanban:", err));
 }
 
@@ -380,14 +384,9 @@ export async function refreshKanbanColumnReadOnly(folderName, col) {
       thumb.className = "thumb";
       thumb.textContent = "PDF";
       card.appendChild(thumb);
-      if ((job.name || "").toLowerCase().endsWith(".pdf")) {
-        if (window._pdfThumbObserver) {
-          thumb.dataset.pdfPath = normalizePath(job.fullPath || "");
-          thumb.dataset.renderFn = "ro"; // marker: use renderPdfThumbnailRO in kanban-core.js observer
-          window._pdfThumbObserver.observe(thumb);
-        } else {
-          _observeThumbRO(thumb, normalizePath(job.fullPath || ""));
-        }
+      // Lazy + concurrence limitée, et seulement si fichier < 15 Mo
+      if ((job.name || "").toLowerCase().endsWith(".pdf") && (job.size || 0) < 15 * 1024 * 1024) {
+        _observeThumbRO(thumb, normalizePath(job.fullPath || ""));
       }
 
       const title = document.createElement("p");
@@ -520,21 +519,43 @@ function renderProductionStatusBadge(container, statut) {
   }
 }
 
+// ── Lazy thumbnail queue (max 2 simultaneous PDF renders) ──
+let _roQueue = [];
+let _roActive = 0;
+const RO_MAX_CONCURRENT = 2;
+
+function _drainRoQueue() {
+  while (_roActive < RO_MAX_CONCURRENT && _roQueue.length > 0) {
+    const { fullPath, container } = _roQueue.shift();
+    _roActive++;
+    renderPdfThumbnailRO(fullPath, container)
+      .catch(() => {})
+      .finally(() => { _roActive--; _drainRoQueue(); });
+  }
+}
+
 let _roThumbObserver = null;
 function _observeThumbRO(thumbDiv, fullPath) {
-  if (!_roThumbObserver) {
+  if (!_roThumbObserver && 'IntersectionObserver' in window) {
     _roThumbObserver = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
-          const el = entry.target;
-          _roThumbObserver.unobserve(el);
-          renderPdfThumbnailRO(el.dataset.pdfPath, el).catch(() => {});
+          _roThumbObserver.unobserve(entry.target);
+          const path = entry.target.dataset.pdfPath;
+          if (path) _roQueue.push({ fullPath: path, container: entry.target });
+          _drainRoQueue();
         }
       });
-    }, { rootMargin: "200px" });
+    }, { rootMargin: "100px" });
   }
   thumbDiv.dataset.pdfPath = fullPath;
-  _roThumbObserver.observe(thumbDiv);
+  if (_roThumbObserver) {
+    _roThumbObserver.observe(thumbDiv);
+  } else {
+    // Fallback si IntersectionObserver non disponible
+    _roQueue.push({ fullPath, container: thumbDiv });
+    _drainRoQueue();
+  }
 }
 
 async function renderPdfThumbnailRO(fullPath, container) {
@@ -542,7 +563,7 @@ async function renderPdfThumbnailRO(fullPath, container) {
   try {
     const pdf = await pdfjsLib.getDocument("/api/file?path=" + encodeURIComponent(fullPath)).promise;
     const page = await pdf.getPage(1);
-    const viewport = page.getViewport({ scale: 0.25 });
+    const viewport = page.getViewport({ scale: 0.15 });
     const canvas = document.createElement("canvas");
     canvas.width = viewport.width;
     canvas.height = viewport.height;
