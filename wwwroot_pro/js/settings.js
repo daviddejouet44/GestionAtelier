@@ -418,13 +418,13 @@ async function renderSettingsKanbanActions(panel) {
     if (r.ok && Array.isArray(r.actions) && r.actions.length) actions = r.actions;
   } catch { /* use defaults */ }
   try {
-    const rImposition = await fetch('/api/config/imposition', {
+    const rImposition = await fetch('/api/config/imposition-hotfolder', {
       headers: { 'Authorization': 'Bearer ' + (authToken || '') }
     }).then(r => r.json());
     if (rImposition.ok) {
       impositionCfg = {
         enabled: !!rImposition.enabled,
-        hotfolderPath: rImposition.hotfolderPath || ''
+        hotfolderPath: rImposition.path || rImposition.hotfolderPath || ''
       };
     }
   } catch { /* keep defaults */ }
@@ -505,10 +505,10 @@ async function renderSettingsKanbanActions(panel) {
     const enabled = !!panel.querySelector('#imposition-enabled')?.checked;
     const hotfolderPath = panel.querySelector('#imposition-hotfolder')?.value?.trim() || '';
     try {
-      const res = await fetch('/api/config/imposition', {
+      const res = await fetch('/api/config/imposition-hotfolder', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (authToken || '') },
-        body: JSON.stringify({ enabled, hotfolderPath })
+        body: JSON.stringify({ enabled, path: hotfolderPath })
       }).then(r => r.json());
       if (res.ok) {
         msgEl.style.color = '#16a34a';

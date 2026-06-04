@@ -1,8 +1,8 @@
 // kanban/kanban-cards.js — Kanban card rendering
 import { currentUser, authToken, deliveriesByPath, assignmentsByPath, fnKey, normalizePath, daysDiffFromToday, showNotification } from '../core.js';
 import { openBatChoiceModal } from '../bat.js';
-import { state, refreshKanban } from './kanban-core.js?v=38';
-import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js?v=38';
+import { state, refreshKanban } from './kanban-core.js?v=39';
+import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js?v=39';
 
 // Opens the quote send modal from Kanban context (prefill from fabrication data)
 async function openKanbanQuoteModal(fullPath, fab) {
@@ -825,10 +825,31 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
 
         const btnImposition = document.createElement("button");
         btnImposition.className = "btn btn-sm btn-primary";
-        btnImposition.textContent = "🖨️ Ouvrir dans logiciel imposition";
+        btnImposition.textContent = "🖨️ Envoyer vers imposition";
         btnImposition.onclick = async (e) => {
           e.stopPropagation();
-          showNotification("ℹ️ Fichier déjà envoyé dans le hotfolder d'imposition", "info");
+          const cfg = await fetch('/api/config/imposition-hotfolder', {
+            headers: { 'Authorization': 'Bearer ' + (authToken || '') }
+          }).then(r => r.json()).catch(() => ({ ok: false, enabled: false, path: '' }));
+          if (!cfg.ok || !cfg.enabled) {
+            showNotification("⚠️ L'action Imposition est désactivée dans les paramètres", "warning");
+            return;
+          }
+          const hotfolderPath = (cfg.path || "").trim();
+          if (!hotfolderPath) {
+            showNotification("⚠️ Chemin du hotfolder d'imposition non configuré", "warning");
+            return;
+          }
+          const copyResp = await fetch("/api/jobs/copy-to-hotfolder", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fullPath: full, fileName: jobFileName, destination: hotfolderPath })
+          }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+          if (!copyResp.ok) {
+            showNotification("❌ " + (copyResp.error || "Erreur d'envoi vers Imposition"), "error");
+            return;
+          }
+          showNotification("✅ Fichier envoyé vers le hotfolder d'imposition", "success");
         };
         if (isActionVisible(folderName, "imposition")) actions.appendChild(btnImposition);
 
@@ -1217,7 +1238,6 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             const fabData = await fetchFabWithLimit('/api/fabrication?fileName=' + encodeURIComponent(jobFileName), {
               headers: { 'Authorization': 'Bearer ' + (authToken || '') }
             }).catch(() => ({}));
-            }
           } catch(e) { /* ignore */ }
         })();
       } else {

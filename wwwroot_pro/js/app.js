@@ -15,7 +15,7 @@ import { buildKanban, refreshKanban, openAssignDropdown, startBatDecisionPolling
 import { openFabrication, initFabrication, openQuoteSendModal } from './fabrication.js?v=34';
 import { initCalendar, ensureCalendar, calendar, submissionCalendar, initSubmissionCalendar, colorForEvent, openPlanificationCalendar, refreshOperatorView } from './calendar.js';
 import { initDossiersView, loadDossiersList, openDossierDetail } from './dossiers.js';
-import { initSettingsView } from './settings.js?v=35';
+import { initSettingsView } from './settings.js?v=36';
 import { pollNotifications, initNotificationBell } from './notifications.js';
 import { initGlobalProductionView, refreshProductionViewKanban, buildProductionView } from './production-view.js';
 import { STAGE_PROGRESS, STAGE_DISPLAY_LABELS } from './constants.js';

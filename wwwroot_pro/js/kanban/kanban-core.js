@@ -1,7 +1,7 @@
 // kanban/kanban-core.js — Build, refresh, summary
 import { currentUser, authToken, deliveriesByPath, fnKey, normalizePath, isLight, darkenColor, showNotification, FOLDER_FIN_PRODUCTION } from '../core.js';
-import { refreshKanbanColumnOperator } from './kanban-cards.js?v=38';
-import { showFaconnageAlerts } from './kanban-actions.js?v=38';
+import { refreshKanbanColumnOperator } from './kanban-cards.js?v=39';
+import { showFaconnageAlerts } from './kanban-actions.js?v=39';
 
 const kanbanDiv = document.getElementById("kanban");
 const searchInput = document.getElementById("searchInput");
@@ -55,11 +55,11 @@ export async function buildKanban() {
 
   // Load optional Imposition config
   try {
-    const impositionResp = await fetch('/api/config/imposition', {
+    const impositionResp = await fetch('/api/config/imposition-hotfolder', {
       headers: { 'Authorization': 'Bearer ' + (authToken || '') }
     }).then(r => r.json()).catch(() => ({ ok: false }));
     state.impositionEnabled = !!(impositionResp.ok && impositionResp.enabled);
-    state.impositionHotfolderPath = impositionResp.hotfolderPath || '';
+    state.impositionHotfolderPath = impositionResp.path || impositionResp.hotfolderPath || '';
   } catch(e) {
     state.impositionEnabled = false;
     state.impositionHotfolderPath = '';

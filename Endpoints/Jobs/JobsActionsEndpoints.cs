@@ -652,6 +652,44 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
     }
 });
 
+app.MapPost("/api/jobs/copy-to-hotfolder", async (HttpContext ctx) =>
+{
+    try
+    {
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        var fileName = json.TryGetProperty("fileName", out var fn) ? fn.GetString() ?? "" : "";
+        var fullPath = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
+        var destination = json.TryGetProperty("destination", out var dst) ? dst.GetString() ?? "" : "";
+
+        if (string.IsNullOrWhiteSpace(destination))
+            return Results.Json(new { ok = false, error = "Destination manquante" });
+
+        // Find the actual source file if fullPath is missing or stale
+        if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
+        {
+            var hotRoot = BackendUtils.HotfoldersRoot();
+            if (!string.IsNullOrEmpty(fileName))
+            {
+                var found = Directory.GetFiles(hotRoot, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (found != null) fullPath = found;
+            }
+        }
+
+        if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
+            return Results.Json(new { ok = false, error = $"Fichier introuvable : {fileName}" });
+
+        Directory.CreateDirectory(destination);
+        var destPath = Path.Combine(destination, Path.GetFileName(fullPath));
+        File.Copy(fullPath, destPath, overwrite: true);
+
+        return Results.Json(new { ok = true, destination = destPath });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
 app.MapPost("/api/jobs/open-in-prismaprepare", async (HttpContext ctx) =>
 {
     try
