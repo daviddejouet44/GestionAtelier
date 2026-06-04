@@ -251,11 +251,17 @@ export function buildProductionView() {
   }).catch(() => {});
 
   fetch("/api/settings/users").then(r => r.json()).then(data => {
-    const users = Array.isArray(data) ? data : (Array.isArray(data.users) ? data.users : []);
-    users.forEach(u => {
+    const users = (Array.isArray(data) ? data : (Array.isArray(data?.users) ? data.users : []))
+      .filter(u => u.profile !== 1 && u.profile !== 5);
+    const uniqueUsers = [...new Set(users
+      .map(u => (typeof u === "string" ? u : (u?.name || u?.login || "")))
+      .map(v => (v || "").trim())
+      .filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
+    uniqueUsers.forEach(name => {
       const opt = document.createElement("option");
-      opt.value = u.name || u.login || u;
-      opt.textContent = u.name || u.login || u;
+      opt.value = name;
+      opt.textContent = name;
       opSelect.appendChild(opt);
     });
   }).catch(() => {});
@@ -375,7 +381,13 @@ export async function refreshKanbanColumnReadOnly(folderName, col) {
       thumb.textContent = "PDF";
       card.appendChild(thumb);
       if ((job.name || "").toLowerCase().endsWith(".pdf")) {
-        renderPdfThumbnailRO(normalizePath(job.fullPath || ""), thumb).catch(() => {});
+        if (window._pdfThumbObserver) {
+          thumb.dataset.pdfPath = normalizePath(job.fullPath || "");
+          thumb.dataset.renderFn = "ro"; // marker: use renderPdfThumbnailRO in kanban-core.js observer
+          window._pdfThumbObserver.observe(thumb);
+        } else {
+          _observeThumbRO(thumb, normalizePath(job.fullPath || ""));
+        }
       }
 
       const title = document.createElement("p");
@@ -506,6 +518,23 @@ function renderProductionStatusBadge(container, statut) {
   } else if (statut === "refuse") {
     container.innerHTML = '<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">❌ REFUSÉ</span>';
   }
+}
+
+let _roThumbObserver = null;
+function _observeThumbRO(thumbDiv, fullPath) {
+  if (!_roThumbObserver) {
+    _roThumbObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const el = entry.target;
+          _roThumbObserver.unobserve(el);
+          renderPdfThumbnailRO(el.dataset.pdfPath, el).catch(() => {});
+        }
+      });
+    }, { rootMargin: "200px" });
+  }
+  thumbDiv.dataset.pdfPath = fullPath;
+  _roThumbObserver.observe(thumbDiv);
 }
 
 async function renderPdfThumbnailRO(fullPath, container) {
