@@ -160,7 +160,8 @@ async function updateGlobalAlert() {
 // ======================================================
 // PDF THUMBNAIL
 // ======================================================
-const _pdfThumbCache = new Map(); // fullPath → dataURL
+const _pdfThumbCache = new Map(); // fullPath → dataURL (max 200 entries)
+const _PDF_THUMB_CACHE_MAX = 200;
 
 async function renderPdfThumbnail(fullPath, container) {
   if (!window.pdfjsLib) return;
@@ -181,6 +182,9 @@ async function renderPdfThumbnail(fullPath, container) {
     canvas.height = viewport.height;
     await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
     const dataURL = canvas.toDataURL("image/jpeg", 0.7);
+    if (_pdfThumbCache.size >= _PDF_THUMB_CACHE_MAX) {
+      _pdfThumbCache.delete(_pdfThumbCache.keys().next().value);
+    }
     _pdfThumbCache.set(fullPath, dataURL);
     const img = new Image();
     img.src = dataURL;

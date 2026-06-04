@@ -383,29 +383,30 @@ function applyKanbanOperatorFilter(operatorName) {
 }
 window._applyKanbanOperatorFilter = applyKanbanOperatorFilter;
 
+// ── PDF thumbnail queue for kanban (max 2 concurrent) ──
+let _thumbActive = 0;
+const _thumbQueue = [];
+const MAX_CONCURRENT = 2;
+
+function _drainThumbQueue() {
+  while (_thumbActive < MAX_CONCURRENT && _thumbQueue.length > 0) {
+    const { path, el } = _thumbQueue.shift();
+    _thumbActive++;
+    if (window._renderPdfThumbnail) {
+      window._renderPdfThumbnail(path, el)
+        .catch((err) => { console.warn("Thumbnail render failed:", err); })
+        .finally(() => { _thumbActive--; _drainThumbQueue(); });
+    } else {
+      _thumbActive--;
+    }
+  }
+}
+
 // ======================================================
 // REFRESH KANBAN
 // ======================================================
 export async function refreshKanban() {
   if (!window._pdfThumbObserver && 'IntersectionObserver' in window) {
-    let _thumbActive = 0;
-    const _thumbQueue = [];
-    const MAX_CONCURRENT = 2;
-
-    function _drainThumbQueue() {
-      while (_thumbActive < MAX_CONCURRENT && _thumbQueue.length > 0) {
-        const { path, el } = _thumbQueue.shift();
-        _thumbActive++;
-        if (window._renderPdfThumbnail) {
-          window._renderPdfThumbnail(path, el)
-            .catch(() => {})
-            .finally(() => { _thumbActive--; _drainThumbQueue(); });
-        } else {
-          _thumbActive--;
-        }
-      }
-    }
-
     window._pdfThumbObserver = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {

@@ -523,7 +523,8 @@ function renderProductionStatusBadge(container, statut) {
 let _roQueue = [];
 let _roActive = 0;
 const RO_MAX_CONCURRENT = 2;
-const _pdfThumbCacheRO = new Map(); // fullPath → dataURL
+const _pdfThumbCacheRO = new Map(); // fullPath → dataURL (max 200 entries)
+const _PDF_THUMB_CACHE_RO_MAX = 200;
 
 function _drainRoQueue() {
   while (_roActive < RO_MAX_CONCURRENT && _roQueue.length > 0) {
@@ -578,6 +579,9 @@ async function renderPdfThumbnailRO(fullPath, container) {
     canvas.height = viewport.height;
     await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
     const dataURL = canvas.toDataURL("image/jpeg", 0.7);
+    if (_pdfThumbCacheRO.size >= _PDF_THUMB_CACHE_RO_MAX) {
+      _pdfThumbCacheRO.delete(_pdfThumbCacheRO.keys().next().value);
+    }
     _pdfThumbCacheRO.set(fullPath, dataURL);
     const img = new Image();
     img.src = dataURL;
