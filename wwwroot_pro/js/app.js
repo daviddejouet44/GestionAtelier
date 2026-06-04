@@ -11,7 +11,7 @@ import {
   initLogin, logout
 } from './core.js';
 
-import { buildKanban, refreshKanban, openAssignDropdown, startBatDecisionPolling, stopBatDecisionPolling } from './kanban.js?v=35';
+import { buildKanban, refreshKanban, openAssignDropdown, startBatDecisionPolling, stopBatDecisionPolling } from './kanban.js?v=36';
 import { openFabrication, initFabrication, openQuoteSendModal } from './fabrication.js?v=34';
 import { initCalendar, ensureCalendar, calendar, submissionCalendar, initSubmissionCalendar, colorForEvent, openPlanificationCalendar, refreshOperatorView } from './calendar.js';
 import { initDossiersView, loadDossiersList, openDossierDetail } from './dossiers.js';
@@ -21,7 +21,7 @@ import { initGlobalProductionView, refreshProductionViewKanban, buildProductionV
 import { STAGE_PROGRESS, STAGE_DISPLAY_LABELS } from './constants.js';
 
 import { hideAllViews, showDossiers, showSettings, showGlobalProduction } from './app/navigation.js';
-import { initDashboardView } from './app/dashboard.js?v=2';
+import { initDashboardView } from './app/dashboard.js?v=3';
 import { initHelpPanel } from './help.js';
 
 // ======================================================

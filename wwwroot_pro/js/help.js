@@ -13,6 +13,9 @@ const HELP_SECTIONS = [
   { id: 'lookup-erp',        icon: '🔗', title: 'Lookup ERP / W2P' },
   { id: 'portail-client',    icon: '🌐', title: 'Portail client' },
   { id: 'bat-workflow',      icon: '✅', title: 'Workflow BAT' },
+  { id: 'dashboard',         icon: '📊', title: 'Dashboard' },
+  { id: 'kanban',            icon: '📁', title: 'Kanban' },
+  { id: 'fin-production',    icon: '🔒', title: 'Fin de production' },
   { id: 'profils',           icon: '👥', title: 'Profils utilisateurs' },
 ];
 

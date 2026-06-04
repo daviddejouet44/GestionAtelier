@@ -14,4 +14,7 @@ GestionAtelier prend en charge plusieurs méthodes de saisie de commandes :
 6. **[Lookup ERP / W2P](lookup-erp)** — Récupérer depuis Pressero, MDSF ou ERP générique
 7. **[Portail client](portail-client)** — Commandes en ligne par les clients
 8. **[Workflow BAT](bat-workflow)** — Envoi et validation de BAT
-9. **[Profils utilisateurs](profils)** — Qui peut voir et faire quoi
+9. **[Dashboard](dashboard)** — KPI et indicateurs de production
+10. **[Kanban](kanban)** — Colonnes, filtres et vue opérateur
+11. **[Fin de production](fin-production)** — Bouton Terminé et verrouillage
+12. **[Profils utilisateurs](profils)** — Qui peut voir et faire quoi

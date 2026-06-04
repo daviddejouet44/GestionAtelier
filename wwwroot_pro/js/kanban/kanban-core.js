@@ -1,11 +1,12 @@
 // kanban/kanban-core.js — Build, refresh, summary
 import { currentUser, deliveriesByPath, fnKey, normalizePath, isLight, darkenColor, showNotification, FOLDER_FIN_PRODUCTION } from '../core.js';
-import { refreshKanbanColumnOperator } from './kanban-cards.js?v=36';
+import { refreshKanbanColumnOperator } from './kanban-cards.js?v=37';
 import { showFaconnageAlerts } from './kanban-actions.js?v=36';
 
 const kanbanDiv = document.getElementById("kanban");
 const searchInput = document.getElementById("searchInput");
 const sortBy = document.getElementById("sortBy");
+let _selectedKanbanOperator = "";
 
 // Shared mutable state (imported by kanban-cards.js)
 export const state = {
@@ -286,8 +287,78 @@ function buildKanbanFilterBar() {
 
   }
   filterBar.innerHTML = "";
-  filterBar.style.display = "none";
+
+  const label = document.createElement("label");
+  label.style.cssText = "font-size:13px;font-weight:600;color:#374151;white-space:nowrap;";
+  label.textContent = "Vue opérateur :";
+  filterBar.appendChild(label);
+
+  const opSelect = document.createElement("select");
+  opSelect.id = "kanban-operator-filter";
+  opSelect.style.cssText = "padding:5px 10px;font-size:13px;border:1.5px solid #e5e7eb;border-radius:8px;background:white;cursor:pointer;";
+  opSelect.innerHTML = '<option value="">Tous les opérateurs</option>';
+  filterBar.appendChild(opSelect);
+
+  const btnReset = document.createElement("button");
+  btnReset.className = "btn btn-sm";
+  btnReset.textContent = "Réinitialiser";
+  btnReset.onclick = () => {
+    opSelect.value = "";
+    _selectedKanbanOperator = "";
+    applyKanbanOperatorFilter("");
+  };
+  filterBar.appendChild(btnReset);
+
+  filterBar.style.display = "flex";
+  filterBar.style.alignItems = "center";
+  filterBar.style.gap = "10px";
+  filterBar.style.flexWrap = "wrap";
+  filterBar.style.padding = "8px 20px";
+  filterBar.style.background = "#f9fafb";
+  filterBar.style.borderBottom = "1px solid #e5e7eb";
+  filterBar.style.fontSize = "13px";
+
+  fetch("/api/settings/users")
+    .then(async r => {
+      if (!r.ok) return [];
+      return r.json();
+    })
+    .then(data => {
+      const users = Array.isArray(data) ? data : (Array.isArray(data?.users) ? data.users : []);
+      const uniqueUsers = [...new Set(users
+        .map(u => (typeof u === "string" ? u : (u?.name || u?.login || "")))
+        .map(v => (v || "").trim())
+        .filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
+      uniqueUsers.forEach(name => {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        opSelect.appendChild(opt);
+      });
+      opSelect.value = _selectedKanbanOperator;
+    })
+    .catch(() => {});
+
+  opSelect.onchange = () => {
+    _selectedKanbanOperator = opSelect.value || "";
+    applyKanbanOperatorFilter(_selectedKanbanOperator);
+  };
 }
+
+function applyKanbanOperatorFilter(operatorName) {
+  if (!kanbanDiv) return;
+  const op = (operatorName || "").toLowerCase();
+  kanbanDiv.querySelectorAll(".kanban-card-operator").forEach(card => {
+    if (!op) {
+      card.style.display = "";
+      return;
+    }
+    const cardOp = (card.dataset.operator || "").toLowerCase();
+    card.style.display = cardOp === op ? "" : "none";
+  });
+}
+window._applyKanbanOperatorFilter = applyKanbanOperatorFilter;
 
 // ======================================================
 // REFRESH KANBAN
@@ -304,6 +375,7 @@ export async function refreshKanban() {
     const colSort = state.colSorts[col.dataset.folder] || sort;
     await refreshKanbanColumnOperator(col.dataset.folder, q, colSort, col, readOnly, col.dataset.folderPath || null);
   }
+  applyKanbanOperatorFilter(_selectedKanbanOperator);
   await updateKanbanSummary();
 
   fetch("/api/jobs/cleanup-corrections", { method: "POST" }).catch(() => {});

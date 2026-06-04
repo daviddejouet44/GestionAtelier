@@ -14,8 +14,9 @@ Gérez l'approbation des Bons À Tirer (BAT) directement depuis l'application.
 
 1. Le client reçoit un email avec un lien vers son espace client.
 2. Sur la page de détail de la commande, il voit le BAT.
-3. Il clique **"Valider le BAT"** ou **"Refuser le BAT"**.
-4. En cas de refus, il peut saisir un motif et joindre une annotation.
+3. Le bouton **⛶ Plein écran** permet d'ouvrir le viewer PDF BAT en plein écran.
+4. Il clique **"Valider le BAT"** ou **"Refuser le BAT"**.
+5. En cas de refus, il peut saisir un motif et joindre une annotation.
 
 ## Notification atelier
 

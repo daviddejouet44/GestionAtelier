@@ -1,7 +1,7 @@
 // kanban/kanban-cards.js — Kanban card rendering
 import { currentUser, authToken, deliveriesByPath, assignmentsByPath, fnKey, normalizePath, daysDiffFromToday, showNotification } from '../core.js';
 import { openBatChoiceModal } from '../bat.js';
-import { state, refreshKanban } from './kanban-core.js?v=36';
+import { state, refreshKanban } from './kanban-core.js?v=37';
 import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js?v=36';
 
 // Opens the quote send modal from Kanban context (prefill from fabrication data)
@@ -138,6 +138,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       const full = normalizePath(job.fullPath || "");
       const jobFileName = fnKey(full);
       const assignment = assignmentsByPath[jobFileName];
+      if (assignment?.operatorName) card.dataset.operator = assignment.operatorName;
       const iso = deliveriesByPath[jobFileName];
 
       // Detect portal/web orders by filename prefix (WEB-YYYYMMDD-NNNN...).
@@ -278,6 +279,11 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         // Show operator under press name (in top row)
         const opName = (d && d.operateur) ? d.operateur : (assignment ? assignment.operatorName : "");
         if (opName) operatorTopEl.textContent = "👤 " + opName;
+        if (opName) card.dataset.operator = opName;
+        if (window._applyKanbanOperatorFilter) {
+          const selectedOp = document.getElementById("kanban-operator-filter")?.value || "";
+          window._applyKanbanOperatorFilter(selectedOp);
+        }
         if (d && d.planningMachine) {
           const dt = new Date(d.planningMachine);
           machineEl.textContent = "Machine: " + dt.toLocaleDateString("fr-FR");
@@ -1060,6 +1066,14 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         if (isActionVisible(folderName, "ouvrirFichier")) actions.appendChild(btnOpen);
         if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
         if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
+        const statusBadgeEl = document.createElement("div");
+        statusBadgeEl.style.cssText = "margin:6px 0 2px;min-height:20px;";
+        infoStack.appendChild(statusBadgeEl);
+        const renderTermineStatus = (isTermine) => {
+          statusBadgeEl.innerHTML = isTermine
+            ? '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">✅ TERMINÉ</span>'
+            : "";
+        };
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
           const btnTermine = document.createElement("button");
@@ -1068,13 +1082,27 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           btnTermine.title = "Verrouille le fichier et marque la tâche comme terminée (vert dans le calendrier)";
           btnTermine.onclick = async (e) => {
             e.stopPropagation();
+            const markResp = await fetch("/api/fabrication/statut-production", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (authToken || "") },
+              body: JSON.stringify({ fileName: jobFileName, statut: "termine" })
+            }).then(async res => {
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) return { ok: false, error: data?.error || "Erreur API" };
+              return data;
+            }).catch(() => ({ ok: false, error: "Erreur réseau" }));
             const r = await fetch("/api/jobs/lock", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ fullPath: full })
             }).then(res => res.json()).catch(() => ({ ok: false }));
             if (r.ok) {
+              renderTermineStatus(true);
+              btnTermine.style.background = "#dcfce7";
+              btnTermine.style.color = "#166534";
+              btnTermine.style.borderColor = "#86efac";
               showNotification("✅ Fichier verrouillé — tâche terminée", "success");
+              if (!markResp.ok) showNotification("⚠️ " + (markResp.error || "Statut 'Terminé' non enregistré"), "warning");
               // After locking, hide ALL action buttons except Archiver
               actions.querySelectorAll("button").forEach(btn => {
                 if (btn.dataset.action === "archiver") {
@@ -1123,6 +1151,8 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
             const fabData = await fetch('/api/fabrication?fileName=' + encodeURIComponent(jobFileName), {
               headers: { 'Authorization': `Bearer ${authToken}` }
             }).then(r => r.json()).catch(() => ({}));
+            const isTermine = String(fabData?.statutProduction || "").toLowerCase() === "termine";
+            renderTermineStatus(isTermine);
             if (fabData?.locked) {
               card.draggable = false;
               card.style.border = '2px solid #22c55e';

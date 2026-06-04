@@ -71,6 +71,14 @@ const PALETTE = [
   "#65a30d","#d97706","#e11d48","#7c3aed","#0369a1"
 ];
 
+const FOLDER_LABEL_MAP = {
+  "Début de production": "Jobs à traiter",
+  "Corrections": "Preflight",
+  "Corrections et fond perdu": "Preflight avec fond perdu",
+  "Prêt pour impression": "En attente",
+  "Façonnage": "Finitions"
+};
+
 export async function loadDashboardData() {
   destroyCharts();
   const contentEl = document.getElementById("dashboard-content");
@@ -135,8 +143,16 @@ export async function loadDashboardData() {
       ${kpiCard("🖨️", s.totalFeuilles ? s.totalFeuilles.toLocaleString("fr-FR") : "0", "Feuilles en cours", "#7c3aed")}
       ${kpiCard("📦", s.totalQuantite ? s.totalQuantite.toLocaleString("fr-FR") : "0", "Exemplaires en cours", "#0891b2")}
       ${kpiCard("⚠️", s.retardsCount ?? 0, "En retard", s.retardsCount > 0 ? "#dc2626" : "#16a34a")}
-    </div>
-    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:24px;">
+      ${kpiCard("🔬", s.batEnAttenteCount ?? 0, "BAT", "#7c3aed")}
+      ${kpiCard("📋", s.devisSansReponseCount ?? 0, "Devis sans réponse", "#ea580c")}
+    </div>`;
+
+  // ──────────────────────────────────────────────────────
+  // Sections
+  // ──────────────────────────────────────────────────────
+  const sectionStyle = "background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.06);";
+  const plannedSectionHtml = `
+    <div style="${sectionStyle}">
       <h4 style="margin:0 0 12px;font-size:14px;font-weight:700;color:#1e3a5f;">📅 Planifiés (7j / 30j)</h4>
       <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;font-size:13px;align-items:center;">
         <div style="color:#6b7280;font-weight:700;text-transform:uppercase;font-size:11px;">Étape</div>
@@ -157,15 +173,10 @@ export async function loadDashboardData() {
       </div>
     </div>`;
 
-  // ──────────────────────────────────────────────────────
-  // Sections
-  // ──────────────────────────────────────────────────────
-  const sectionStyle = "background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.06);";
-
   // Jobs par étape Kanban (progress bars)
   const kanbanFolders = byFolder
     .filter(f => (f.folder || "").toLowerCase() !== "quotes_pdf")
-    .map(f => ({ ...f, displayFolder: (f.folder || "") === "Façonnage" ? "Finitions" : (f.folder || "") }));
+    .map(f => ({ ...f, displayFolder: FOLDER_LABEL_MAP[f.folder] || f.folder || "" }));
 
   const folderBars = kanbanFolders.length === 0
     ? '<p style="color:#9ca3af;font-size:13px;">Aucun dossier actif.</p>'
@@ -253,8 +264,8 @@ export async function loadDashboardData() {
   contentEl.innerHTML = `
     ${kpiHtml}
 
-    <!-- Row 1: Moteur + Type de travail charts -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-bottom:16px;">
+    <!-- Row 1: Moteur + Type + Papier + Process -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:16px;">
       <div style="${sectionStyle}">
         <h4 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e3a5f;">🖨️ Jobs par moteur d'impression</h4>
         <div style="position:relative;height:220px;"><canvas id="chart-moteur"></canvas></div>
@@ -263,10 +274,6 @@ export async function loadDashboardData() {
         <h4 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e3a5f;">📋 Types de travail</h4>
         <div style="position:relative;height:220px;"><canvas id="chart-type-travail"></canvas></div>
       </div>
-    </div>
-
-    <!-- Row 2: Consommation papier + Process -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-bottom:16px;">
       <div style="${sectionStyle}">
         <h4 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e3a5f;">📄 Consommation papier (feuilles par média)</h4>
         <div style="position:relative;height:240px;"><canvas id="chart-papier"></canvas></div>
@@ -282,12 +289,17 @@ export async function loadDashboardData() {
       </div>
     </div>
 
-    <!-- Row 3: Jobs par étape + Dossiers récents -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-bottom:16px;">
+    <!-- Row 2: Planifiés + Jobs par étape -->
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(300px,1fr));gap:16px;margin-bottom:16px;">
+      ${plannedSectionHtml}
       <div style="${sectionStyle}">
-        <h4 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e3a5f;">📁 Jobs par étape Kanban</h4>
+        <h4 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e3a5f;">📁 Jobs par étape</h4>
         ${folderBars}
       </div>
+    </div>
+
+    <!-- Row 3: Dossiers récents pleine largeur -->
+    <div style="display:grid;grid-template-columns:1fr;gap:16px;margin-bottom:16px;">
       <div style="${sectionStyle}">
         <h4 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#1e3a5f;">🕐 Dossiers récemment modifiés</h4>
         <table style="width:100%;border-collapse:collapse;">
