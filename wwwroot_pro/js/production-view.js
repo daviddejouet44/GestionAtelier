@@ -523,6 +523,7 @@ function renderProductionStatusBadge(container, statut) {
 let _roQueue = [];
 let _roActive = 0;
 const RO_MAX_CONCURRENT = 2;
+const _pdfThumbCacheRO = new Map(); // fullPath → dataURL
 
 function _drainRoQueue() {
   while (_roActive < RO_MAX_CONCURRENT && _roQueue.length > 0) {
@@ -560,6 +561,14 @@ function _observeThumbRO(thumbDiv, fullPath) {
 
 async function renderPdfThumbnailRO(fullPath, container) {
   if (!window.pdfjsLib) return;
+  if (_pdfThumbCacheRO.has(fullPath)) {
+    const img = new Image();
+    img.src = _pdfThumbCacheRO.get(fullPath);
+    img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+    container.textContent = "";
+    container.appendChild(img);
+    return;
+  }
   try {
     const pdf = await pdfjsLib.getDocument("/api/file?path=" + encodeURIComponent(fullPath)).promise;
     const page = await pdf.getPage(1);
@@ -568,8 +577,10 @@ async function renderPdfThumbnailRO(fullPath, container) {
     canvas.width = viewport.width;
     canvas.height = viewport.height;
     await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+    const dataURL = canvas.toDataURL("image/jpeg", 0.7);
+    _pdfThumbCacheRO.set(fullPath, dataURL);
     const img = new Image();
-    img.src = canvas.toDataURL("image/png");
+    img.src = dataURL;
     img.style.width = "100%";
     img.style.height = "100%";
     img.style.objectFit = "cover";
