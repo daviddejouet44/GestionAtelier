@@ -656,13 +656,34 @@ app.MapPost("/api/jobs/copy-to-hotfolder", async (HttpContext ctx) =>
 {
     try
     {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (string.IsNullOrWhiteSpace(token))
+            return Results.Json(new { ok = false, error = "Non authentifié" });
+        string userId;
+        try
+        {
+            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            var parts = decoded.Split(':');
+            if (parts.Length < 3) return Results.Json(new { ok = false, error = "Token invalide" });
+            userId = parts[0];
+        }
+        catch { return Results.Json(new { ok = false, error = "Token invalide" }); }
+        var users = BackendUtils.LoadUsers();
+        if (!users.Any(u => u.Id == userId))
+            return Results.Json(new { ok = false, error = "Utilisateur non trouvé" });
+
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
         var fileName = json.TryGetProperty("fileName", out var fn) ? fn.GetString() ?? "" : "";
         var fullPath = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
-        var destination = json.TryGetProperty("destination", out var dst) ? dst.GetString() ?? "" : "";
+        var destinationRaw = json.TryGetProperty("destination", out var dst) ? dst.GetString() ?? "" : "";
 
-        if (string.IsNullOrWhiteSpace(destination))
+        if (string.IsNullOrWhiteSpace(destinationRaw))
             return Results.Json(new { ok = false, error = "Destination manquante" });
+        if (!Path.IsPathRooted(destinationRaw))
+            return Results.Json(new { ok = false, error = "Destination invalide (chemin absolu requis)" });
+        if (destinationRaw.Contains("..", StringComparison.Ordinal))
+            return Results.Json(new { ok = false, error = "Destination invalide" });
+        var destination = Path.GetFullPath(destinationRaw);
 
         // Find the actual source file if fullPath is missing or stale
         if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))

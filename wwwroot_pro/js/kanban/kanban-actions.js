@@ -126,7 +126,7 @@ async function handlePrintAction(action, fullPath) {
 
       const copyResp = await fetch("/api/jobs/copy-to-hotfolder", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (authToken || "") },
         body: JSON.stringify({ fileName, fullPath, destination: hotfolderPath })
       }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
 

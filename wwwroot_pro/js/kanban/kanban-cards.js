@@ -842,7 +842,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           }
           const copyResp = await fetch("/api/jobs/copy-to-hotfolder", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (authToken || "") },
             body: JSON.stringify({ fullPath: full, fileName: jobFileName, destination: hotfolderPath })
           }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
           if (!copyResp.ok) {
