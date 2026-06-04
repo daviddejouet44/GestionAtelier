@@ -56,6 +56,7 @@ app.MapGet("/api/dashboard/stats", (HttpContext ctx) =>
             foreach (var dir in Directory.GetDirectories(root))
             {
                 var folderName = Path.GetFileName(dir) ?? "";
+                if (string.Equals(folderName, "quote_pdf", StringComparison.OrdinalIgnoreCase)) continue;
                 var count = Directory.GetFiles(dir, "*.pdf", SearchOption.TopDirectoryOnly).Length;
                 if (count > 0)
                     byFolder.Add(new { folder = folderName, count });
@@ -73,6 +74,8 @@ app.MapGet("/api/dashboard/stats", (HttpContext ctx) =>
         {
             foreach (var dir in Directory.GetDirectories(root))
             {
+                var folderName = Path.GetFileName(dir) ?? "";
+                if (string.Equals(folderName, "quote_pdf", StringComparison.OrdinalIgnoreCase)) continue;
                 try
                 {
                     foreach (var f in Directory.GetFiles(dir, "*.pdf", SearchOption.TopDirectoryOnly))
@@ -302,6 +305,8 @@ app.MapGet("/api/dashboard/stats", (HttpContext ctx) =>
             var allPdfs = new List<(string path, DateTime modified)>();
             foreach (var dir in Directory.GetDirectories(root))
             {
+                var folderName = Path.GetFileName(dir) ?? "";
+                if (string.Equals(folderName, "quote_pdf", StringComparison.OrdinalIgnoreCase)) continue;
                 try
                 {
                     foreach (var f in Directory.GetFiles(dir, "*.pdf", SearchOption.TopDirectoryOnly))
@@ -409,6 +414,8 @@ app.MapGet("/api/dashboard/stats/export-csv", (HttpContext ctx) =>
         {
             foreach (var dir in Directory.GetDirectories(root))
             {
+                var folderName = Path.GetFileName(dir) ?? "";
+                if (string.Equals(folderName, "quote_pdf", StringComparison.OrdinalIgnoreCase)) continue;
                 try
                 {
                     foreach (var f in Directory.GetFiles(dir, "*.pdf", SearchOption.TopDirectoryOnly))

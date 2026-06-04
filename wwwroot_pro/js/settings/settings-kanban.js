@@ -11,6 +11,7 @@ const ALL_ACTIONS = [
   { id: "prismaPrepare",        label: "PrismaPrepare" },
   { id: "impressionLancee",     label: "Impression lancée" },
   { id: "fiery",                label: "Fiery" },
+  { id: "imposition",           label: "Imposition" },
   { id: "mailDebutProduction",  label: "Mail début de production" },
   { id: "mailFinProduction",    label: "Mail fin de production" },
   { id: "impressionTerminee",   label: "Impression terminée" },

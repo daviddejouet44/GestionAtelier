@@ -1,6 +1,6 @@
 // kanban/kanban-actions.js — Print dialog, actions dropdown, assign dropdown, façonnage alerts
 import { authToken, fnKey, showNotification, assignmentsByPath } from '../core.js';
-import { refreshKanban } from './kanban-core.js?v=36';
+import { refreshKanban } from './kanban-core.js?v=38';
 
 // ======================================================
 // DIALOG IMPRESSION — remplacé par openActionsDropdown
@@ -23,10 +23,20 @@ let _actionsConfig = null; // null = not loaded yet
 async function getActionsConfig() {
   if (_actionsConfig !== null) return _actionsConfig;
   try {
-    const r = await fetch("/api/settings/actions-config", {
-      headers: { "Authorization": `Bearer ${authToken}` }
-    }).then(r => r.json()).catch(() => ({}));
-    _actionsConfig = (r.ok && Array.isArray(r.actions)) ? r.actions : DEFAULT_ACTIONS;
+    const [r, impositionResp] = await Promise.all([
+      fetch("/api/settings/actions-config", {
+        headers: { "Authorization": "Bearer " + (authToken || "") }
+      }).then(r => r.json()).catch(() => ({})),
+      fetch("/api/config/imposition", {
+        headers: { "Authorization": "Bearer " + (authToken || "") }
+      }).then(r => r.json()).catch(() => ({ ok: false, enabled: false }))
+    ]);
+
+    let actions = (r.ok && Array.isArray(r.actions)) ? r.actions : [...DEFAULT_ACTIONS];
+    if (impositionResp.ok && impositionResp.enabled && !actions.find(a => a.id === "imposition")) {
+      actions = [...actions, { id: "imposition", label: "Imposition", enabled: true }];
+    }
+    _actionsConfig = actions;
   } catch {
     _actionsConfig = DEFAULT_ACTIONS;
   }

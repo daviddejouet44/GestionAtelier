@@ -410,12 +410,24 @@ async function renderSettingsKanbanActions(panel) {
   ];
 
   let actions = DEFAULT;
+  let impositionCfg = { enabled: false, hotfolderPath: '' };
   try {
     const r = await fetch('/api/settings/actions-config', {
-      headers: { 'Authorization': `Bearer ${authToken}` }
+      headers: { 'Authorization': 'Bearer ' + (authToken || '') }
     }).then(r => r.json());
     if (r.ok && Array.isArray(r.actions) && r.actions.length) actions = r.actions;
   } catch { /* use defaults */ }
+  try {
+    const rImposition = await fetch('/api/config/imposition', {
+      headers: { 'Authorization': 'Bearer ' + (authToken || '') }
+    }).then(r => r.json());
+    if (rImposition.ok) {
+      impositionCfg = {
+        enabled: !!rImposition.enabled,
+        hotfolderPath: rImposition.hotfolderPath || ''
+      };
+    }
+  } catch { /* keep defaults */ }
 
   panel.innerHTML = `
     <h3>⚙️ Menu Action — actions disponibles</h3>
@@ -428,6 +440,21 @@ async function renderSettingsKanbanActions(panel) {
       <div style="display:flex;align-items:center;gap:12px;">
         <button id="actions-save" class="btn btn-primary">Enregistrer</button>
         <span id="actions-msg" style="font-size:13px;"></span>
+      </div>
+    </div>
+    <div class="settings-section-card" style="margin-top:16px;">
+      <h4 style="margin:0 0 12px;">Imposition</h4>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;margin-bottom:12px;">
+        <input id="imposition-enabled" type="checkbox" ${impositionCfg.enabled ? 'checked' : ''} />
+        Activer le bouton Imposition dans le menu Action
+      </label>
+      <div style="margin-bottom:12px;">
+        <label for="imposition-hotfolder" style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:6px;">Chemin du hotfolder d'imposition</label>
+        <input id="imposition-hotfolder" class="settings-input" type="text" value="${esc(impositionCfg.hotfolderPath)}" placeholder="C:\\Flux\\Imposition" style="width:100%;" />
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <button id="imposition-save" class="btn btn-primary">Enregistrer</button>
+        <span id="imposition-msg" style="font-size:13px;"></span>
       </div>
     </div>
   `;
@@ -452,13 +479,13 @@ async function renderSettingsKanbanActions(panel) {
     const rows = Array.from(listEl.querySelectorAll('.actions-cfg-row'));
     const updatedActions = rows.map(r => ({
       id:      r.dataset.id,
-    label:   r.querySelector('span.act-label').textContent,
+      label:   r.querySelector('span.act-label').textContent,
       enabled: r.querySelector('.act-enabled').checked
     }));
     try {
       const res = await fetch('/api/settings/actions-config', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (authToken || '') },
         body: JSON.stringify({ actions: updatedActions })
       }).then(r => r.json());
       if (res.ok) {
@@ -470,5 +497,30 @@ async function renderSettingsKanbanActions(panel) {
         msgEl.textContent = res.error || 'Erreur';
       }
     } catch { msgEl.style.color = '#dc2626'; msgEl.textContent = 'Erreur réseau'; }
+  };
+
+  panel.querySelector('#imposition-save').onclick = async () => {
+    const msgEl = panel.querySelector('#imposition-msg');
+    msgEl.textContent = '';
+    const enabled = !!panel.querySelector('#imposition-enabled')?.checked;
+    const hotfolderPath = panel.querySelector('#imposition-hotfolder')?.value?.trim() || '';
+    try {
+      const res = await fetch('/api/config/imposition', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (authToken || '') },
+        body: JSON.stringify({ enabled, hotfolderPath })
+      }).then(r => r.json());
+      if (res.ok) {
+        msgEl.style.color = '#16a34a';
+        msgEl.textContent = '✓ Configuration imposition enregistrée';
+        showNotification('Configuration Imposition mise à jour', 'success');
+      } else {
+        msgEl.style.color = '#dc2626';
+        msgEl.textContent = res.error || 'Erreur';
+      }
+    } catch {
+      msgEl.style.color = '#dc2626';
+      msgEl.textContent = 'Erreur réseau';
+    }
   };
 }

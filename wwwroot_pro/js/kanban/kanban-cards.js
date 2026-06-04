@@ -1,8 +1,8 @@
 // kanban/kanban-cards.js — Kanban card rendering
 import { currentUser, authToken, deliveriesByPath, assignmentsByPath, fnKey, normalizePath, daysDiffFromToday, showNotification } from '../core.js';
 import { openBatChoiceModal } from '../bat.js';
-import { state, refreshKanban } from './kanban-core.js?v=37';
-import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js?v=36';
+import { state, refreshKanban } from './kanban-core.js?v=38';
+import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js?v=38';
 
 // Opens the quote send modal from Kanban context (prefill from fabrication data)
 async function openKanbanQuoteModal(fullPath, fab) {
@@ -28,6 +28,36 @@ function isActionVisible(folderName, actionId) {
   const allowed = state.visibleActionsMap[folderName];
   if (!allowed) return true; // null = show all (retrocompat)
   return allowed.includes(actionId);
+}
+
+const _fabQueue = [];
+let _fabRunning = 0;
+const FAB_CONCURRENCY = 5;
+
+function _drainFabQueue() {
+  while (_fabQueue.length > 0 && _fabRunning < FAB_CONCURRENCY) {
+    const next = _fabQueue.shift();
+    next();
+  }
+}
+
+function fetchFabWithLimit(url, init) {
+  return new Promise((resolve, reject) => {
+    const run = () => {
+      _fabRunning++;
+      fetch(url, init).then(r => r.json()).then(d => {
+        _fabRunning--;
+        _drainFabQueue();
+        resolve(d);
+      }).catch(e => {
+        _fabRunning--;
+        _drainFabQueue();
+        reject(e);
+      });
+    };
+    if (_fabRunning < FAB_CONCURRENCY) run();
+    else _fabQueue.push(run);
+  });
 }
 
 // Show a preflight progress modal; returns a close function
@@ -128,7 +158,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       });
     }
 
-    for (const job of filtered) {
+    const buildCard = (job) => {
       const card = document.createElement("div");
       card.className = "kanban-card-operator";
       if (!readOnly) card.draggable = true;
@@ -213,8 +243,13 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       thumbDiv.className = "kanban-card-operator-thumb";
       thumbDiv.textContent = "PDF";
       layout.appendChild(thumbDiv);
-      if ((job.name || "").toLowerCase().endsWith(".pdf")) {
-        if (window._renderPdfThumbnail) window._renderPdfThumbnail(full, thumbDiv).catch(() => {});
+      if ((job.name || "").toLowerCase().endsWith(".pdf") && window._renderPdfThumbnail) {
+        if (window._pdfThumbObserver) {
+          thumbDiv.dataset.pdfPath = full;
+          window._pdfThumbObserver.observe(thumbDiv);
+        } else {
+          window._renderPdfThumbnail(full, thumbDiv).catch(() => {});
+        }
       }
 
       // Right info stack
@@ -254,7 +289,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       // Load dossier number, presse and planningMachine asynchronously
       (async () => {
         let d = {};
-        try { d = await fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName)).then(r => r.json()); } catch(_) {}
+        try { d = await fetchFabWithLimit("/api/fabrication?fileName=" + encodeURIComponent(jobFileName)); } catch(_) {}
         if (d && d.numeroDossier) {
           dossierEl.textContent = "N° " + d.numeroDossier;
         }
@@ -297,8 +332,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       if (currentUser?.profile === 1) {
         card.draggable = false;
         infoStack.appendChild(actions);
-        drop.appendChild(card);
-        continue;
+        return card;
       }
 
       const btnOpen = document.createElement("button");
@@ -785,6 +819,38 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           if (isActionVisible(folderName, "impressionLancee")) actions.appendChild(btnLancerImpression);
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
+      } else if (folderName === "Imposition") {
+        if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
+        if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
+
+        const btnImposition = document.createElement("button");
+        btnImposition.className = "btn btn-sm btn-primary";
+        btnImposition.textContent = "🖨️ Ouvrir dans logiciel imposition";
+        btnImposition.onclick = async (e) => {
+          e.stopPropagation();
+          showNotification("ℹ️ Fichier déjà envoyé dans le hotfolder d'imposition", "info");
+        };
+        if (isActionVisible(folderName, "imposition")) actions.appendChild(btnImposition);
+
+        if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
+          const btnLancerImpression = document.createElement("button");
+          btnLancerImpression.className = "btn btn-sm btn-primary";
+          btnLancerImpression.textContent = "▶ Lancer l'impression";
+          btnLancerImpression.onclick = async (e) => {
+            e.stopPropagation();
+            const r = await fetch("/api/jobs/move", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ source: full, destination: "Impression en cours", overwrite: true })
+            }).then(res => res.json()).catch(() => ({ ok: false }));
+            if (r.ok) { showNotification("✅ Impression lancée", "success"); await refreshKanban(); }
+            else showNotification("❌ " + (r.error || "Erreur"), "error");
+          };
+          if (isActionVisible(folderName, "mailDebutProduction")) actions.appendChild(btnMailDebut);
+          if (isActionVisible(folderName, "mailFinProduction")) actions.appendChild(btnMailFin);
+          if (isActionVisible(folderName, "impressionLancee")) actions.appendChild(btnLancerImpression);
+          if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
+        }
       } else if (folderName === "Impression en cours") {
         if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
         if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
@@ -838,7 +904,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         // Load progress badge asynchronously
         Promise.all([
           fetch(`/api/fabrication/${jobId}/finition-steps`).then(r => r.json()).catch(() => ({ ok: false })),
-          fetch("/api/fabrication?fileName=" + encodeURIComponent(jfn)).then(r => r.json()).catch(() => ({}))
+          fetchFabWithLimit("/api/fabrication?fileName=" + encodeURIComponent(jfn)).catch(() => ({}))
         ]).then(([stepsData, fabData]) => {
           const steps = stepsData.ok ? stepsData.finitionSteps : {};
           const hasEnnob  = Array.isArray(fabData.ennoblissement) && fabData.ennoblissement.length > 0;
@@ -1148,24 +1214,9 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         // Async: check locked state and update card visual
         (async () => {
           try {
-            const fabData = await fetch('/api/fabrication?fileName=' + encodeURIComponent(jobFileName), {
-              headers: { 'Authorization': `Bearer ${authToken}` }
-            }).then(r => r.json()).catch(() => ({}));
-            const isTermine = String(fabData?.statutProduction || "").toLowerCase() === "termine";
-            renderTermineStatus(isTermine);
-            if (fabData?.locked) {
-              card.draggable = false;
-              card.style.border = '2px solid #22c55e';
-              // Hide ALL action buttons except Archiver
-              actions.querySelectorAll("button").forEach(btn => {
-                if (btn.dataset.action === "archiver") {
-                  btn.style.fontWeight = '700';
-                  btn.style.background = '#fef9c3';
-                  btn.style.borderColor = '#fbbf24';
-                } else {
-                  btn.style.display = 'none';
-                }
-              });
+            const fabData = await fetchFabWithLimit('/api/fabrication?fileName=' + encodeURIComponent(jobFileName), {
+              headers: { 'Authorization': 'Bearer ' + (authToken || '') }
+            }).catch(() => ({}));
             }
           } catch(e) { /* ignore */ }
         })();
@@ -1378,8 +1429,22 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         });
       }
 
-      drop.appendChild(card);
+      return card;
+    };
+
+    const BATCH_SIZE = 10;
+    async function renderBatch(jobs, startIdx) {
+      const end = Math.min(startIdx + BATCH_SIZE, jobs.length);
+      for (let i = startIdx; i < end; i++) {
+        const card = buildCard(jobs[i]);
+        if (card) drop.appendChild(card);
+      }
+      if (end < jobs.length) {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        await renderBatch(jobs, end);
+      }
     }
+    await renderBatch(filtered, 0);
 
     const counterEl = col.querySelector(".kanban-col-counter");
     if (counterEl) counterEl.textContent = filtered.length;

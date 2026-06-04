@@ -566,6 +566,23 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
             copyDestPath = fieryDoc["hotfolderPath"].AsString;
             tileFolder = "Fiery";
         }
+        else if (action == "imposition")
+        {
+            var impositionCol = MongoDbHelper.GetCollection<BsonDocument>("impositionConfig");
+            var impositionDoc = impositionCol.Find(Builders<BsonDocument>.Filter.Empty).FirstOrDefault();
+            var impositionEnabled = impositionDoc != null && impositionDoc.Contains("enabled")
+                && impositionDoc["enabled"] != BsonNull.Value && impositionDoc["enabled"].AsBoolean;
+            var impositionPath = impositionDoc != null && impositionDoc.Contains("hotfolderPath")
+                && impositionDoc["hotfolderPath"] != BsonNull.Value ? impositionDoc["hotfolderPath"].AsString : "";
+
+            if (!impositionEnabled)
+                return Results.Json(new { ok = false, error = "L'action Imposition n'est pas activée. Activez-la dans Paramétrage > Kanban." });
+            if (string.IsNullOrWhiteSpace(impositionPath))
+                return Results.Json(new { ok = false, error = "Chemin du hotfolder Imposition non configuré. Configurez-le dans Paramétrage > Kanban." });
+
+            copyDestPath = impositionPath;
+            tileFolder = "Imposition";
+        }
         else
         {
             return Results.Json(new { ok = false, error = $"Action inconnue : {action}" });
@@ -621,7 +638,8 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
             ["prismasync"] = "envoyé vers PrismaSync",
             ["prisma-prepare"] = "ouvert dans PrismaPrepare",
             ["direct-print"] = "envoyé en impression directe",
-            ["fiery"] = "envoyé dans Fiery"
+            ["fiery"] = "envoyé dans Fiery",
+            ["imposition"] = "envoyé dans Imposition"
         };
         var label = actionLabels.TryGetValue(action, out var lbl) ? lbl : action;
         var jdfMsg = jdfPath != null ? " (avec JDF)" : "";
