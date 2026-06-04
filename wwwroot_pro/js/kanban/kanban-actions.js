@@ -1,6 +1,6 @@
 // kanban/kanban-actions.js — Print dialog, actions dropdown, assign dropdown, façonnage alerts
 import { authToken, fnKey, showNotification, assignmentsByPath } from '../core.js';
-import { refreshKanban } from './kanban-core.js?v=38';
+import { refreshKanban } from './kanban-core.js?v=39';
 
 // ======================================================
 // DIALOG IMPRESSION — remplacé par openActionsDropdown
@@ -27,14 +27,14 @@ async function getActionsConfig() {
       fetch("/api/settings/actions-config", {
         headers: { "Authorization": "Bearer " + (authToken || "") }
       }).then(r => r.json()).catch(() => ({})),
-      fetch("/api/config/imposition", {
+      fetch("/api/config/imposition-hotfolder", {
         headers: { "Authorization": "Bearer " + (authToken || "") }
-      }).then(r => r.json()).catch(() => ({ ok: false, enabled: false }))
+      }).then(r => r.json()).catch(() => ({ ok: false, enabled: false, path: "" }))
     ]);
 
     let actions = (r.ok && Array.isArray(r.actions)) ? r.actions : [...DEFAULT_ACTIONS];
     if (impositionResp.ok && impositionResp.enabled && !actions.find(a => a.id === "imposition")) {
-      actions = [...actions, { id: "imposition", label: "Imposition", enabled: true }];
+      actions = [...actions, { id: "imposition", label: "🖨️ Imposition", enabled: true }];
     }
     _actionsConfig = actions;
   } catch {
@@ -68,7 +68,7 @@ export async function openActionsDropdown(btnEl, fullPath) {
   items.forEach(item => {
     const el = document.createElement("div");
     el.style.cssText = "padding: 10px 16px; cursor: pointer; font-size: 13px; color: #111827; transition: background 0.15s; white-space: nowrap;";
-    el.textContent = item.label;
+    el.textContent = item.id === "imposition" ? "🖨️ Imposition" : item.label;
     el.onmouseenter = () => el.style.background = "#f3f4f6";
     el.onmouseleave = () => el.style.background = "";
     el.onclick = async () => {
@@ -108,9 +108,52 @@ async function handlePrintAction(action, fullPath) {
   const fileName = fnKey(fullPath);
 
   try {
+    if (action === "imposition") {
+      const cfg = await fetch("/api/config/imposition-hotfolder", {
+        headers: { "Authorization": "Bearer " + (authToken || "") }
+      }).then(r => r.json()).catch(() => ({ ok: false, enabled: false, path: "" }));
+
+      if (!cfg.ok || !cfg.enabled) {
+        showNotification("⚠️ L'action Imposition est désactivée dans les paramètres", "warning");
+        return;
+      }
+
+      const hotfolderPath = (cfg.path || "").trim();
+      if (!hotfolderPath) {
+        showNotification("⚠️ Chemin du hotfolder d'imposition non configuré", "warning");
+        return;
+      }
+
+      const copyResp = await fetch("/api/jobs/copy-to-hotfolder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (authToken || "") },
+        body: JSON.stringify({ fileName, fullPath, destination: hotfolderPath })
+      }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+
+      if (!copyResp.ok) {
+        showNotification("❌ " + (copyResp.error || "Erreur"), "error");
+        return;
+      }
+
+      const moveResp = await fetch("/api/jobs/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: fullPath, destination: "Imposition", overwrite: true })
+      }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+
+      if (!moveResp.ok) {
+        showNotification("❌ " + (moveResp.error || "Erreur"), "error");
+        return;
+      }
+
+      showNotification("✅ Fichier envoyé vers Imposition", "success");
+      await refreshKanban();
+      return;
+    }
+
     const r = await fetch("/api/jobs/send-to-action", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + (authToken || "") },
       body: JSON.stringify({ fileName, fullPath, action })
     }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
 
