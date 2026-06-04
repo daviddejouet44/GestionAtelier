@@ -2238,6 +2238,8 @@ async function initApp() {
   applyHeaderBanner();
 
   setupProfileUI();
+  const { initLicense } = await import('./license.js');
+  await initLicense();
   await setupExternalLinksButtons();
   initNotificationBell();
   initHelpPanel();
