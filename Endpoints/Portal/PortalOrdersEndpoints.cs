@@ -677,6 +677,20 @@ public static class PortalOrdersEndpoints
                         UploadedAt = f.UploadedAt,
                         Size = f.Size
                     };
+                    try
+                    {
+                        var fabCol = MongoDbHelper.GetFabricationsCollection();
+                        var fabUpdate = Builders<BsonDocument>.Update
+                            .Set("fileName", newName.ToLowerInvariant())
+                            .Set("fullPath", newPath)
+                            .Set("numeroDossier", order.OrderNumber)
+                            .Set("source", "web");
+                        fabCol.UpdateOne(
+                            Builders<BsonDocument>.Filter.Eq("fileName", newName.ToLowerInvariant()),
+                            fabUpdate,
+                            new UpdateOptions { IsUpsert = true });
+                    }
+                    catch { /* non-blocking */ }
                 }
 
                 // Try to remove now-empty draft subfolder
@@ -718,6 +732,9 @@ public static class PortalOrdersEndpoints
                     Builders<BsonDocument>.Update
                         .Set("status", "submitted")
                         .Set("updatedAt", now)
+                        .Set("workflow", "Web")
+                        .Set("tag", "Web")
+                        .Set("source", "web")
                         .Set("files", filesArray)
                         .Set("statusHistory", historyArray));
 
@@ -1017,6 +1034,9 @@ public static class PortalOrdersEndpoints
             ["comments"] = o.Comments,
             ["status"] = o.Status,
             ["atelierJobPath"] = o.AtelierJobPath,
+            ["workflow"] = "Web",
+            ["tag"] = "Web",
+            ["source"] = "web",
             ["createdAt"] = o.CreatedAt,
             ["updatedAt"] = o.UpdatedAt,
             ["files"] = filesArray,

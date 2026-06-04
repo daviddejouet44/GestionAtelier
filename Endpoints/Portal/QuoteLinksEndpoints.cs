@@ -815,6 +815,7 @@ public static class QuoteLinksEndpoints
                         ["numeroDossier"]        = link.DevisNumber,
                         ["workflow"]             = "Web",
                         ["tag"]                  = "Web",
+                        ["source"]               = "web",
                         ["kanbanFolder"]         = settings.WebOrderKanbanFolder ?? "Commandes web",
                     };
 
@@ -823,6 +824,18 @@ public static class QuoteLinksEndpoints
 
                     var orderCol = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
                     orderCol.InsertOne(orderDoc);
+                    try
+                    {
+                        var fabCol = MongoDbHelper.GetFabricationsCollection();
+                        var fabFilter = Builders<BsonDocument>.Filter.Eq("fileName", destName.ToLowerInvariant());
+                        var fabUpdate = Builders<BsonDocument>.Update
+                            .Set("fileName", destName.ToLowerInvariant())
+                            .Set("fullPath", destPath)
+                            .Set("numeroDossier", orderNumber)
+                            .Set("source", "web");
+                        fabCol.UpdateOne(fabFilter, fabUpdate, new UpdateOptions { IsUpsert = true });
+                    }
+                    catch { /* non-blocking */ }
                     createdOrders.Add((orderId, orderNumber, orderTitle));
                 }
 
@@ -1016,6 +1029,31 @@ public static class QuoteLinksEndpoints
                 updateDef = updateDef.Push("statusHistory", historyEntry);
 
                 orderCol.UpdateOne(Builders<BsonDocument>.Filter.Eq("id", orderId), updateDef);
+                try
+                {
+                    var fabCol = MongoDbHelper.GetFabricationsCollection();
+                    if (orderDoc.Contains("files") && orderDoc["files"].IsBsonArray)
+                    {
+                        foreach (var f in orderDoc["files"].AsBsonArray)
+                        {
+                            if (!f.IsBsonDocument) continue;
+                            var fd = f.AsBsonDocument;
+                            var fn = fd.Contains("fileName") && fd["fileName"] != BsonNull.Value ? fd["fileName"].AsString : "";
+                            if (string.IsNullOrWhiteSpace(fn)) continue;
+                            var fp = fd.Contains("storedPath") && fd["storedPath"] != BsonNull.Value ? fd["storedPath"].AsString : "";
+                            var fabUpdate = Builders<BsonDocument>.Update
+                                .Set("source", "web")
+                                .Set("fileName", fn.ToLowerInvariant());
+                            if (!string.IsNullOrWhiteSpace(fp))
+                                fabUpdate = fabUpdate.Set("fullPath", fp);
+                            fabCol.UpdateOne(
+                                Builders<BsonDocument>.Filter.Eq("fileName", fn.ToLowerInvariant()),
+                                fabUpdate,
+                                new UpdateOptions { IsUpsert = true });
+                        }
+                    }
+                }
+                catch { /* non-blocking */ }
 
                 // Return the saved productionInfo
                 var piResult = new Dictionary<string, object?>();
@@ -1138,6 +1176,31 @@ public static class QuoteLinksEndpoints
                 updateDef = updateDef.Push("statusHistory", historyEntry);
 
                 orderCol.UpdateOne(Builders<BsonDocument>.Filter.Eq("id", id), updateDef);
+                try
+                {
+                    var fabCol = MongoDbHelper.GetFabricationsCollection();
+                    if (orderDoc.Contains("files") && orderDoc["files"].IsBsonArray)
+                    {
+                        foreach (var f in orderDoc["files"].AsBsonArray)
+                        {
+                            if (!f.IsBsonDocument) continue;
+                            var fd = f.AsBsonDocument;
+                            var fn = fd.Contains("fileName") && fd["fileName"] != BsonNull.Value ? fd["fileName"].AsString : "";
+                            if (string.IsNullOrWhiteSpace(fn)) continue;
+                            var fp = fd.Contains("storedPath") && fd["storedPath"] != BsonNull.Value ? fd["storedPath"].AsString : "";
+                            var fabUpdate = Builders<BsonDocument>.Update
+                                .Set("source", "web")
+                                .Set("fileName", fn.ToLowerInvariant());
+                            if (!string.IsNullOrWhiteSpace(fp))
+                                fabUpdate = fabUpdate.Set("fullPath", fp);
+                            fabCol.UpdateOne(
+                                Builders<BsonDocument>.Filter.Eq("fileName", fn.ToLowerInvariant()),
+                                fabUpdate,
+                                new UpdateOptions { IsUpsert = true });
+                        }
+                    }
+                }
+                catch { /* non-blocking */ }
 
                 return Results.Json(new { ok = true });
             }
