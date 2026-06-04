@@ -160,18 +160,34 @@ async function updateGlobalAlert() {
 // ======================================================
 // PDF THUMBNAIL
 // ======================================================
+const _pdfThumbCache = new Map(); // fullPath → dataURL (max 200 entries)
+const _PDF_THUMB_CACHE_MAX = 200;
+
 async function renderPdfThumbnail(fullPath, container) {
   if (!window.pdfjsLib) return;
+  if (_pdfThumbCache.has(fullPath)) {
+    const img = new Image();
+    img.src = _pdfThumbCache.get(fullPath);
+    img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+    container.textContent = "";
+    container.appendChild(img);
+    return;
+  }
   try {
     const pdf = await pdfjsLib.getDocument("/api/file?path=" + encodeURIComponent(fullPath)).promise;
     const page = await pdf.getPage(1);
-    const viewport = page.getViewport({ scale: 0.25 });
+    const viewport = page.getViewport({ scale: 0.15 });
     const canvas = document.createElement("canvas");
     canvas.width = viewport.width;
     canvas.height = viewport.height;
     await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+    const dataURL = canvas.toDataURL("image/jpeg", 0.7);
+    if (_pdfThumbCache.size >= _PDF_THUMB_CACHE_MAX) {
+      _pdfThumbCache.delete(_pdfThumbCache.keys().next().value);
+    }
+    _pdfThumbCache.set(fullPath, dataURL);
     const img = new Image();
-    img.src = canvas.toDataURL("image/png");
+    img.src = dataURL;
     img.style.width = "100%";
     img.style.height = "100%";
     img.style.objectFit = "cover";

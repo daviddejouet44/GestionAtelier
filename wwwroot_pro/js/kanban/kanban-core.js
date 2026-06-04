@@ -342,19 +342,17 @@ function buildKanbanFilterBar() {
   filterBar.style.borderBottom = "1px solid #e5e7eb";
   filterBar.style.fontSize = "13px";
 
-  fetch("/api/settings/users")
+  fetch("/api/auth/users", { headers: { "Authorization": `Bearer ${authToken}` } })
     .then(async r => {
-      if (!r.ok) return [];
+      if (!r.ok) return { ok: false, users: [] };
       return r.json();
     })
     .then(data => {
-      const users = (Array.isArray(data) ? data : (Array.isArray(data?.users) ? data.users : []))
+      const users = (data.ok && Array.isArray(data.users) ? data.users : [])
         .filter(u => u.profile !== 1 && u.profile !== 5);
-      const uniqueUsers = [...new Set(users
-        .map(u => (typeof u === "string" ? u : (u?.name || u?.login || "")))
-        .map(v => (v || "").trim())
-        .filter(Boolean))]
-        .sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
+      const uniqueUsers = [...new Set(
+        users.map(u => (typeof u === "string" ? u : (u?.name || u?.login || "")).trim()).filter(Boolean)
+      )].sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
       uniqueUsers.forEach(name => {
         const opt = document.createElement("option");
         opt.value = name;
@@ -385,6 +383,25 @@ function applyKanbanOperatorFilter(operatorName) {
 }
 window._applyKanbanOperatorFilter = applyKanbanOperatorFilter;
 
+// ── PDF thumbnail queue for kanban (max 2 concurrent) ──
+let _thumbActive = 0;
+const _thumbQueue = [];
+const MAX_CONCURRENT = 2;
+
+function _drainThumbQueue() {
+  while (_thumbActive < MAX_CONCURRENT && _thumbQueue.length > 0) {
+    const { path, el } = _thumbQueue.shift();
+    _thumbActive++;
+    if (window._renderPdfThumbnail) {
+      window._renderPdfThumbnail(path, el)
+        .catch((err) => { console.warn("Thumbnail render failed:", err); })
+        .finally(() => { _thumbActive--; _drainThumbQueue(); });
+    } else {
+      _thumbActive--;
+    }
+  }
+}
+
 // ======================================================
 // REFRESH KANBAN
 // ======================================================
@@ -395,10 +412,13 @@ export async function refreshKanban() {
         if (entry.isIntersecting) {
           const el = entry.target;
           const path = el?.dataset?.pdfPath;
-          if (path && window._renderPdfThumbnail) {
-            window._renderPdfThumbnail(path, el).catch(() => {});
+          if (path) {
             window._pdfThumbObserver.unobserve(el);
             delete el.dataset.pdfPath;
+            if (window._renderPdfThumbnail) {
+              _thumbQueue.push({ path, el });
+              _drainThumbQueue();
+            }
           }
         }
       });
