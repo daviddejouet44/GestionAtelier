@@ -106,6 +106,52 @@ app.MapPut("/api/config/kanban-columns", async (HttpContext ctx) =>
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
 
+app.MapGet("/api/config/imposition", () =>
+{
+    try
+    {
+        var col = MongoDbHelper.GetCollection<BsonDocument>("impositionConfig");
+        var doc = col.Find(Builders<BsonDocument>.Filter.Empty).FirstOrDefault();
+        var enabled = doc != null && doc.Contains("enabled") && doc["enabled"] != BsonNull.Value && doc["enabled"].AsBoolean;
+        var hotfolderPath = doc != null && doc.Contains("hotfolderPath") && doc["hotfolderPath"] != BsonNull.Value
+            ? doc["hotfolderPath"].AsString
+            : "";
+        return Results.Json(new { ok = true, enabled, hotfolderPath });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message, enabled = false, hotfolderPath = "" }); }
+});
+
+app.MapPut("/api/config/imposition", async (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        var parts = decoded.Split(':');
+        if (parts.Length < 3 || parts[2] != "3")
+            return Results.Json(new { ok = false, error = "Admin only" });
+
+        var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+        bool enabled = false;
+        if (json.TryGetProperty("enabled", out var enabledEl) &&
+            (enabledEl.ValueKind == JsonValueKind.True || enabledEl.ValueKind == JsonValueKind.False))
+        {
+            enabled = enabledEl.GetBoolean();
+        }
+        var hotfolderPath = json.TryGetProperty("hotfolderPath", out var hp) ? (hp.GetString() ?? "") : "";
+
+        var doc = new BsonDocument
+        {
+            ["enabled"] = enabled,
+            ["hotfolderPath"] = hotfolderPath
+        };
+        var col = MongoDbHelper.GetCollection<BsonDocument>("impositionConfig");
+        col.ReplaceOne(Builders<BsonDocument>.Filter.Empty, doc, new ReplaceOptions { IsUpsert = true });
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
 app.MapGet("/api/config/action-buttons", () =>
 {
     var col = MongoDbHelper.GetCollection<BsonDocument>("actionButtonsConfig");

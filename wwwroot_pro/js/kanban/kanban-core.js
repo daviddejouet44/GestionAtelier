@@ -1,7 +1,7 @@
 // kanban/kanban-core.js — Build, refresh, summary
-import { currentUser, deliveriesByPath, fnKey, normalizePath, isLight, darkenColor, showNotification, FOLDER_FIN_PRODUCTION } from '../core.js';
-import { refreshKanbanColumnOperator } from './kanban-cards.js?v=37';
-import { showFaconnageAlerts } from './kanban-actions.js?v=36';
+import { currentUser, authToken, deliveriesByPath, fnKey, normalizePath, isLight, darkenColor, showNotification, FOLDER_FIN_PRODUCTION } from '../core.js';
+import { refreshKanbanColumnOperator } from './kanban-cards.js?v=38';
+import { showFaconnageAlerts } from './kanban-actions.js?v=38';
 
 const kanbanDiv = document.getElementById("kanban");
 const searchInput = document.getElementById("searchInput");
@@ -15,6 +15,8 @@ export const state = {
   visibleActionsMap: {}, // folder → string[] | null (null = show all)
   emailTemplatesMap: {},  // folder → string[] | null (null = no extra templates)
   externalBatLinksEnabled: false, // admin toggle for external BAT links
+  impositionEnabled: false,
+  impositionHotfolderPath: "",
   colFilters: {},        // folderName → { nameFilter: string }
   colSorts: {}           // folderName → "date_asc" | "date_desc" | "name_asc" | "name_desc"
 };
@@ -45,21 +47,33 @@ export async function buildKanban() {
     }
   } catch(e) { /* use defaults */ }
 
-  // Filter visible columns and sort by order
-  const folderConfig = allColumns
-    .filter(c => c.visible !== false)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-  // Determine if preflight columns are hidden
-  const correctionsCol = allColumns.find(c => c.folder === "Corrections");
-  const correctionsFpCol = allColumns.find(c => c.folder === "Corrections et fond perdu");
-  state.preflightColumnsHidden = (correctionsCol?.visible === false) && (correctionsFpCol?.visible === false);
-
   // Load admin toggle for external BAT links
   try {
     const batToggleResp = await fetch('/api/pro/bat/external-link-enabled').then(r => r.json()).catch(() => ({ enabled: false }));
     state.externalBatLinksEnabled = !!(batToggleResp.enabled);
   } catch(e) { state.externalBatLinksEnabled = false; }
+
+  // Load optional Imposition config
+  try {
+    const impositionResp = await fetch('/api/config/imposition', {
+      headers: { 'Authorization': 'Bearer ' + (authToken || '') }
+    }).then(r => r.json()).catch(() => ({ ok: false }));
+    state.impositionEnabled = !!(impositionResp.ok && impositionResp.enabled);
+    state.impositionHotfolderPath = impositionResp.hotfolderPath || '';
+  } catch(e) {
+    state.impositionEnabled = false;
+    state.impositionHotfolderPath = '';
+  }
+
+  if (state.impositionEnabled && !allColumns.find(c => c.folder === "Imposition")) {
+    allColumns.push({
+      folder: "Imposition",
+      label: "Imposition",
+      color: "#7c3aed",
+      visible: true,
+      order: 5.5
+    });
+  }
 
   // Build visible actions map: folder → string[] | null
   state.visibleActionsMap = {};
@@ -72,6 +86,16 @@ export async function buildKanban() {
     }
     state.emailTemplatesMap[c.folder] = Array.isArray(c.emailTemplateKeys) ? c.emailTemplateKeys : null;
   }
+
+  // Filter visible columns and sort by order
+  const folderConfig = allColumns
+    .filter(c => c.visible !== false)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  // Determine if preflight columns are hidden
+  const correctionsCol = allColumns.find(c => c.folder === "Corrections");
+  const correctionsFpCol = allColumns.find(c => c.folder === "Corrections et fond perdu");
+  state.preflightColumnsHidden = (correctionsCol?.visible === false) && (correctionsFpCol?.visible === false);
 
   kanbanDiv.innerHTML = "";
   kanbanDiv.style.gridTemplateColumns = "repeat(3, 1fr)";
@@ -324,7 +348,8 @@ function buildKanbanFilterBar() {
       return r.json();
     })
     .then(data => {
-      const users = Array.isArray(data) ? data : (Array.isArray(data?.users) ? data.users : []);
+      const users = (Array.isArray(data) ? data : (Array.isArray(data?.users) ? data.users : []))
+        .filter(u => u.profile !== 1 && u.profile !== 5);
       const uniqueUsers = [...new Set(users
         .map(u => (typeof u === "string" ? u : (u?.name || u?.login || "")))
         .map(v => (v || "").trim())
@@ -364,6 +389,22 @@ window._applyKanbanOperatorFilter = applyKanbanOperatorFilter;
 // REFRESH KANBAN
 // ======================================================
 export async function refreshKanban() {
+  if (!window._pdfThumbObserver && 'IntersectionObserver' in window) {
+    window._pdfThumbObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const el = entry.target;
+          const path = el?.dataset?.pdfPath;
+          if (path && window._renderPdfThumbnail) {
+            window._renderPdfThumbnail(path, el).catch(() => {});
+            window._pdfThumbObserver.unobserve(el);
+            delete el.dataset.pdfPath;
+          }
+        }
+      });
+    }, { rootMargin: "200px" });
+  }
+
   const q = (searchInput?.value || "").trim().toLowerCase();
   const sort = (sortBy?.value || "date_desc");
 

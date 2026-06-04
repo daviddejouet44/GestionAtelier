@@ -53,6 +53,7 @@ app.MapGet("/api/jobs", (HttpContext ctx) =>
             return Results.Json(Array.Empty<object>());
 
         var files = Directory.EnumerateFiles(dir)
+            .Where(f => string.Equals(Path.GetExtension(f), ".pdf", StringComparison.OrdinalIgnoreCase))
             .Select(f =>
             {
                 try
