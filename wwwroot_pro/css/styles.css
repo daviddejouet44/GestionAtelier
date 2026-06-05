@@ -9,3 +9,10 @@
 @import url('settings.css');
 @import url('production.css');
 @import url('dossiers.css');
+
+.license-badge { display:inline-flex;align-items:center;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;white-space:nowrap; }
+.license-badge.valid { background:#dcfce7;color:#15803d;border:1px solid #86efac; }
+.license-badge.invalid { background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;animation:pulse-badge 2s infinite; }
+@keyframes pulse-badge { 0%,100%{opacity:1}50%{opacity:.6} }
+.license-msg.success { background:#f0fdf4;border:1px solid #86efac;color:#15803d; }
+.license-msg.error { background:#fef2f2;border:1px solid #fca5a5;color:#dc2626; }

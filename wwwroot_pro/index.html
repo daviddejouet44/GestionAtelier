@@ -53,6 +53,12 @@
           <div id="notif-dropdown" class="notif-dropdown hidden"></div>
         </div>
         <span id="user-info">Utilisateur</span>
+        <span id="license-badge" class="license-badge invalid"
+              style="cursor:pointer;font-size:12px;margin-right:8px;"
+              title="Cliquer pour gérer la licence"
+              onclick="import('./js/license.js').then(m=>m.openLicenseModal())">
+          ⚠️ Licence
+        </span>
         <button id="btn-logout" class="btn">Déconnexion</button>
         <button id="btn-settings" class="btn" style="display:none;">Paramétrage</button>
       </div>
@@ -185,6 +191,51 @@
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;border-top:1px solid #e5e7eb;padding-top:14px;">
         <button id="qs-cancel" class="btn">Annuler</button>
         <button id="qs-send" class="btn btn-primary">📧 Ouvrir dans ma messagerie</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="license-modal" class="modal hidden" style="z-index:30000;">
+    <div class="fab-modal-content" style="max-width:560px;position:relative;">
+      <h2 style="margin-bottom:6px;">🔑 Activation de la licence</h2>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:20px;">
+        Envoyez votre <strong>Token Machine</strong> à l'administrateur pour recevoir votre fichier <code>.lic</code>.
+      </p>
+      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 14px;margin-bottom:18px;font-size:13px;">
+        <strong>Statut actuel :</strong> <span id="license-status-text">Vérification…</span>
+      </div>
+      <div style="margin-bottom:18px;">
+        <label style="font-weight:600;font-size:13px;display:block;margin-bottom:6px;">
+          📟 Votre Token Machine <span style="font-weight:400;color:#6b7280;">(à envoyer à l'administrateur)</span>
+        </label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <code id="license-machine-token" style="flex:1;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:10px 14px;font-size:14px;letter-spacing:1px;font-family:monospace;">Chargement…</code>
+          <button id="license-copy-token" class="btn" style="white-space:nowrap;">📋 Copier</button>
+        </div>
+      </div>
+      <div style="margin-bottom:18px;">
+        <label style="font-weight:600;font-size:13px;display:block;margin-bottom:6px;">📂 Fichier .lic reçu de l'administrateur</label>
+        <div id="license-upload-zone" style="border:2px dashed #d1d5db;border-radius:8px;padding:20px;text-align:center;cursor:pointer;background:#fafafa;" onclick="document.getElementById('license-file-input').click()">
+          <div style="font-size:24px;margin-bottom:6px;">🔑</div>
+          <p style="margin:0;font-size:13px;color:#6b7280;">Glissez le <strong>.lic</strong> ici ou <strong style="color:#1d4ed8;">cliquez</strong></p>
+        </div>
+        <input type="file" id="license-file-input" accept=".lic" style="display:none;" />
+        <div id="license-file-preview" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:8px 12px;font-size:13px;color:#15803d;margin-top:6px;align-items:center;gap:8px;">
+          <span>🔑</span><span id="license-file-name" style="flex:1;"></span>
+        </div>
+      </div>
+      <div id="license-msg" style="display:none;border-radius:6px;padding:10px 14px;font-size:13px;margin-bottom:14px;"></div>
+      <details style="margin-bottom:16px;font-size:12px;color:#6b7280;">
+        <summary style="cursor:pointer;font-weight:600;">ℹ️ Versions disponibles</summary>
+        <div style="margin-top:8px;display:grid;gap:6px;">
+          <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:8px 12px;"><strong>🟢 GestionAtelier Starter</strong> — Soumission, Production, BAT, Remote Manager, Prismalytics</div>
+          <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:8px 12px;"><strong>🔵 GestionAtelier Pro</strong> — Starter + Planning, Dashboard, XML, ERP/W2P</div>
+          <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:8px 12px;"><strong>🟣 GestionAtelier Enterprise</strong> — Pro + Portail client, Devis, Commandes web</div>
+        </div>
+      </details>
+      <div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #e5e7eb;padding-top:14px;">
+        <button id="license-modal-close" class="btn">Fermer</button>
+        <button id="license-activate-btn" class="btn btn-primary">🔓 Activer la licence</button>
       </div>
     </div>
   </div>
