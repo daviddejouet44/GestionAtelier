@@ -244,11 +244,14 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       thumbDiv.textContent = "PDF";
       layout.appendChild(thumbDiv);
       if ((job.name || "").toLowerCase().endsWith(".pdf") && window._renderPdfThumbnail) {
-        if (window._pdfThumbObserver) {
-          thumbDiv.dataset.pdfPath = full;
-          window._pdfThumbObserver.observe(thumbDiv);
-        } else {
-          window._renderPdfThumbnail(full, thumbDiv).catch(() => {});
+        const MAX_THUMB_SIZE = 5 * 1024 * 1024; // 5 MB — skip thumbnail for large files
+        if ((job.size || 0) <= MAX_THUMB_SIZE) {
+          if (window._pdfThumbObserver) {
+            thumbDiv.dataset.pdfPath = full;
+            window._pdfThumbObserver.observe(thumbDiv);
+          } else {
+            window._renderPdfThumbnail(full, thumbDiv).catch(() => {});
+          }
         }
       }
 
