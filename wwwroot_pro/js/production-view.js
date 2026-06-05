@@ -563,14 +563,6 @@ function _observeThumbRO(thumbDiv, fullPath) {
 
 async function renderPdfThumbnailRO(fullPath, container) {
   if (!window.pdfjsLib) return;
-  if (window._pdfThumbCache?.has(fullPath)) {
-    const img = new Image();
-    img.src = window._pdfThumbCache.get(fullPath);
-    img.style.cssText = "width:100%;height:100%;object-fit:cover;";
-    container.textContent = "";
-    container.appendChild(img);
-    return;
-  }
   if (_pdfThumbCacheRO.has(fullPath)) {
     const img = new Image();
     img.src = _pdfThumbCacheRO.get(fullPath);

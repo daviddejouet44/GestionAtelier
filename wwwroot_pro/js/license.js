@@ -60,11 +60,13 @@ function applyLicenseUI(data) {
   const submissionSection = document.querySelector('.submission-section');
   if (submissionSection) submissionSection.style.display = level >= 2 ? '' : 'none';
 
-  ['btn-help', 'help-btn', 'help-panel', 'help-toggle'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = level >= 2 ? '' : 'none';
-  });
-  document.querySelectorAll('.help-btn, .help-toggle').forEach(el => {
+  const helpEls = [
+    ...['btn-help', 'help-btn', 'help-panel', 'help-toggle']
+      .map(id => document.getElementById(id))
+      .filter(Boolean),
+    ...document.querySelectorAll('.help-btn, .help-toggle')
+  ];
+  [...new Set(helpEls)].forEach(el => {
     el.style.display = level >= 2 ? '' : 'none';
   });
 

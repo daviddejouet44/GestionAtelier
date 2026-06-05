@@ -443,7 +443,7 @@ export async function refreshKanban() {
                      (currentUser?.profile === 4 && col.dataset.folder !== "Façonnage");
     const colSort = state.colSorts[col.dataset.folder] || sort;
     await refreshKanbanColumnOperator(col.dataset.folder, q, colSort, col, readOnly, col.dataset.folderPath || null);
-    if (col.dataset.folder === FOLDER_FIN_PRODUCTION || col.dataset.folder === "Fin de production") {
+    if (col.dataset.folder === FOLDER_FIN_PRODUCTION) {
       await _syncFinishedCardsStatus(col);
     }
   }
@@ -463,11 +463,11 @@ async function _syncFinishedCardsStatus(col) {
     try {
       const fabData = await fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName), {
         headers: { 'Authorization': 'Bearer ' + (authToken || '') }
-      }).then(r => r.json()).catch(() => ({}));
+      }).then(r => (r.ok ? r.json() : {})).catch(() => ({}));
       const isTermine = fabData?.locked === true || String(fabData?.statutProduction || "").toLowerCase() === "termine";
       _applyFinishedCardUI(card, isTermine);
     } catch {
-      // no-op
+      console.warn("Impossible de charger le statut de production pour", jobFileName);
     }
   }));
 }
