@@ -160,7 +160,8 @@ async function updateGlobalAlert() {
 // ======================================================
 // PDF THUMBNAIL
 // ======================================================
-const _pdfThumbCache = new Map(); // fullPath → dataURL (max 200 entries)
+window._pdfThumbCache = window._pdfThumbCache || new Map();
+const _pdfThumbCache = window._pdfThumbCache; // fullPath → dataURL (max 200 entries)
 const _PDF_THUMB_CACHE_MAX = 200;
 
 async function renderPdfThumbnail(fullPath, container) {

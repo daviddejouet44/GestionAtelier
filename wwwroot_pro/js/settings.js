@@ -121,6 +121,19 @@ export async function initSettingsView() {
   });
 
   await loadSettingsPanel("accounts", settingsEl.querySelector("#settings-panel-accounts"));
+  _applyLicenseToSettings();
+}
+
+function _applyLicenseToSettings() {
+  const level = window._licenseLevel || 0;
+  const tabsStarterHidden = ['schedule', 'planning-colors', 'integrations', 'external-links', 'portal', 'production-delay-alert'];
+  const tabsProHidden = ['portal'];
+  const tabsToHide = level === 1 ? tabsStarterHidden : level === 2 ? tabsProHidden : [];
+
+  document.querySelectorAll('.settings-tab[data-tab]').forEach(btn => {
+    const tab = btn.getAttribute('data-tab');
+    btn.style.display = tabsToHide.includes(tab) ? 'none' : '';
+  });
 }
 
 export async function loadSettingsPanel(tabName, panelEl) {

@@ -523,7 +523,8 @@ function renderProductionStatusBadge(container, statut) {
 let _roQueue = [];
 let _roActive = 0;
 const RO_MAX_CONCURRENT = 2;
-const _pdfThumbCacheRO = new Map(); // fullPath → dataURL (max 200 entries)
+window._pdfThumbCache = window._pdfThumbCache || new Map();
+const _pdfThumbCacheRO = window._pdfThumbCache; // fullPath → dataURL (max 200 entries)
 const _PDF_THUMB_CACHE_RO_MAX = 200;
 
 function _drainRoQueue() {
