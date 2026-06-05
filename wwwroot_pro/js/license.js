@@ -1,4 +1,5 @@
 export async function initLicense() {
+  attachLicenseEvents();
   await loadLicenseStatus();
 }
 
@@ -16,6 +17,7 @@ export async function loadLicenseStatus() {
 
 function applyLicenseUI(data) {
   const level = data.level || 0;
+  window._licenseLevel = level;
 
   const badge = document.getElementById('license-badge');
   if (badge) {
@@ -45,8 +47,32 @@ function applyLicenseUI(data) {
   setVisible('btn-envoyer-devis', level >= 3);
   setVisible('btnViewGlobalProd', level >= 3);
 
-  if (!data.isValid && document.getElementById('license-modal')?.classList.contains('hidden')) {
-    openLicenseModal();
+  const sidebarRetard = document.getElementById('kanban-sidebar-sec-retard');
+  const sidebarMachine = document.getElementById('kanban-sidebar-sec-machine');
+  if (level < 2) {
+    if (sidebarRetard) sidebarRetard.style.display = 'none';
+    if (sidebarMachine) sidebarMachine.style.display = 'none';
+  } else {
+    if (sidebarRetard) sidebarRetard.style.display = '';
+    if (sidebarMachine) sidebarMachine.style.display = '';
+  }
+
+  const submissionSection = document.querySelector('.submission-section');
+  if (submissionSection) submissionSection.style.display = level >= 2 ? '' : 'none';
+
+  ['btn-help', 'help-btn', 'help-panel', 'help-toggle'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = level >= 2 ? '' : 'none';
+  });
+  document.querySelectorAll('.help-btn, .help-toggle').forEach(el => {
+    el.style.display = level >= 2 ? '' : 'none';
+  });
+
+  if (!data.isValid) {
+    const modal = document.getElementById('license-modal');
+    if (modal && modal.classList.contains('hidden')) {
+      openLicenseModal();
+    }
   }
 }
 
@@ -58,9 +84,9 @@ function setVisible(id, visible) {
 export function openLicenseModal() {
   const modal = document.getElementById('license-modal');
   if (!modal) return;
+  if (!modal.classList.contains('hidden')) return;
   modal.classList.remove('hidden');
   loadMachineToken();
-  loadLicenseStatus();
 }
 
 export function closeLicenseModal() {
@@ -80,7 +106,12 @@ async function loadMachineToken() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+let _licenseEventsAttached = false;
+
+function attachLicenseEvents() {
+  if (_licenseEventsAttached) return;
+  _licenseEventsAttached = true;
+
   document.getElementById('license-copy-token')?.addEventListener('click', () => {
     const tok = document.getElementById('license-machine-token')?.textContent;
     if (tok && tok !== 'Chargement…') {
@@ -137,7 +168,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('license-modal-close')?.addEventListener('click', closeLicenseModal);
-});
+}
+
+document.addEventListener('DOMContentLoaded', attachLicenseEvents);
 
 function showLicenseMsg(msg, type) {
   const el = document.getElementById('license-msg');

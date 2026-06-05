@@ -391,6 +391,14 @@ const MAX_CONCURRENT = 2;
 function _drainThumbQueue() {
   while (_thumbActive < MAX_CONCURRENT && _thumbQueue.length > 0) {
     const { path, el } = _thumbQueue.shift();
+    if (window._pdfThumbCache?.has(path)) {
+      const img = new Image();
+      img.src = window._pdfThumbCache.get(path);
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+      el.textContent = '';
+      el.appendChild(img);
+      continue;
+    }
     _thumbActive++;
     if (window._renderPdfThumbnail) {
       window._renderPdfThumbnail(path, el)
@@ -435,11 +443,67 @@ export async function refreshKanban() {
                      (currentUser?.profile === 4 && col.dataset.folder !== "Façonnage");
     const colSort = state.colSorts[col.dataset.folder] || sort;
     await refreshKanbanColumnOperator(col.dataset.folder, q, colSort, col, readOnly, col.dataset.folderPath || null);
+    if (col.dataset.folder === FOLDER_FIN_PRODUCTION || col.dataset.folder === "Fin de production") {
+      await _syncFinishedCardsStatus(col);
+    }
   }
   applyKanbanOperatorFilter(_selectedKanbanOperator);
   await updateKanbanSummary();
 
   fetch("/api/jobs/cleanup-corrections", { method: "POST" }).catch(() => {});
+}
+
+async function _syncFinishedCardsStatus(col) {
+  const cards = Array.from(col.querySelectorAll(".kanban-card-operator"));
+  await Promise.all(cards.map(async (card) => {
+    const fullPath = normalizePath(card.dataset.fullPath || "");
+    const jobFileName = fnKey(fullPath);
+    if (!jobFileName) return;
+
+    try {
+      const fabData = await fetch("/api/fabrication?fileName=" + encodeURIComponent(jobFileName), {
+        headers: { 'Authorization': 'Bearer ' + (authToken || '') }
+      }).then(r => r.json()).catch(() => ({}));
+      const isTermine = fabData?.locked === true || String(fabData?.statutProduction || "").toLowerCase() === "termine";
+      _applyFinishedCardUI(card, isTermine);
+    } catch {
+      // no-op
+    }
+  }));
+}
+
+function _applyFinishedCardUI(card, isTermine) {
+  const actions = card.querySelector(".kanban-card-operator-actions");
+  let badge = card.querySelector(".kanban-termine-badge");
+  if (!badge) {
+    badge = document.createElement("div");
+    badge.className = "kanban-termine-badge";
+    badge.style.cssText = "margin:6px 0 2px;min-height:20px;";
+    const infoStack = card.querySelector(".kanban-card-info-stack");
+    if (infoStack) infoStack.appendChild(badge);
+    else card.appendChild(badge);
+  }
+
+  if (!isTermine) {
+    badge.innerHTML = "";
+    return;
+  }
+
+  badge.innerHTML = '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">✅ TERMINÉ</span>';
+  card.style.border = "2px solid #22c55e";
+  card.style.background = "#f0fdf4";
+  card.draggable = false;
+
+  if (actions) {
+    actions.querySelectorAll("button").forEach(btn => {
+      const label = (btn.textContent || "").toLowerCase();
+      if (label.includes("affecter") || label.includes("archiver") || label.includes("termin")) {
+        btn.disabled = true;
+        btn.style.opacity = "0.5";
+        btn.style.cursor = "not-allowed";
+      }
+    });
+  }
 }
 
 // ======================================================
