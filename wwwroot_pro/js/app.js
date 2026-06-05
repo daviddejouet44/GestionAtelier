@@ -919,14 +919,19 @@ async function buildKanbanSidebar() {
   if (!sidebar) return;
   sidebar.innerHTML = '';
 
-  sidebar.appendChild(_makeSidebarSection("retard", "🚨 Retard de production", "", "#b91c1c")); // title updated dynamically in loadRetardSidebar
-  sidebar.appendChild(_makeSidebarSection("machine", "🖨️ Planning Machine", "", "#374151"));
+  const level = window._licenseLevel || 3; // default Enterprise if not defined
+
+  // Retard de production and Planning Machine: level 2+ only
+  if (level >= 2) {
+    sidebar.appendChild(_makeSidebarSection("retard", "🚨 Retard de production", "", "#b91c1c")); // title updated dynamically in loadRetardSidebar
+    sidebar.appendChild(_makeSidebarSection("machine", "🖨️ Planning Machine", "", "#374151"));
+    loadRetardSidebar();
+    loadMachineSidebar();
+  }
+
+  // BAT sections: all levels
   sidebar.appendChild(_makeSidebarSection("bat-attente", "⏳ BAT en attente", "", "#92400e"));
   sidebar.appendChild(_makeSidebarSection("bat-cours", "📋 BAT en cours", "", "#374151"));
-
-  // Load all sections asynchronously
-  loadRetardSidebar();
-  loadMachineSidebar();
   loadBatAttenteSidebar();
   loadBatSidebar();
 }

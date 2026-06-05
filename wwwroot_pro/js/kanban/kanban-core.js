@@ -497,11 +497,12 @@ function _applyFinishedCardUI(card, isTermine) {
   if (actions) {
     actions.querySelectorAll("button").forEach(btn => {
       const label = (btn.textContent || "").toLowerCase();
-      if (label.includes("affecter") || label.includes("archiver") || label.includes("termin")) {
+      if (label.includes("affecter") || label.includes("termin")) {
         btn.disabled = true;
         btn.style.opacity = "0.5";
         btn.style.cursor = "not-allowed";
       }
+      // Le bouton Archiver reste toujours actif, même après TERMINÉ
     });
   }
 }
