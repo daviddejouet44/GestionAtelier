@@ -39,10 +39,7 @@ app.MapPut("/api/config/schedule", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -62,10 +59,7 @@ app.MapPost("/api/config/schedule/holidays", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -91,10 +85,7 @@ app.MapDelete("/api/config/schedule/holidays", (HttpContext ctx, string date) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var existing = MongoDbHelper.GetSettings<ScheduleSettings>("schedule")
@@ -129,10 +120,7 @@ app.MapPut("/api/config/key-dates-offsets", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var settings = await ctx.Request.ReadFromJsonAsync<KeyDatesOffsetsSettings>();

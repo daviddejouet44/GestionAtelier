@@ -39,13 +39,8 @@ app.MapPut("/api/settings/report-config", async (HttpContext ctx) =>
     try
     {
         var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token))
-        {
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            if (parts.Length < 3 || parts[2] != "3")
-                return Results.Json(new { ok = false, error = "Admin only" });
-        }
+        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
+            return Results.Json(new { ok = false, error = "Admin only" });
 
         var cfg = await ctx.Request.ReadFromJsonAsync<DailyReportConfig>() ?? new DailyReportConfig();
         MongoDbHelper.UpsertSettings("dailyReportConfig", cfg);
@@ -63,13 +58,8 @@ app.MapPost("/api/reports/generate-now", async (HttpContext ctx) =>
     try
     {
         var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token))
-        {
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            if (parts.Length < 3 || parts[2] != "3")
-                return Results.Json(new { ok = false, error = "Admin only" });
-        }
+        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
+            return Results.Json(new { ok = false, error = "Admin only" });
 
         await DailyReportService.GenerateReportsAsync();
         return Results.Json(new { ok = true });

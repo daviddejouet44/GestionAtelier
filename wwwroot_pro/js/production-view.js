@@ -572,7 +572,11 @@ async function renderPdfThumbnailRO(fullPath, container) {
     return;
   }
   try {
-    const pdf = await pdfjsLib.getDocument("/api/file?path=" + encodeURIComponent(fullPath)).promise;
+    const pdfUrl = "/api/file?path=" + encodeURIComponent(fullPath);
+    const pdf = await pdfjsLib.getDocument({
+      url: pdfUrl,
+      httpHeaders: { "Authorization": "Bearer " + (authToken || "") }
+    }).promise;
     const page = await pdf.getPage(1);
     const viewport = page.getViewport({ scale: 0.15 });
     const canvas = document.createElement("canvas");

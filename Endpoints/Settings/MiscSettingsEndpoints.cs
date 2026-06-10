@@ -30,10 +30,7 @@ app.MapGet("/api/config/paths", (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var cfg = MongoDbHelper.GetSettings<PathsSettings>("paths")
@@ -47,10 +44,7 @@ app.MapPut("/api/config/paths", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -76,10 +70,7 @@ app.MapGet("/api/config/fabrication-imports", (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var cfg = MongoDbHelper.GetSettings<FabricationImportsSettings>("fabrication_imports")
@@ -97,10 +88,7 @@ app.MapPut("/api/config/fabrication-imports", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -135,10 +123,7 @@ app.MapPost("/api/settings/faconnage-import", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         if (!ctx.Request.HasFormContentType)
@@ -176,10 +161,7 @@ app.MapPut("/api/settings/faconnage-options", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -222,10 +204,7 @@ app.MapPut("/api/settings/binding-options", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -256,10 +235,7 @@ app.MapPut("/api/settings/folds-options", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -290,10 +266,7 @@ app.MapPut("/api/settings/output-options", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -311,10 +284,7 @@ app.MapGet("/api/config/integrations", (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var cfg = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations")
@@ -328,10 +298,7 @@ app.MapPut("/api/config/integrations", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -355,10 +322,7 @@ app.MapGet("/api/admin/activity-logs", (HttpContext ctx, string? date) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var logs = MongoDbHelper.GetActivityLogs(date);
@@ -371,10 +335,7 @@ app.MapGet("/api/admin/logs", (HttpContext ctx, string? date) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var logs = MongoDbHelper.GetRecentLogs(date);
@@ -387,15 +348,11 @@ app.MapGet("/api/admin/stats", (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (string.IsNullOrWhiteSpace(token))
+        if (!AuthHelper.IsAuthenticated(ctx))
             return Results.Json(new { ok = false, error = "Non authentifié" });
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3)
-            return Results.Json(new { ok = false, error = "Non authentifié" });
+        var userId = AuthHelper.GetClaim(ctx, "userId");
         var statsUsers = BackendUtils.LoadUsers();
-        if (!statsUsers.Any(u => u.Id == parts[0]))
+        if (string.IsNullOrWhiteSpace(userId) || !statsUsers.Any(u => u.Id == userId))
             return Results.Json(new { ok = false, error = "Utilisateur non trouvé" });
 
         var root = BackendUtils.HotfoldersRoot();
@@ -520,8 +477,8 @@ app.MapGet("/api/config/commands", (HttpContext ctx) =>
             prismaPrepareCommand = "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\"",
             printCommand = "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\" /SP /C {quantity}",
             modifyCommand = "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\"",
-            fieryHotfolderBase = "C:\\Fiery\\Hotfolders",
-            controllerPath = "C:\\PrismaSync\\Controller"
+            fieryHotfolderBase = Path.Combine(BackendUtils.HotfoldersRoot(), "Fiery"),
+            controllerPath = Path.Combine(BackendUtils.HotfoldersRoot(), "Controller")
         }});
     return Results.Json(new { ok = true, config = new {
         batCommand = doc.Contains("batCommand") ? doc["batCommand"].AsString : "",
@@ -604,10 +561,7 @@ app.MapGet("/api/config/preflight", (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var cfg = MongoDbHelper.GetSettings<PreflightSettings>("preflight") ?? new PreflightSettings();
@@ -620,10 +574,7 @@ app.MapPut("/api/config/preflight", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -679,11 +630,7 @@ app.MapPost("/api/settings/sheet-formats/import", async (HttpContext ctx) =>
     try
     {
         var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token))
-        {
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            if (parts.Length < 3 || parts[2] != "3")
+        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
                 return Results.Json(new { ok = false, error = "Admin only" });
         }
 
@@ -735,11 +682,7 @@ app.MapPost("/api/settings/cover-products", async (HttpContext ctx) =>
     try
     {
         var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token))
-        {
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            if (parts.Length < 3 || parts[2] != "3")
+        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
                 return Results.Json(new { ok = false, error = "Admin only" });
         }
 
@@ -773,11 +716,7 @@ app.MapPost("/api/settings/sheet-calculation-rules", async (HttpContext ctx) =>
     try
     {
         var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token))
-        {
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            if (parts.Length < 3 || parts[2] != "3")
+        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
                 return Results.Json(new { ok = false, error = "Admin only" });
         }
 
@@ -817,11 +756,7 @@ app.MapPost("/api/settings/delivery-delay", async (HttpContext ctx) =>
     try
     {
         var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token))
-        {
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            if (parts.Length < 3 || parts[2] != "3")
+        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
                 return Results.Json(new { ok = false, error = "Admin only" });
         }
 
@@ -853,11 +788,7 @@ app.MapPut("/api/settings/key-dates", async (HttpContext ctx) =>
     try
     {
         var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token))
-        {
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            if (parts.Length < 3 || parts[2] != "3")
+        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
                 return Results.Json(new { ok = false, error = "Admin only" });
         }
 
@@ -891,11 +822,7 @@ app.MapPut("/api/settings/grammage-time-config", async (HttpContext ctx) =>
     try
     {
         var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token))
-        {
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            if (parts.Length < 3 || parts[2] != "3")
+        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
                 return Results.Json(new { ok = false, error = "Admin only" });
         }
 
@@ -938,11 +865,7 @@ app.MapPut("/api/settings/jdf-config", async (HttpContext ctx) =>
     try
     {
         var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token))
-        {
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            if (parts.Length < 3 || parts[2] != "3")
+        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
                 return Results.Json(new { ok = false, error = "Admin only" });
         }
 
@@ -1102,11 +1025,7 @@ app.MapPost("/api/settings/finition-icons", async (HttpContext ctx) =>
     try
     {
         var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token))
-        {
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            if (parts.Length < 3 || parts[2] != "3")
+        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
                 return Results.Json(new { ok = false, error = "Admin only" });
         }
 
@@ -1157,11 +1076,7 @@ app.MapPut("/api/settings/imap", async (HttpContext ctx) =>
     try
     {
         var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token))
-        {
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            if (parts.Length < 3 || parts[2] != "3")
+        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
                 return Results.Json(new { ok = false, error = "Admin only" });
         }
         var cfg = await ctx.Request.ReadFromJsonAsync<ImapSettings>();
@@ -1203,10 +1118,7 @@ app.MapPut("/api/settings/planning-colors", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -1232,10 +1144,7 @@ app.MapGet("/api/settings/actions-config", (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts   = decoded.Split(':');
-        if (parts.Length < 3) return Results.Json(new { ok = false, error = "Auth requise" });
+        if (!AuthHelper.IsAuthenticated(ctx)) return Results.Json(new { ok = false, error = "Auth requise" });
 
         var saved = MongoDbHelper.GetSettings<KanbanActionsConfig>("kanbanActionsConfig");
         var actions = saved?.Actions.Count > 0
@@ -1287,7 +1196,7 @@ app.MapPut("/api/settings/actions-config", async (HttpContext ctx) =>
 
 app.MapGet("/api/admin/settings/export", async (HttpContext ctx) =>
 {
-    if (!IsAdminTokenProfile3(ctx.Request.Headers["Authorization"].ToString()))
+    if (!AuthHelper.IsAdmin(ctx))
         return Results.Json(new { ok = false, error = "Admin only" });
 
     try
@@ -1337,7 +1246,7 @@ app.MapGet("/api/admin/settings/export", async (HttpContext ctx) =>
 
 app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
 {
-    if (!IsAdminTokenProfile3(ctx.Request.Headers["Authorization"].ToString()))
+    if (!AuthHelper.IsAdmin(ctx))
         return Results.Json(new { ok = false, error = "Admin only" });
 
     try
@@ -1387,18 +1296,6 @@ app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
         new() { Id = "fiery",         Label = "Envoyer dans Fiery",        Enabled = true },
     };
 
-    /// <summary>Returns true if the request bearer token belongs to an admin (profile 3).</summary>
-    private static bool IsAdminTokenProfile3(string authHeader)
-    {
-        try
-        {
-            var token = authHeader.Replace("Bearer ", "");
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            return parts.Length >= 3 && parts[2] == "3";
-        }
-        catch { return false; }
-    }
 
     private static async Task<object> SavePassesConfigAsync(HttpContext ctx)
     {

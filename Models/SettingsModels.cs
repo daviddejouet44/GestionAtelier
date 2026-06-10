@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json.Serialization;
 
 namespace GestionAtelier.Models;
@@ -37,8 +38,10 @@ public class PathsSettings
 
 public class AppPathSettings
 {
-    public const string DefaultPrismaTempCopyPath = @"C:\FluxAtelier\Base\TEMP_COPY_Prepare";
-    public const string DefaultPrismaTargetPath = @"C:\Flux\PrismaPrepare";
+    public static string DefaultPrismaTempCopyPath =>
+        Path.Combine(GestionAtelier.Services.BackendUtils.HotfoldersRoot(), "TEMP_COPY_Prepare");
+    public static string DefaultPrismaTargetPath =>
+        Path.Combine(GestionAtelier.Services.BackendUtils.HotfoldersRoot(), "PrismaPrepare");
 
     [JsonPropertyName("prisma_temp_copy_path")]
     public string PrismaTempCopyPath { get; set; } = DefaultPrismaTempCopyPath;

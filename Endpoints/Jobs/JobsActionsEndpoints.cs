@@ -656,18 +656,11 @@ app.MapPost("/api/jobs/copy-to-hotfolder", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (string.IsNullOrWhiteSpace(token))
+        if (!AuthHelper.IsAuthenticated(ctx))
             return Results.Json(new { ok = false, error = "Non authentifié" });
-        string userId;
-        try
-        {
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            if (parts.Length < 3) return Results.Json(new { ok = false, error = "Token invalide" });
-            userId = parts[0];
-        }
-        catch { return Results.Json(new { ok = false, error = "Token invalide" }); }
+        var userId = AuthHelper.GetClaim(ctx, "userId");
+        if (string.IsNullOrWhiteSpace(userId))
+            return Results.Json(new { ok = false, error = "Token invalide" });
         var users = BackendUtils.LoadUsers();
         if (!users.Any(u => u.Id == userId))
             return Results.Json(new { ok = false, error = "Utilisateur non trouvé" });

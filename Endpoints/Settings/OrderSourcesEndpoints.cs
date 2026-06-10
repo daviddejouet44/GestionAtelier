@@ -21,26 +21,13 @@ public static class OrderSourcesEndpoints
 {
     public static void MapOrderSourcesEndpoints(this WebApplication app)
     {
-        // ── Auth helpers ──────────────────────────────────────────────────────
-        static bool IsAdmin(HttpContext ctx)
-        {
-            try
-            {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                return parts.Length >= 3 && parts[2] == "3";
-            }
-            catch { return false; }
-        }
-
         const string CollectionName = "order_sources";
         const string ImportsCollection = "order_source_imports";
 
         // ── GET /api/integrations/order-sources ───────────────────────────────
         app.MapGet("/api/integrations/order-sources", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var col = MongoDbHelper.GetCollection<BsonDocument>(CollectionName);
@@ -54,7 +41,7 @@ public static class OrderSourcesEndpoints
         // ── POST /api/integrations/order-sources ──────────────────────────────
         app.MapPost("/api/integrations/order-sources", async (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -74,7 +61,7 @@ public static class OrderSourcesEndpoints
         // ── PUT /api/integrations/order-sources/{id} ──────────────────────────
         app.MapPut("/api/integrations/order-sources/{id}", async (HttpContext ctx, string id) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var col = MongoDbHelper.GetCollection<BsonDocument>(CollectionName);
@@ -99,7 +86,7 @@ public static class OrderSourcesEndpoints
         // ── DELETE /api/integrations/order-sources/{id} ───────────────────────
         app.MapDelete("/api/integrations/order-sources/{id}", (HttpContext ctx, string id) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var col = MongoDbHelper.GetCollection<BsonDocument>(CollectionName);
@@ -112,7 +99,7 @@ public static class OrderSourcesEndpoints
         // ── POST /api/integrations/order-sources/{id}/test ───────────────────
         app.MapPost("/api/integrations/order-sources/{id}/test", async (HttpContext ctx, string id) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var col = MongoDbHelper.GetCollection<BsonDocument>(CollectionName);
@@ -161,7 +148,7 @@ public static class OrderSourcesEndpoints
         // ── POST /api/integrations/order-sources/{id}/run ────────────────────
         app.MapPost("/api/integrations/order-sources/{id}/run", async (HttpContext ctx, string id) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var pollingService = app.Services.GetService<OrderSourcePollingService>();
@@ -187,7 +174,7 @@ public static class OrderSourcesEndpoints
         // ── GET /api/integrations/order-sources/{id}/logs ────────────────────
         app.MapGet("/api/integrations/order-sources/{id}/logs", (HttpContext ctx, string id) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var limitStr = ctx.Request.Query["limit"].ToString();
@@ -209,7 +196,7 @@ public static class OrderSourcesEndpoints
         // ── GET /api/integrations/order-sources/logs ─────────────────────────
         app.MapGet("/api/integrations/order-sources/logs", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var limitStr = ctx.Request.Query["limit"].ToString();
@@ -241,7 +228,7 @@ public static class OrderSourcesEndpoints
         // ── GET /api/integrations/dropbox/authorize ───────────────────────────
         app.MapGet("/api/integrations/dropbox/authorize", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var sourceId = ctx.Request.Query["sourceId"].ToString();
@@ -334,7 +321,7 @@ public static class OrderSourcesEndpoints
         // ── PUT /api/integrations/dropbox/global-config ───────────────────────
         app.MapPut("/api/integrations/dropbox/global-config", async (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -354,7 +341,7 @@ public static class OrderSourcesEndpoints
         // ── GET /api/integrations/dropbox/global-config ───────────────────────
         app.MapGet("/api/integrations/dropbox/global-config", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var cfg = MongoDbHelper.GetSettings<DropboxGlobalConfig>("dropboxGlobalConfig")
@@ -369,7 +356,7 @@ public static class OrderSourcesEndpoints
         // ── GET /api/integrations/google-drive/authorize ──────────────────────
         app.MapGet("/api/integrations/google-drive/authorize", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var sourceId = ctx.Request.Query["sourceId"].ToString();
@@ -460,7 +447,7 @@ public static class OrderSourcesEndpoints
         // ── GET /api/integrations/google-drive/global-config ─────────────────
         app.MapGet("/api/integrations/google-drive/global-config", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var cfg = MongoDbHelper.GetSettings<GoogleDriveGlobalConfig>("googleDriveGlobalConfig")
@@ -474,7 +461,7 @@ public static class OrderSourcesEndpoints
         // ── PUT /api/integrations/google-drive/global-config ─────────────────
         app.MapPut("/api/integrations/google-drive/global-config", async (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -494,7 +481,7 @@ public static class OrderSourcesEndpoints
         // ── GET /api/integrations/box/authorize ───────────────────────────────
         app.MapGet("/api/integrations/box/authorize", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var sourceId = ctx.Request.Query["sourceId"].ToString();
@@ -586,7 +573,7 @@ public static class OrderSourcesEndpoints
         // ── GET /api/integrations/box/global-config ───────────────────────────
         app.MapGet("/api/integrations/box/global-config", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var cfg = MongoDbHelper.GetSettings<BoxGlobalConfig>("boxGlobalConfig")
@@ -600,7 +587,7 @@ public static class OrderSourcesEndpoints
         // ── PUT /api/integrations/box/global-config ───────────────────────────
         app.MapPut("/api/integrations/box/global-config", async (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -620,7 +607,7 @@ public static class OrderSourcesEndpoints
         // ── GET /api/integrations/onedrive/authorize ──────────────────────────
         app.MapGet("/api/integrations/onedrive/authorize", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var sourceId = ctx.Request.Query["sourceId"].ToString();
@@ -714,7 +701,7 @@ public static class OrderSourcesEndpoints
         // ── GET /api/integrations/onedrive/global-config ──────────────────────
         app.MapGet("/api/integrations/onedrive/global-config", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var cfg = MongoDbHelper.GetSettings<OneDriveGlobalConfig>("oneDriveGlobalConfig")
@@ -728,7 +715,7 @@ public static class OrderSourcesEndpoints
         // ── PUT /api/integrations/onedrive/global-config ──────────────────────
         app.MapPut("/api/integrations/onedrive/global-config", async (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
