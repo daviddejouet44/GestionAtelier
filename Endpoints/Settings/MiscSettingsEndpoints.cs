@@ -24,6 +24,17 @@ namespace GestionAtelier.Endpoints.Settings;
 
 public static class MiscSettingsEndpoints
 {
+    private static readonly Type? AuthHelperType = Type.GetType("GestionAtelier.Services.AuthHelper, GestionAtelier");
+    private static readonly System.Reflection.MethodInfo? AuthIsAdminMethod =
+        AuthHelperType?.GetMethod("IsAdmin", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+    private static readonly System.Reflection.MethodInfo? AuthIsAuthenticatedMethod =
+        AuthHelperType?.GetMethod("IsAuthenticated", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+    private static readonly System.Reflection.MethodInfo? AuthGetClaimMethod =
+        AuthHelperType?.GetMethod("GetClaim", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+    private static readonly Type? ErrorHelperType = Type.GetType("GestionAtelier.Services.ErrorHelper, GestionAtelier");
+    private static readonly System.Reflection.MethodInfo? ErrorHandleExceptionMethod =
+        ErrorHelperType?.GetMethod("HandleException", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+
     public static void MapMiscSettingsEndpoints(this WebApplication app, string recyclePath)
     {
 app.MapGet("/api/config/paths", (HttpContext ctx) =>
@@ -1279,10 +1290,9 @@ app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
     // TODO: requires AuthHelper from PR1
     private static bool IsAdmin(HttpContext ctx)
     {
-        var authType = Type.GetType("GestionAtelier.Services.AuthHelper, GestionAtelier");
-        var method = authType?.GetMethod("IsAdmin", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-        if (method != null)
-            return method.Invoke(null, new object[] { ctx }) as bool? ?? false;
+        var helperResult = TryInvokeAuthBool("IsAdmin", ctx);
+        if (helperResult.HasValue)
+            return helperResult.Value;
 
         try
         {
@@ -1297,10 +1307,9 @@ app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
     // TODO: requires AuthHelper from PR1
     private static bool IsAuthenticated(HttpContext ctx)
     {
-        var authType = Type.GetType("GestionAtelier.Services.AuthHelper, GestionAtelier");
-        var method = authType?.GetMethod("IsAuthenticated", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-        if (method != null)
-            return method.Invoke(null, new object[] { ctx }) as bool? ?? false;
+        var helperResult = TryInvokeAuthBool("IsAuthenticated", ctx);
+        if (helperResult.HasValue)
+            return helperResult.Value;
 
         try
         {
@@ -1314,10 +1323,9 @@ app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
     // TODO: requires AuthHelper from PR1
     private static string? GetClaim(HttpContext ctx, string claimType)
     {
-        var authType = Type.GetType("GestionAtelier.Services.AuthHelper, GestionAtelier");
-        var method = authType?.GetMethod("GetClaim", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-        if (method != null)
-            return method.Invoke(null, new object[] { ctx, claimType }) as string;
+        var helperResult = TryInvokeAuthString("GetClaim", ctx, claimType);
+        if (helperResult.found)
+            return helperResult.value;
 
         if (claimType != "userId")
             return null;
@@ -1335,13 +1343,56 @@ app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
     // TODO: requires ErrorHelper from PR2
     private static IResult HandleException(Exception ex)
     {
-        var errorType = Type.GetType("GestionAtelier.Services.ErrorHelper, GestionAtelier");
-        var method = errorType?.GetMethod("HandleException", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-        if (method?.Invoke(null, new object[] { ex }) is IResult result)
+        if (TryInvokeErrorHelper(ex) is IResult result)
             return result;
 
-        Console.WriteLine($"[ERROR] MiscSettings: {ex}");
+        LogMiscSettingsError(ex);
         return Results.Json(new { ok = false, error = "Une erreur interne est survenue." });
+    }
+
+    private static bool? TryInvokeAuthBool(string methodName, HttpContext ctx)
+    {
+        try
+        {
+            var method = methodName switch
+            {
+                "IsAdmin" => AuthIsAdminMethod,
+                "IsAuthenticated" => AuthIsAuthenticatedMethod,
+                _ => null
+            };
+            if (method?.Invoke(null, new object[] { ctx }) is bool value)
+                return value;
+        }
+        catch { }
+        return null;
+    }
+
+    private static (bool found, string? value) TryInvokeAuthString(string methodName, HttpContext ctx, string claimType)
+    {
+        try
+        {
+            var method = methodName == "GetClaim" ? AuthGetClaimMethod : null;
+            if (method != null)
+                return (true, method.Invoke(null, new object[] { ctx, claimType }) as string);
+        }
+        catch { }
+        return (false, null);
+    }
+
+    private static IResult? TryInvokeErrorHelper(Exception ex)
+    {
+        try
+        {
+            if (ErrorHandleExceptionMethod?.Invoke(null, new object[] { ex }) is IResult result)
+                return result;
+        }
+        catch { }
+        return null;
+    }
+
+    private static void LogMiscSettingsError(Exception ex)
+    {
+        Console.WriteLine($"[ERROR] MiscSettings: {ex}");
     }
 
     private static async Task<object> SavePassesConfigAsync(HttpContext ctx)
@@ -1361,7 +1412,7 @@ app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[ERROR] MiscSettings: {ex}");
+            LogMiscSettingsError(ex);
             return new { ok = false, error = "Une erreur interne est survenue." };
         }
     }
