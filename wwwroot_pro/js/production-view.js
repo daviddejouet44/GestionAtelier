@@ -432,7 +432,7 @@ export async function refreshKanbanColumnReadOnly(folderName, col) {
       const btnOpen = document.createElement("button");
       btnOpen.className = "btn btn-sm";
       btnOpen.textContent = "Ouvrir";
-      btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full), "_blank", "noopener");
+      btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full) + "&token=" + encodeURIComponent(authToken || ""), "_blank", "noopener");
       actions.appendChild(btnOpen);
 
       const btnFiche = document.createElement("button");

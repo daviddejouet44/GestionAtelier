@@ -191,8 +191,37 @@ app.MapGet("/api/folders", (HttpContext ctx) =>
 
 app.MapGet("/api/file", (HttpContext ctx, string path, bool? download) =>
 {
-    // 1. Authentication required
-    if (!AuthHelper.IsAuthenticated(ctx))
+    // Authentication: accept header auth OR ?token= query param (needed for window.open / new tab)
+    bool authenticated = AuthHelper.IsAuthenticated(ctx);
+    if (!authenticated)
+    {
+        var queryToken = ctx.Request.Query["token"].ToString();
+        if (!string.IsNullOrWhiteSpace(queryToken))
+        {
+            try
+            {
+                var key = AuthHelper.GetSigningKey();
+                var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+                var validationParams = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+                {
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = key,
+                    ValidateIssuer = false,
+                    ValidateAudience = false,
+                    ClockSkew = TimeSpan.Zero
+                };
+                handler.ValidateToken(queryToken, validationParams, out _);
+                authenticated = true;
+            }
+            catch (Microsoft.IdentityModel.Tokens.SecurityTokenException) { }
+            catch (ArgumentException) { }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WARN] /api/file token validation error: {ex.Message}");
+            }
+        }
+    }
+    if (!authenticated)
         return Results.Unauthorized();
 
     // 2. Restrict strictly to hotfolders to prevent path traversal
