@@ -244,13 +244,10 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       thumbDiv.textContent = "PDF";
       layout.appendChild(thumbDiv);
       if ((job.name || "").toLowerCase().endsWith(".pdf") && window._renderPdfThumbnail) {
-        const MAX_THUMB_SIZE = 5 * 1024 * 1024; // 5 MB — skip thumbnail for large files
-        if ((job.size || 0) <= MAX_THUMB_SIZE) {
-          // Mark for deferred rendering: the card is not yet in the DOM here.
-          // renderBatch() appends it later; the post-render pass below will fire _renderPdfThumbnail
-          // only after ALL cards are connected, which is the only reliable approach.
-          thumbDiv.dataset.pdfPending = full;
-        }
+        // Mark for deferred rendering: the card is not yet in the DOM here.
+        // renderBatch() appends it later; the post-render pass below will fire _renderPdfThumbnail
+        // only after ALL cards are connected, which is the only reliable approach.
+        thumbDiv.dataset.pdfPending = full;
       }
 
       // Right info stack

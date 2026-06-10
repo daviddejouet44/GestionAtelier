@@ -533,7 +533,10 @@ async function loadPdfDetails(fileName, folder, container) {
           const pdfUrl = "/api/file?path=" + encodeURIComponent(pdfFullPath);
           const pdf = await pdfjsLib.getDocument({
             url: pdfUrl,
-            httpHeaders: { "Authorization": "Bearer " + (authToken || "") }
+            httpHeaders: { "Authorization": "Bearer " + (authToken || "") },
+            disableAutoFetch: true,
+            disableStream: false,
+            rangeChunkSize: 65536
           }).promise;
           const page = await pdf.getPage(1);
           const viewport = page.getViewport({ scale: 0.4 });

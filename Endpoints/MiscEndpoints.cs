@@ -246,8 +246,8 @@ app.MapGet("/api/file", (HttpContext ctx, string path, bool? download) =>
         ct = "application/octet-stream";
 
     if (download == true)
-        return Results.File(File.OpenRead(full), ct, Path.GetFileName(full));
-    return Results.File(File.OpenRead(full), ct);
+        return Results.File(File.OpenRead(full), ct, Path.GetFileName(full), enableRangeProcessing: true);
+    return Results.File(File.OpenRead(full), ct, enableRangeProcessing: true);
 });
 
 // ======================================================

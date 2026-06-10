@@ -22,7 +22,7 @@ namespace GestionAtelier.Endpoints.Settings;
 
 public static class KanbanConfigEndpoints
 {
-    private static List<KanbanColumnConfig> GetDefaultKanbanColumns() => new()
+    public static List<KanbanColumnConfig> GetDefaultKanbanColumns() => new()
     {
         new KanbanColumnConfig { Folder = "Début de production", Label = "Jobs à traiter",           Color = "#5fa8c4", Visible = true, Order = 0 },
         new KanbanColumnConfig { Folder = "Corrections",         Label = "Preflight",                Color = "#e0e0e0", Visible = true, Order = 1 },
@@ -35,16 +35,25 @@ public static class KanbanConfigEndpoints
         new KanbanColumnConfig { Folder = "Fin de production",    Label = "Fin de production",        Color = "#22c55e", Visible = true, Order = 8 },
     };
 
+    public static List<KanbanColumnConfig> GetConfiguredKanbanColumns()
+    {
+        var cfg = MongoDbHelper.GetSettings<KanbanSettings>("kanbanColumns");
+        var columns = (cfg == null || cfg.Columns == null || cfg.Columns.Count == 0)
+            ? GetDefaultKanbanColumns()
+            : cfg.Columns;
+
+        return columns
+            .OrderBy(c => c.Order)
+            .ToList();
+    }
+
     public static void MapKanbanConfigEndpoints(this WebApplication app, string recyclePath)
     {
 app.MapGet("/api/config/kanban-columns", () =>
 {
     try
     {
-        var cfg = MongoDbHelper.GetSettings<KanbanSettings>("kanbanColumns");
-        if (cfg == null || cfg.Columns == null || cfg.Columns.Count == 0)
-            return Results.Json(new { ok = true, columns = GetDefaultKanbanColumns() });
-        return Results.Json(new { ok = true, columns = cfg.Columns });
+        return Results.Json(new { ok = true, columns = GetConfiguredKanbanColumns() });
     }
     catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });

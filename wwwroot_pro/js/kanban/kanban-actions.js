@@ -174,8 +174,14 @@ export async function openAssignDropdown(btn, fullPath) {
 
   let operators = [];
   try {
-    const resp = await fetch("/api/operators").then(r => r.json());
-    operators = resp.operators || [];
+    const resp = await fetch("/api/operators", {
+      headers: { "Authorization": "Bearer " + (authToken || "") }
+    }).then(r => r.json());
+    if (resp.ok === false) {
+      showNotification("❌ " + (resp.error || "Impossible de charger les opérateurs"), "error");
+      return;
+    }
+    operators = Array.isArray(resp.operators) ? resp.operators : [];
   } catch(err) {
     showNotification("❌ Impossible de charger les opérateurs", "error");
     return;
@@ -238,7 +244,13 @@ export async function openAssignDropdown(btn, fullPath) {
 // ALERTES FAÇONNAGE — popup
 // ======================================================
 export async function showFaconnageAlerts() {
-  const data = await fetch("/api/alerts/faconnage").then(r => r.json()).catch(() => ({ ok: false }));
+  const data = await fetch("/api/alerts/faconnage", {
+    headers: { "Authorization": "Bearer " + (authToken || "") }
+  }).then(r => r.json()).catch(() => ({ ok: false }));
+  if (data.ok === false) {
+    showNotification("❌ " + (data.error || "Impossible de charger les productions à venir"), "error");
+    return;
+  }
 
   const overlay = document.createElement("div");
   overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:10000;";
@@ -261,14 +273,19 @@ export async function showFaconnageAlerts() {
     for (const item of data.alerts) {
       const quantite = item.quantite ? parseInt(item.quantite) : null;
       // Build full finition list from all sources
-      const allFinitions = [];
-      if (Array.isArray(item.faconnage) && item.faconnage.length > 0)
-        allFinitions.push(...item.faconnage);
-      if (Array.isArray(item.ennoblissement) && item.ennoblissement.length > 0)
-        allFinitions.push(...item.ennoblissement);
-      if (item.rainage) allFinitions.push('Rainage');
-      if (Array.isArray(item.finitionsChecked) && item.finitionsChecked.length > 0)
-        allFinitions.push(...item.finitionsChecked);
+      const allFinitions = Array.isArray(item.allFinitions)
+        ? [...item.allFinitions]
+        : (() => {
+            const finitions = [];
+            if (Array.isArray(item.faconnage) && item.faconnage.length > 0)
+              finitions.push(...item.faconnage);
+            if (Array.isArray(item.ennoblissement) && item.ennoblissement.length > 0)
+              finitions.push(...item.ennoblissement);
+            if (item.rainage) finitions.push('Rainage');
+            if (Array.isArray(item.finitionsChecked) && item.finitionsChecked.length > 0)
+              finitions.push(...item.finitionsChecked);
+            return finitions;
+          })();
 
       if (allFinitions.length > 0) {
         const seen = new Set();
