@@ -2429,7 +2429,9 @@ app.MapPut("/api/fabrication/key-date", async (HttpContext ctx) =>
         }
 
         if (result.ModifiedCount == 0)
+        {
             Console.WriteLine($"[key-date] ℹ️ Document trouvé mais déjà à jour pour fileName={fileName}");
+        }
 
         return Results.Json(new { ok = true });
     }

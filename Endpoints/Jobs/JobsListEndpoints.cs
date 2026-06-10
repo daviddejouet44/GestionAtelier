@@ -192,8 +192,9 @@ app.MapGet("/api/alerts/faconnage", (HttpContext ctx) =>
         var impressionColumn = GestionAtelier.Endpoints.Settings.KanbanConfigEndpoints
             .GetConfiguredKanbanColumns()
             .FirstOrDefault(c => string.Equals(c.Folder, "Impression en cours", StringComparison.OrdinalIgnoreCase));
-        var folder = !string.IsNullOrWhiteSpace(impressionColumn?.FolderPath)
-            ? Path.GetFullPath(impressionColumn!.FolderPath!)
+        var customFolderPath = impressionColumn?.FolderPath;
+        var folder = !string.IsNullOrWhiteSpace(customFolderPath)
+            ? Path.GetFullPath(customFolderPath)
             : Path.Combine(root, "Impression en cours");
         if (!Directory.Exists(folder))
             return Results.Json(new { ok = true, alerts = new object[0], lastGeneratedAt = (object?)null });
