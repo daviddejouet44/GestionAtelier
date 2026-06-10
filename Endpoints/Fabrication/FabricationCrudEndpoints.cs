@@ -1355,7 +1355,7 @@ app.MapGet("/api/bat/file-by-token", (HttpContext ctx) =>
 });
 
 // Process pending BAT output renames: rename "Epreuve PDF.pdf" → {sourceFileName}.Epreuve.pdf
-app.MapPost("/api/bat/process-pending", () =>
+app.MapPost("/api/bat/process-pending", async () =>
 {
     try
     {
@@ -2047,7 +2047,7 @@ app.MapGet("/api/fabrication/finitions", (HttpContext ctx) =>
 // ======================================================
 // ALERTS — RETARD DE PRODUCTION (dateImpression dépassée, hors Fin de production)
 // ======================================================
-app.MapGet("/api/alerts/production-delay", () =>
+app.MapGet("/api/alerts/production-delay", async () =>
 {
     try
     {
@@ -2192,7 +2192,7 @@ app.MapGet("/api/alerts/production-delay", () =>
 // DELETE /api/alerts/purge-orphans
 // Marks all fabrication records that have no corresponding active file as excludeFromPlanning.
 // ======================================================
-app.MapDelete("/api/alerts/purge-orphans", (HttpContext ctx) =>
+app.MapDelete("/api/alerts/purge-orphans", async (HttpContext ctx) =>
 {
     try
     {
