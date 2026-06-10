@@ -531,7 +531,10 @@ async function loadPdfDetails(fileName, folder, container) {
       if (canvas) {
         try {
           const pdfUrl = "/api/file?path=" + encodeURIComponent(pdfFullPath);
-          const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
+          const pdf = await pdfjsLib.getDocument({
+            url: pdfUrl,
+            httpHeaders: { "Authorization": "Bearer " + (authToken || "") }
+          }).promise;
           const page = await pdf.getPage(1);
           const viewport = page.getViewport({ scale: 0.4 });
           canvas.width = viewport.width;
