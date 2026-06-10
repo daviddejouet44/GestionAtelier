@@ -42,15 +42,20 @@ app.MapPost("/api/auth/login", async (HttpContext ctx) =>
         var login = loginEl.GetString() ?? "";
         var pwd = pwdEl.GetString() ?? "";
 
-        Console.WriteLine($"[INFO] Login attempt for user: {login}");
-
         var users = BackendUtils.LoadUsers();
-
         var user = users.FirstOrDefault(u => u.Login == login && u.Password == pwd);
 
         if (user == null)
         {
-            Console.WriteLine($"[INFO] Login failed for user: {login}");
+            // Point 19: Log failed login attempt
+            MongoDbHelper.InsertActivityLog(new ActivityLogEntry
+            {
+                Timestamp = DateTime.Now,
+                UserLogin = login,
+                UserName = "?",
+                Action = "LOGIN_FAILED",
+                Details = $"Tentative de connexion échouée depuis {ctx.Connection.RemoteIpAddress}"
+            });
             return Results.Json(new { ok = false, error = "Identifiants invalides" });
         }
 
@@ -125,14 +130,14 @@ app.MapPost("/api/auth/login", async (HttpContext ctx) =>
 
         Console.WriteLine($"[INFO] Login successful for {user.Login}");
 
-        // Log login activity
+        // Point 19: Log successful login with IP
         MongoDbHelper.InsertActivityLog(new ActivityLogEntry
         {
             Timestamp = DateTime.Now,
             UserLogin = user.Login,
             UserName = user.Name,
-            Action = "LOGIN",
-            Details = $"Connexion profil {user.Profile}"
+            Action = "LOGIN_SUCCESS",
+            Details = $"Connexion réussie depuis {ctx.Connection.RemoteIpAddress} (profil {user.Profile})"
         });
 
         return Results.Json(new
@@ -150,10 +155,10 @@ app.MapPost("/api/auth/login", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[ERROR] Login exception: {ex.Message}");
-        return Results.Json(new { ok = false, error = ex.Message });
+        Console.WriteLine($"[DEBUG] Exception: {ex.Message}");
+        return ErrorHelper.HandleException(ex, "/api/auth/login");
     }
-});
+}).RequireRateLimiting("login");
 
 app.MapGet("/api/auth/me", (HttpContext ctx) =>
 {
@@ -185,7 +190,7 @@ app.MapGet("/api/auth/me", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -212,7 +217,7 @@ app.MapGet("/api/auth/users", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -276,7 +281,7 @@ app.MapPut("/api/auth/users/{userId}", async (HttpContext ctx, string userId) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -326,7 +331,7 @@ app.MapPost("/api/auth/register", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -355,7 +360,7 @@ app.MapDelete("/api/auth/users/{userId}", (HttpContext ctx, string userId) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -380,7 +385,7 @@ app.MapPost("/api/auth/users/{userId}/force-disconnect", (HttpContext ctx, strin
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 

@@ -53,7 +53,7 @@ app.MapGet("/api/recycle/list", () =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -91,7 +91,7 @@ app.MapPost("/api/recycle/restore", (string fullPath, string destinationFolder) 
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -116,7 +116,7 @@ app.MapDelete("/api/recycle/purge", () =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 

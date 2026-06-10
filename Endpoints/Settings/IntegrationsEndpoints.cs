@@ -67,7 +67,7 @@ public static class IntegrationsEndpoints
                     xmlImport = safeXml, erp = safeErp, pressero = safePressero, mdsf = safeMdsf, export = safeExport
                 }});
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── PUT /api/settings/integrations-config ─────────────────────────
@@ -158,7 +158,7 @@ public static class IntegrationsEndpoints
                 MongoDbHelper.UpsertSettings("integrations_full_config", cfg);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── POST /api/settings/integrations/test-connection ───────────────
@@ -188,10 +188,10 @@ public static class IntegrationsEndpoints
                 }
                 catch (Exception ex)
                 {
-                    return Results.Json(new { ok = false, error = ex.Message });
+                    return ErrorHelper.HandleException(ex);
                 }
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── POST /api/integrations/import-xml ────────────────────────────
@@ -338,7 +338,7 @@ public static class IntegrationsEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -368,7 +368,7 @@ public static class IntegrationsEndpoints
 
                 return Results.Json(new { ok = true, logs });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── GET /api/integrations/export-log ────────────────────────────
@@ -397,7 +397,7 @@ public static class IntegrationsEndpoints
 
                 return Results.Json(new { ok = true, logs });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── GET /api/integrations/export ─────────────────────────────────
@@ -492,7 +492,7 @@ public static class IntegrationsEndpoints
                 ctx.Response.Headers.Append("Content-Disposition", $"attachment; filename=\"{fileName}\"");
                 return Results.File(content, contentType, fileName);
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
     }
 

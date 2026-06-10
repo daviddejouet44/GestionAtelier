@@ -75,7 +75,7 @@ app.MapGet("/api/fabrication", (string? fullPath, string? fileName) =>
     catch (Exception ex)
     {
         Console.WriteLine($"[ERR] GET /api/fabrication: {ex.Message}");
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -282,7 +282,7 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
                     Builders<BsonDocument>.Filter.Regex("files.fileName",  new BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(sheet.FileName), "i")),
                     Builders<BsonDocument>.Filter.Regex("atelierJobPath", new BsonRegularExpression(System.Text.RegularExpressions.Regex.Escape(sheet.FileName), "i"))
                 );
-                clientOrderCol.UpdateOne(fileFilter, update);
+                await clientOrderCol.UpdateOneAsync(fileFilter, update);
             }
             else if (!string.IsNullOrWhiteSpace(sheet.NumeroDossier))
             {
@@ -319,7 +319,7 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
 
                     // Update numeroDossier in the document
                     var pfUpdate = Builders<BsonDocument>.Update.Set("numeroDossier", sheet.NumeroDossier);
-                    pfCol.UpdateOne(Builders<BsonDocument>.Filter.Eq("_id", pfDoc["_id"]), pfUpdate);
+                    await pfCol.UpdateOneAsync(Builders<BsonDocument>.Filter.Eq("_id", pfDoc["_id"]), pfUpdate);
 
                     // Rename physical folder if numeroDossier changed
                     if (oldNumeroDossier != sheet.NumeroDossier)
@@ -335,7 +335,7 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
                                 && !Directory.Exists(newFolderPath))
                             {
                                 Directory.Move(existingFolderPath, newFolderPath);
-                                pfCol.UpdateOne(
+                                await pfCol.UpdateOneAsync(
                                     Builders<BsonDocument>.Filter.Eq("_id", pfDoc["_id"]),
                                     Builders<BsonDocument>.Update.Set("folderPath", newFolderPath));
                             }
@@ -353,7 +353,7 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -416,7 +416,7 @@ app.MapGet("/api/fabrication/export-xml", async (string fullPath, HttpContext ct
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -556,7 +556,7 @@ app.MapPost("/api/fabrication/generate-jdf", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -621,7 +621,7 @@ app.MapPost("/api/bat/send-to-hotfolder", async (HttpContext ctx) =>
         try
         {
             var batPendingCol = MongoDbHelper.GetCollection<BsonDocument>("batPending");
-            batPendingCol.InsertOne(new BsonDocument
+            await batPendingCol.InsertOneAsync(new BsonDocument
             {
                 ["sourceFileName"] = Path.GetFileNameWithoutExtension(fullPath),
                 ["batFolder"] = hotfolderPath,   // watched folder = hotfolder destination
@@ -636,7 +636,7 @@ app.MapPost("/api/bat/send-to-hotfolder", async (HttpContext ctx) =>
     catch (Exception ex)
     {
         Console.WriteLine($"[ERR] bat/send-to-hotfolder: {ex.Message}");
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -752,7 +752,7 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
         try
         {
             var batPendingCol = MongoDbHelper.GetCollection<BsonDocument>("batPending");
-            batPendingCol.InsertOne(new BsonDocument
+            await batPendingCol.InsertOneAsync(new BsonDocument
             {
                 ["sourceFileName"] = sourceBaseName,
                 ["batFolder"] = tempCopyPath,
@@ -772,7 +772,7 @@ app.MapPost("/api/bat/copy-for-bat", async (HttpContext ctx) =>
     catch (Exception ex)
     {
         Console.WriteLine($"[ERR] bat/copy-for-bat: {ex.Message}\n{ex.StackTrace}");
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
     finally
     {
@@ -814,7 +814,7 @@ app.MapPost("/api/commands/bat", async (HttpContext ctx) =>
             var batFolder = batFolderCfg != null && batFolderCfg.Contains("batFolder")
                 ? batFolderCfg["batFolder"].AsString
                 : Path.GetDirectoryName(filePath) ?? "";
-            batPendingCol.InsertOne(new BsonDocument
+            await batPendingCol.InsertOneAsync(new BsonDocument
             {
                 ["sourceFileName"] = Path.GetFileNameWithoutExtension(filePath),
                 ["batFolder"] = batFolder,
@@ -826,7 +826,7 @@ app.MapPost("/api/commands/bat", async (HttpContext ctx) =>
 
         return Results.Json(new { ok = true, command = cmd });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPost("/api/commands/send-controller", async (HttpContext ctx) =>
@@ -843,7 +843,7 @@ app.MapPost("/api/commands/send-controller", async (HttpContext ctx) =>
         var (ok, err) = BackendUtils.MoveFileToDestFolder(filePath, "Impression en cours");
         return Results.Json(new { ok, error = err });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPost("/api/commands/send-prisma", async (HttpContext ctx) =>
@@ -861,7 +861,7 @@ app.MapPost("/api/commands/send-prisma", async (HttpContext ctx) =>
         var (ok, err) = BackendUtils.MoveFileToDestFolder(filePath, "PrismaPrepare");
         return Results.Json(new { ok, error = err });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPost("/api/commands/send-print", async (HttpContext ctx) =>
@@ -880,7 +880,7 @@ app.MapPost("/api/commands/send-print", async (HttpContext ctx) =>
         var (ok, err) = BackendUtils.MoveFileToDestFolder(filePath, "Impression en cours");
         return Results.Json(new { ok, error = err });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPost("/api/commands/modify", async (HttpContext ctx) =>
@@ -898,7 +898,7 @@ app.MapPost("/api/commands/modify", async (HttpContext ctx) =>
         var (ok, err) = BackendUtils.MoveFileToDestFolder(filePath, "PrismaPrepare");
         return Results.Json(new { ok, error = err });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPost("/api/commands/send-fiery", async (HttpContext ctx) =>
@@ -915,7 +915,7 @@ app.MapPost("/api/commands/send-fiery", async (HttpContext ctx) =>
         var (ok, err) = BackendUtils.MoveFileToDestFolder(filePath, "Fiery");
         return Results.Json(new { ok, error = err });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -1074,7 +1074,7 @@ app.MapGet("/api/bat/log/{fileName}", (string fileName) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -1085,7 +1085,7 @@ app.MapPost("/api/bat/send", async (HttpContext ctx) =>
     var col = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
     var filter = Builders<BsonDocument>.Filter.Eq("fullPath", path);
     var doc = new BsonDocument { ["fullPath"] = path, ["status"] = "sent", ["sentAt"] = DateTime.UtcNow, ["validatedAt"] = BsonNull.Value, ["rejectedAt"] = BsonNull.Value };
-    col.ReplaceOne(filter, doc, new ReplaceOptions { IsUpsert = true });
+    await col.ReplaceOneAsync(filter, doc, new ReplaceOptions { IsUpsert = true });
     return Results.Json(new { ok = true });
 });
 
@@ -1096,7 +1096,7 @@ app.MapPost("/api/bat/validate", async (HttpContext ctx) =>
     var col = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
     var filter = Builders<BsonDocument>.Filter.Eq("fullPath", path);
     var update = Builders<BsonDocument>.Update.Set("status", "validated").Set("validatedAt", DateTime.UtcNow);
-    col.UpdateOne(filter, update, new UpdateOptions { IsUpsert = true });
+    await col.UpdateOneAsync(filter, update, new UpdateOptions { IsUpsert = true });
     return Results.Json(new { ok = true });
 });
 
@@ -1107,7 +1107,7 @@ app.MapPost("/api/bat/reject", async (HttpContext ctx) =>
     var col = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
     var filter = Builders<BsonDocument>.Filter.Eq("fullPath", path);
     var update = Builders<BsonDocument>.Update.Set("status", "rejected").Set("rejectedAt", DateTime.UtcNow);
-    col.UpdateOne(filter, update, new UpdateOptions { IsUpsert = true });
+    await col.UpdateOneAsync(filter, update, new UpdateOptions { IsUpsert = true });
     return Results.Json(new { ok = true });
 });
 
@@ -1167,7 +1167,7 @@ app.MapPut("/api/settings/bat-validation-link", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("batValidationLink", payload);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPost("/api/bat/generate-link", async (HttpContext ctx) =>
@@ -1197,7 +1197,7 @@ app.MapPost("/api/bat/generate-link", async (HttpContext ctx) =>
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
         var now = DateTime.UtcNow;
         var linksCol = MongoDbHelper.GetCollection<BsonDocument>("batValidationLinks");
-        linksCol.InsertOne(new BsonDocument
+        await linksCol.InsertOneAsync(new BsonDocument
         {
             ["token"] = token,
             ["fullPath"] = fullPath,
@@ -1218,7 +1218,7 @@ app.MapPost("/api/bat/generate-link", async (HttpContext ctx) =>
         var link = $"{baseUrl}/bat-review.html?token={Uri.EscapeDataString(token)}";
         return Results.Json(new { ok = true, token, link });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/bat/review", (HttpContext ctx) =>
@@ -1260,7 +1260,7 @@ app.MapGet("/api/bat/review", (HttpContext ctx) =>
             decidedAt
         });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPost("/api/bat/review/decide", async (HttpContext ctx) =>
@@ -1304,7 +1304,7 @@ app.MapPost("/api/bat/review/decide", async (HttpContext ctx) =>
             .Set("decidedAt", now)
             .Set("decision", decision)
             .Set("motif", string.IsNullOrWhiteSpace(motif) ? (BsonValue)BsonNull.Value : new BsonString(motif));
-        var consumeResult = linksCol.UpdateOne(consumeFilter, consumeUpdate);
+        var consumeResult = await linksCol.UpdateOneAsync(consumeFilter, consumeUpdate);
         if (consumeResult.ModifiedCount == 0)
             return Results.Json(new { ok = false, error = "Lien invalide, expiré ou déjà utilisé" });
 
@@ -1313,17 +1313,17 @@ app.MapPost("/api/bat/review/decide", async (HttpContext ctx) =>
         if (decision == "validated")
         {
             var batUpdate = Builders<BsonDocument>.Update.Set("status", "validated").Set("validatedAt", now);
-            batCol.UpdateOne(batFilter, batUpdate, new UpdateOptions { IsUpsert = true });
+            await batCol.UpdateOneAsync(batFilter, batUpdate, new UpdateOptions { IsUpsert = true });
         }
         else
         {
             var batUpdate = Builders<BsonDocument>.Update.Set("status", "rejected").Set("rejectedAt", now);
-            batCol.UpdateOne(batFilter, batUpdate, new UpdateOptions { IsUpsert = true });
+            await batCol.UpdateOneAsync(batFilter, batUpdate, new UpdateOptions { IsUpsert = true });
         }
 
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/bat/file-by-token", (HttpContext ctx) =>
@@ -1351,7 +1351,7 @@ app.MapGet("/api/bat/file-by-token", (HttpContext ctx) =>
 
         return Results.File(fullPath, "application/pdf", enableRangeProcessing: true);
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // Process pending BAT output renames: rename "Epreuve PDF.pdf" → {sourceFileName}.Epreuve.pdf
@@ -1375,7 +1375,7 @@ app.MapPost("/api/bat/process-pending", () =>
                 try
                 {
                     File.Move(epreuveSrc, dest, overwrite: true);
-                    col.UpdateOne(Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]),
+                    await col.UpdateOneAsync(Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]),
                         Builders<BsonDocument>.Update.Set("processed", true));
                     renamed++;
                 }
@@ -1384,7 +1384,7 @@ app.MapPost("/api/bat/process-pending", () =>
         }
         return Results.Json(new { ok = true, renamed });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -1414,7 +1414,7 @@ app.MapPut("/api/config/bat-command", async (HttpContext ctx) =>
         doc["batAlertDelayHours"] = dh.ValueKind == JsonValueKind.Number ? dh.GetInt32() : 48;
     if (json.TryGetProperty("batSimpleDropletPath", out var dp))
         doc["batSimpleDropletPath"] = dp.GetString() ?? "";
-    col.ReplaceOne(Builders<BsonDocument>.Filter.Empty, doc, new ReplaceOptions { IsUpsert = true });
+    await col.ReplaceOneAsync(Builders<BsonDocument>.Filter.Empty, doc, new ReplaceOptions { IsUpsert = true });
     return Results.Json(new { ok = true });
 });
 
@@ -1470,7 +1470,7 @@ app.MapPost("/api/bat/simple", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -1502,7 +1502,7 @@ app.MapPut("/api/config/bat-mail-template", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("batMailTemplate", existing);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -1551,14 +1551,14 @@ app.MapPost("/api/fabrication/import-mail-devis", async (HttpContext ctx) =>
                 var fabCol = MongoDbHelper.GetFabricationsCollection();
                 var fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", fileName)).FirstOrDefault();
                 if (fabDoc != null)
-                    fabCol.UpdateOne(Builders<BsonDocument>.Filter.Eq("_id", fabDoc["_id"]),
+                    await fabCol.UpdateOneAsync(Builders<BsonDocument>.Filter.Eq("_id", fabDoc["_id"]),
                         Builders<BsonDocument>.Update.Set("mailDevisFileName", file.FileName));
             }
         }
 
         return Results.Json(new { ok = true, fileName = savedName });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -1601,14 +1601,14 @@ app.MapPost("/api/fabrication/import-mail-bat", async (HttpContext ctx) =>
                 var fabCol = MongoDbHelper.GetFabricationsCollection();
                 var fabDoc = fabCol.Find(Builders<BsonDocument>.Filter.Eq("fileName", fileName)).FirstOrDefault();
                 if (fabDoc != null)
-                    fabCol.UpdateOne(Builders<BsonDocument>.Filter.Eq("_id", fabDoc["_id"]),
+                    await fabCol.UpdateOneAsync(Builders<BsonDocument>.Filter.Eq("_id", fabDoc["_id"]),
                         Builders<BsonDocument>.Update.Set("mailBatFileName", file.FileName));
             }
         }
 
         return Results.Json(new { ok = true, fileName = savedName });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 
@@ -1691,7 +1691,7 @@ app.MapPost("/api/bat/bat-papier", async (HttpContext ctx) =>
         try
         {
             var batPendingCol = MongoDbHelper.GetCollection<BsonDocument>("batPending");
-            batPendingCol.InsertOne(new BsonDocument
+            await batPendingCol.InsertOneAsync(new BsonDocument
             {
                 ["sourceFileName"] = sourceBaseName,
                 ["batFolder"] = tempCopyPath,
@@ -1710,7 +1710,7 @@ app.MapPost("/api/bat/bat-papier", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
     finally
     {
@@ -1744,7 +1744,7 @@ app.MapPut("/api/config/mail-template-production-start", async (HttpContext ctx)
         MongoDbHelper.UpsertSettings("mailTemplateProductionStart", existing);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/config/mail-template-production-end", () =>
@@ -1769,7 +1769,7 @@ app.MapPut("/api/config/mail-template-production-end", async (HttpContext ctx) =
         MongoDbHelper.UpsertSettings("mailTemplateProductionEnd", existing);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/config/mail-template-bat-papier", () =>
@@ -1794,7 +1794,7 @@ app.MapPut("/api/config/mail-template-bat-papier", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("mailTemplateBatPapier", existing);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // PUT /api/fabrication/statut-production — Met à jour le statut de production (valide/refuse)
@@ -1823,13 +1823,13 @@ app.MapPut("/api/fabrication/statut-production", async (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = "Fiche introuvable" });
 
         var update = Builders<BsonDocument>.Update.Set("statutProduction", statut);
-        fabCol.UpdateOne(filter, update);
+        await fabCol.UpdateOneAsync(filter, update);
 
         return Results.Json(new { ok = true });
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -1931,7 +1931,7 @@ app.MapGet("/api/fabrication/events", () =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message, events = new object[0] });
+        Console.WriteLine($"[ERROR] fabrication events: {ex}"); return Results.Json(new { ok = false, error = "Une erreur interne est survenue. Veuillez réessayer.", events = new object[0] }, statusCode: 500);
     }
 });
 
@@ -2002,7 +2002,7 @@ app.MapGet("/api/fabrication/papers", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message, papers = new List<string>() });
+        Console.WriteLine($"[ERROR] fabrication papers: {ex}"); return Results.Json(new { ok = false, error = "Une erreur interne est survenue. Veuillez réessayer.", papers = new List<string>() }, statusCode: 500);
     }
 });
 
@@ -2040,7 +2040,7 @@ app.MapGet("/api/fabrication/finitions", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message, finitions = new List<string>() });
+        Console.WriteLine($"[ERROR] fabrication finitions: {ex}"); return Results.Json(new { ok = false, error = "Une erreur interne est survenue. Veuillez réessayer.", finitions = new List<string>() }, statusCode: 500);
     }
 });
 
@@ -2117,7 +2117,7 @@ app.MapGet("/api/alerts/production-delay", () =>
                 try
                 {
                     var cleanFilter = Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]);
-                    fabCol.UpdateOne(cleanFilter, Builders<BsonDocument>.Update.Set("excludeFromPlanning", true));
+                    await fabCol.UpdateOneAsync(cleanFilter, Builders<BsonDocument>.Update.Set("excludeFromPlanning", true));
                 }
                 catch { }
                 continue;
@@ -2132,7 +2132,7 @@ app.MapGet("/api/alerts/production-delay", () =>
                 try
                 {
                     var cleanFilter = Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]);
-                    fabCol.UpdateOne(cleanFilter, Builders<BsonDocument>.Update.Set("excludeFromPlanning", true));
+                    await fabCol.UpdateOneAsync(cleanFilter, Builders<BsonDocument>.Update.Set("excludeFromPlanning", true));
                 }
                 catch { }
                 continue;
@@ -2183,7 +2183,7 @@ app.MapGet("/api/alerts/production-delay", () =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message, groups = new object[0] });
+        Console.WriteLine($"[ERROR] fabrication groups: {ex}"); return Results.Json(new { ok = false, error = "Une erreur interne est survenue. Veuillez réessayer.", groups = new object[0] }, statusCode: 500);
     }
 });
 
@@ -2238,7 +2238,7 @@ app.MapDelete("/api/alerts/purge-orphans", (HttpContext ctx) =>
             {
                 try
                 {
-                    fabCol.UpdateOne(
+                    await fabCol.UpdateOneAsync(
                         Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]),
                         Builders<BsonDocument>.Update.Set("excludeFromPlanning", true));
                     purgedCount++;
@@ -2251,7 +2251,7 @@ app.MapDelete("/api/alerts/purge-orphans", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -2268,7 +2268,7 @@ app.MapGet("/api/settings/production-delay-alert", () =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -2283,7 +2283,7 @@ app.MapPut("/api/settings/production-delay-alert", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -2350,13 +2350,13 @@ app.MapPut("/api/fabrication/event-time", async (HttpContext ctx) =>
         if (parsedDate.HasValue)
             updateDef = updateDef.Set(fieldNames.actualDateField, new BsonDateTime(parsedDate.Value));
 
-        fabCol.UpdateOne(Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]), updateDef);
+        await fabCol.UpdateOneAsync(Builders<BsonDocument>.Filter.Eq("_id", doc["_id"]), updateDef);
 
         return Results.Json(new { ok = true });
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -2385,7 +2385,7 @@ app.MapPut("/api/fabrication/exclude-planning", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -2432,7 +2432,7 @@ app.MapPut("/api/fabrication/key-date", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -2515,7 +2515,7 @@ app.MapPut("/api/fabrication/key-date", async (HttpContext ctx) =>
         }
         catch (Exception ex)
         {
-            return Results.Json(new { ok = false, error = ex.Message });
+            return ErrorHelper.HandleException(ex);
         }
     });
 

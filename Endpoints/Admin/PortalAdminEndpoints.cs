@@ -115,7 +115,7 @@ public static class PortalAdminEndpoints
 
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // POST /api/admin/portal/smtp-test  — sends a test email to the logged-in admin
@@ -140,7 +140,7 @@ public static class PortalAdminEndpoints
 
                 return Results.Json(new { ok = true, sentTo = toAddress });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // =====================================================================
@@ -229,7 +229,7 @@ public static class PortalAdminEndpoints
 
                 return Results.Json(new { ok = true, id });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // PUT /api/admin/portal/clients/{id}
@@ -256,7 +256,7 @@ public static class PortalAdminEndpoints
 
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // DELETE /api/admin/portal/clients/{id}  (disables account)
@@ -295,7 +295,7 @@ public static class PortalAdminEndpoints
 
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // =====================================================================
@@ -417,7 +417,7 @@ public static class PortalAdminEndpoints
                     emailBody = body
                 });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // POST /api/admin/portal/orders/{orderId}/send-bat  (kept for reference, SMTP disabled)
@@ -516,7 +516,7 @@ public static class PortalAdminEndpoints
                 }).ToList();
                 return Results.Json(new { ok = true, orders });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // GET /api/admin/portal/orders/{orderId}/detail -- full order details + client info for atelier prefill
@@ -602,7 +602,7 @@ public static class PortalAdminEndpoints
                     companyName
                 });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // PUT /api/admin/portal/orders/{orderId}/status  — update order status from atelier
@@ -671,7 +671,7 @@ public static class PortalAdminEndpoints
 
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // GET /api/admin/portal/orders/by-job?numeroDossier=... — find portal order matching a job
@@ -796,7 +796,7 @@ public static class PortalAdminEndpoints
                 MongoDbHelper.UpsertSettings($"portalEmailTemplate_{key}", new PortalEmailTemplate { Subject = subject, Body = body });
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // GET /api/admin/portal/email-templates/{key} — Fetch a single template by key
@@ -844,7 +844,7 @@ public static class PortalAdminEndpoints
                 MongoDbHelper.UpsertSettings("portalTheme", theme);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // GET /api/portal/config/theme  (public — used by portal pages)
@@ -991,7 +991,7 @@ public static class PortalAdminEndpoints
                 MongoDbHelper.UpsertSettings("portalFormFields", new PortalFormFieldsConfig { Fields = fields });
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // GET /api/portal/config/form-fields  (public — used by order-new.html)
@@ -1095,7 +1095,7 @@ public static class PortalAdminEndpoints
                 MongoDbHelper.UpsertSettings("portalClientSteps", new PortalClientStepsConfig { Steps = steps });
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // GET /api/portal/config/client-steps  (public — used by client portal pages)
@@ -1157,7 +1157,7 @@ public static class PortalAdminEndpoints
 
                 return Results.Json(new { ok = true, email = client.Email, activateLink, emailSubject = subj, emailBody = body });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         }
 
         // POST /api/admin/portal/clients/{id}/invite
@@ -1215,7 +1215,7 @@ public static class PortalAdminEndpoints
                 var portalToken = PortalAuthEndpoints.MakePortalToken(clientId, email);
                 return Results.Json(new { ok = true, token = portalToken, email });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
     }
 }

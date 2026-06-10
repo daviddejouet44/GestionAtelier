@@ -141,7 +141,7 @@ app.MapPut("/api/delivery", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -169,7 +169,7 @@ app.MapDelete("/api/delivery", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -260,7 +260,7 @@ app.MapGet("/api/urgences", () =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message, groups = Array.Empty<object>() });
+        Console.WriteLine($"[ERROR] delivery groups: {ex}"); return Results.Json(new { ok = false, error = "Une erreur interne est survenue. Veuillez réessayer.", groups = Array.Empty<object>() }, statusCode: 500);
     }
 });
 
@@ -291,7 +291,7 @@ app.MapPut("/api/config/prismasync-url", async (HttpContext ctx) =>
             new ReplaceOptions { IsUpsert = true });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 // ======================================================
 // CLEANUP — suppression des livraisons orphelines
@@ -338,7 +338,7 @@ app.MapPost("/api/delivery/cleanup-orphans", (HttpContext ctx) =>
 
         return Results.Json(new { ok = true, deleted });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 

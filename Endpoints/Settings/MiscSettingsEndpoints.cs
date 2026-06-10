@@ -37,7 +37,7 @@ app.MapGet("/api/config/paths", (HttpContext ctx) =>
             ?? new PathsSettings { HotfoldersRoot = BackendUtils.HotfoldersRoot(), RecycleBinPath = recyclePath };
         return Results.Json(new { ok = true, config = new { hotfoldersRoot = cfg.HotfoldersRoot, recycleBinPath = cfg.RecycleBinPath, acrobatExePath = cfg.AcrobatExePath, fieryPaths = cfg.FieryPaths } });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPut("/api/config/paths", async (HttpContext ctx) =>
@@ -63,7 +63,7 @@ app.MapPut("/api/config/paths", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("paths", existing);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/config/fabrication-imports", (HttpContext ctx) =>
@@ -81,7 +81,7 @@ app.MapGet("/api/config/fabrication-imports", (HttpContext ctx) =>
             typeDocumentPath = cfg.TypeDocumentPath
         }});
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPut("/api/config/fabrication-imports", async (HttpContext ctx) =>
@@ -104,7 +104,7 @@ app.MapPut("/api/config/fabrication-imports", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("fabrication_imports", existing);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/settings/faconnage-options", () =>
@@ -153,7 +153,7 @@ app.MapPost("/api/settings/faconnage-import", async (HttpContext ctx) =>
 
         return Results.Json(new { ok = true, count = labels.Count });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // PUT /api/settings/faconnage-options — save option list directly (admin only)
@@ -184,7 +184,7 @@ app.MapPut("/api/settings/faconnage-options", async (HttpContext ctx) =>
 
         return Results.Json(new { ok = true, count = labels.Count });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ── GET /api/settings/binding-options ────────────────────────────────────
@@ -196,7 +196,7 @@ app.MapGet("/api/settings/binding-options", () =>
         var list = cfg?.Items ?? new List<string> { "Aucune", "Piqûre 2 points", "Dos carré collé", "Spirale plastique", "Wire-O", "Reliure suisse", "Reliure cousue" };
         return Results.Json(new { ok = true, options = list });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ── PUT /api/settings/binding-options ────────────────────────────────────
@@ -215,7 +215,7 @@ app.MapPut("/api/settings/binding-options", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("bindingOptions", new SimpleStringListSettings { Items = items! });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ── GET /api/settings/folds-options ──────────────────────────────────────
@@ -227,7 +227,7 @@ app.MapGet("/api/settings/folds-options", () =>
         var list = cfg?.Items ?? new List<string> { "Pli accordéon","Pli roulé","Pli fenêtre" };
         return Results.Json(new { ok = true, options = list });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ── PUT /api/settings/folds-options ──────────────────────────────────────
@@ -246,7 +246,7 @@ app.MapPut("/api/settings/folds-options", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("foldsOptions", new SimpleStringListSettings { Items = items! });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ── GET /api/settings/output-options ─────────────────────────────────────
@@ -258,7 +258,7 @@ app.MapGet("/api/settings/output-options", () =>
         var list = cfg?.Items ?? new List<string> { "À plat","Assemblée" };
         return Results.Json(new { ok = true, options = list });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ── PUT /api/settings/output-options ─────────────────────────────────────
@@ -277,7 +277,7 @@ app.MapPut("/api/settings/output-options", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("outputOptions", new SimpleStringListSettings { Items = items! });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/config/integrations", (HttpContext ctx) =>
@@ -291,7 +291,7 @@ app.MapGet("/api/config/integrations", (HttpContext ctx) =>
             ?? new IntegrationsSettings();
         return Results.Json(new { ok = true, config = new { preparePath = cfg.PreparePath, fieryPath = cfg.FieryPath, tempCopyPath = cfg.TempCopyPath, prismaPrepareExePath = cfg.PrismaPrepareExePath, prismaPrepareOutputPath = cfg.PrismaPrepareOutputPath, prismaPrepareDirectOutputPath = cfg.PrismaPrepareDirectOutputPath } });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPut("/api/config/integrations", async (HttpContext ctx) =>
@@ -315,7 +315,7 @@ app.MapPut("/api/config/integrations", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("integrations", existing);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/admin/activity-logs", (HttpContext ctx, string? date) =>
@@ -328,7 +328,7 @@ app.MapGet("/api/admin/activity-logs", (HttpContext ctx, string? date) =>
         var logs = MongoDbHelper.GetActivityLogs(date);
         return Results.Json(new { ok = true, logs });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/admin/logs", (HttpContext ctx, string? date) =>
@@ -341,7 +341,7 @@ app.MapGet("/api/admin/logs", (HttpContext ctx, string? date) =>
         var logs = MongoDbHelper.GetRecentLogs(date);
         return Results.Json(new { ok = true, logs });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/admin/stats", (HttpContext ctx) =>
@@ -388,7 +388,7 @@ app.MapGet("/api/admin/stats", (HttpContext ctx) =>
             activeAssignments
         }});
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPost("/api/admin/migrate-to-mongo", () =>
@@ -553,7 +553,7 @@ app.MapDelete("/api/production-folder", (string? path) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -567,7 +567,7 @@ app.MapGet("/api/config/preflight", (HttpContext ctx) =>
         var cfg = MongoDbHelper.GetSettings<PreflightSettings>("preflight") ?? new PreflightSettings();
         return Results.Json(new { ok = true, config = new { dropletStandard = cfg.DropletStandard, dropletFondPerdu = cfg.DropletFondPerdu, droplets = cfg.Droplets } });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPut("/api/config/preflight", async (HttpContext ctx) =>
@@ -596,7 +596,7 @@ app.MapPut("/api/config/preflight", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("preflight", existing);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/config/preflight/droplets", () =>
@@ -606,7 +606,7 @@ app.MapGet("/api/config/preflight/droplets", () =>
         var cfg = MongoDbHelper.GetSettings<PreflightSettings>("preflight") ?? new PreflightSettings();
         return Results.Json(new { ok = true, droplets = cfg.Droplets });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -660,7 +660,7 @@ app.MapPost("/api/settings/sheet-formats/import", async (HttpContext ctx) =>
 
         return Results.Json(new { ok = true, count = labels.Count });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -694,7 +694,7 @@ app.MapPost("/api/settings/cover-products", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("coverProducts", new CoverProductsSettings { Products = products });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -734,7 +734,7 @@ app.MapPost("/api/settings/sheet-calculation-rules", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("sheetCalculationRules", new SheetCalculationSettings { Rules = rules });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -766,7 +766,7 @@ app.MapPost("/api/settings/delivery-delay", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("deliveryDelay", new DeliveryDelaySettings { DelayHours = delayHours });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -800,7 +800,7 @@ app.MapPut("/api/settings/key-dates", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("keyDates", new KeyDatesSettings { SendOffsetHours = sendH, FinitionsOffsetHours = finH, ImpressionOffsetHours = impH });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -843,7 +843,7 @@ app.MapPut("/api/settings/grammage-time-config", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("grammageTimeConfig", new GrammageTimeConfig { Rules = rules });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -887,7 +887,7 @@ app.MapPut("/api/settings/jdf-config", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("jdfConfig", new JdfConfig { Enabled = enabled, Fields = fields });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -919,7 +919,7 @@ app.MapPost("/api/settings/passes-config", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("passesConfig", cfg);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPut("/api/settings/passes-config", async (HttpContext ctx) =>
@@ -937,7 +937,7 @@ app.MapPut("/api/settings/passes-config", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("passesConfig", cfg);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -969,7 +969,7 @@ app.MapPut("/api/settings/bat-papier-config", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("batPapierConfig", cfg);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ── PUT /api/settings/production — generic production settings key/value ─────
@@ -997,7 +997,7 @@ app.MapPut("/api/settings/production", async (HttpContext ctx) =>
         col.ReplaceOne(Builders<BsonDocument>.Filter.Eq("_id", "productionSettings"), existing, new ReplaceOptions { IsUpsert = true });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/settings/finition-icons", (HttpContext ctx) =>
@@ -1017,7 +1017,7 @@ app.MapGet("/api/settings/finition-icons", (HttpContext ctx) =>
             }).ToArray();
         return Results.Json(new { ok = true, icons });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPost("/api/settings/finition-icons", async (HttpContext ctx) =>
@@ -1056,7 +1056,7 @@ app.MapPost("/api/settings/finition-icons", async (HttpContext ctx) =>
 
         return Results.Json(new { ok = true, url = $"/pro/images/finitions/{finitionType}{ext}" });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // GET /api/settings/imap — Récupère la config IMAP
@@ -1067,7 +1067,7 @@ app.MapGet("/api/settings/imap", () =>
         var cfg = MongoDbHelper.GetSettings<ImapSettings>("imapSettings");
         return Results.Json(new { ok = true, settings = cfg ?? new ImapSettings() });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // PUT /api/settings/imap — Enregistre la config IMAP (admin only)
@@ -1084,7 +1084,7 @@ app.MapPut("/api/settings/imap", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("imapSettings", cfg);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -1111,7 +1111,7 @@ app.MapGet("/api/settings/planning-colors", (HttpContext ctx) =>
         }
         return Results.Json(new { ok = true, colors = new { engines, finitions } });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPut("/api/settings/planning-colors", async (HttpContext ctx) =>
@@ -1136,7 +1136,7 @@ app.MapPut("/api/settings/planning-colors", async (HttpContext ctx) =>
         col.InsertOne(new BsonDocument { ["engines"] = enginesDoc, ["finitions"] = finitionsDoc });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ── GET /api/settings/actions-config  ─────────────────────────────────────────
@@ -1152,7 +1152,7 @@ app.MapGet("/api/settings/actions-config", (HttpContext ctx) =>
             : DefaultKanbanActions();
         return Results.Json(new { ok = true, actions });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ── PUT /api/settings/actions-config  ─────────────────────────────────────────
@@ -1187,7 +1187,7 @@ app.MapPut("/api/settings/actions-config", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("kanbanActionsConfig", new KanbanActionsConfig { Actions = actions });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -1240,7 +1240,7 @@ app.MapGet("/api/admin/settings/export", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -1282,7 +1282,7 @@ app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -1312,7 +1312,7 @@ app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
             MongoDbHelper.UpsertSettings("passesConfig", cfg);
             return new { ok = true };
         }
-        catch (Exception ex) { return new { ok = false, error = ex.Message }; }
+        catch (Exception ex) { Console.WriteLine($"[ERROR] SavePassesConfig: {ex}"); return new { ok = false, error = "Une erreur interne est survenue. Veuillez réessayer." }; }
     }
 }
 

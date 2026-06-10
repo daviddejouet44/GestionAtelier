@@ -74,7 +74,7 @@ public static class FabricationExportEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
     }

@@ -369,7 +369,7 @@ public static class QuoteLinksEndpoints
             catch (Exception ex)
             {
                 Console.WriteLine($"[ERROR] /api/pro/quotes/send: {ex.Message}");
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -567,7 +567,7 @@ public static class QuoteLinksEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -653,7 +653,7 @@ public static class QuoteLinksEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -912,7 +912,7 @@ public static class QuoteLinksEndpoints
             catch (Exception ex)
             {
                 Console.WriteLine($"[ERROR] /api/portal/quote/submit: {ex.Message}");
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -1065,7 +1065,7 @@ public static class QuoteLinksEndpoints
             catch (Exception ex)
             {
                 Console.WriteLine($"[ERROR] /api/pro/quotes/orders/import-xml: {ex.Message}");
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -1196,7 +1196,7 @@ public static class QuoteLinksEndpoints
             catch (Exception ex)
             {
                 Console.WriteLine($"[ERROR] /api/pro/orders/import-production-xml: {ex.Message}");
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
     }

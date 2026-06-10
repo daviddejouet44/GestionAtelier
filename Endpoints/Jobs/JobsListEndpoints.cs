@@ -77,7 +77,7 @@ app.MapGet("/api/jobs", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -95,7 +95,7 @@ app.MapGet("/api/operators", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -177,7 +177,7 @@ app.MapGet("/api/alerts/bat-pending", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -242,7 +242,7 @@ app.MapGet("/api/alerts/faconnage", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -328,7 +328,7 @@ app.MapGet("/api/fabrication/files-trail", (string fileName) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 

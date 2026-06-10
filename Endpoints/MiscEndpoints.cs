@@ -162,14 +162,22 @@ app.MapGet("/api/file-stage", (HttpContext ctx, string fileName) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
 app.MapGet("/api/folders", (HttpContext ctx) =>
 {
-    if (!AuthHelper.IsAuthenticated(ctx))
-        return Results.Json(new { ok = false, error = "Non authentifié" });
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (string.IsNullOrWhiteSpace(token))
+            return Results.Json(new { ok = false, error = "Non authentifié" });
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        if (decoded.Split(':').Length < 3)
+            return Results.Json(new { ok = false, error = "Non authentifié" });
+    }
+    catch { return Results.Json(new { ok = false, error = "Non authentifié" }); }
 
     var clean = BackendUtils.Hotfolders()
         .Select(n => n.Replace("\u00A0", " ").Trim())
@@ -242,7 +250,7 @@ app.MapGet("/api/tools/prismasync", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -314,7 +322,7 @@ app.MapPost("/api/logo", async (HttpContext ctx) =>
     catch (Exception ex)
     {
         Console.WriteLine($"[ERROR] POST /api/logo: {ex.Message}");
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -328,7 +336,7 @@ app.MapDelete("/api/logo", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -373,7 +381,7 @@ app.MapPost("/api/logo-login", async (HttpContext ctx) =>
     catch (Exception ex)
     {
         Console.WriteLine($"[ERROR] POST /api/logo-login: {ex.Message}");
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -386,7 +394,7 @@ app.MapDelete("/api/logo-login", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -417,7 +425,7 @@ app.MapPost("/api/background-login", async (HttpContext ctx) =>
         await file.CopyToAsync(stream);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapDelete("/api/background-login", (HttpContext ctx) =>
@@ -427,7 +435,7 @@ app.MapDelete("/api/background-login", (HttpContext ctx) =>
         DeleteImageFiles(Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro"), "background-login");
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -457,7 +465,7 @@ app.MapPost("/api/header-banner", async (HttpContext ctx) =>
         await file.CopyToAsync(stream);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapDelete("/api/header-banner", (HttpContext ctx) =>
@@ -467,7 +475,7 @@ app.MapDelete("/api/header-banner", (HttpContext ctx) =>
         DeleteImageFiles(Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro"), "header-banner");
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -509,7 +517,7 @@ app.MapPost("/api/dashboard-image", async (HttpContext ctx) =>
         await file.CopyToAsync(stream);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapDelete("/api/dashboard-image", (HttpContext ctx) =>
@@ -519,7 +527,7 @@ app.MapDelete("/api/dashboard-image", (HttpContext ctx) =>
         DeleteImageFiles(Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro"), "dashboard-image");
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
     }
 }

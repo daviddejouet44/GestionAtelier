@@ -12,6 +12,7 @@ using System.Xml.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.StaticFiles;
@@ -74,7 +75,53 @@ builder.Services.AddHostedService<GestionAtelier.Services.DailyReportService>();
 builder.Services.AddSingleton<GestionAtelier.Services.OrderSourcePollingService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GestionAtelier.Services.OrderSourcePollingService>());
 
+// Point 12: Rate limiter to protect /api/auth/login against brute-force
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("login", opt =>
+    {
+        opt.PermitLimit = 5;
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.QueueLimit = 0;
+    });
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
+
+// Point 14: HSTS configuration for production
+builder.Services.AddHsts(options =>
+{
+    options.MaxAge = TimeSpan.FromDays(365);
+    options.IncludeSubDomains = true;
+});
+
+// Point 15: IHttpClientFactory to avoid socket exhaustion
+builder.Services.AddHttpClient("external", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+
 var app = builder.Build();
+
+// Point 14: Force HTTPS in production
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+    app.UseHsts();
+}
+
+// Point 11: HTTP security headers
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+    context.Response.Headers.Append("X-Frame-Options", "SAMEORIGIN");
+    context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
+    context.Response.Headers.Append("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    context.Response.Headers.Append("X-XSS-Protection", "1; mode=block");
+    await next();
+});
+
+// Point 12: Apply rate limiter middleware
+app.UseRateLimiter();
 
 QuestPDF.Settings.License = LicenseType.Community;
 
@@ -304,6 +351,10 @@ Console.WriteLine("[DEBUG] === FIN LISTE ===\n");
 
 // 7. GC.KeepAlive AVANT app.Run()
 GC.KeepAlive(tempCopyWatcher);
+
+// Point 16: Ensure MongoDB indexes exist
+try { MongoDbIndexes.EnsureIndexes(); }
+catch (Exception ex) { Console.WriteLine($"[WARN] Index creation: {ex.Message}"); }
 
 // 8. Run en dernier
 app.Run();

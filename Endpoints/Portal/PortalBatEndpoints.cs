@@ -187,7 +187,7 @@ public static class PortalBatEndpoints
             catch (Exception ex)
             {
                 Console.WriteLine($"[BAT] Error: {ex.Message}");
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -355,7 +355,7 @@ public static class PortalBatEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -510,7 +510,7 @@ public static class PortalBatEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -619,7 +619,7 @@ public static class PortalBatEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -719,7 +719,7 @@ public static class PortalBatEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -893,7 +893,7 @@ public static class PortalBatEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
