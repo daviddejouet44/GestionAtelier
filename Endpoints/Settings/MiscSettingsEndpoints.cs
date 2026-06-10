@@ -24,27 +24,38 @@ namespace GestionAtelier.Endpoints.Settings;
 
 public static class MiscSettingsEndpoints
 {
+    private static readonly Type? AuthHelperType = Type.GetType("GestionAtelier.Services.AuthHelper, GestionAtelier");
+    private static readonly System.Reflection.MethodInfo? AuthIsAdminMethod =
+        AuthHelperType?.GetMethod("IsAdmin", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+    private static readonly System.Reflection.MethodInfo? AuthIsAuthenticatedMethod =
+        AuthHelperType?.GetMethod("IsAuthenticated", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+    private static readonly System.Reflection.MethodInfo? AuthGetClaimMethod =
+        AuthHelperType?.GetMethod("GetClaim", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+    private static readonly Type? ErrorHelperType = Type.GetType("GestionAtelier.Services.ErrorHelper, GestionAtelier");
+    private static readonly System.Reflection.MethodInfo? ErrorHandleExceptionMethod =
+        ErrorHelperType?.GetMethod("HandleException", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+
     public static void MapMiscSettingsEndpoints(this WebApplication app, string recyclePath)
     {
 app.MapGet("/api/config/paths", (HttpContext ctx) =>
 {
     try
     {
-        if (!AuthHelper.IsAdmin(ctx))
+        if (!IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var cfg = MongoDbHelper.GetSettings<PathsSettings>("paths")
             ?? new PathsSettings { HotfoldersRoot = BackendUtils.HotfoldersRoot(), RecycleBinPath = recyclePath };
         return Results.Json(new { ok = true, config = new { hotfoldersRoot = cfg.HotfoldersRoot, recycleBinPath = cfg.RecycleBinPath, acrobatExePath = cfg.AcrobatExePath, fieryPaths = cfg.FieryPaths } });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 app.MapPut("/api/config/paths", async (HttpContext ctx) =>
 {
     try
     {
-        if (!AuthHelper.IsAdmin(ctx))
+        if (!IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -63,14 +74,14 @@ app.MapPut("/api/config/paths", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("paths", existing);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 app.MapGet("/api/config/fabrication-imports", (HttpContext ctx) =>
 {
     try
     {
-        if (!AuthHelper.IsAdmin(ctx))
+        if (!IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var cfg = MongoDbHelper.GetSettings<FabricationImportsSettings>("fabrication_imports")
@@ -81,14 +92,14 @@ app.MapGet("/api/config/fabrication-imports", (HttpContext ctx) =>
             typeDocumentPath = cfg.TypeDocumentPath
         }});
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 app.MapPut("/api/config/fabrication-imports", async (HttpContext ctx) =>
 {
     try
     {
-        if (!AuthHelper.IsAdmin(ctx))
+        if (!IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -104,7 +115,7 @@ app.MapPut("/api/config/fabrication-imports", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("fabrication_imports", existing);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 app.MapGet("/api/settings/faconnage-options", () =>
@@ -123,7 +134,7 @@ app.MapPost("/api/settings/faconnage-import", async (HttpContext ctx) =>
 {
     try
     {
-        if (!AuthHelper.IsAdmin(ctx))
+        if (!IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         if (!ctx.Request.HasFormContentType)
@@ -153,7 +164,7 @@ app.MapPost("/api/settings/faconnage-import", async (HttpContext ctx) =>
 
         return Results.Json(new { ok = true, count = labels.Count });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // PUT /api/settings/faconnage-options — save option list directly (admin only)
@@ -161,7 +172,7 @@ app.MapPut("/api/settings/faconnage-options", async (HttpContext ctx) =>
 {
     try
     {
-        if (!AuthHelper.IsAdmin(ctx))
+        if (!IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -184,7 +195,7 @@ app.MapPut("/api/settings/faconnage-options", async (HttpContext ctx) =>
 
         return Results.Json(new { ok = true, count = labels.Count });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ── GET /api/settings/binding-options ────────────────────────────────────
@@ -196,7 +207,7 @@ app.MapGet("/api/settings/binding-options", () =>
         var list = cfg?.Items ?? new List<string> { "Aucune", "Piqûre 2 points", "Dos carré collé", "Spirale plastique", "Wire-O", "Reliure suisse", "Reliure cousue" };
         return Results.Json(new { ok = true, options = list });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ── PUT /api/settings/binding-options ────────────────────────────────────
@@ -204,7 +215,7 @@ app.MapPut("/api/settings/binding-options", async (HttpContext ctx) =>
 {
     try
     {
-        if (!AuthHelper.IsAdmin(ctx))
+        if (!IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -215,7 +226,7 @@ app.MapPut("/api/settings/binding-options", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("bindingOptions", new SimpleStringListSettings { Items = items! });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ── GET /api/settings/folds-options ──────────────────────────────────────
@@ -227,7 +238,7 @@ app.MapGet("/api/settings/folds-options", () =>
         var list = cfg?.Items ?? new List<string> { "Pli accordéon","Pli roulé","Pli fenêtre" };
         return Results.Json(new { ok = true, options = list });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ── PUT /api/settings/folds-options ──────────────────────────────────────
@@ -235,7 +246,7 @@ app.MapPut("/api/settings/folds-options", async (HttpContext ctx) =>
 {
     try
     {
-        if (!AuthHelper.IsAdmin(ctx))
+        if (!IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -246,7 +257,7 @@ app.MapPut("/api/settings/folds-options", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("foldsOptions", new SimpleStringListSettings { Items = items! });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ── GET /api/settings/output-options ─────────────────────────────────────
@@ -258,7 +269,7 @@ app.MapGet("/api/settings/output-options", () =>
         var list = cfg?.Items ?? new List<string> { "À plat","Assemblée" };
         return Results.Json(new { ok = true, options = list });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ── PUT /api/settings/output-options ─────────────────────────────────────
@@ -266,7 +277,7 @@ app.MapPut("/api/settings/output-options", async (HttpContext ctx) =>
 {
     try
     {
-        if (!AuthHelper.IsAdmin(ctx))
+        if (!IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -277,28 +288,28 @@ app.MapPut("/api/settings/output-options", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("outputOptions", new SimpleStringListSettings { Items = items! });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 app.MapGet("/api/config/integrations", (HttpContext ctx) =>
 {
     try
     {
-        if (!AuthHelper.IsAdmin(ctx))
+        if (!IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var cfg = MongoDbHelper.GetSettings<IntegrationsSettings>("integrations")
             ?? new IntegrationsSettings();
         return Results.Json(new { ok = true, config = new { preparePath = cfg.PreparePath, fieryPath = cfg.FieryPath, tempCopyPath = cfg.TempCopyPath, prismaPrepareExePath = cfg.PrismaPrepareExePath, prismaPrepareOutputPath = cfg.PrismaPrepareOutputPath, prismaPrepareDirectOutputPath = cfg.PrismaPrepareDirectOutputPath } });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 app.MapPut("/api/config/integrations", async (HttpContext ctx) =>
 {
     try
     {
-        if (!AuthHelper.IsAdmin(ctx))
+        if (!IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -315,42 +326,42 @@ app.MapPut("/api/config/integrations", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("integrations", existing);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 app.MapGet("/api/admin/activity-logs", (HttpContext ctx, string? date) =>
 {
     try
     {
-        if (!AuthHelper.IsAdmin(ctx))
+        if (!IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var logs = MongoDbHelper.GetActivityLogs(date);
         return Results.Json(new { ok = true, logs });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 app.MapGet("/api/admin/logs", (HttpContext ctx, string? date) =>
 {
     try
     {
-        if (!AuthHelper.IsAdmin(ctx))
+        if (!IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var logs = MongoDbHelper.GetRecentLogs(date);
         return Results.Json(new { ok = true, logs });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 app.MapGet("/api/admin/stats", (HttpContext ctx) =>
 {
     try
     {
-        if (!AuthHelper.IsAuthenticated(ctx))
+        if (!IsAuthenticated(ctx))
             return Results.Json(new { ok = false, error = "Non authentifié" });
-        var userId = AuthHelper.GetClaim(ctx, "userId");
+        var userId = GetClaim(ctx, "userId");
         var statsUsers = BackendUtils.LoadUsers();
         if (string.IsNullOrWhiteSpace(userId) || !statsUsers.Any(u => u.Id == userId))
             return Results.Json(new { ok = false, error = "Utilisateur non trouvé" });
@@ -388,7 +399,7 @@ app.MapGet("/api/admin/stats", (HttpContext ctx) =>
             activeAssignments
         }});
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 app.MapPost("/api/admin/migrate-to-mongo", () =>
@@ -553,7 +564,7 @@ app.MapDelete("/api/production-folder", (string? path) =>
     }
     catch (Exception ex)
     {
-        return ErrorHelper.HandleException(ex);
+        return HandleException(ex);
     }
 });
 
@@ -561,20 +572,20 @@ app.MapGet("/api/config/preflight", (HttpContext ctx) =>
 {
     try
     {
-        if (!AuthHelper.IsAdmin(ctx))
+        if (!IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var cfg = MongoDbHelper.GetSettings<PreflightSettings>("preflight") ?? new PreflightSettings();
         return Results.Json(new { ok = true, config = new { dropletStandard = cfg.DropletStandard, dropletFondPerdu = cfg.DropletFondPerdu, droplets = cfg.Droplets } });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 app.MapPut("/api/config/preflight", async (HttpContext ctx) =>
 {
     try
     {
-        if (!AuthHelper.IsAdmin(ctx))
+        if (!IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -596,7 +607,7 @@ app.MapPut("/api/config/preflight", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("preflight", existing);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 app.MapGet("/api/config/preflight/droplets", () =>
@@ -606,7 +617,7 @@ app.MapGet("/api/config/preflight/droplets", () =>
         var cfg = MongoDbHelper.GetSettings<PreflightSettings>("preflight") ?? new PreflightSettings();
         return Results.Json(new { ok = true, droplets = cfg.Droplets });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ======================================================
@@ -629,10 +640,8 @@ app.MapPost("/api/settings/sheet-formats/import", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
-                return Results.Json(new { ok = false, error = "Admin only" });
-        }
+        if (!IsAdmin(ctx))
+            return Results.Json(new { ok = false, error = "Admin only" });
 
         if (!ctx.Request.HasFormContentType)
             return Results.Json(new { ok = false, error = "Form data required" });
@@ -660,7 +669,7 @@ app.MapPost("/api/settings/sheet-formats/import", async (HttpContext ctx) =>
 
         return Results.Json(new { ok = true, count = labels.Count });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ======================================================
@@ -681,10 +690,8 @@ app.MapPost("/api/settings/cover-products", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
-                return Results.Json(new { ok = false, error = "Admin only" });
-        }
+        if (!IsAdmin(ctx))
+            return Results.Json(new { ok = false, error = "Admin only" });
 
         var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
         var products = new List<string>();
@@ -694,7 +701,7 @@ app.MapPost("/api/settings/cover-products", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("coverProducts", new CoverProductsSettings { Products = products });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ======================================================
@@ -715,10 +722,8 @@ app.MapPost("/api/settings/sheet-calculation-rules", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
-                return Results.Json(new { ok = false, error = "Admin only" });
-        }
+        if (!IsAdmin(ctx))
+            return Results.Json(new { ok = false, error = "Admin only" });
 
         var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
         var rules = new Dictionary<string, int>();
@@ -734,7 +739,7 @@ app.MapPost("/api/settings/sheet-calculation-rules", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("sheetCalculationRules", new SheetCalculationSettings { Rules = rules });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ======================================================
@@ -755,10 +760,8 @@ app.MapPost("/api/settings/delivery-delay", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
-                return Results.Json(new { ok = false, error = "Admin only" });
-        }
+        if (!IsAdmin(ctx))
+            return Results.Json(new { ok = false, error = "Admin only" });
 
         var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
         int delayHours = 48;
@@ -766,7 +769,7 @@ app.MapPost("/api/settings/delivery-delay", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("deliveryDelay", new DeliveryDelaySettings { DelayHours = delayHours });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ======================================================
@@ -787,10 +790,8 @@ app.MapPut("/api/settings/key-dates", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
-                return Results.Json(new { ok = false, error = "Admin only" });
-        }
+        if (!IsAdmin(ctx))
+            return Results.Json(new { ok = false, error = "Admin only" });
 
         var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
         int sendH = 48, finH = 72, impH = 96;
@@ -800,7 +801,7 @@ app.MapPut("/api/settings/key-dates", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("keyDates", new KeyDatesSettings { SendOffsetHours = sendH, FinitionsOffsetHours = finH, ImpressionOffsetHours = impH });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ======================================================
@@ -821,10 +822,8 @@ app.MapPut("/api/settings/grammage-time-config", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
-                return Results.Json(new { ok = false, error = "Admin only" });
-        }
+        if (!IsAdmin(ctx))
+            return Results.Json(new { ok = false, error = "Admin only" });
 
         var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
         var rules = new List<GrammageTimeRule>();
@@ -843,7 +842,7 @@ app.MapPut("/api/settings/grammage-time-config", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("grammageTimeConfig", new GrammageTimeConfig { Rules = rules });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ======================================================
@@ -864,10 +863,8 @@ app.MapPut("/api/settings/jdf-config", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
-                return Results.Json(new { ok = false, error = "Admin only" });
-        }
+        if (!IsAdmin(ctx))
+            return Results.Json(new { ok = false, error = "Admin only" });
 
         var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
         bool enabled = false;
@@ -887,7 +884,7 @@ app.MapPut("/api/settings/jdf-config", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("jdfConfig", new JdfConfig { Enabled = enabled, Fields = fields });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ======================================================
@@ -919,7 +916,7 @@ app.MapPost("/api/settings/passes-config", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("passesConfig", cfg);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 app.MapPut("/api/settings/passes-config", async (HttpContext ctx) =>
@@ -937,7 +934,7 @@ app.MapPut("/api/settings/passes-config", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("passesConfig", cfg);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ======================================================
@@ -969,7 +966,7 @@ app.MapPut("/api/settings/bat-papier-config", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("batPapierConfig", cfg);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ── PUT /api/settings/production — generic production settings key/value ─────
@@ -997,7 +994,7 @@ app.MapPut("/api/settings/production", async (HttpContext ctx) =>
         col.ReplaceOne(Builders<BsonDocument>.Filter.Eq("_id", "productionSettings"), existing, new ReplaceOptions { IsUpsert = true });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 app.MapGet("/api/settings/finition-icons", (HttpContext ctx) =>
@@ -1017,17 +1014,15 @@ app.MapGet("/api/settings/finition-icons", (HttpContext ctx) =>
             }).ToArray();
         return Results.Json(new { ok = true, icons });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 app.MapPost("/api/settings/finition-icons", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
-                return Results.Json(new { ok = false, error = "Admin only" });
-        }
+        if (!IsAdmin(ctx))
+            return Results.Json(new { ok = false, error = "Admin only" });
 
         var form = await ctx.Request.ReadFormAsync();
         var file = form.Files.GetFile("file");
@@ -1056,7 +1051,7 @@ app.MapPost("/api/settings/finition-icons", async (HttpContext ctx) =>
 
         return Results.Json(new { ok = true, url = $"/pro/images/finitions/{finitionType}{ext}" });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // GET /api/settings/imap — Récupère la config IMAP
@@ -1067,7 +1062,7 @@ app.MapGet("/api/settings/imap", () =>
         var cfg = MongoDbHelper.GetSettings<ImapSettings>("imapSettings");
         return Results.Json(new { ok = true, settings = cfg ?? new ImapSettings() });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // PUT /api/settings/imap — Enregistre la config IMAP (admin only)
@@ -1075,16 +1070,14 @@ app.MapPut("/api/settings/imap", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrEmpty(token) && !AuthHelper.IsAdmin(ctx))
-                return Results.Json(new { ok = false, error = "Admin only" });
-        }
+        if (!IsAdmin(ctx))
+            return Results.Json(new { ok = false, error = "Admin only" });
         var cfg = await ctx.Request.ReadFromJsonAsync<ImapSettings>();
         if (cfg == null) return Results.Json(new { ok = false, error = "Payload invalide" });
         MongoDbHelper.UpsertSettings("imapSettings", cfg);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ======================================================
@@ -1111,14 +1104,14 @@ app.MapGet("/api/settings/planning-colors", (HttpContext ctx) =>
         }
         return Results.Json(new { ok = true, colors = new { engines, finitions } });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 app.MapPut("/api/settings/planning-colors", async (HttpContext ctx) =>
 {
     try
     {
-        if (!AuthHelper.IsAdmin(ctx))
+        if (!IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -1136,7 +1129,7 @@ app.MapPut("/api/settings/planning-colors", async (HttpContext ctx) =>
         col.InsertOne(new BsonDocument { ["engines"] = enginesDoc, ["finitions"] = finitionsDoc });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ── GET /api/settings/actions-config  ─────────────────────────────────────────
@@ -1144,7 +1137,8 @@ app.MapGet("/api/settings/actions-config", (HttpContext ctx) =>
 {
     try
     {
-        if (!AuthHelper.IsAuthenticated(ctx)) return Results.Json(new { ok = false, error = "Auth requise" });
+        if (!IsAuthenticated(ctx))
+            return Results.Json(new { ok = false, error = "Auth requise" });
 
         var saved = MongoDbHelper.GetSettings<KanbanActionsConfig>("kanbanActionsConfig");
         var actions = saved?.Actions.Count > 0
@@ -1152,7 +1146,7 @@ app.MapGet("/api/settings/actions-config", (HttpContext ctx) =>
             : DefaultKanbanActions();
         return Results.Json(new { ok = true, actions });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ── PUT /api/settings/actions-config  ─────────────────────────────────────────
@@ -1160,10 +1154,7 @@ app.MapPut("/api/settings/actions-config", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts   = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -1187,7 +1178,7 @@ app.MapPut("/api/settings/actions-config", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("kanbanActionsConfig", new KanbanActionsConfig { Actions = actions });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+    catch (Exception ex) { return HandleException(ex); }
 });
 
 // ======================================================
@@ -1196,7 +1187,7 @@ app.MapPut("/api/settings/actions-config", async (HttpContext ctx) =>
 
 app.MapGet("/api/admin/settings/export", async (HttpContext ctx) =>
 {
-    if (!AuthHelper.IsAdmin(ctx))
+    if (!IsAdmin(ctx))
         return Results.Json(new { ok = false, error = "Admin only" });
 
     try
@@ -1240,13 +1231,13 @@ app.MapGet("/api/admin/settings/export", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return ErrorHelper.HandleException(ex);
+        return HandleException(ex);
     }
 });
 
 app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
 {
-    if (!AuthHelper.IsAdmin(ctx))
+    if (!IsAdmin(ctx))
         return Results.Json(new { ok = false, error = "Admin only" });
 
     try
@@ -1282,7 +1273,7 @@ app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return ErrorHelper.HandleException(ex);
+        return HandleException(ex);
     }
 });
 
@@ -1296,6 +1287,113 @@ app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
         new() { Id = "fiery",         Label = "Envoyer dans Fiery",        Enabled = true },
     };
 
+    // TODO: requires AuthHelper from PR1
+    private static bool IsAdmin(HttpContext ctx)
+    {
+        var helperResult = TryInvokeAuthBool("IsAdmin", ctx);
+        if (helperResult.HasValue)
+            return helperResult.Value;
+
+        try
+        {
+            var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            var parts = decoded.Split(':');
+            return parts.Length >= 3 && parts[2] == "3";
+        }
+        catch { return false; }
+    }
+
+    // TODO: requires AuthHelper from PR1
+    private static bool IsAuthenticated(HttpContext ctx)
+    {
+        var helperResult = TryInvokeAuthBool("IsAuthenticated", ctx);
+        if (helperResult.HasValue)
+            return helperResult.Value;
+
+        try
+        {
+            var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            return decoded.Split(':').Length >= 3;
+        }
+        catch { return false; }
+    }
+
+    // TODO: requires AuthHelper from PR1
+    private static string? GetClaim(HttpContext ctx, string claimType)
+    {
+        var helperResult = TryInvokeAuthString("GetClaim", ctx, claimType);
+        if (helperResult.found)
+            return helperResult.value;
+
+        if (claimType != "userId")
+            return null;
+
+        try
+        {
+            var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            var parts = decoded.Split(':');
+            return parts.Length >= 1 ? parts[0] : null;
+        }
+        catch { return null; }
+    }
+
+    // TODO: requires ErrorHelper from PR2
+    private static IResult HandleException(Exception ex)
+    {
+        if (TryInvokeErrorHelper(ex) is IResult result)
+            return result;
+
+        LogMiscSettingsError(ex);
+        return Results.Json(new { ok = false, error = "Une erreur interne est survenue." });
+    }
+
+    private static bool? TryInvokeAuthBool(string methodName, HttpContext ctx)
+    {
+        try
+        {
+            var method = methodName switch
+            {
+                "IsAdmin" => AuthIsAdminMethod,
+                "IsAuthenticated" => AuthIsAuthenticatedMethod,
+                _ => null
+            };
+            if (method?.Invoke(null, new object[] { ctx }) is bool value)
+                return value;
+        }
+        catch { }
+        return null;
+    }
+
+    private static (bool found, string? value) TryInvokeAuthString(string methodName, HttpContext ctx, string claimType)
+    {
+        try
+        {
+            var method = methodName == "GetClaim" ? AuthGetClaimMethod : null;
+            if (method != null)
+                return (true, method.Invoke(null, new object[] { ctx, claimType }) as string);
+        }
+        catch { }
+        return (false, null);
+    }
+
+    private static IResult? TryInvokeErrorHelper(Exception ex)
+    {
+        try
+        {
+            if (ErrorHandleExceptionMethod?.Invoke(null, new object[] { ex }) is IResult result)
+                return result;
+        }
+        catch { }
+        return null;
+    }
+
+    private static void LogMiscSettingsError(Exception ex)
+    {
+        Console.WriteLine($"[ERROR] MiscSettings: {ex}");
+    }
 
     private static async Task<object> SavePassesConfigAsync(HttpContext ctx)
     {
@@ -1312,7 +1410,11 @@ app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
             MongoDbHelper.UpsertSettings("passesConfig", cfg);
             return new { ok = true };
         }
-        catch (Exception ex) { Console.WriteLine($"[ERROR] SavePassesConfig: {ex}"); return new { ok = false, error = "Une erreur interne est survenue. Veuillez réessayer." }; }
+        catch (Exception ex)
+        {
+            LogMiscSettingsError(ex);
+            return new { ok = false, error = "Une erreur interne est survenue." };
+        }
     }
 }
 
