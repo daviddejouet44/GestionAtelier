@@ -246,11 +246,10 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       if ((job.name || "").toLowerCase().endsWith(".pdf") && window._renderPdfThumbnail) {
         const MAX_THUMB_SIZE = 5 * 1024 * 1024; // 5 MB — skip thumbnail for large files
         if ((job.size || 0) <= MAX_THUMB_SIZE) {
-          requestAnimationFrame(() => {
-            if (thumbDiv.isConnected) {
-              window._renderPdfThumbnail(full, thumbDiv).catch(() => {});
-            }
-          });
+          // Mark for deferred rendering: the card is not yet in the DOM here.
+          // renderBatch() appends it later; the post-render pass below will fire _renderPdfThumbnail
+          // only after ALL cards are connected, which is the only reliable approach.
+          thumbDiv.dataset.pdfPending = full;
         }
       }
 
@@ -1467,6 +1466,15 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       }
     }
     await renderBatch(filtered, 0);
+
+    // Post-render pass: all cards are now in the DOM — safe to render thumbnails
+    if (window._renderPdfThumbnail) {
+      drop.querySelectorAll("[data-pdf-pending]").forEach(el => {
+        const path = el.dataset.pdfPending;
+        delete el.dataset.pdfPending;
+        window._renderPdfThumbnail(path, el).catch(() => {});
+      });
+    }
 
     const counterEl = col.querySelector(".kanban-col-counter");
     if (counterEl) counterEl.textContent = filtered.length;
