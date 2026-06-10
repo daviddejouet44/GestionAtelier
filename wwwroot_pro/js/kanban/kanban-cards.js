@@ -341,7 +341,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       const btnOpen = document.createElement("button");
       btnOpen.className = "btn btn-sm";
       btnOpen.textContent = "Ouvrir";
-      btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full), "_blank", "noopener");
+      btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full) + "&token=" + encodeURIComponent(authToken || ""), "_blank", "noopener");
 
       const btnFiche = document.createElement("button");
       btnFiche.className = "btn btn-sm";
@@ -740,7 +740,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         btnPrisma.onclick = (e) => {
           e.stopPropagation();
           const a = document.createElement("a");
-          a.href = "/api/file?path=" + encodeURIComponent(full) + "&download=true";
+          a.href = "/api/file?path=" + encodeURIComponent(full) + "&download=true&token=" + encodeURIComponent(authToken || "");
           a.download = full.split(/[\\/]/).pop();
           document.body.appendChild(a);
           a.click();

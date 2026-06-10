@@ -541,7 +541,7 @@ async function buildBatView(_filterStatus, _sortField) {
       const btnOpen = document.createElement("button");
       btnOpen.className = "btn btn-sm";
       btnOpen.textContent = "🔍 Ouvrir";
-      btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full), "_blank", "noopener");
+      btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full) + "&token=" + encodeURIComponent(authToken || ""), "_blank", "noopener");
 
       const btnAcrobat = document.createElement("button");
       btnAcrobat.className = "btn btn-sm btn-acrobat";
@@ -549,7 +549,7 @@ async function buildBatView(_filterStatus, _sortField) {
       btnAcrobat.title = "Télécharger le PDF sur votre poste pour l'ouvrir dans Acrobat";
       btnAcrobat.onclick = () => {
         const a = document.createElement("a");
-        a.href = "/api/file?path=" + encodeURIComponent(full);
+        a.href = "/api/file?path=" + encodeURIComponent(full) + "&token=" + encodeURIComponent(authToken || "");
         a.download = job.name || "bat.pdf";
         document.body.appendChild(a);
         a.click();
@@ -836,7 +836,7 @@ async function buildRapportView() {
       const btnOpen = document.createElement("button");
       btnOpen.className = "btn btn-sm";
       btnOpen.textContent = "Ouvrir";
-      btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full), "_blank", "noopener");
+      btnOpen.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full) + "&token=" + encodeURIComponent(authToken || ""), "_blank", "noopener");
 
       const btnFiche = document.createElement("button");
       btnFiche.className = "btn btn-sm";
@@ -1737,7 +1737,7 @@ async function refreshSubmissionView() {
       const btnView = document.createElement("button");
       btnView.className = "btn";
       btnView.textContent = "Voir";
-      btnView.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full), "_blank", "noopener");
+      btnView.onclick = () => window.open("/api/file?path=" + encodeURIComponent(full) + "&token=" + encodeURIComponent(authToken || ""), "_blank", "noopener");
       actions.appendChild(btnView);
 
       const btnFiche = document.createElement("button");

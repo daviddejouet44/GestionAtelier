@@ -100,7 +100,10 @@ export function esc(s) {
 // ======================================================
 export async function loadDeliveries() {
   try {
-    const list = await fetch("/api/delivery").then(r => r.json()).catch(() => []);
+    const resp = await fetch("/api/delivery", {
+      headers: authToken ? { "Authorization": "Bearer " + authToken } : {}
+    }).then(r => r.json()).catch(() => []);
+    const list = Array.isArray(resp) ? resp : [];
     const newDeliveries = {};
     list.forEach(x => {
       const fname = fnKey(x.fileName || x.fullPath || "");
@@ -117,8 +120,11 @@ export async function loadDeliveries() {
 
 export async function loadAssignments() {
   try {
-    const list = await fetch("/api/assignments").then(r => r.json()).catch(() => []);
+    const resp = await fetch("/api/assignments", {
+      headers: authToken ? { "Authorization": "Bearer " + authToken } : {}
+    }).then(r => r.json()).catch(() => []);
     assignmentsByPath = {};
+    const list = Array.isArray(resp) ? resp : [];
     list.forEach(a => {
       const fname = fnKey(a.fileName || a.fullPath || "");
       if (fname) assignmentsByPath[fname] = a;
