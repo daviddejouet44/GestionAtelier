@@ -15,8 +15,8 @@ public static class MongoDbIndexes
         deliveries.Indexes.CreateOne(new CreateIndexModel<BsonDocument>(
             Builders<BsonDocument>.IndexKeys.Ascending("fullPath")));
 
-        // Collection fabrication
-        var fab = MongoDbHelper.GetCollection<BsonDocument>("fabrication");
+        // Collection fabrications
+        var fab = MongoDbHelper.GetCollection<BsonDocument>("fabrications");
         fab.Indexes.CreateOne(new CreateIndexModel<BsonDocument>(
             Builders<BsonDocument>.IndexKeys.Ascending("fileName")));
         fab.Indexes.CreateOne(new CreateIndexModel<BsonDocument>(
@@ -37,8 +37,8 @@ public static class MongoDbIndexes
             Builders<BsonDocument>.IndexKeys.Ascending("email"),
             new CreateIndexOptions { Unique = true }));
 
-        // Collection activityLog
-        var logs = MongoDbHelper.GetCollection<BsonDocument>("activityLog");
+        // Collection activity_logs
+        var logs = MongoDbHelper.GetCollection<BsonDocument>("activity_logs");
         logs.Indexes.CreateOne(new CreateIndexModel<BsonDocument>(
             Builders<BsonDocument>.IndexKeys.Descending("timestamp")));
     }
