@@ -19,17 +19,12 @@ public static class FabricationExportEndpoints
         {
             try
             {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                if (string.IsNullOrWhiteSpace(token))
+                if (!AuthHelper.IsAuthenticated(ctx))
                     return Results.Json(new { ok = false, error = "Non authentifié" });
 
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length < 3)
-                    return Results.Json(new { ok = false, error = "Token invalide" });
-
+                var userId = AuthHelper.GetClaim(ctx, "userId");
                 var users = BackendUtils.LoadUsers();
-                if (!users.Any(u => u.Id == parts[0]))
+                if (string.IsNullOrWhiteSpace(userId) || !users.Any(u => u.Id == userId))
                     return Results.Json(new { ok = false, error = "Utilisateur non trouvé" });
 
                 if (string.IsNullOrWhiteSpace(fileName))
@@ -79,7 +74,7 @@ public static class FabricationExportEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
     }

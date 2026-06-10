@@ -18,21 +18,41 @@ public class LicenseInfo
 
 public static class LicenseService
 {
-    private const string PublicKey = "COLLER_ICI_LE_CONTENU_DE_public.key";
+    private static readonly string PublicKey =
+        Environment.GetEnvironmentVariable("LICENSE_PUBLIC_KEY")
+        ?? ReadPublicKeyFile()
+        ?? throw new InvalidOperationException(
+            "La clé publique de licence est manquante. " +
+            "Définissez la variable d'environnement LICENSE_PUBLIC_KEY " +
+            "ou placez le fichier data/public.key dans le répertoire de l'application.");
+
+    private static string? ReadPublicKeyFile()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "data", "public.key");
+        return File.Exists(path) ? File.ReadAllText(path).Trim() : null;
+    }
 
     private static readonly string LicensePath =
         Path.Combine(AppContext.BaseDirectory, "data", "license.lic");
 
-    private static LicenseInfo? _cached;
+    private static volatile LicenseInfo? _cached;
+    private static readonly object _lock = new object();
 
     public static LicenseInfo GetCurrent()
     {
         if (_cached != null) return _cached;
-        _cached = Load();
-        return _cached;
+        lock (_lock)
+        {
+            if (_cached != null) return _cached;
+            _cached = Load();
+            return _cached;
+        }
     }
 
-    public static void Invalidate() => _cached = null;
+    public static void Invalidate()
+    {
+        lock (_lock) { _cached = null; }
+    }
 
     public static LicenseInfo Load()
     {

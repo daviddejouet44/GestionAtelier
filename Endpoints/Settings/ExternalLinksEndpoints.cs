@@ -16,17 +16,12 @@ public static class ExternalLinksEndpoints
         {
             try
             {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                if (string.IsNullOrWhiteSpace(token))
+                if (!AuthHelper.IsAuthenticated(ctx))
                     return Results.Json(new { ok = false, error = "Non authentifié" });
 
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length < 3)
-                    return Results.Json(new { ok = false, error = "Token invalide" });
-
+                var userId = AuthHelper.GetClaim(ctx, "userId");
                 var users = BackendUtils.LoadUsers();
-                if (!users.Any(u => u.Id == parts[0]))
+                if (string.IsNullOrWhiteSpace(userId) || !users.Any(u => u.Id == userId))
                     return Results.Json(new { ok = false, error = "Utilisateur non trouvé" });
 
                 var cfg = MongoDbHelper.GetSettings<ExternalLinksSettings>("externalLinks") ?? new ExternalLinksSettings();
@@ -37,24 +32,19 @@ public static class ExternalLinksEndpoints
                     primalyticsUrl = cfg.PrismalyticsUrl ?? ""
                 });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         app.MapPut("/api/settings/external-links", async (HttpContext ctx) =>
         {
             try
             {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                if (string.IsNullOrWhiteSpace(token))
-                    return Results.Json(new { ok = false, error = "Non authentifié" });
-
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length < 3 || parts[2] != "3")
+                if (!AuthHelper.IsAdmin(ctx))
                     return Results.Json(new { ok = false, error = "Admin only" });
 
+                var userId = AuthHelper.GetClaim(ctx, "userId");
                 var users = BackendUtils.LoadUsers();
-                if (!users.Any(u => u.Id == parts[0]))
+                if (string.IsNullOrWhiteSpace(userId) || !users.Any(u => u.Id == userId))
                     return Results.Json(new { ok = false, error = "Utilisateur non trouvé" });
 
                 var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -74,7 +64,7 @@ public static class ExternalLinksEndpoints
                     primalyticsUrl = cfg.PrismalyticsUrl ?? ""
                 });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
     }
 }

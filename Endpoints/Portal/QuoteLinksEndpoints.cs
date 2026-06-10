@@ -30,20 +30,9 @@ public static class QuoteLinksEndpoints
 
     private static bool IsStaffAuth(HttpContext ctx, out string login)
     {
-        login = "";
-        try
-        {
-            var raw = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "").Trim();
-            if (string.IsNullOrWhiteSpace(raw)) return false;
-            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(raw));
-            var parts = decoded.Split(':');
-            if (parts.Length < 3) return false;
-            var profile = parts[2];
-            if (profile != "2" && profile != "3") return false;
-            login = parts.Length >= 2 ? parts[1] : "";
-            return true;
-        }
-        catch { return false; }
+        login = AuthHelper.GetClaim(ctx, "login") ?? "";
+        var profile = AuthHelper.GetClaim(ctx, "profile");
+        return profile == "2" || profile == "3";
     }
 
     private static QuoteLink? TokenToLink(string token)
@@ -380,7 +369,7 @@ public static class QuoteLinksEndpoints
             catch (Exception ex)
             {
                 Console.WriteLine($"[ERROR] /api/pro/quotes/send: {ex.Message}");
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -578,7 +567,7 @@ public static class QuoteLinksEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -664,7 +653,7 @@ public static class QuoteLinksEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -923,7 +912,7 @@ public static class QuoteLinksEndpoints
             catch (Exception ex)
             {
                 Console.WriteLine($"[ERROR] /api/portal/quote/submit: {ex.Message}");
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -1076,7 +1065,7 @@ public static class QuoteLinksEndpoints
             catch (Exception ex)
             {
                 Console.WriteLine($"[ERROR] /api/pro/quotes/orders/import-xml: {ex.Message}");
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -1207,7 +1196,7 @@ public static class QuoteLinksEndpoints
             catch (Exception ex)
             {
                 Console.WriteLine($"[ERROR] /api/pro/orders/import-production-xml: {ex.Message}");
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
     }

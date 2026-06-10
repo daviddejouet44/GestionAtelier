@@ -65,10 +65,13 @@ app.MapGet("/api/ping", () => "pong");
 
 app.MapGet("/favicon.ico", () => Results.NoContent());
 
-app.MapGet("/api/file-stage", (string fileName) =>
+app.MapGet("/api/file-stage", (HttpContext ctx, string fileName) =>
 {
     try
     {
+        if (!AuthHelper.IsAuthenticated(ctx))
+            return Results.Json(new { ok = false, error = "Non authentifié" });
+
         // Sanitize: only allow the base filename, no path traversal
         var safeFileName = Path.GetFileName(fileName);
         if (string.IsNullOrWhiteSpace(safeFileName))
@@ -159,12 +162,23 @@ app.MapGet("/api/file-stage", (string fileName) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
-app.MapGet("/api/folders", () =>
+app.MapGet("/api/folders", (HttpContext ctx) =>
 {
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (string.IsNullOrWhiteSpace(token))
+            return Results.Json(new { ok = false, error = "Non authentifié" });
+        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
+        if (decoded.Split(':').Length < 3)
+            return Results.Json(new { ok = false, error = "Non authentifié" });
+    }
+    catch { return Results.Json(new { ok = false, error = "Non authentifié" }); }
+
     var clean = BackendUtils.Hotfolders()
         .Select(n => n.Replace("\u00A0", " ").Trim())
         .ToArray();
@@ -175,9 +189,26 @@ app.MapGet("/api/folders", () =>
 // API — FILE
 // ======================================================
 
-app.MapGet("/api/file", (string path, bool? download) =>
+app.MapGet("/api/file", (HttpContext ctx, string path, bool? download) =>
 {
-    var full = Path.GetFullPath(path);
+    // 1. Authentication required
+    if (!AuthHelper.IsAuthenticated(ctx))
+        return Results.Unauthorized();
+
+    // 2. Restrict strictly to hotfolders to prevent path traversal
+    var root = Path.GetFullPath(BackendUtils.HotfoldersRoot());
+    string full;
+    try
+    {
+        full = Path.GetFullPath(path);
+    }
+    catch
+    {
+        return Results.BadRequest();
+    }
+    if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+        return Results.Forbid();
+
     if (!File.Exists(full))
         return Results.NotFound();
 
@@ -194,11 +225,22 @@ app.MapGet("/api/file", (string path, bool? download) =>
 // DELIVERY (planning)
 // ======================================================
 
-app.MapGet("/api/tools/prismasync", () =>
+app.MapGet("/api/tools/prismasync", (HttpContext ctx) =>
 {
     try
     {
-        var url = "http://172.26.197.212/Authentication/";
+        if (!AuthHelper.IsAuthenticated(ctx))
+            return Results.Json(new { ok = false, error = "Non authentifié" });
+
+        var cfg = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig")
+            .Find(new BsonDocument()).FirstOrDefault();
+        var url = cfg?.Contains("prismaSyncUrl") == true
+            ? cfg["prismaSyncUrl"].AsString
+            : null;
+
+        if (string.IsNullOrWhiteSpace(url))
+            return Results.Json(new { ok = false, error = "URL PrismaSync non configurée. Veuillez la définir dans les paramètres (champ prismaSyncUrl)." });
+
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
             FileName = url,
@@ -208,7 +250,7 @@ app.MapGet("/api/tools/prismasync", () =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -280,7 +322,7 @@ app.MapPost("/api/logo", async (HttpContext ctx) =>
     catch (Exception ex)
     {
         Console.WriteLine($"[ERROR] POST /api/logo: {ex.Message}");
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -294,7 +336,7 @@ app.MapDelete("/api/logo", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -339,7 +381,7 @@ app.MapPost("/api/logo-login", async (HttpContext ctx) =>
     catch (Exception ex)
     {
         Console.WriteLine($"[ERROR] POST /api/logo-login: {ex.Message}");
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -352,7 +394,7 @@ app.MapDelete("/api/logo-login", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -383,7 +425,7 @@ app.MapPost("/api/background-login", async (HttpContext ctx) =>
         await file.CopyToAsync(stream);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapDelete("/api/background-login", (HttpContext ctx) =>
@@ -393,7 +435,7 @@ app.MapDelete("/api/background-login", (HttpContext ctx) =>
         DeleteImageFiles(Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro"), "background-login");
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -423,7 +465,7 @@ app.MapPost("/api/header-banner", async (HttpContext ctx) =>
         await file.CopyToAsync(stream);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapDelete("/api/header-banner", (HttpContext ctx) =>
@@ -433,7 +475,7 @@ app.MapDelete("/api/header-banner", (HttpContext ctx) =>
         DeleteImageFiles(Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro"), "header-banner");
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -475,7 +517,7 @@ app.MapPost("/api/dashboard-image", async (HttpContext ctx) =>
         await file.CopyToAsync(stream);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapDelete("/api/dashboard-image", (HttpContext ctx) =>
@@ -485,7 +527,7 @@ app.MapDelete("/api/dashboard-image", (HttpContext ctx) =>
         DeleteImageFiles(Path.Combine(app.Environment.ContentRootPath, "wwwroot_pro"), "dashboard-image");
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
     }
 }

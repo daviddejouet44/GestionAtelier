@@ -322,7 +322,7 @@ app.MapPost("/api/jobs/move", async (HttpContext ctx) =>
     catch (Exception ex)
     {
         Console.WriteLine($"[DEBUG] /api/jobs/move exception: {ex.Message}");
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -422,7 +422,7 @@ app.MapPost("/api/jobs/delete", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -454,7 +454,7 @@ app.MapPost("/api/jobs/delete-corrections-source", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -498,7 +498,7 @@ app.MapPost("/api/jobs/cleanup-corrections", () =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -588,7 +588,7 @@ app.MapPost("/api/jobs/archive", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -635,7 +635,7 @@ app.MapPost("/api/jobs/lock", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 

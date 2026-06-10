@@ -1,11 +1,14 @@
+using System.IO;
 using System.Text.Json.Serialization;
 
 namespace GestionAtelier.Models;
 
 public class IntegrationsSettings
 {
-    public const string DefaultPrismaPrepareOutputPath = @"C:\FluxAtelier\Base\Sortie";
-    public const string DefaultPrismaPrepareDirectOutputPath = @"C:\FluxAtelier\Base\Sortie_PrepareDirect";
+    public static string DefaultPrismaPrepareOutputPath =>
+        Path.Combine(GestionAtelier.Services.BackendUtils.HotfoldersRoot(), "Sortie");
+    public static string DefaultPrismaPrepareDirectOutputPath =>
+        Path.Combine(GestionAtelier.Services.BackendUtils.HotfoldersRoot(), "Sortie_PrepareDirect");
 
     [JsonPropertyName("preparePath")]
     public string PreparePath { get; set; } = "";

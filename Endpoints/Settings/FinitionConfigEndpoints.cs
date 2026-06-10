@@ -23,20 +23,20 @@ public static class FinitionConfigEndpoints
                     ?? new FinitionTimeConfig();
                 return Results.Json(cfg);
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         app.MapPut("/api/settings/finition-time-rules", async (HttpContext ctx) =>
         {
             try
             {
-                if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
+                if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
                 var cfg = await ctx.Request.ReadFromJsonAsync<FinitionTimeConfig>();
                 if (cfg == null) return Results.Json(new { ok = false, error = "Payload invalide" });
                 MongoDbHelper.UpsertSettings("finitionTimeRules", cfg);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── Finition sheet formulas ─────────────────────────────────────────────
@@ -49,20 +49,20 @@ public static class FinitionConfigEndpoints
                     ?? new FinitionSheetFormulaConfig();
                 return Results.Json(cfg);
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         app.MapPut("/api/settings/finition-sheet-formulas", async (HttpContext ctx) =>
         {
             try
             {
-                if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
+                if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
                 var cfg = await ctx.Request.ReadFromJsonAsync<FinitionSheetFormulaConfig>();
                 if (cfg == null) return Results.Json(new { ok = false, error = "Payload invalide" });
                 MongoDbHelper.UpsertSettings("finitionSheetFormulas", cfg);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── Rainage options ─────────────────────────────────────────────────────
@@ -75,32 +75,21 @@ public static class FinitionConfigEndpoints
                     ?? new RainageOptionsConfig();
                 return Results.Json(cfg);
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         app.MapPut("/api/settings/rainage-options", async (HttpContext ctx) =>
         {
             try
             {
-                if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
+                if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
                 var cfg = await ctx.Request.ReadFromJsonAsync<RainageOptionsConfig>();
                 if (cfg == null) return Results.Json(new { ok = false, error = "Payload invalide" });
                 MongoDbHelper.UpsertSettings("rainageOptions", cfg);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
     }
 
-    private static bool IsAdmin(HttpContext ctx)
-    {
-        try
-        {
-            var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            return parts.Length >= 3 && parts[2] == "3";
-        }
-        catch { return false; }
-    }
 }

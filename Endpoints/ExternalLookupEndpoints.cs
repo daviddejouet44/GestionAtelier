@@ -20,24 +20,12 @@ public static class ExternalLookupEndpoints
 {
     public static void MapExternalLookupEndpoints(this WebApplication app)
     {
-        // ── Auth helpers ──────────────────────────────────────────────────────
-        static bool IsAuthenticated(HttpContext ctx)
-        {
-            try
-            {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                return decoded.Split(':').Length >= 3;
-            }
-            catch { return false; }
-        }
-
         // ── POST /api/external/{provider}/lookup ─────────────────────────────
         // Body: { ref: "ORDER-12345" }
         // Returns: { ok, fiche: {...prefill fields...}, raw: {...} }
-        app.MapPost("/api/external/{provider}/lookup", async (HttpContext ctx, string provider) =>
+        app.MapPost("/api/external/{provider}/lookup", async (HttpContext ctx, string provider, IHttpClientFactory httpClientFactory) =>
         {
-            if (!IsAuthenticated(ctx))
+            if (!AuthHelper.IsAuthenticated(ctx))
                 return Results.Json(new { ok = false, error = "Authentification requise" });
 
             try
@@ -59,9 +47,9 @@ public static class ExternalLookupEndpoints
                     if (pCfg == null || !pCfg.Enabled || string.IsNullOrWhiteSpace(pCfg.ApiUrl))
                         return Results.Json(new { ok = false, error = "Pressero non configuré ou désactivé" });
 
-                    using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                    var http = httpClientFactory.CreateClient("external");
                     if (!string.IsNullOrEmpty(pCfg.ApiKey))
-                        http.DefaultRequestHeaders.Add("X-Api-Key", pCfg.ApiKey);
+                        http.DefaultRequestHeaders.TryAddWithoutValidation("X-Api-Key", pCfg.ApiKey);
                     if (!string.IsNullOrEmpty(pCfg.ApiKey) && !string.IsNullOrEmpty(pCfg.ApiSecret))
                     {
                         var creds = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{pCfg.ApiKey}:{pCfg.ApiSecret}"));
@@ -91,9 +79,9 @@ public static class ExternalLookupEndpoints
                     if (mCfg == null || !mCfg.Enabled || string.IsNullOrWhiteSpace(mCfg.ApiUrl))
                         return Results.Json(new { ok = false, error = "MDSF non configuré ou désactivé" });
 
-                    using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                    var http = httpClientFactory.CreateClient("external");
                     if (!string.IsNullOrEmpty(mCfg.ApiKey))
-                        http.DefaultRequestHeaders.Add("X-Api-Key", mCfg.ApiKey);
+                        http.DefaultRequestHeaders.TryAddWithoutValidation("X-Api-Key", mCfg.ApiKey);
 
                     var storePrefix = string.IsNullOrEmpty(mCfg.StoreId) ? "" : $"/stores/{mCfg.StoreId}";
                     var url = $"{mCfg.ApiUrl.TrimEnd('/')}{storePrefix}/orders/{Uri.EscapeDataString(orderRef)}";
@@ -123,7 +111,7 @@ public static class ExternalLookupEndpoints
                     if (string.IsNullOrWhiteSpace(src.Url))
                         return Results.Json(new { ok = false, error = "URL de la source ERP non configurée" });
 
-                    using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                    var http = httpClientFactory.CreateClient("external");
                     ApplyErpAuth(http, src);
 
                     // Build URL: replace {ref} placeholder or append as query param
@@ -180,7 +168,7 @@ public static class ExternalLookupEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex, "/api/external/lookup");
             }
         });
 
@@ -188,7 +176,7 @@ public static class ExternalLookupEndpoints
         // ?filename=ORDER-12345_myfile.pdf  →  { ok, ref }
         app.MapGet("/api/external/detect-ref", (HttpContext ctx) =>
         {
-            if (!IsAuthenticated(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
+            if (!AuthHelper.IsAuthenticated(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
             try
             {
                 var filename  = ctx.Request.Query["filename"].ToString();
@@ -206,7 +194,7 @@ public static class ExternalLookupEndpoints
                 var detected = m.Groups.Count > 1 ? m.Groups[1].Value : m.Value;
                 return Results.Json(new { ok = true, detected });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
     }
 

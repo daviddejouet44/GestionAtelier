@@ -63,7 +63,7 @@ app.MapPost("/api/upload", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -99,7 +99,7 @@ app.MapPost("/api/acrobat/open", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -126,7 +126,7 @@ app.MapPost("/api/acrobat", () =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -283,7 +283,7 @@ app.MapPost("/api/acrobat/preflight", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -330,7 +330,7 @@ app.MapPost("/api/acrobat/complete", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -361,7 +361,7 @@ app.MapPost("/api/jobs/open-in-fiery", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -458,7 +458,7 @@ app.MapPost("/api/jobs/send-to-print", async (HttpContext ctx) =>
     catch (Exception ex)
     {
         Console.WriteLine($"[ERR] send-to-print: {ex.Message}");
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -648,7 +648,7 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
     catch (Exception ex)
     {
         Console.WriteLine($"[ERR] send-to-action: {ex.Message}");
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -656,18 +656,11 @@ app.MapPost("/api/jobs/copy-to-hotfolder", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (string.IsNullOrWhiteSpace(token))
+        if (!AuthHelper.IsAuthenticated(ctx))
             return Results.Json(new { ok = false, error = "Non authentifié" });
-        string userId;
-        try
-        {
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            if (parts.Length < 3) return Results.Json(new { ok = false, error = "Token invalide" });
-            userId = parts[0];
-        }
-        catch { return Results.Json(new { ok = false, error = "Token invalide" }); }
+        var userId = AuthHelper.GetClaim(ctx, "userId");
+        if (string.IsNullOrWhiteSpace(userId))
+            return Results.Json(new { ok = false, error = "Token invalide" });
         var users = BackendUtils.LoadUsers();
         if (!users.Any(u => u.Id == userId))
             return Results.Json(new { ok = false, error = "Utilisateur non trouvé" });
@@ -707,7 +700,7 @@ app.MapPost("/api/jobs/copy-to-hotfolder", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -752,7 +745,7 @@ app.MapPost("/api/jobs/open-in-prismaprepare", async (HttpContext ctx) =>
     catch (Exception ex)
     {
         Console.WriteLine($"[ERR] open-in-prismaprepare: {ex.Message}");
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 

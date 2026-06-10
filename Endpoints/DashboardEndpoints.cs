@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Collections.Generic;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using MongoDB.Driver;
@@ -26,19 +27,13 @@ app.MapGet("/api/dashboard/stats", (HttpContext ctx) =>
     try
     {
         // Auth check (any authenticated user)
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (string.IsNullOrWhiteSpace(token))
+        var principal = AuthHelper.GetPrincipal(ctx);
+        if (principal == null)
             return Results.Json(new { ok = false, error = "Non authentifié" });
 
-        string userId;
-        try
-        {
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            if (parts.Length < 3) return Results.Json(new { ok = false, error = "Token invalide" });
-            userId = parts[0];
-        }
-        catch { return Results.Json(new { ok = false, error = "Token invalide" }); }
+        var userId = principal.FindFirstValue("userId") ?? "";
+        if (string.IsNullOrEmpty(userId))
+            return Results.Json(new { ok = false, error = "Token invalide" });
 
         var users = BackendUtils.LoadUsers();
         if (!users.Any(u => u.Id == userId))
@@ -381,7 +376,7 @@ app.MapGet("/api/dashboard/stats", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -516,7 +511,7 @@ app.MapGet("/api/dashboard/stats/export-csv", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 

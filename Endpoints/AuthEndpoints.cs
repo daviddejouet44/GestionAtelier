@@ -9,10 +9,13 @@ using System.Xml.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Diagnostics;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
 using MongoDB.Bson;
 using GestionAtelier.Models;
@@ -39,20 +42,20 @@ app.MapPost("/api/auth/login", async (HttpContext ctx) =>
         var login = loginEl.GetString() ?? "";
         var pwd = pwdEl.GetString() ?? "";
 
-        Console.WriteLine($"[DEBUG] Login attempt: {login} / {pwd}");
-
         var users = BackendUtils.LoadUsers();
-        Console.WriteLine($"[DEBUG] Users loaded: {users.Count}");
-        foreach (var u in users)
-        {
-            Console.WriteLine($"[DEBUG]   - {u.Login} / {u.Password}");
-        }
-
         var user = users.FirstOrDefault(u => u.Login == login && u.Password == pwd);
 
         if (user == null)
         {
-            Console.WriteLine($"[DEBUG] User not found or password mismatch");
+            // Point 19: Log failed login attempt
+            MongoDbHelper.InsertActivityLog(new ActivityLogEntry
+            {
+                Timestamp = DateTime.Now,
+                UserLogin = login,
+                UserName = "?",
+                Action = "LOGIN_FAILED",
+                Details = $"Tentative de connexion échouée depuis {ctx.Connection.RemoteIpAddress}"
+            });
             return Results.Json(new { ok = false, error = "Identifiants invalides" });
         }
 
@@ -86,9 +89,32 @@ app.MapPost("/api/auth/login", async (HttpContext ctx) =>
             catch { /* non-fatal — allow login if check fails */ }
         }
 
-        // Générer un token avec session unique
+        // Générer un token JWT signé avec les claims utilisateur
         var sessionId = Guid.NewGuid().ToString("N")[..16];
-        var token = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes($"{user.Id}:{user.Login}:{user.Profile}:{sessionId}"));
+        string token;
+        try
+        {
+            var key = AuthHelper.GetSigningKey();
+            var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            var claims = new[]
+            {
+                new Claim("userId",    user.Id),
+                new Claim("login",     user.Login),
+                new Claim("profile",   user.Profile.ToString()),
+                new Claim("name",      user.Name),
+                new Claim("sessionId", sessionId)
+            };
+            var jwtToken = new JwtSecurityToken(
+                claims:    claims,
+                expires:   DateTime.UtcNow.AddHours(8),
+                signingCredentials: credentials);
+            token = new JwtSecurityTokenHandler().WriteToken(jwtToken);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] JWT generation failed: {ex.Message}");
+            return Results.Json(new { ok = false, error = "Erreur de génération du token. Vérifiez la configuration JWT_SECRET." });
+        }
 
         // Store active session ID on the user record
         try
@@ -102,16 +128,16 @@ app.MapPost("/api/auth/login", async (HttpContext ctx) =>
         }
         catch { /* non-fatal */ }
 
-        Console.WriteLine($"[DEBUG] Login successful for {user.Login}");
+        Console.WriteLine($"[INFO] Login successful for {user.Login}");
 
-        // Log login activity
+        // Point 19: Log successful login with IP
         MongoDbHelper.InsertActivityLog(new ActivityLogEntry
         {
             Timestamp = DateTime.Now,
             UserLogin = user.Login,
             UserName = user.Name,
-            Action = "LOGIN",
-            Details = $"Connexion profil {user.Profile}"
+            Action = "LOGIN_SUCCESS",
+            Details = $"Connexion réussie depuis {ctx.Connection.RemoteIpAddress} (profil {user.Profile})"
         });
 
         return Results.Json(new
@@ -130,26 +156,22 @@ app.MapPost("/api/auth/login", async (HttpContext ctx) =>
     catch (Exception ex)
     {
         Console.WriteLine($"[DEBUG] Exception: {ex.Message}");
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex, "/api/auth/login");
     }
-});
+}).RequireRateLimiting("login");
 
 app.MapGet("/api/auth/me", (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (string.IsNullOrWhiteSpace(token))
+        var principal = AuthHelper.GetPrincipal(ctx);
+        if (principal == null)
             return Results.Json(new { ok = false, error = "Non authentifié" });
 
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-
-        if (parts.Length < 3)
-            return Results.Json(new { ok = false, error = "Token invalide" });
+        var userId = principal.FindFirstValue("userId") ?? "";
 
         var users = BackendUtils.LoadUsers();
-        var user = users.FirstOrDefault(u => u.Id == parts[0]);
+        var user = users.FirstOrDefault(u => u.Id == userId);
 
         if (user == null)
             return Results.Json(new { ok = false, error = "Utilisateur non trouvé" });
@@ -168,7 +190,7 @@ app.MapGet("/api/auth/me", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -176,11 +198,7 @@ app.MapGet("/api/auth/users", (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var users = BackendUtils.LoadUsers();
@@ -199,7 +217,7 @@ app.MapGet("/api/auth/users", (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -207,18 +225,17 @@ app.MapPost("/api/auth/heartbeat", (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (string.IsNullOrWhiteSpace(token)) return Results.Json(new { ok = false });
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 2) return Results.Json(new { ok = false });
+        var principal = AuthHelper.GetPrincipal(ctx);
+        if (principal == null) return Results.Json(new { ok = false });
 
-        // Validate session: reject if another session has taken over
-        if (parts.Length >= 4)
+        var userId    = principal.FindFirstValue("userId") ?? "";
+        var login     = principal.FindFirstValue("login")  ?? "";
+        var sessionId = principal.FindFirstValue("sessionId") ?? "";
+
+        if (!string.IsNullOrEmpty(sessionId))
         {
-            var sessionId = parts[3];
             var usersCol = MongoDbHelper.GetUsersCollection();
-            var userDoc = usersCol.Find(Builders<BsonDocument>.Filter.Eq("id", parts[0])).FirstOrDefault();
+            var userDoc = usersCol.Find(Builders<BsonDocument>.Filter.Eq("id", userId)).FirstOrDefault();
             if (userDoc != null && userDoc.Contains("activeSessionId") && userDoc["activeSessionId"] != BsonNull.Value)
             {
                 var activeSession = userDoc["activeSessionId"].AsString;
@@ -227,7 +244,7 @@ app.MapPost("/api/auth/heartbeat", (HttpContext ctx) =>
             }
         }
 
-        BackendUtils.UpdateUserActivity(parts[1]);
+        BackendUtils.UpdateUserActivity(login);
         return Results.Json(new { ok = true });
     }
     catch { return Results.Json(new { ok = false }); }
@@ -237,11 +254,7 @@ app.MapPut("/api/auth/users/{userId}", async (HttpContext ctx, string userId) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -268,7 +281,7 @@ app.MapPut("/api/auth/users/{userId}", async (HttpContext ctx, string userId) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -277,11 +290,7 @@ app.MapPost("/api/auth/register", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -308,7 +317,7 @@ app.MapPost("/api/auth/register", async (HttpContext ctx) =>
         BackendUtils.InsertUser(newUser);
 
         // Log account creation
-        var creatorLogin = parts.Length >= 2 ? parts[1] : "?";
+        var creatorLogin = AuthHelper.GetClaim(ctx, "login") ?? "?";
         MongoDbHelper.InsertActivityLog(new ActivityLogEntry
         {
             Timestamp = DateTime.Now,
@@ -322,7 +331,7 @@ app.MapPost("/api/auth/register", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -330,18 +339,14 @@ app.MapDelete("/api/auth/users/{userId}", (HttpContext ctx, string userId) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         if (!BackendUtils.DeleteUser(userId))
             return Results.Json(new { ok = false, error = "Utilisateur non trouvé" });
 
         // Log account deletion
-        var delCreatorLogin = parts.Length >= 2 ? parts[1] : "?";
+        var delCreatorLogin = AuthHelper.GetClaim(ctx, "login") ?? "?";
         MongoDbHelper.InsertActivityLog(new ActivityLogEntry
         {
             Timestamp = DateTime.Now,
@@ -355,7 +360,7 @@ app.MapDelete("/api/auth/users/{userId}", (HttpContext ctx, string userId) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -363,11 +368,7 @@ app.MapPost("/api/auth/users/{userId}/force-disconnect", (HttpContext ctx, strin
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var usersCol = MongoDbHelper.GetUsersCollection();
@@ -384,7 +385,7 @@ app.MapPost("/api/auth/users/{userId}/force-disconnect", (HttpContext ctx, strin
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 

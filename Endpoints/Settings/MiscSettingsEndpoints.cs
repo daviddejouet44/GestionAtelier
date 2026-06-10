@@ -488,8 +488,8 @@ app.MapGet("/api/config/commands", (HttpContext ctx) =>
             prismaPrepareCommand = "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\"",
             printCommand = "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\" /SP /C {quantity}",
             modifyCommand = "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\"",
-            fieryHotfolderBase = "C:\\Fiery\\Hotfolders",
-            controllerPath = "C:\\PrismaSync\\Controller"
+            fieryHotfolderBase = Path.Combine(BackendUtils.HotfoldersRoot(), "Fiery"),
+            controllerPath = Path.Combine(BackendUtils.HotfoldersRoot(), "Controller")
         }});
     return Results.Json(new { ok = true, config = new {
         batCommand = doc.Contains("batCommand") ? doc["batCommand"].AsString : "",

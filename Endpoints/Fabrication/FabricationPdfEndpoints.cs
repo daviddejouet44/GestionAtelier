@@ -92,7 +92,7 @@ app.MapGet("/api/fabrication/pdf", (string? fullPath, string? fileName, bool? sa
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -195,7 +195,7 @@ app.MapGet("/api/admin/jobs/delivery-labels-pdf", (string? fileName, string? ful
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 

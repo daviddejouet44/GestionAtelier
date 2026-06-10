@@ -5,16 +5,20 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Collections.Generic;
 using System.Xml.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -27,10 +31,15 @@ using GestionAtelier.Endpoints.Portal;
 using GestionAtelier.Watchers;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ── Upload size limit ────────────────────────────────────────────────────────
+var maxUploadMb = int.TryParse(Environment.GetEnvironmentVariable("MAX_UPLOAD_MB"), out var mb) ? mb : 500;
+var maxBytes = (long)maxUploadMb * 1024 * 1024;
+
 builder.WebHost.UseKestrel(k =>
 {
     k.ListenAnyIP(5080, o => o.Protocols = HttpProtocols.Http1AndHttp2);
-    k.Limits.MaxRequestBodySize = null; // No size limit for large PDF uploads
+    k.Limits.MaxRequestBodySize = maxBytes;
 });
 
 var recycleEnabled = builder.Configuration["RecycleBin:Enabled"] == "true";
@@ -42,20 +51,91 @@ Directory.CreateDirectory(recyclePath);
 // Remove form body size limit so large PDF uploads in coupled submission are not rejected
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
 {
-    o.MultipartBodyLengthLimit = long.MaxValue;
+    o.MultipartBodyLengthLimit = maxBytes;
     o.ValueLengthLimit         = int.MaxValue;
     o.ValueCountLimit          = int.MaxValue;
 });
+
+// ── JWT Authentication ───────────────────────────────────────────────────────
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey         = AuthHelper.GetSigningKey(),
+            ValidateIssuer           = false,
+            ValidateAudience         = false,
+            ClockSkew                = TimeSpan.Zero
+        };
+    });
+builder.Services.AddAuthorization();
 
 builder.Services.AddHostedService<GestionAtelier.Services.DailyReportService>();
 builder.Services.AddSingleton<GestionAtelier.Services.OrderSourcePollingService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GestionAtelier.Services.OrderSourcePollingService>());
 
+// Point 12: Rate limiter to protect /api/auth/login against brute-force
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("login", opt =>
+    {
+        opt.PermitLimit = 5;
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.QueueLimit = 0;
+    });
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
+
+// Point 14: HSTS configuration for production
+builder.Services.AddHsts(options =>
+{
+    options.MaxAge = TimeSpan.FromDays(365);
+    options.IncludeSubDomains = true;
+});
+
+// Point 15: IHttpClientFactory to avoid socket exhaustion
+builder.Services.AddHttpClient("external", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+
 var app = builder.Build();
+
+// Point 14: Force HTTPS in production
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+    app.UseHsts();
+}
+
+// Point 11: HTTP security headers
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+    context.Response.Headers.Append("X-Frame-Options", "SAMEORIGIN");
+    context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
+    context.Response.Headers.Append("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    context.Response.Headers.Append("X-XSS-Protection", "1; mode=block");
+    await next();
+});
+
+// Point 12: Apply rate limiter middleware
+app.UseRateLimiter();
 
 QuestPDF.Settings.License = LicenseType.Community;
 
 Console.WriteLine("[INFO] ContentRoot = " + app.Environment.ContentRootPath);
+
+// Warn if license public key is not configured
+try
+{
+    var _ = LicenseService.GetCurrent(); // triggers key loading; logs warning if missing
+}
+catch (InvalidOperationException licEx)
+{
+    Console.WriteLine($"[WARN] License public key not configured: {licEx.Message}");
+}
 
 // Initialize hotfolders
 {
@@ -137,6 +217,8 @@ else
 
 // 2. Routing APRÈS les fichiers statiques
 app.UseRouting();
+app.UseAuthentication();
+app.UseAuthorization();
 
 // 3. Logging middleware
 app.Use(async (ctx, next) =>
@@ -269,6 +351,10 @@ Console.WriteLine("[DEBUG] === FIN LISTE ===\n");
 
 // 7. GC.KeepAlive AVANT app.Run()
 GC.KeepAlive(tempCopyWatcher);
+
+// Point 16: Ensure MongoDB indexes exist
+try { MongoDbIndexes.EnsureIndexes(); }
+catch (Exception ex) { Console.WriteLine($"[WARN] Index creation: {ex.Message}"); }
 
 // 8. Run en dernier
 app.Run();

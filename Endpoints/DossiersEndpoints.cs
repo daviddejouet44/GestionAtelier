@@ -87,7 +87,7 @@ app.MapGet("/api/production-folders", () =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -136,7 +136,7 @@ app.MapGet("/api/production-folders/{id}", (string id) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -171,7 +171,7 @@ app.MapPut("/api/production-folders/{id}", async (string id, HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -211,7 +211,7 @@ app.MapPost("/api/production-folders/{id}/upload", async (string id, HttpContext
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -235,7 +235,7 @@ app.MapGet("/api/production-folders/{id}/files/{filename}", (string id, string f
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -270,7 +270,7 @@ app.MapDelete("/api/production-folders/{id}/files", (string id, string? fileName
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -300,7 +300,7 @@ app.MapGet("/api/production-folders/global-progress", () =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -437,7 +437,7 @@ app.MapGet("/api/production/summary", () =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 

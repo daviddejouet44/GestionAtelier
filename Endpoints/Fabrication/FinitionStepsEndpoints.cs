@@ -57,7 +57,7 @@ app.MapGet("/api/fabrication/{id}/finition-steps", (string id) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -71,18 +71,7 @@ app.MapPut("/api/fabrication/{id}/finition-step", async (string id, HttpContext 
     try
     {
         // Get operator from auth token
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        string operatorName = "Opérateur";
-        if (!string.IsNullOrEmpty(token))
-        {
-            try
-            {
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length >= 1) operatorName = parts[0];
-            }
-            catch { }
-        }
+        string operatorName = AuthHelper.GetClaim(ctx, "userId") ?? "Opérateur";
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
         if (!json.TryGetProperty("step", out var stepProp))
@@ -170,7 +159,7 @@ app.MapPut("/api/fabrication/{id}/finition-step", async (string id, HttpContext 
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
     }
