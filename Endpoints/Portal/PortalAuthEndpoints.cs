@@ -112,6 +112,16 @@ public static class PortalAuthEndpoints
                         Builders<BsonDocument>.Update
                             .Set("failedLoginAttempts", attempts)
                             .Set("lockedUntil", lockUntil.HasValue ? (BsonValue)lockUntil.Value : BsonNull.Value));
+
+                    // Point 19: Log portal login failure
+                    MongoDbHelper.InsertActivityLog(new ActivityLogEntry
+                    {
+                        Timestamp = DateTime.Now,
+                        UserLogin = email,
+                        UserName = client.DisplayName,
+                        Action = "PORTAL_LOGIN_FAILED",
+                        Details = $"Tentative de connexion portail échouée depuis {ctx.Connection.RemoteIpAddress}"
+                    });
                     return Results.Json(new { ok = false, error = "Identifiants invalides" });
                 }
 
@@ -123,6 +133,16 @@ public static class PortalAuthEndpoints
                         .Set("lockedUntil", BsonNull.Value)
                         .Set("lastLoginAt", DateTime.UtcNow));
 
+                // Point 19: Log portal login success
+                MongoDbHelper.InsertActivityLog(new ActivityLogEntry
+                {
+                    Timestamp = DateTime.Now,
+                    UserLogin = client.Email,
+                    UserName = client.DisplayName,
+                    Action = "PORTAL_LOGIN_SUCCESS",
+                    Details = $"Connexion portail réussie depuis {ctx.Connection.RemoteIpAddress}"
+                });
+
                 var token = MakePortalToken(client.Id, client.Email);
                 return Results.Json(new
                 {
@@ -133,7 +153,7 @@ public static class PortalAuthEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -177,7 +197,7 @@ public static class PortalAuthEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -216,7 +236,7 @@ public static class PortalAuthEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
     }

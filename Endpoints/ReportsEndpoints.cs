@@ -28,7 +28,7 @@ app.MapGet("/api/settings/report-config", () =>
         var config = DailyReportService.LoadConfig();
         return Results.Json(new { ok = true, config });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -51,7 +51,7 @@ app.MapPut("/api/settings/report-config", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("dailyReportConfig", cfg);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -74,7 +74,7 @@ app.MapPost("/api/reports/generate-now", async (HttpContext ctx) =>
         await DailyReportService.GenerateReportsAsync();
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -100,7 +100,7 @@ app.MapGet("/api/reports/history", () =>
 
         return Results.Json(new { ok = true, items });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
     }
 }

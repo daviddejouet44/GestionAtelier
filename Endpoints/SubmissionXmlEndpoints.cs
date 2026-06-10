@@ -344,7 +344,7 @@ public static class SubmissionXmlEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -358,7 +358,7 @@ public static class SubmissionXmlEndpoints
                           ?? new SubmissionXmlCouplingSettings();
                 return Results.Json(new { ok = true, config = cfg });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── PUT /api/settings/submission-xml-coupling ────────────────────────
@@ -381,7 +381,7 @@ public static class SubmissionXmlEndpoints
                 MongoDbHelper.UpsertSettings("submission_xml_coupling", cfg);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── GET /api/settings/submission-erp-lookup ──────────────────────────
@@ -408,7 +408,7 @@ public static class SubmissionXmlEndpoints
                     }
                 });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── PUT /api/settings/submission-erp-lookup ──────────────────────────
@@ -465,7 +465,7 @@ public static class SubmissionXmlEndpoints
                 MongoDbHelper.UpsertSettings("submission_erp_lookup", cfg);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
     }
 }

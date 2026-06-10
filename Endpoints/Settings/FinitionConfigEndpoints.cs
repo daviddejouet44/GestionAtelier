@@ -23,7 +23,7 @@ public static class FinitionConfigEndpoints
                     ?? new FinitionTimeConfig();
                 return Results.Json(cfg);
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         app.MapPut("/api/settings/finition-time-rules", async (HttpContext ctx) =>
@@ -36,7 +36,7 @@ public static class FinitionConfigEndpoints
                 MongoDbHelper.UpsertSettings("finitionTimeRules", cfg);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── Finition sheet formulas ─────────────────────────────────────────────
@@ -49,7 +49,7 @@ public static class FinitionConfigEndpoints
                     ?? new FinitionSheetFormulaConfig();
                 return Results.Json(cfg);
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         app.MapPut("/api/settings/finition-sheet-formulas", async (HttpContext ctx) =>
@@ -62,7 +62,7 @@ public static class FinitionConfigEndpoints
                 MongoDbHelper.UpsertSettings("finitionSheetFormulas", cfg);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── Rainage options ─────────────────────────────────────────────────────
@@ -75,7 +75,7 @@ public static class FinitionConfigEndpoints
                     ?? new RainageOptionsConfig();
                 return Results.Json(cfg);
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         app.MapPut("/api/settings/rainage-options", async (HttpContext ctx) =>
@@ -88,7 +88,7 @@ public static class FinitionConfigEndpoints
                 MongoDbHelper.UpsertSettings("rainageOptions", cfg);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
     }
 

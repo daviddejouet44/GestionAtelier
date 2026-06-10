@@ -46,7 +46,7 @@ app.MapGet("/api/config/kanban-columns", () =>
             return Results.Json(new { ok = true, columns = GetDefaultKanbanColumns() });
         return Results.Json(new { ok = true, columns = cfg.Columns });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPut("/api/config/kanban-columns", async (HttpContext ctx) =>
@@ -103,7 +103,7 @@ app.MapPut("/api/config/kanban-columns", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("kanbanColumns", new KanbanSettings { Columns = columns });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/config/imposition", () =>
@@ -118,7 +118,7 @@ app.MapGet("/api/config/imposition", () =>
             : "";
         return Results.Json(new { ok = true, enabled, hotfolderPath });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message, enabled = false, hotfolderPath = "" }); }
+    catch (Exception ex) { Console.WriteLine($"[ERROR] kanban config: {ex}"); return Results.Json(new { ok = false, error = "Une erreur interne est survenue. Veuillez réessayer.", enabled = false, hotfolderPath = "" }, statusCode: 500); }
 });
 
 app.MapGet("/api/config/imposition-hotfolder", () =>
@@ -133,7 +133,7 @@ app.MapGet("/api/config/imposition-hotfolder", () =>
             : "";
         return Results.Json(new { ok = true, enabled, path });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message, enabled = false, path = "" }); }
+    catch (Exception ex) { Console.WriteLine($"[ERROR] kanban config path: {ex}"); return Results.Json(new { ok = false, error = "Une erreur interne est survenue. Veuillez réessayer.", enabled = false, path = "" }, statusCode: 500); }
 });
 
 app.MapPut("/api/config/imposition", async (HttpContext ctx) =>
@@ -166,7 +166,7 @@ app.MapPut("/api/config/imposition", async (HttpContext ctx) =>
         col.ReplaceOne(Builders<BsonDocument>.Filter.Empty, doc, new ReplaceOptions { IsUpsert = true });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPut("/api/config/imposition-hotfolder", async (HttpContext ctx) =>
@@ -199,7 +199,7 @@ app.MapPut("/api/config/imposition-hotfolder", async (HttpContext ctx) =>
         col.ReplaceOne(Builders<BsonDocument>.Filter.Empty, doc, new ReplaceOptions { IsUpsert = true });
         return Results.Json(new { ok = true, enabled, path = hotfolderPath });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/config/action-buttons", () =>

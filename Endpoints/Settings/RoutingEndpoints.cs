@@ -60,7 +60,7 @@ app.MapPut("/api/config/hotfolder-routing", async (HttpContext ctx) =>
 
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapDelete("/api/config/hotfolder-routing/{typeTravail}", (string typeTravail) =>
@@ -71,7 +71,7 @@ app.MapDelete("/api/config/hotfolder-routing/{typeTravail}", (string typeTravail
         col.DeleteMany(Builders<BsonDocument>.Filter.Eq("typeTravail", Uri.UnescapeDataString(typeTravail)));
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/config/fiery-routing", () =>
@@ -107,7 +107,7 @@ app.MapPut("/api/config/fiery-routing", async (HttpContext ctx) =>
         col.ReplaceOne(filter, doc, new ReplaceOptions { IsUpsert = true });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapDelete("/api/config/fiery-routing/{typeTravail}", (string typeTravail) =>
@@ -118,7 +118,7 @@ app.MapDelete("/api/config/fiery-routing/{typeTravail}", (string typeTravail) =>
         col.DeleteMany(Builders<BsonDocument>.Filter.Eq("typeTravail", Uri.UnescapeDataString(typeTravail)));
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/config/prismasync-routing", () =>
@@ -182,7 +182,7 @@ app.MapPut("/api/config/prismasync-routing", async (HttpContext ctx) =>
         }
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapDelete("/api/config/prismasync-routing/{id}", (string id) =>
@@ -202,7 +202,7 @@ app.MapDelete("/api/config/prismasync-routing/{id}", (string id) =>
         }
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/config/direct-print-routing", () =>
@@ -242,7 +242,7 @@ app.MapPut("/api/config/direct-print-routing", async (HttpContext ctx) =>
         col.ReplaceOne(filter, doc, new ReplaceOptions { IsUpsert = true });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapDelete("/api/config/direct-print-routing", async (HttpContext ctx) =>
@@ -258,7 +258,7 @@ app.MapDelete("/api/config/direct-print-routing", async (HttpContext ctx) =>
         col.DeleteMany(filter);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/config/prisma-prepare-routing", () =>
@@ -290,7 +290,7 @@ app.MapPut("/api/config/prisma-prepare-routing", async (HttpContext ctx) =>
         col.ReplaceOne(filter, doc, new ReplaceOptions { IsUpsert = true });
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapDelete("/api/config/prisma-prepare-routing/{typeTravail}", (string typeTravail) =>
@@ -301,7 +301,7 @@ app.MapDelete("/api/config/prisma-prepare-routing/{typeTravail}", (string typeTr
         col.DeleteMany(Builders<BsonDocument>.Filter.Eq("typeTravail", typeTravail));
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
     }

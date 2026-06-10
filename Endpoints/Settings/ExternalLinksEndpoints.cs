@@ -37,7 +37,7 @@ public static class ExternalLinksEndpoints
                     primalyticsUrl = cfg.PrismalyticsUrl ?? ""
                 });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         app.MapPut("/api/settings/external-links", async (HttpContext ctx) =>
@@ -74,7 +74,7 @@ public static class ExternalLinksEndpoints
                     primalyticsUrl = cfg.PrismalyticsUrl ?? ""
                 });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
     }
 }

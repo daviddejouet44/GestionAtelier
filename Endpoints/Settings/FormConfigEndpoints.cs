@@ -66,7 +66,7 @@ public static class FormConfigEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -90,7 +90,7 @@ public static class FormConfigEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -110,7 +110,7 @@ public static class FormConfigEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -138,7 +138,7 @@ public static class FormConfigEndpoints
                 MongoDbHelper.UpsertSettings(SettingsKey, config);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // DELETE /api/settings/form-config/section/{name}  — remove a section (fields moved to first section)
@@ -162,7 +162,7 @@ public static class FormConfigEndpoints
                 MongoDbHelper.UpsertSettings(SettingsKey, config);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // POST /api/settings/form-config/field  — add a custom field
@@ -195,7 +195,7 @@ public static class FormConfigEndpoints
                 MongoDbHelper.UpsertSettings(SettingsKey, config);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // DELETE /api/settings/form-config/field/{id}  — delete a custom field
@@ -220,7 +220,7 @@ public static class FormConfigEndpoints
                 MongoDbHelper.UpsertSettings(SettingsKey, config);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
     }
 

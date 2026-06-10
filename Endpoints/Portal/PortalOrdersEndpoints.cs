@@ -517,7 +517,7 @@ public static class PortalOrdersEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -620,7 +620,7 @@ public static class PortalOrdersEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -742,7 +742,7 @@ public static class PortalOrdersEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -897,7 +897,7 @@ public static class PortalOrdersEndpoints
             catch (Exception ex)
             {
                 Console.WriteLine($"[ERROR] Recap PDF endpoint failed: {ex.Message}");
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -946,7 +946,7 @@ public static class PortalOrdersEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 

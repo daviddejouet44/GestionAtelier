@@ -48,7 +48,7 @@ public static class OrderSourcesEndpoints
                 var sources = docs.Select(d => SafeSourceView(d)).ToList();
                 return Results.Json(new { ok = true, sources });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── POST /api/integrations/order-sources ──────────────────────────────
@@ -68,7 +68,7 @@ public static class OrderSourcesEndpoints
 
                 return Results.Json(new { ok = true, id = source.Id });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── PUT /api/integrations/order-sources/{id} ──────────────────────────
@@ -93,7 +93,7 @@ public static class OrderSourcesEndpoints
                 col.ReplaceOne(Builders<BsonDocument>.Filter.Eq("_id", id), doc);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── DELETE /api/integrations/order-sources/{id} ───────────────────────
@@ -106,7 +106,7 @@ public static class OrderSourcesEndpoints
                 col.DeleteOne(Builders<BsonDocument>.Filter.Eq("_id", id));
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── POST /api/integrations/order-sources/{id}/test ───────────────────
@@ -154,7 +154,7 @@ public static class OrderSourcesEndpoints
             }
             catch (Exception ex)
             {
-                return Results.Json(new { ok = false, error = ex.Message });
+                return ErrorHelper.HandleException(ex);
             }
         });
 
@@ -181,7 +181,7 @@ public static class OrderSourcesEndpoints
 
                 return Results.Json(new { ok = true, message = "Cycle lancé en arrière-plan" });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── GET /api/integrations/order-sources/{id}/logs ────────────────────
@@ -203,7 +203,7 @@ public static class OrderSourcesEndpoints
 
                 return Results.Json(new { ok = true, logs });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── GET /api/integrations/order-sources/logs ─────────────────────────
@@ -235,7 +235,7 @@ public static class OrderSourcesEndpoints
 
                 return Results.Json(new { ok = true, logs });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── GET /api/integrations/dropbox/authorize ───────────────────────────
@@ -258,7 +258,7 @@ public static class OrderSourcesEndpoints
                 var url = DropboxOrderSourceProvider.GetAuthorizationUrl(dropboxCfg.AppKey, callbackUrl, state);
                 return Results.Json(new { ok = true, url });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── GET /api/integrations/dropbox/callback ────────────────────────────
@@ -348,7 +348,7 @@ public static class OrderSourcesEndpoints
                 MongoDbHelper.UpsertSettings("dropboxGlobalConfig", cfg);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── GET /api/integrations/dropbox/global-config ───────────────────────
@@ -363,7 +363,7 @@ public static class OrderSourcesEndpoints
                 return Results.Json(new { ok = true, appKey = cfg.AppKey, callbackUrl = cfg.CallbackUrl,
                     hasAppSecret = !string.IsNullOrEmpty(cfg.AppSecret) });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── GET /api/integrations/google-drive/authorize ──────────────────────
@@ -386,7 +386,7 @@ public static class OrderSourcesEndpoints
                 var url = GoogleDriveOrderSourceProvider.GetAuthorizationUrl(gdCfg.AppClientId, callbackUrl, state);
                 return Results.Json(new { ok = true, url });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── GET /api/integrations/google-drive/callback ───────────────────────
@@ -468,7 +468,7 @@ public static class OrderSourcesEndpoints
                 return Results.Json(new { ok = true, appClientId = cfg.AppClientId, callbackUrl = cfg.CallbackUrl,
                     hasAppClientSecret = !string.IsNullOrEmpty(cfg.AppClientSecret) });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── PUT /api/integrations/google-drive/global-config ─────────────────
@@ -488,7 +488,7 @@ public static class OrderSourcesEndpoints
                 MongoDbHelper.UpsertSettings("googleDriveGlobalConfig", cfg);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── GET /api/integrations/box/authorize ───────────────────────────────
@@ -511,7 +511,7 @@ public static class OrderSourcesEndpoints
                 var url = BoxOrderSourceProvider.GetAuthorizationUrl(boxCfg.AppClientId, callbackUrl, state);
                 return Results.Json(new { ok = true, url });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── GET /api/integrations/box/callback ────────────────────────────────
@@ -594,7 +594,7 @@ public static class OrderSourcesEndpoints
                 return Results.Json(new { ok = true, appClientId = cfg.AppClientId, callbackUrl = cfg.CallbackUrl,
                     hasAppClientSecret = !string.IsNullOrEmpty(cfg.AppClientSecret) });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── PUT /api/integrations/box/global-config ───────────────────────────
@@ -614,7 +614,7 @@ public static class OrderSourcesEndpoints
                 MongoDbHelper.UpsertSettings("boxGlobalConfig", cfg);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── GET /api/integrations/onedrive/authorize ──────────────────────────
@@ -639,7 +639,7 @@ public static class OrderSourcesEndpoints
                     odCfg.AppClientId, odCfg.TenantId, callbackUrl, state, driveType ?? "personal");
                 return Results.Json(new { ok = true, url });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── GET /api/integrations/onedrive/callback ───────────────────────────
@@ -722,7 +722,7 @@ public static class OrderSourcesEndpoints
                 return Results.Json(new { ok = true, appClientId = cfg.AppClientId, tenantId = cfg.TenantId,
                     callbackUrl = cfg.CallbackUrl, hasAppClientSecret = !string.IsNullOrEmpty(cfg.AppClientSecret) });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
         // ── PUT /api/integrations/onedrive/global-config ──────────────────────
@@ -743,7 +743,7 @@ public static class OrderSourcesEndpoints
                 MongoDbHelper.UpsertSettings("oneDriveGlobalConfig", cfg);
                 return Results.Json(new { ok = true });
             }
-            catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
     }
 

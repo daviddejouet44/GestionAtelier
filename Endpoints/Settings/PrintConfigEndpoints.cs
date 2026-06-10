@@ -65,7 +65,7 @@ app.MapPost("/api/config/print-engines", async (HttpContext ctx) =>
         MongoDbHelper.AddPrintEngineWithIp(nameEl.GetString()!, ip);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPost("/api/config/print-engines/import", async (HttpContext ctx) =>
@@ -100,7 +100,7 @@ app.MapPost("/api/config/print-engines/import", async (HttpContext ctx) =>
 
         return Results.Json(new { ok = true, count });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapDelete("/api/config/print-engines/{name}", (HttpContext ctx, string name) =>
@@ -116,7 +116,7 @@ app.MapDelete("/api/config/print-engines/{name}", (HttpContext ctx, string name)
         MongoDbHelper.RemovePrintEngine(name);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/config/work-types", () =>
@@ -162,7 +162,7 @@ app.MapPost("/api/config/work-types/import", async (HttpContext ctx) =>
         }
         return Results.Json(new { ok = true, count });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapDelete("/api/config/work-types/{name}", (string name) =>
@@ -173,7 +173,7 @@ app.MapDelete("/api/config/work-types/{name}", (string name) =>
         col.DeleteMany(Builders<BsonDocument>.Filter.Eq("name", Uri.UnescapeDataString(name)));
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapGet("/api/config/paper-catalog", () =>
@@ -251,7 +251,7 @@ app.MapGet("/api/config/paper-catalog/custom", (HttpContext ctx) =>
             ?? new CustomPaperCatalog();
         return Results.Json(new { ok = true, papers = catalog.Papers });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // POST /api/config/paper-catalog/add — add a paper manually
@@ -274,7 +274,7 @@ app.MapPost("/api/config/paper-catalog/add", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("customPaperCatalog", catalog);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // POST /api/config/paper-catalog/import-csv — import papers from CSV
@@ -323,7 +323,7 @@ app.MapPost("/api/config/paper-catalog/import-csv", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("customPaperCatalog", catalog);
         return Results.Json(new { ok = true, added, skipped });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // DELETE /api/config/paper-catalog/custom/{name} — remove a custom paper
@@ -340,7 +340,7 @@ app.MapDelete("/api/config/paper-catalog/custom/{name}", (HttpContext ctx, strin
         MongoDbHelper.UpsertSettings("customPaperCatalog", catalog);
         return Results.Json(new { ok = true, removed = before - catalog.Papers.Count });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
     }

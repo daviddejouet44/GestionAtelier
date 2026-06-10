@@ -23,16 +23,24 @@ public static class LicenseService
     private static readonly string LicensePath =
         Path.Combine(AppContext.BaseDirectory, "data", "license.lic");
 
-    private static LicenseInfo? _cached;
+    private static volatile LicenseInfo? _cached;
+    private static readonly object _lock = new object();
 
     public static LicenseInfo GetCurrent()
     {
         if (_cached != null) return _cached;
-        _cached = Load();
-        return _cached;
+        lock (_lock)
+        {
+            if (_cached != null) return _cached;
+            _cached = Load();
+            return _cached;
+        }
     }
 
-    public static void Invalidate() => _cached = null;
+    public static void Invalidate()
+    {
+        lock (_lock) { _cached = null; }
+    }
 
     public static LicenseInfo Load()
     {

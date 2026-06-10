@@ -32,7 +32,7 @@ app.MapGet("/api/config/schedule", (HttpContext ctx) =>
             ?? new ScheduleSettings { WorkStart = "08:00", WorkEnd = "18:00", Holidays = new List<string>() };
         return Results.Json(new { ok = true, config = new { workStart = cfg.WorkStart, workEnd = cfg.WorkEnd, holidays = cfg.Holidays } });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPut("/api/config/schedule", async (HttpContext ctx) =>
@@ -55,7 +55,7 @@ app.MapPut("/api/config/schedule", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("schedule", existing);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPost("/api/config/schedule/holidays", async (HttpContext ctx) =>
@@ -84,7 +84,7 @@ app.MapPost("/api/config/schedule/holidays", async (HttpContext ctx) =>
         }
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapDelete("/api/config/schedule/holidays", (HttpContext ctx, string date) =>
@@ -104,7 +104,7 @@ app.MapDelete("/api/config/schedule/holidays", (HttpContext ctx, string date) =>
         MongoDbHelper.UpsertSettings("schedule", existing);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // ======================================================
@@ -122,7 +122,7 @@ app.MapGet("/api/config/key-dates-offsets", () =>
         }
         return Results.Json(new { ok = true, config });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 app.MapPut("/api/config/key-dates-offsets", async (HttpContext ctx) =>
@@ -140,7 +140,7 @@ app.MapPut("/api/config/key-dates-offsets", async (HttpContext ctx) =>
         MongoDbHelper.UpsertSettings("keyDatesOffsets", settings);
         return Results.Json(new { ok = true });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
     }

@@ -63,7 +63,7 @@ app.MapPost("/api/upload", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -99,7 +99,7 @@ app.MapPost("/api/acrobat/open", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -126,7 +126,7 @@ app.MapPost("/api/acrobat", () =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -283,7 +283,7 @@ app.MapPost("/api/acrobat/preflight", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -330,7 +330,7 @@ app.MapPost("/api/acrobat/complete", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -361,7 +361,7 @@ app.MapPost("/api/jobs/open-in-fiery", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -458,7 +458,7 @@ app.MapPost("/api/jobs/send-to-print", async (HttpContext ctx) =>
     catch (Exception ex)
     {
         Console.WriteLine($"[ERR] send-to-print: {ex.Message}");
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -648,7 +648,7 @@ app.MapPost("/api/jobs/send-to-action", async (HttpContext ctx) =>
     catch (Exception ex)
     {
         Console.WriteLine($"[ERR] send-to-action: {ex.Message}");
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -707,7 +707,7 @@ app.MapPost("/api/jobs/copy-to-hotfolder", async (HttpContext ctx) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -752,7 +752,7 @@ app.MapPost("/api/jobs/open-in-prismaprepare", async (HttpContext ctx) =>
     catch (Exception ex)
     {
         Console.WriteLine($"[ERR] open-in-prismaprepare: {ex.Message}");
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 

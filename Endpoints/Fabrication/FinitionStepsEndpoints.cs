@@ -57,7 +57,7 @@ app.MapGet("/api/fabrication/{id}/finition-steps", (string id) =>
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
 
@@ -170,7 +170,7 @@ app.MapPut("/api/fabrication/{id}/finition-step", async (string id, HttpContext 
     }
     catch (Exception ex)
     {
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex);
     }
 });
     }
