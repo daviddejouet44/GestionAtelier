@@ -53,10 +53,7 @@ app.MapPut("/api/config/kanban-columns", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -140,10 +137,7 @@ app.MapPut("/api/config/imposition", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -173,10 +167,7 @@ app.MapPut("/api/config/imposition-hotfolder", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();

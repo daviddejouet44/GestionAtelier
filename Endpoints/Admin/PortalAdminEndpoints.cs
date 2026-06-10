@@ -12,34 +12,6 @@ namespace GestionAtelier.Endpoints.Admin;
 
 public static class PortalAdminEndpoints
 {
-    // Validate admin token (profile == 3 = admin) ----------------------------
-    private static bool IsAdmin(HttpContext ctx)
-    {
-        try
-        {
-            var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            return parts.Length >= 3 && parts[2] == "3";
-        }
-        catch { return false; }
-    }
-
-    // Validate any atelier user token (any profile > 0) ----------------------
-    // Used for read-only prefill endpoints accessible by all operators.
-    private static bool IsAtelierUser(HttpContext ctx)
-    {
-        try
-        {
-            var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-            if (string.IsNullOrWhiteSpace(token)) return false;
-            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            return parts.Length >= 3 && int.TryParse(parts[2], out var p) && p > 0;
-        }
-        catch { return false; }
-    }
-
     public static void MapPortalAdminEndpoints(this WebApplication app)
     {
         // =====================================================================
@@ -49,7 +21,7 @@ public static class PortalAdminEndpoints
         // GET /api/admin/portal/settings
         app.MapGet("/api/admin/portal/settings", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             var settings = MongoDbHelper.GetSettings<PortalSettings>("portalSettings") ?? new PortalSettings();
             var smtp = MongoDbHelper.GetSettings<PortalSmtpSettings>("portalSmtp") ?? new PortalSmtpSettings();
             return Results.Json(new { ok = true, settings, smtp = new { smtp.Host, smtp.Port, smtp.UseSsl, smtp.Username, smtp.FromAddress, smtp.FromName, smtp.AtelierNotifyEmail } });
@@ -58,7 +30,7 @@ public static class PortalAdminEndpoints
         // PUT /api/admin/portal/settings
         app.MapPut("/api/admin/portal/settings", async (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -149,7 +121,7 @@ public static class PortalAdminEndpoints
         // POST /api/admin/portal/smtp-test  — sends a test email to the logged-in admin
         app.MapPost("/api/admin/portal/smtp-test", async (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var smtp = MongoDbHelper.GetSettings<PortalSmtpSettings>("portalSmtp");
@@ -178,7 +150,7 @@ public static class PortalAdminEndpoints
         // GET /api/admin/portal/clients
         app.MapGet("/api/admin/portal/clients", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             var col = MongoDbHelper.GetCollection<BsonDocument>("client_accounts");
             var docs = col.Find(new BsonDocument()).Sort(Builders<BsonDocument>.Sort.Ascending("email")).ToList();
             var clients = docs.Select(d => new
@@ -198,7 +170,7 @@ public static class PortalAdminEndpoints
         // POST /api/admin/portal/clients
         app.MapPost("/api/admin/portal/clients", async (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -263,7 +235,7 @@ public static class PortalAdminEndpoints
         // PUT /api/admin/portal/clients/{id}
         app.MapPut("/api/admin/portal/clients/{id}", async (HttpContext ctx, string id) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -290,7 +262,7 @@ public static class PortalAdminEndpoints
         // DELETE /api/admin/portal/clients/{id}  (disables account)
         app.MapDelete("/api/admin/portal/clients/{id}", (HttpContext ctx, string id) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             var col = MongoDbHelper.GetCollection<BsonDocument>("client_accounts");
             col.UpdateOne(
                 Builders<BsonDocument>.Filter.Eq("id", id),
@@ -301,7 +273,7 @@ public static class PortalAdminEndpoints
         // POST /api/admin/portal/clients/{id}/reset-password
         app.MapPost("/api/admin/portal/clients/{id}/reset-password", async (HttpContext ctx, string id) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -336,7 +308,7 @@ public static class PortalAdminEndpoints
         // No email is sent automatically — the operator sends manually.
         app.MapPost("/api/admin/portal/orders/{orderId}/prepare-bat", async (HttpContext ctx, string orderId) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var ordersCol = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
@@ -453,7 +425,7 @@ public static class PortalAdminEndpoints
         app.MapPost("/api/admin/portal/orders/{orderId}/send-bat", async (HttpContext ctx, string orderId) =>
         {
             // Redirect to prepare-bat logic (same behaviour, kept for backward compat without SMTP send)
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             ctx.Request.RouteValues["orderId"] = orderId;
             return Results.Json(new { ok = false, error = "Endpoint remplacé par prepare-bat. Veuillez mettre à jour le frontend." });
         });
@@ -462,7 +434,7 @@ public static class PortalAdminEndpoints
         // Returns BAT decisions (validated/refused) that the operator has not yet acknowledged
         app.MapGet("/api/admin/portal/bat/pending-decisions", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             var batCol = MongoDbHelper.GetCollection<BsonDocument>("client_bat_actions");
             var filter = Builders<BsonDocument>.Filter.And(
                 Builders<BsonDocument>.Filter.In("action", new[] { "validated", "refused" }),
@@ -512,7 +484,7 @@ public static class PortalAdminEndpoints
         // Marks a BAT decision as acknowledged by the operator (dismisses the popup)
         app.MapPost("/api/admin/portal/bat/decisions/{batId}/acknowledge", (HttpContext ctx, string batId) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             var batCol = MongoDbHelper.GetCollection<BsonDocument>("client_bat_actions");
             batCol.UpdateOne(
                 Builders<BsonDocument>.Filter.Eq("id", batId),
@@ -525,10 +497,8 @@ public static class PortalAdminEndpoints
         {
             try
             {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length < 3) return Results.Json(new { ok = false, error = "Non authentifié" });
+                if (!AuthHelper.IsAuthenticated(ctx))
+                    return Results.Json(new { ok = false, error = "Non authentifié" });
 
                 var col = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
                 var docs = col.Find(new BsonDocument()).Sort(Builders<BsonDocument>.Sort.Descending("createdAt")).ToList();
@@ -552,7 +522,7 @@ public static class PortalAdminEndpoints
         // GET /api/admin/portal/orders/{orderId}/detail -- full order details + client info for atelier prefill
         app.MapGet("/api/admin/portal/orders/{orderId}/detail", (HttpContext ctx, string orderId) =>
         {
-            if (!IsAtelierUser(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
+            if (!AuthHelper.IsAuthenticated(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
             try
             {
                 var col = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
@@ -638,7 +608,7 @@ public static class PortalAdminEndpoints
         // PUT /api/admin/portal/orders/{orderId}/status  — update order status from atelier
         app.MapPut("/api/admin/portal/orders/{orderId}/status", async (HttpContext ctx, string orderId) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -707,7 +677,7 @@ public static class PortalAdminEndpoints
         // GET /api/admin/portal/orders/by-job?numeroDossier=... — find portal order matching a job
         app.MapGet("/api/admin/portal/orders/by-job", (HttpContext ctx) =>
         {
-            if (!IsAtelierUser(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
+            if (!AuthHelper.IsAuthenticated(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
             var numeroDossier = ctx.Request.Query["numeroDossier"].ToString();
             var fileName = ctx.Request.Query["fileName"].ToString();
             if (string.IsNullOrWhiteSpace(numeroDossier) && string.IsNullOrWhiteSpace(fileName))
@@ -785,7 +755,7 @@ public static class PortalAdminEndpoints
 
         app.MapGet("/api/admin/portal/email-templates", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             var defaultSubjects = new Dictionary<string, string>
             {
                 ["client_invitation"] = "Votre accès au portail client",
@@ -816,7 +786,7 @@ public static class PortalAdminEndpoints
 
         app.MapPut("/api/admin/portal/email-templates/{key}", async (HttpContext ctx, string key) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             if (!portalTemplateKeys.Contains(key)) return Results.Json(new { ok = false, error = "Template inconnu" });
             try
             {
@@ -832,7 +802,7 @@ public static class PortalAdminEndpoints
         // GET /api/admin/portal/email-templates/{key} — Fetch a single template by key
         app.MapGet("/api/admin/portal/email-templates/{key}", (HttpContext ctx, string key) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             if (!portalTemplateKeys.Contains(key)) return Results.Json(new { ok = false, error = "Template inconnu" });
             var tpl = MongoDbHelper.GetSettings<PortalEmailTemplate>($"portalEmailTemplate_{key}");
             return Results.Json(new { ok = true, template = new { subject = tpl?.Subject ?? "", body = tpl?.Body ?? "" } });
@@ -841,7 +811,7 @@ public static class PortalAdminEndpoints
         // GET /api/admin/portal/theme
         app.MapGet("/api/admin/portal/theme", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             var theme = MongoDbHelper.GetSettings<PortalThemeConfig>("portalTheme") ?? new PortalThemeConfig();
             return Results.Json(new { ok = true, theme });
         });
@@ -849,7 +819,7 @@ public static class PortalAdminEndpoints
         // PUT /api/admin/portal/theme
         app.MapPut("/api/admin/portal/theme", async (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -953,7 +923,7 @@ public static class PortalAdminEndpoints
         // GET /api/admin/portal/form-fields
         app.MapGet("/api/admin/portal/form-fields", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             var cfg = MongoDbHelper.GetSettings<PortalFormFieldsConfig>("portalFormFields");
             List<PortalFormFieldConfig> fields;
             if (cfg == null || cfg.Fields.Count == 0)
@@ -983,7 +953,7 @@ public static class PortalAdminEndpoints
         // PUT /api/admin/portal/form-fields
         app.MapPut("/api/admin/portal/form-fields", async (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -1071,7 +1041,7 @@ public static class PortalAdminEndpoints
         // GET /api/admin/portal/client-steps
         app.MapGet("/api/admin/portal/client-steps", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             var saved = MongoDbHelper.GetSettings<PortalClientStepsConfig>("portalClientSteps") ?? new PortalClientStepsConfig();
             var kanbanCfg = MongoDbHelper.GetSettings<KanbanSettings>("kanbanColumns") ?? new KanbanSettings();
 
@@ -1099,7 +1069,7 @@ public static class PortalAdminEndpoints
         // PUT /api/admin/portal/client-steps
         app.MapPut("/api/admin/portal/client-steps", async (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -1193,14 +1163,14 @@ public static class PortalAdminEndpoints
         // POST /api/admin/portal/clients/{id}/invite
         app.MapPost("/api/admin/portal/clients/{id}/invite", (HttpContext ctx, string id) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             return PrepareClientInvite(id);
         });
 
         // POST /api/admin/portal/clients/{id}/prepare-invite  — explicit alias for the mailto: workflow
         app.MapPost("/api/admin/portal/clients/{id}/prepare-invite", (HttpContext ctx, string id) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             return PrepareClientInvite(id);
         });
 

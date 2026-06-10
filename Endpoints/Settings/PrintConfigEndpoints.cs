@@ -51,10 +51,7 @@ app.MapPost("/api/config/print-engines", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -72,10 +69,7 @@ app.MapPost("/api/config/print-engines/import", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -107,10 +101,7 @@ app.MapDelete("/api/config/print-engines/{name}", (HttpContext ctx, string name)
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         MongoDbHelper.RemovePrintEngine(name);
@@ -246,7 +237,7 @@ app.MapGet("/api/config/paper-catalog/custom", (HttpContext ctx) =>
 {
     try
     {
-        if (!IsAdminLocal(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
+        if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
         var catalog = MongoDbHelper.GetSettings<CustomPaperCatalog>("customPaperCatalog")
             ?? new CustomPaperCatalog();
         return Results.Json(new { ok = true, papers = catalog.Papers });
@@ -259,7 +250,7 @@ app.MapPost("/api/config/paper-catalog/add", async (HttpContext ctx) =>
 {
     try
     {
-        if (!IsAdminLocal(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
+        if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
         var entry = await ctx.Request.ReadFromJsonAsync<CustomPaperEntry>();
         if (entry == null || string.IsNullOrWhiteSpace(entry.Name))
             return Results.Json(new { ok = false, error = "Nom de papier requis" });
@@ -282,7 +273,7 @@ app.MapPost("/api/config/paper-catalog/import-csv", async (HttpContext ctx) =>
 {
     try
     {
-        if (!IsAdminLocal(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
+        if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
         var form = await ctx.Request.ReadFormAsync();
         var file = form.Files.GetFile("file");
         if (file == null) return Results.Json(new { ok = false, error = "Fichier manquant" });
@@ -331,7 +322,7 @@ app.MapDelete("/api/config/paper-catalog/custom/{name}", (HttpContext ctx, strin
 {
     try
     {
-        if (!IsAdminLocal(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
+        if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
         var decoded = Uri.UnescapeDataString(name);
         var catalog = MongoDbHelper.GetSettings<CustomPaperCatalog>("customPaperCatalog")
             ?? new CustomPaperCatalog();
@@ -345,15 +336,4 @@ app.MapDelete("/api/config/paper-catalog/custom/{name}", (HttpContext ctx, strin
 
     }
 
-    private static bool IsAdminLocal(HttpContext ctx)
-    {
-        try
-        {
-            var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            return parts.Length >= 3 && parts[2] == "3";
-        }
-        catch { return false; }
-    }
 }

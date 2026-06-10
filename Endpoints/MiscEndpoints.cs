@@ -65,10 +65,13 @@ app.MapGet("/api/ping", () => "pong");
 
 app.MapGet("/favicon.ico", () => Results.NoContent());
 
-app.MapGet("/api/file-stage", (string fileName) =>
+app.MapGet("/api/file-stage", (HttpContext ctx, string fileName) =>
 {
     try
     {
+        if (!AuthHelper.IsAuthenticated(ctx))
+            return Results.Json(new { ok = false, error = "Non authentifié" });
+
         // Sanitize: only allow the base filename, no path traversal
         var safeFileName = Path.GetFileName(fileName);
         if (string.IsNullOrWhiteSpace(safeFileName))
@@ -163,8 +166,11 @@ app.MapGet("/api/file-stage", (string fileName) =>
     }
 });
 
-app.MapGet("/api/folders", () =>
+app.MapGet("/api/folders", (HttpContext ctx) =>
 {
+    if (!AuthHelper.IsAuthenticated(ctx))
+        return Results.Json(new { ok = false, error = "Non authentifié" });
+
     var clean = BackendUtils.Hotfolders()
         .Select(n => n.Replace("\u00A0", " ").Trim())
         .ToArray();
@@ -175,9 +181,26 @@ app.MapGet("/api/folders", () =>
 // API — FILE
 // ======================================================
 
-app.MapGet("/api/file", (string path, bool? download) =>
+app.MapGet("/api/file", (HttpContext ctx, string path, bool? download) =>
 {
-    var full = Path.GetFullPath(path);
+    // 1. Authentication required
+    if (!AuthHelper.IsAuthenticated(ctx))
+        return Results.Unauthorized();
+
+    // 2. Restrict strictly to hotfolders to prevent path traversal
+    var root = Path.GetFullPath(BackendUtils.HotfoldersRoot());
+    string full;
+    try
+    {
+        full = Path.GetFullPath(path);
+    }
+    catch
+    {
+        return Results.BadRequest();
+    }
+    if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+        return Results.Forbid();
+
     if (!File.Exists(full))
         return Results.NotFound();
 
@@ -194,11 +217,22 @@ app.MapGet("/api/file", (string path, bool? download) =>
 // DELIVERY (planning)
 // ======================================================
 
-app.MapGet("/api/tools/prismasync", () =>
+app.MapGet("/api/tools/prismasync", (HttpContext ctx) =>
 {
     try
     {
-        var url = "http://172.26.197.212/Authentication/";
+        if (!AuthHelper.IsAuthenticated(ctx))
+            return Results.Json(new { ok = false, error = "Non authentifié" });
+
+        var cfg = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig")
+            .Find(new BsonDocument()).FirstOrDefault();
+        var url = cfg?.Contains("prismaSyncUrl") == true
+            ? cfg["prismaSyncUrl"].AsString
+            : null;
+
+        if (string.IsNullOrWhiteSpace(url))
+            return Results.Json(new { ok = false, error = "URL PrismaSync non configurée. Veuillez la définir dans les paramètres (champ prismaSyncUrl)." });
+
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
             FileName = url,

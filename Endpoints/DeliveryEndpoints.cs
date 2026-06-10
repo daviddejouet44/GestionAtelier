@@ -280,10 +280,7 @@ app.MapPut("/api/config/prismasync-url", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
         var url = json.TryGetProperty("url", out var uEl) ? uEl.GetString() ?? "" : "";
@@ -304,10 +301,7 @@ app.MapPost("/api/delivery/cleanup-orphans", (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var map = BackendUtils.LoadDeliveries();

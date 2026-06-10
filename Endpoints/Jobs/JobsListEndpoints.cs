@@ -81,10 +81,13 @@ app.MapGet("/api/jobs", (HttpContext ctx) =>
     }
 });
 
-app.MapGet("/api/operators", () =>
+app.MapGet("/api/operators", (HttpContext ctx) =>
 {
     try
     {
+        if (!AuthHelper.IsAuthenticated(ctx))
+            return Results.Json(new { ok = false, error = "Non authentifié" });
+
         var users = BackendUtils.LoadUsers();
         var operators = users.Where(u => u.Profile == 2 || u.Profile == 4 || u.Profile == 6)
             .Select(u => new { id = u.Id, name = u.Name, login = u.Login });
@@ -96,10 +99,12 @@ app.MapGet("/api/operators", () =>
     }
 });
 
-app.MapGet("/api/alerts/bat-pending", () =>
+app.MapGet("/api/alerts/bat-pending", (HttpContext ctx) =>
 {
     try
     {
+        if (!AuthHelper.IsAuthenticated(ctx))
+            return Results.Json(new { ok = false, error = "Non authentifié" });
         var root = BackendUtils.HotfoldersRoot();
         var batDir = Path.Combine(root, "BAT");
         if (!Directory.Exists(batDir))
@@ -176,10 +181,13 @@ app.MapGet("/api/alerts/bat-pending", () =>
     }
 });
 
-app.MapGet("/api/alerts/faconnage", () =>
+app.MapGet("/api/alerts/faconnage", (HttpContext ctx) =>
 {
     try
     {
+        if (!AuthHelper.IsAuthenticated(ctx))
+            return Results.Json(new { ok = false, error = "Non authentifié" });
+
         var root = BackendUtils.HotfoldersRoot();
         var folder = Path.Combine(root, "Impression en cours");
         if (!Directory.Exists(folder))

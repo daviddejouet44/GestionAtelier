@@ -30,7 +30,7 @@ public static class FinitionConfigEndpoints
         {
             try
             {
-                if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
+                if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
                 var cfg = await ctx.Request.ReadFromJsonAsync<FinitionTimeConfig>();
                 if (cfg == null) return Results.Json(new { ok = false, error = "Payload invalide" });
                 MongoDbHelper.UpsertSettings("finitionTimeRules", cfg);
@@ -56,7 +56,7 @@ public static class FinitionConfigEndpoints
         {
             try
             {
-                if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
+                if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
                 var cfg = await ctx.Request.ReadFromJsonAsync<FinitionSheetFormulaConfig>();
                 if (cfg == null) return Results.Json(new { ok = false, error = "Payload invalide" });
                 MongoDbHelper.UpsertSettings("finitionSheetFormulas", cfg);
@@ -82,7 +82,7 @@ public static class FinitionConfigEndpoints
         {
             try
             {
-                if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
+                if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin uniquement" });
                 var cfg = await ctx.Request.ReadFromJsonAsync<RainageOptionsConfig>();
                 if (cfg == null) return Results.Json(new { ok = false, error = "Payload invalide" });
                 MongoDbHelper.UpsertSettings("rainageOptions", cfg);
@@ -92,15 +92,4 @@ public static class FinitionConfigEndpoints
         });
     }
 
-    private static bool IsAdmin(HttpContext ctx)
-    {
-        try
-        {
-            var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            return parts.Length >= 3 && parts[2] == "3";
-        }
-        catch { return false; }
-    }
 }

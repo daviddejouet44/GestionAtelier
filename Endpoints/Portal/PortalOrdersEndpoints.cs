@@ -907,7 +907,8 @@ public static class PortalOrdersEndpoints
         {
             try
             {
-                if (!IsAdminAuth(ctx)) return Results.Json(new { ok = false, error = "Non autorisé" });
+                var profile = AuthHelper.GetClaim(ctx, "profile");
+                if (profile != "2" && profile != "3") return Results.Json(new { ok = false, error = "Non autorisé" });
 
                 var col = MongoDbHelper.GetCollection<BsonDocument>("client_orders");
                 var doc = col.Find(Builders<BsonDocument>.Filter.Eq("id", id)).FirstOrDefault();
@@ -1103,19 +1104,6 @@ public static class PortalOrdersEndpoints
         return string.IsNullOrWhiteSpace(safe) ? "sans-titre" : safe;
     }
 
-    // ── Admin auth helper ─────────────────────────────────────────────────────
-    private static bool IsAdminAuth(HttpContext ctx)
-    {
-        try
-        {
-            var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            // Accept profiles 2 (operator) and 3 (admin)
-            return parts.Length >= 3 && (parts[2] == "2" || parts[2] == "3");
-        }
-        catch { return false; }
-    }
 
     // ── Récapitulatif commande PDF ────────────────────────────────────────────
     private static byte[] GenerateOrderRecapPdf(ClientOrder order, ClientAccount client, string companyName, BsonDocument? productionInfo = null)

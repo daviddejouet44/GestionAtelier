@@ -18,7 +18,19 @@ public class LicenseInfo
 
 public static class LicenseService
 {
-    private const string PublicKey = "COLLER_ICI_LE_CONTENU_DE_public.key";
+    private static readonly string PublicKey =
+        Environment.GetEnvironmentVariable("LICENSE_PUBLIC_KEY")
+        ?? ReadPublicKeyFile()
+        ?? throw new InvalidOperationException(
+            "La clé publique de licence est manquante. " +
+            "Définissez la variable d'environnement LICENSE_PUBLIC_KEY " +
+            "ou placez le fichier data/public.key dans le répertoire de l'application.");
+
+    private static string? ReadPublicKeyFile()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "data", "public.key");
+        return File.Exists(path) ? File.ReadAllText(path).Trim() : null;
+    }
 
     private static readonly string LicensePath =
         Path.Combine(AppContext.BaseDirectory, "data", "license.lic");

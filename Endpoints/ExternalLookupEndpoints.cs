@@ -20,24 +20,12 @@ public static class ExternalLookupEndpoints
 {
     public static void MapExternalLookupEndpoints(this WebApplication app)
     {
-        // ── Auth helpers ──────────────────────────────────────────────────────
-        static bool IsAuthenticated(HttpContext ctx)
-        {
-            try
-            {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                return decoded.Split(':').Length >= 3;
-            }
-            catch { return false; }
-        }
-
         // ── POST /api/external/{provider}/lookup ─────────────────────────────
         // Body: { ref: "ORDER-12345" }
         // Returns: { ok, fiche: {...prefill fields...}, raw: {...} }
         app.MapPost("/api/external/{provider}/lookup", async (HttpContext ctx, string provider) =>
         {
-            if (!IsAuthenticated(ctx))
+            if (!AuthHelper.IsAuthenticated(ctx))
                 return Results.Json(new { ok = false, error = "Authentification requise" });
 
             try
@@ -188,7 +176,7 @@ public static class ExternalLookupEndpoints
         // ?filename=ORDER-12345_myfile.pdf  →  { ok, ref }
         app.MapGet("/api/external/detect-ref", (HttpContext ctx) =>
         {
-            if (!IsAuthenticated(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
+            if (!AuthHelper.IsAuthenticated(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
             try
             {
                 var filename  = ctx.Request.Query["filename"].ToString();
