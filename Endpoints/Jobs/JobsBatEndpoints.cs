@@ -32,6 +32,12 @@ app.MapPost("/api/bat/execute", async (HttpContext ctx) =>
         var fullPath = json.TryGetProperty("fullPath", out var fp) ? fp.GetString() ?? "" : "";
         var xmlPath  = json.TryGetProperty("xmlPath",  out var xp) ? xp.GetString() ?? "" : "";
 
+        // Security: validate that paths are within hotfolders
+        if (!AuthHelper.IsPathSafe(fullPath))
+            return Results.Json(new { ok = false, error = "Chemin non autorisé" });
+        if (!string.IsNullOrWhiteSpace(xmlPath) && !AuthHelper.IsPathSafe(xmlPath))
+            return Results.Json(new { ok = false, error = "Chemin XML non autorisé" });
+
         // Load command template from config
         var cfgCol  = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
         var cfg     = cfgCol.Find(new BsonDocument()).FirstOrDefault();
@@ -47,8 +53,7 @@ app.MapPost("/api/bat/execute", async (HttpContext ctx) =>
             .Replace("{pdfPath}", fullPath);
 
         Console.WriteLine($"[INFO] BAT Execute: {cmd}");
-        var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c {cmd}") { UseShellExecute = true };
-        System.Diagnostics.Process.Start(psi);
+        ProcessHelper.StartShellCommand(cmd);
 
         return Results.Json(new { ok = true, command = cmd });
     }
@@ -58,16 +63,20 @@ app.MapPost("/api/bat/execute", async (HttpContext ctx) =>
     }
 });
 
-app.MapGet("/api/assignment", (string fullPath) =>
+app.MapGet("/api/assignment", (HttpContext ctx, string fullPath) =>
 {
+    if (!AuthHelper.IsAuthenticated(ctx))
+        return Results.Json(new { ok = false, error = "Non authentifié" });
     var a = BackendUtils.FindAssignment(fullPath);
     if (a != null)
         return Results.Json(new { ok = true, assignment = new { fullPath = a.FullPath, operatorId = a.OperatorId, operatorName = a.OperatorName, assignedAt = a.AssignedAt, assignedBy = a.AssignedBy } });
     return Results.Json(new { ok = false, error = "Aucune affectation." });
 });
 
-app.MapGet("/api/assignments", () =>
+app.MapGet("/api/assignments", (HttpContext ctx) =>
 {
+    if (!AuthHelper.IsAuthenticated(ctx))
+        return Results.Json(new { ok = false, error = "Non authentifié" });
     var list = BackendUtils.LoadAssignments();
     var result = list.Select(a => new {
         fullPath = a.FullPath,
@@ -84,24 +93,11 @@ app.MapPut("/api/assignment", async (HttpContext ctx) =>
 {
     try
     {
+        if (!AuthHelper.IsAuthenticated(ctx))
+            return Results.Json(new { ok = false, error = "Non authentifié" });
+
         // Extract caller identity from token
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        string callerName = "Système";
-        if (!string.IsNullOrWhiteSpace(token))
-        {
-            try
-            {
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length >= 3)
-                {
-                    var users = BackendUtils.LoadUsers();
-                    var u = users.FirstOrDefault(x => x.Id == parts[0]);
-                    if (u != null) callerName = u.Name;
-                }
-            }
-            catch { /* ignore */ }
-        }
+        var callerName = AuthHelper.GetClaim(ctx, "name") ?? AuthHelper.GetClaim(ctx, "login") ?? "Système";
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
         if (!json.TryGetProperty("operatorId", out var opIdEl))

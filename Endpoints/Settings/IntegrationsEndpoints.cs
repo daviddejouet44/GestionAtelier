@@ -42,23 +42,10 @@ public static class IntegrationsEndpoints
 
     public static void MapIntegrationsEndpoints(this WebApplication app)
     {
-        // ── Auth helpers ──────────────────────────────────────────────────────
-        static bool IsAdmin(HttpContext ctx)
-        {
-            try
-            {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                return parts.Length >= 3 && parts[2] == "3";
-            }
-            catch { return false; }
-        }
-
         // ── GET /api/settings/integrations-config ─────────────────────────
         app.MapGet("/api/settings/integrations-config", (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var cfg = MongoDbHelper.GetSettings<IntegrationsFullConfig>("integrations_full_config")
@@ -86,7 +73,7 @@ public static class IntegrationsEndpoints
         // ── PUT /api/settings/integrations-config ─────────────────────────
         app.MapPut("/api/settings/integrations-config", async (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -177,7 +164,7 @@ public static class IntegrationsEndpoints
         // ── POST /api/settings/integrations/test-connection ───────────────
         app.MapPost("/api/settings/integrations/test-connection", async (HttpContext ctx) =>
         {
-            if (!IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
+            if (!AuthHelper.IsAdmin(ctx)) return Results.Json(new { ok = false, error = "Admin only" });
             try
             {
                 var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -212,10 +199,8 @@ public static class IntegrationsEndpoints
         {
             try
             {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length < 3 || (parts[2] != "3" && parts[2] != "2"))
+                var profile = AuthHelper.GetClaim(ctx, "profile");
+                if (profile != "3" && profile != "2")
                     return Results.Json(new { ok = false, error = "Accès refusé" });
 
                 if (!ctx.Request.HasFormContentType)
@@ -362,10 +347,7 @@ public static class IntegrationsEndpoints
         {
             try
             {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length < 3 || parts[2] != "3")
+                if (!AuthHelper.IsAdmin(ctx))
                     return Results.Json(new { ok = false, error = "Admin only" });
 
                 var limitStr = ctx.Request.Query["limit"].ToString();
@@ -394,10 +376,7 @@ public static class IntegrationsEndpoints
         {
             try
             {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length < 3 || parts[2] != "3")
+                if (!AuthHelper.IsAdmin(ctx))
                     return Results.Json(new { ok = false, error = "Admin only" });
 
                 var limitStr = ctx.Request.Query["limit"].ToString();
@@ -427,10 +406,7 @@ public static class IntegrationsEndpoints
         {
             try
             {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length < 3 || (parts[2] != "3" && parts[2] != "2" && parts[2] != "1"))
+                if (!AuthHelper.IsAuthenticated(ctx))
                     return Results.Json(new { ok = false, error = "Accès refusé" });
 
                 var format = ctx.Request.Query["format"].ToString().ToLower();

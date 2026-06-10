@@ -84,24 +84,15 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
     try
     {
         // Extract user from token
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
         string userName = "Système";
         int userProfile = 0;
-        if (!string.IsNullOrWhiteSpace(token))
+        if (AuthHelper.IsAuthenticated(ctx))
         {
-            try
-            {
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length >= 3)
-                {
-                    int.TryParse(parts[2], out userProfile);
-                    var users = BackendUtils.LoadUsers();
-                    var u = users.FirstOrDefault(x => x.Id == parts[0]);
-                    if (u != null) userName = u.Name;
-                }
-            }
-            catch { /* ignore token parse errors */ }
+            int.TryParse(AuthHelper.GetClaim(ctx, "profile"), out userProfile);
+            var userId = AuthHelper.GetClaim(ctx, "userId");
+            userName = AuthHelper.GetClaim(ctx, "name")
+                ?? BackendUtils.LoadUsers().FirstOrDefault(x => x.Id == userId)?.Name
+                ?? "Système";
         }
 
         var input = await ctx.Request.ReadFromJsonAsync<FabricationInput>();
@@ -812,8 +803,7 @@ app.MapPost("/api/commands/bat", async (HttpContext ctx) =>
 
         var cmd = BackendUtils.BuildCommandTemplate(template, Path.GetFileName(filePath), typeWork, quantity);
         Console.WriteLine($"[INFO] BAT command: {cmd}");
-        var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c {cmd}") { UseShellExecute = true };
-        System.Diagnostics.Process.Start(psi);
+        ProcessHelper.StartShellCommand(cmd);
 
         // Store pending BAT rename so "Epreuve PDF.pdf" can be renamed to {originalName}.Epreuve.pdf
         try
@@ -847,7 +837,7 @@ app.MapPost("/api/commands/send-controller", async (HttpContext ctx) =>
         var filePath = json.TryGetProperty("filePath", out var fp) ? fp.GetString() ?? "" : "";
         var col = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
         var cfg = col.Find(new BsonDocument()).FirstOrDefault();
-        var controllerPath = cfg?.Contains("controllerPath") == true ? cfg["controllerPath"].AsString : @"C:\PrismaSync\Controller";
+        var controllerPath = cfg?.Contains("controllerPath") == true ? cfg["controllerPath"].AsString : Path.Combine(BackendUtils.HotfoldersRoot(), "Controller");
         Directory.CreateDirectory(controllerPath);
         File.Copy(filePath, Path.Combine(controllerPath, Path.GetFileName(filePath)), overwrite: true);
         var (ok, err) = BackendUtils.MoveFileToDestFolder(filePath, "Impression en cours");
@@ -867,8 +857,7 @@ app.MapPost("/api/commands/send-prisma", async (HttpContext ctx) =>
         var template = cfg?.Contains("prismaPrepareCommand") == true ? cfg["prismaPrepareCommand"].AsString :
             "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\"";
         var cmd = BackendUtils.BuildCommandTemplate(template, filePath);
-        var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c {cmd}") { UseShellExecute = true };
-        System.Diagnostics.Process.Start(psi);
+        ProcessHelper.StartShellCommand(cmd);
         var (ok, err) = BackendUtils.MoveFileToDestFolder(filePath, "PrismaPrepare");
         return Results.Json(new { ok, error = err });
     }
@@ -887,8 +876,7 @@ app.MapPost("/api/commands/send-print", async (HttpContext ctx) =>
         var template = cfg?.Contains("printCommand") == true ? cfg["printCommand"].AsString :
             "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\" /SP /C {quantity}";
         var cmd = BackendUtils.BuildCommandTemplate(template, filePath, "", quantity);
-        var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c {cmd}") { UseShellExecute = true };
-        System.Diagnostics.Process.Start(psi);
+        ProcessHelper.StartShellCommand(cmd);
         var (ok, err) = BackendUtils.MoveFileToDestFolder(filePath, "Impression en cours");
         return Results.Json(new { ok, error = err });
     }
@@ -906,8 +894,7 @@ app.MapPost("/api/commands/modify", async (HttpContext ctx) =>
         var template = cfg?.Contains("modifyCommand") == true ? cfg["modifyCommand"].AsString :
             "\"C:\\Program Files\\Canon\\PRISMACore\\PRISMAprepare.exe\" \"{filePath}\"";
         var cmd = BackendUtils.BuildCommandTemplate(template, filePath);
-        var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c {cmd}") { UseShellExecute = true };
-        System.Diagnostics.Process.Start(psi);
+        ProcessHelper.StartShellCommand(cmd);
         var (ok, err) = BackendUtils.MoveFileToDestFolder(filePath, "PrismaPrepare");
         return Results.Json(new { ok, error = err });
     }
@@ -922,7 +909,7 @@ app.MapPost("/api/commands/send-fiery", async (HttpContext ctx) =>
         var filePath = json.TryGetProperty("filePath", out var fp) ? fp.GetString() ?? "" : "";
         var col = MongoDbHelper.GetCollection<BsonDocument>("commandsConfig");
         var cfg = col.Find(new BsonDocument()).FirstOrDefault();
-        var fieryBase = cfg?.Contains("fieryHotfolderBase") == true ? cfg["fieryHotfolderBase"].AsString : @"C:\Fiery\Hotfolders";
+        var fieryBase = cfg?.Contains("fieryHotfolderBase") == true ? cfg["fieryHotfolderBase"].AsString : Path.Combine(BackendUtils.HotfoldersRoot(), "Fiery");
         Directory.CreateDirectory(fieryBase);
         File.Copy(filePath, Path.Combine(fieryBase, Path.GetFileName(filePath)), overwrite: true);
         var (ok, err) = BackendUtils.MoveFileToDestFolder(filePath, "Fiery");
@@ -1131,17 +1118,9 @@ app.MapPost("/api/bat/reject", async (HttpContext ctx) =>
 static bool TryReadTokenProfile(HttpContext ctx, out int profile)
 {
     profile = 0;
-    var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-    if (string.IsNullOrWhiteSpace(token)) return false;
-    try
-    {
-        var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3) return false;
-        int.TryParse(parts[2], out profile);
-        return true;
-    }
-    catch { return false; }
+    if (!AuthHelper.IsAuthenticated(ctx)) return false;
+    int.TryParse(AuthHelper.GetClaim(ctx, "profile"), out profile);
+    return true;
 }
 
 static bool IsPathInsideBatFolder(string fullPath)
@@ -1509,10 +1488,7 @@ app.MapPut("/api/config/bat-mail-template", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -1757,10 +1733,7 @@ app.MapPut("/api/config/mail-template-production-start", async (HttpContext ctx)
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
         var tmpl = json.TryGetProperty("template", out var tEl) ? tEl : json;
@@ -1785,10 +1758,7 @@ app.MapPut("/api/config/mail-template-production-end", async (HttpContext ctx) =
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
         var tmpl = json.TryGetProperty("template", out var tEl) ? tEl : json;
@@ -1813,10 +1783,7 @@ app.MapPut("/api/config/mail-template-bat-papier", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        var parts = decoded.Split(':');
-        if (parts.Length < 3 || parts[2] != "3")
+        if (!AuthHelper.IsAdmin(ctx))
             return Results.Json(new { ok = false, error = "Admin only" });
         var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
         var tmpl = json.TryGetProperty("template", out var tEl) ? tEl : json;
@@ -1835,22 +1802,11 @@ app.MapPut("/api/fabrication/statut-production", async (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        string userName = "Système";
-        if (!string.IsNullOrWhiteSpace(token))
+        string userName = AuthHelper.GetClaim(ctx, "name") ?? "Système";
+        if (userName == "Système")
         {
-            try
-            {
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length >= 3)
-                {
-                    var users = BackendUtils.LoadUsers();
-                    var u = users.FirstOrDefault(x => x.Id == parts[0]);
-                    if (u != null) userName = u.Name;
-                }
-            }
-            catch { }
+            var userId = AuthHelper.GetClaim(ctx, "userId");
+            userName = BackendUtils.LoadUsers().FirstOrDefault(x => x.Id == userId)?.Name ?? userName;
         }
 
         var json = await ctx.Request.ReadFromJsonAsync<System.Text.Json.JsonElement>();
@@ -2242,17 +2198,8 @@ app.MapDelete("/api/alerts/purge-orphans", (HttpContext ctx) =>
     {
         // Admin-only
         var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (!string.IsNullOrWhiteSpace(token))
-        {
-            try
-            {
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length >= 3 && parts[2] != "3")
-                    return Results.Json(new { ok = false, error = "Admin only" });
-            }
-            catch { }
-        }
+        if (!string.IsNullOrWhiteSpace(token) && !AuthHelper.IsAdmin(ctx))
+            return Results.Json(new { ok = false, error = "Admin only" });
 
         var fabCol = MongoDbHelper.GetFabricationsCollection();
         var hotRoot = BackendUtils.HotfoldersRoot();

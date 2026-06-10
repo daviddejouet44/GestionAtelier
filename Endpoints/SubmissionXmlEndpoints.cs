@@ -19,18 +19,6 @@ public static class SubmissionXmlEndpoints
 {
     public static void MapSubmissionXmlEndpoints(this WebApplication app)
     {
-        // ── Auth helpers ──────────────────────────────────────────────────────
-        static bool IsAuthenticated(HttpContext ctx)
-        {
-            try
-            {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                return decoded.Split(':').Length >= 3;
-            }
-            catch { return false; }
-        }
-
         // ── GET /api/soumission/upload-with-xml (informational — only POST is supported)
         app.MapGet("/api/soumission/upload-with-xml", () =>
             Results.Json(new
@@ -45,7 +33,7 @@ public static class SubmissionXmlEndpoints
         // Returns: { ok, fichePrefill, jobIds[] }
         app.MapPost("/api/soumission/upload-with-xml", async (HttpContext ctx) =>
         {
-            if (!IsAuthenticated(ctx))
+            if (!AuthHelper.IsAuthenticated(ctx))
                 return Results.Json(new { ok = false, error = "Authentification requise" });
 
             try
@@ -351,7 +339,7 @@ public static class SubmissionXmlEndpoints
         // ── GET /api/settings/submission-xml-coupling ────────────────────────
         app.MapGet("/api/settings/submission-xml-coupling", (HttpContext ctx) =>
         {
-            if (!IsAuthenticated(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
+            if (!AuthHelper.IsAuthenticated(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
             try
             {
                 var cfg = MongoDbHelper.GetSettings<SubmissionXmlCouplingSettings>("submission_xml_coupling")
@@ -364,7 +352,7 @@ public static class SubmissionXmlEndpoints
         // ── PUT /api/settings/submission-xml-coupling ────────────────────────
         app.MapPut("/api/settings/submission-xml-coupling", async (HttpContext ctx) =>
         {
-            if (!IsAuthenticated(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
+            if (!AuthHelper.IsAuthenticated(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
             try
             {
                 var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -387,7 +375,7 @@ public static class SubmissionXmlEndpoints
         // ── GET /api/settings/submission-erp-lookup ──────────────────────────
         app.MapGet("/api/settings/submission-erp-lookup", (HttpContext ctx) =>
         {
-            if (!IsAuthenticated(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
+            if (!AuthHelper.IsAuthenticated(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
             try
             {
                 var cfg = MongoDbHelper.GetSettings<SubmissionErpLookupSettings>("submission_erp_lookup")
@@ -414,7 +402,7 @@ public static class SubmissionXmlEndpoints
         // ── PUT /api/settings/submission-erp-lookup ──────────────────────────
         app.MapPut("/api/settings/submission-erp-lookup", async (HttpContext ctx) =>
         {
-            if (!IsAuthenticated(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
+            if (!AuthHelper.IsAuthenticated(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
             try
             {
                 var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
