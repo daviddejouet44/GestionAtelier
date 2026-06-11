@@ -189,7 +189,13 @@ app.MapGet("/api/alerts/faconnage", (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = "Non authentifié" });
 
         var root = BackendUtils.HotfoldersRoot();
-        var folder = Path.Combine(root, "Impression en cours");
+        var impressionColumn = GestionAtelier.Endpoints.Settings.KanbanConfigEndpoints
+            .GetConfiguredKanbanColumns()
+            .FirstOrDefault(c => string.Equals(c.Folder, "Impression en cours", StringComparison.OrdinalIgnoreCase));
+        var customFolderPath = impressionColumn?.FolderPath;
+        var folder = !string.IsNullOrWhiteSpace(customFolderPath)
+            ? Path.GetFullPath(customFolderPath)
+            : Path.Combine(root, "Impression en cours");
         if (!Directory.Exists(folder))
             return Results.Json(new { ok = true, alerts = new object[0], lastGeneratedAt = (object?)null });
 
@@ -203,8 +209,9 @@ app.MapGet("/api/alerts/faconnage", (HttpContext ctx) =>
         var alerts = new List<object>();
         foreach (var f in files)
         {
-            var fabFilter = Builders<BsonDocument>.Filter.Eq("fileName", f.name.ToLowerInvariant());
-            var fabDoc = fabCol.Find(fabFilter).FirstOrDefault();
+            var fabDoc = fabCol.Find(GestionAtelier.Endpoints.Fabrication.FabricationCrudEndpoints.BuildFileNameFilter(f.name))
+                .SortByDescending(x => x["_id"])
+                .FirstOrDefault();
             var faconnage = new List<string>();
             if (fabDoc != null && fabDoc.Contains("faconnage") && fabDoc["faconnage"] != BsonNull.Value
                 && fabDoc["faconnage"].IsBsonArray)
@@ -229,7 +236,10 @@ app.MapGet("/api/alerts/faconnage", (HttpContext ctx) =>
                 && fabDoc["quantite"].BsonType == BsonType.Int32 ? fabDoc["quantite"].AsInt32
                 : fabDoc != null && fabDoc.Contains("quantite") && fabDoc["quantite"] != BsonNull.Value
                 && fabDoc["quantite"].IsNumeric ? (int?)fabDoc["quantite"].ToDouble() : null;
-            alerts.Add(new { fileName = f.name, fullPath = f.path, faconnage, ennoblissement, rainage, finitionsChecked, numeroDossier, quantite });
+            var allFinitions = fabDoc != null
+                ? GestionAtelier.Endpoints.Fabrication.FabricationCrudEndpoints.GetFabricationFinitionNames(fabDoc)
+                : new List<string>();
+            alerts.Add(new { fileName = f.name, fullPath = f.path, faconnage, ennoblissement, rainage, finitionsChecked, allFinitions, numeroDossier, quantite });
         }
 
         // Get last generated time from MongoDB

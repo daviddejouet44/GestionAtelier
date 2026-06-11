@@ -2421,11 +2421,16 @@ app.MapPut("/api/fabrication/key-date", async (HttpContext ctx) =>
         // Use SpecifyKind to avoid UTC offset shifting the date by 1 day (France = UTC+1/+2)
         var update = Builders<BsonDocument>.Update.Set(field, new BsonDateTime(DateTime.SpecifyKind(parsedDate.Date, DateTimeKind.Utc)));
         var result = fabCol.UpdateMany(filter, update);
-        Console.WriteLine($"[key-date] fileName={fileName} field={field} date={dateStr} → modifiedCount={result.ModifiedCount}");
+        Console.WriteLine($"[key-date] fileName={fileName} field={field} date={dateStr} → matchedCount={result.MatchedCount} modifiedCount={result.ModifiedCount}");
+        if (result.MatchedCount == 0)
+        {
+            Console.WriteLine($"[key-date] ⚠️ Aucun document trouvé pour fileName={fileName}");
+            return Results.Json(new { ok = false, error = $"Aucun document trouvé pour le fichier '{fileName}'. Vérifiez que la fiche existe." });
+        }
+
         if (result.ModifiedCount == 0)
         {
-            Console.WriteLine($"[key-date] ⚠️ Aucun document mis à jour pour fileName={fileName}");
-            return Results.Json(new { ok = false, error = $"Aucun document trouvé pour le fichier '{fileName}'. Vérifiez que la fiche existe." });
+            Console.WriteLine($"[key-date] ℹ️ Document trouvé mais déjà à jour pour fileName={fileName}");
         }
 
         return Results.Json(new { ok = true });
@@ -2523,7 +2528,7 @@ app.MapPut("/api/fabrication/key-date", async (HttpContext ctx) =>
 
     // Helper: build a MongoDB filter to match a fabrication record by fileName or fullPath.
     // Handles both new records (fileName stored lowercase) and legacy records (only fullPath stored).
-    static List<string> GetFabricationFinitionNames(BsonDocument doc)
+    internal static List<string> GetFabricationFinitionNames(BsonDocument doc)
     {
         var names = new List<string>();
 
@@ -2572,7 +2577,7 @@ app.MapPut("/api/fabrication/key-date", async (HttpContext ctx) =>
         }
     }
 
-    static FilterDefinition<BsonDocument> BuildFileNameFilter(string fileName)
+    internal static FilterDefinition<BsonDocument> BuildFileNameFilter(string fileName)
     {
         var escaped = System.Text.RegularExpressions.Regex.Escape(fileName);
         // Match by fileName (case-insensitive), exact fullPath, or fullPath ending with /fileName or \fileName

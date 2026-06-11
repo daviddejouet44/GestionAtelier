@@ -9,11 +9,20 @@ using Microsoft.AspNetCore.Http;
 using MongoDB.Driver;
 using MongoDB.Bson;
 using GestionAtelier.Services;
+using GestionAtelier.Models;
 
 namespace GestionAtelier.Endpoints;
 
 public static class DashboardEndpointsExtensions
 {
+    private static string ResolveKanbanFolderPath(string root, KanbanColumnConfig column)
+    {
+        if (!string.IsNullOrWhiteSpace(column.FolderPath))
+            return Path.GetFullPath(column.FolderPath);
+
+        return Path.GetFullPath(Path.Combine(root, column.Folder));
+    }
+
     public static void MapDashboardEndpoints(this WebApplication app)
     {
 
@@ -43,20 +52,27 @@ app.MapGet("/api/dashboard/stats", (HttpContext ctx) =>
         // 1. Jobs par dossier (filesystem scan)
         // ──────────────────────────────────────────────
         var root = BackendUtils.HotfoldersRoot();
+        var visibleColumns = GestionAtelier.Endpoints.Settings.KanbanConfigEndpoints
+            .GetConfiguredKanbanColumns()
+            .Where(c => c.Visible)
+            .ToList();
         var byFolder = new List<object>();
         int totalActive = 0;
 
-        if (Directory.Exists(root))
+        foreach (var column in visibleColumns)
         {
-            foreach (var dir in Directory.GetDirectories(root))
+            var dir = ResolveKanbanFolderPath(root, column);
+            if (!Directory.Exists(dir))
+                continue;
+
+            try
             {
-                var folderName = Path.GetFileName(dir) ?? "";
-                if (string.Equals(folderName, "quote_pdfs", StringComparison.OrdinalIgnoreCase)) continue;
                 var count = Directory.GetFiles(dir, "*.pdf", SearchOption.TopDirectoryOnly).Length;
                 if (count > 0)
-                    byFolder.Add(new { folder = folderName, count });
+                    byFolder.Add(new { folder = column.Folder, count });
                 totalActive += count;
             }
+            catch { }
         }
 
         // ──────────────────────────────────────────────
@@ -65,19 +81,18 @@ app.MapGet("/api/dashboard/stats", (HttpContext ctx) =>
         var fabCol = MongoDbHelper.GetFabricationsCollection();
         // Only active (non-excluded) fabrications with an active PDF file
         var activeFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (Directory.Exists(root))
+        foreach (var column in visibleColumns)
         {
-            foreach (var dir in Directory.GetDirectories(root))
+            var dir = ResolveKanbanFolderPath(root, column);
+            if (!Directory.Exists(dir))
+                continue;
+
+            try
             {
-                var folderName = Path.GetFileName(dir) ?? "";
-                if (string.Equals(folderName, "quote_pdfs", StringComparison.OrdinalIgnoreCase)) continue;
-                try
-                {
-                    foreach (var f in Directory.GetFiles(dir, "*.pdf", SearchOption.TopDirectoryOnly))
-                        activeFileNames.Add(Path.GetFileName(f));
-                }
-                catch { }
+                foreach (var f in Directory.GetFiles(dir, "*.pdf", SearchOption.TopDirectoryOnly))
+                    activeFileNames.Add(Path.GetFileName(f));
             }
+            catch { }
         }
 
         var allFabs = fabCol.Find(
