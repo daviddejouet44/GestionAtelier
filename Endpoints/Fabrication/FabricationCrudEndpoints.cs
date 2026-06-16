@@ -161,7 +161,11 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             RetraitLivraison = input.RetraitLivraison,
             AdresseLivraison = input.AdresseLivraison,
             Client           = input.Client,
-            NumeroDossier    = input.NumeroDossier,
+            // Preserve existing numeroDossier when the form field is empty.
+            // This protects portal-order links (set by web/devis submission) from being
+            // accidentally cleared when the operator saves the form before the autoPrefill
+            // had a chance to fill the field.
+            NumeroDossier    = !string.IsNullOrWhiteSpace(input.NumeroDossier) ? input.NumeroDossier : old?.NumeroDossier,
             Notes            = input.Notes,
             Faconnage        = input.Faconnage,
             Delai            = input.Delai,

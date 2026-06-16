@@ -589,7 +589,7 @@ async function buildBatView(_filterStatus, _sortField) {
       const dossierKey = (fab && fab.numeroDossier ? String(fab.numeroDossier) : (lookupFn || '')).toLowerCase();
       let portalOrder = portalOrderMap[dossierKey];
 
-      // Fallback: match by filename prefix for portal orders (e.g. "WEB-YYYYMMDD-NNNN__..." files)
+      // Fallback 1: match by filename prefix for WEB portal orders (e.g. "WEB-YYYYMMDD-NNNN__..." files)
       if (!portalOrder && lookupFn) {
         const fn = lookupFn.toLowerCase();
         for (const key of Object.keys(portalOrderMap)) {
@@ -598,6 +598,24 @@ async function buildBatView(_filterStatus, _sortField) {
             break;
           }
         }
+      }
+
+      // Fallback 2: by-job API lookup for devis orders where numeroDossier may be missing from the
+      // fabrication record (e.g. form was saved before the isNewSheet autoPrefill fix).
+      // Devis file names don't embed the order number, so the filename-prefix fallback above won't work.
+      if (!portalOrder && lookupFn) {
+        try {
+          const byJobResp = await fetch(
+            `/api/admin/portal/orders/by-job?fileName=${encodeURIComponent(lookupFn)}`,
+            { headers: { 'Authorization': `Bearer ${authToken}` } }
+          ).then(r => r.json()).catch(() => ({}));
+          if (byJobResp.ok && byJobResp.found && byJobResp.order?.id) {
+            portalOrder = byJobResp.order;
+            // Cache in map so repeated opens of the BAT tab don't need another call
+            if (byJobResp.order.orderNumber)
+              portalOrderMap[byJobResp.order.orderNumber.toLowerCase()] = byJobResp.order;
+          }
+        } catch(e) { /* non-blocking — portal order lookup is best-effort */ }
       }
 
       if (portalOrder) {
