@@ -424,10 +424,18 @@ async function buildBatView(_filterStatus, _sortField) {
       if (portalResp.ok) portalOrders = portalResp.orders || [];
     } catch(e) { /* ignore — portal orders not available */ }
 
-    // Build map: numeroDossier (lowercase) → portal order
+    // Build map: orderNumber (lowercase) → portal order.
+    // When multiple orders share the same orderNumber (e.g. devis multi-file submissions),
+    // prefer the one that has a linked portal account (clientAccountId non-empty) so that
+    // prepare-bat uses the orderId that the client can actually access.
     const portalOrderMap = {};
     portalOrders.forEach(o => {
-      if (o.orderNumber) portalOrderMap[o.orderNumber.toLowerCase()] = o;
+      if (!o.orderNumber) return;
+      const key = o.orderNumber.toLowerCase();
+      const existing = portalOrderMap[key];
+      if (!existing || (!existing.clientAccountId && o.clientAccountId)) {
+        portalOrderMap[key] = o;
+      }
     });
 
     // Charger la config du lien de validation BAT
@@ -600,20 +608,25 @@ async function buildBatView(_filterStatus, _sortField) {
         }
       }
 
-      // Fallback 2: by-job API lookup for devis orders where numeroDossier may be missing from the
-      // fabrication record (e.g. form was saved before the isNewSheet autoPrefill fix).
-      // Devis file names don't embed the order number, so the filename-prefix fallback above won't work.
-      if (!portalOrder && lookupFn) {
+      // Fallback 2: by-job API lookup.
+      // Triggered when:
+      //   (a) no portal order found yet (devis files whose numeroDossier was lost), OR
+      //   (b) found order has no clientAccountId — means the BAT would be linked to an
+      //       anonymous order the client cannot access; try to find a sibling with an account.
+      if ((!portalOrder || !portalOrder.clientAccountId) && lookupFn) {
         try {
           const byJobResp = await fetch(
             `/api/admin/portal/orders/by-job?fileName=${encodeURIComponent(lookupFn)}`,
             { headers: { 'Authorization': `Bearer ${authToken}` } }
           ).then(r => r.json()).catch(() => ({}));
           if (byJobResp.ok && byJobResp.found && byJobResp.order?.id) {
-            portalOrder = byJobResp.order;
-            // Cache in map so repeated opens of the BAT tab don't need another call
-            if (byJobResp.order.orderNumber)
-              portalOrderMap[byJobResp.order.orderNumber.toLowerCase()] = byJobResp.order;
+            // Only replace existing portalOrder if the new one has a clientAccountId
+            // (i.e. is linked to a portal account and therefore accessible by the client)
+            if (!portalOrder || byJobResp.order.clientAccountId) {
+              portalOrder = byJobResp.order;
+              if (byJobResp.order.orderNumber)
+                portalOrderMap[byJobResp.order.orderNumber.toLowerCase()] = byJobResp.order;
+            }
           }
         } catch(e) { /* non-blocking — portal order lookup is best-effort */ }
       }

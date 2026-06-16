@@ -382,6 +382,29 @@ public static class PortalAdminEndpoints
                 }
                 catch { /* non-blocking */ }
 
+                // For devis/quote channel orders the "donneurOrdre" fields hold the actual
+                // contact-person name typed by the operator when creating the quote link.
+                // Use them as the greeting name so the email says "Bonjour Jean Dupont"
+                // instead of the portal-account company name (e.g. "Bonjour 1.Pool Menu").
+                var isDevisOrder = orderDoc.Contains("devisNumber")
+                    && !orderDoc["devisNumber"].IsBsonNull
+                    && !string.IsNullOrWhiteSpace(orderDoc["devisNumber"].AsString);
+                if (isDevisOrder)
+                {
+                    var donneurNomInOrder    = orderDoc.Contains("donneurOrdreNom")    && !orderDoc["donneurOrdreNom"].IsBsonNull    ? orderDoc["donneurOrdreNom"].AsString.Trim()    : "";
+                    var donneurPrenomInOrder = orderDoc.Contains("donneurOrdrePrenom") && !orderDoc["donneurOrdrePrenom"].IsBsonNull ? orderDoc["donneurOrdrePrenom"].AsString.Trim() : "";
+                    var contactName = $"{donneurPrenomInOrder} {donneurNomInOrder}".Trim();
+                    if (!string.IsNullOrWhiteSpace(contactName)) clientName = contactName;
+
+                    // Also resolve email from the order if portal account has no email
+                    if (string.IsNullOrWhiteSpace(clientEmail))
+                    {
+                        var donneurEmailInOrder = orderDoc.Contains("donneurOrdreEmail") && !orderDoc["donneurOrdreEmail"].IsBsonNull
+                            ? orderDoc["donneurOrdreEmail"].AsString.Trim() : "";
+                        if (!string.IsNullOrWhiteSpace(donneurEmailInOrder)) clientEmail = donneurEmailInOrder;
+                    }
+                }
+
                 var orderNumber = orderDoc.Contains("orderNumber") ? orderDoc["orderNumber"].AsString : orderId;
                 var orderTitle = orderDoc.Contains("title") ? orderDoc["title"].AsString : "";
 
