@@ -157,20 +157,29 @@ public static class PortalBatEndpoints
                 if (bat == null)
                     return Results.Json(new { ok = false, error = "Lien invalide" });
 
-                var filePath = bat.Contains("batFileRef") ? bat["batFileRef"].AsString : "";
-                if (string.IsNullOrWhiteSpace(filePath))
+                var rawRef = bat.Contains("batFileRef") ? bat["batFileRef"].AsString : "";
+                if (string.IsNullOrWhiteSpace(rawRef))
                     return Results.Json(new { ok = false, error = "Référence fichier BAT manquante" });
 
+                // Normalize path separators to the current OS convention
+                var filePath = NormalizePath(rawRef);
                 Console.WriteLine($"[BAT] Serving file: {filePath}");
 
-                // Try the stored path first, then search in BAT folder by filename
+                // Try the stored path first, then fall back to searching in the BAT hotfolder
                 if (!File.Exists(filePath))
                 {
                     var batFolder = Path.Combine(BackendUtils.HotfoldersRoot(), "BAT");
                     var justName = Path.GetFileName(filePath);
-                    var altPath = Path.Combine(batFolder, justName);
-                    if (File.Exists(altPath))
-                        filePath = altPath;
+                    if (!string.IsNullOrWhiteSpace(justName))
+                    {
+                        // Case-insensitive search in the BAT folder
+                        if (Directory.Exists(batFolder))
+                        {
+                            var found = Directory.GetFiles(batFolder)
+                                .FirstOrDefault(f => string.Equals(Path.GetFileName(f), justName, StringComparison.OrdinalIgnoreCase));
+                            if (found != null) filePath = found;
+                        }
+                    }
                 }
 
                 if (!File.Exists(filePath))
@@ -408,14 +417,29 @@ public static class PortalBatEndpoints
             if (bat == null) return Results.Json(new { ok = false, error = "BAT non trouvé" });
             if (bat["orderId"].AsString != id) return Results.Json(new { ok = false, error = "BAT non trouvé" });
 
-            var filePath = bat.Contains("batFileRef") ? bat["batFileRef"].AsString : "";
-            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            var rawRef2 = bat.Contains("batFileRef") ? bat["batFileRef"].AsString : "";
+            if (string.IsNullOrWhiteSpace(rawRef2))
+                return Results.Json(new { ok = false, error = "Fichier BAT non trouvé" });
+
+            var filePath2 = NormalizePath(rawRef2);
+            if (!File.Exists(filePath2))
+            {
+                var batFolder2 = Path.Combine(BackendUtils.HotfoldersRoot(), "BAT");
+                var justName2 = Path.GetFileName(filePath2);
+                if (!string.IsNullOrWhiteSpace(justName2) && Directory.Exists(batFolder2))
+                {
+                    var found2 = Directory.GetFiles(batFolder2)
+                        .FirstOrDefault(f => string.Equals(Path.GetFileName(f), justName2, StringComparison.OrdinalIgnoreCase));
+                    if (found2 != null) filePath2 = found2;
+                }
+            }
+            if (!File.Exists(filePath2))
                 return Results.Json(new { ok = false, error = "Fichier BAT non trouvé" });
 
             // Serve inline so the browser displays it rather than downloading
-            var fileName = Path.GetFileName(filePath);
-            ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"{fileName}\"";
-            return Results.File(filePath, "application/pdf");
+            var fileName2 = Path.GetFileName(filePath2);
+            ctx.Response.Headers["Content-Disposition"] = $"inline; filename=\"{fileName2}\"";
+            return Results.File(filePath2, "application/pdf");
         });
 
         // POST /api/portal/orders/{id}/bat/{batId}/validate
@@ -898,17 +922,16 @@ public static class PortalBatEndpoints
         });
 
         // ── STAFF: GET /api/pro/bat/external-link-enabled ────────────────────
-        // Returns whether external BAT links are enabled (admin toggle)
+        // Returns whether external BAT links are enabled.
+        // Reads from the same "batValidationLink" settings document that the BAT settings UI saves to,
+        // so the kanban "🔗 Lien BAT" button and the BAT-tab "📧 Envoyer lien de validation" button
+        // are both controlled by the single admin toggle.
         app.MapGet("/api/pro/bat/external-link-enabled", () =>
         {
             try
             {
-                var col = MongoDbHelper.GetSettingsCollection();
-                var doc = col.Find(Builders<BsonDocument>.Filter.Eq("_id", "productionSettings")).FirstOrDefault();
-                bool enabled = doc != null
-                    && doc.Contains("enableExternalBatLinks")
-                    && doc["enableExternalBatLinks"] != BsonNull.Value
-                    && doc["enableExternalBatLinks"].ToBoolean();
+                var cfg = MongoDbHelper.GetSettings<BatValidationLinkConfig>("batValidationLink");
+                bool enabled = cfg?.Enabled ?? false;
                 return Results.Json(new { ok = true, enabled });
             }
             catch { return Results.Json(new { ok = true, enabled = false }); }

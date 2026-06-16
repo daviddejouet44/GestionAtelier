@@ -953,7 +953,10 @@ export async function openFabrication(fullPath, prefillData = null) {
   // Auto-prefill from portal order when fiche is new and filename matches a web order (WEB-...) or quote order (DEVIS-...)
   // Only triggered when no existing fabrication data and no explicit prefillData provided
   let autoPrefill = null;
-  const isNewSheet = !j || j.ok === false || (!j.numeroDossier && !j.client && !j.typeTravail);
+  // A sheet is considered "new" (eligible for auto-prefill) when it has no real production data.
+  // NOTE: portal order submission auto-seeds fabrications with numeroDossier before the operator
+  // ever opens the fiche, so numeroDossier alone must NOT be used as a "data present" signal.
+  const isNewSheet = !j || j.ok === false || (!j.client && !j.typeTravail);
   const _lcFileName = fabCurrentFileName.toLowerCase();
   const _isWebFile  = _lcFileName.startsWith('web-') || _lcFileName.startsWith('bat_web-');
   const _isDevisFile = _lcFileName.startsWith('devis-');
