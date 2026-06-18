@@ -1289,6 +1289,13 @@ app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
 
     private static bool IsAdmin(HttpContext ctx)
     {
+        // Prefer the real JWT-based check (AuthHelper.IsAdmin). The legacy
+        // base64 "userId:login:profile" fallback below only applies to the old
+        // token format and never matches a signed JWT.
+        var helperResult = TryInvokeAuthBool("IsAdmin", ctx);
+        if (helperResult.HasValue)
+            return helperResult.Value;
+
         try
         {
             var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");

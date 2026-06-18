@@ -75,10 +75,7 @@ public static class FormConfigEndpoints
         {
             try
             {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length < 3 || parts[2] != "3")
+                if (!AuthHelper.IsAdmin(ctx))
                     return Results.Json(new { ok = false, error = "Admin uniquement" });
 
                 var config = await ctx.Request.ReadFromJsonAsync<FabricationFormConfig>();
@@ -99,10 +96,7 @@ public static class FormConfigEndpoints
         {
             try
             {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length < 3 || parts[2] != "3")
+                if (!AuthHelper.IsAdmin(ctx))
                     return Results.Json(new { ok = false, error = "Admin uniquement" });
 
                 MongoDbHelper.DeleteSettings(SettingsKey);
@@ -119,10 +113,7 @@ public static class FormConfigEndpoints
         {
             try
             {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length < 3 || parts[2] != "3")
+                if (!AuthHelper.IsAdmin(ctx))
                     return Results.Json(new { ok = false, error = "Admin uniquement" });
 
                 var body = await ctx.Request.ReadFromJsonAsync<JsonElement>();
@@ -146,10 +137,7 @@ public static class FormConfigEndpoints
         {
             try
             {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length < 3 || parts[2] != "3")
+                if (!AuthHelper.IsAdmin(ctx))
                     return Results.Json(new { ok = false, error = "Admin uniquement" });
 
                 var decodedName = Uri.UnescapeDataString(name);
@@ -170,10 +158,7 @@ public static class FormConfigEndpoints
         {
             try
             {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length < 3 || parts[2] != "3")
+                if (!AuthHelper.IsAdmin(ctx))
                     return Results.Json(new { ok = false, error = "Admin uniquement" });
 
                 var field = await ctx.Request.ReadFromJsonAsync<FormFieldConfig>();
@@ -203,10 +188,7 @@ public static class FormConfigEndpoints
         {
             try
             {
-                var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-                var parts = decoded.Split(':');
-                if (parts.Length < 3 || parts[2] != "3")
+                if (!AuthHelper.IsAdmin(ctx))
                     return Results.Json(new { ok = false, error = "Admin uniquement" });
 
                 var config = MongoDbHelper.GetSettings<FabricationFormConfig>(SettingsKey) ?? DefaultConfig;

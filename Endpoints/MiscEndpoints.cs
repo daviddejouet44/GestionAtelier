@@ -170,11 +170,7 @@ app.MapGet("/api/folders", (HttpContext ctx) =>
 {
     try
     {
-        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        if (string.IsNullOrWhiteSpace(token))
-            return Results.Json(new { ok = false, error = "Non authentifié" });
-        var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-        if (decoded.Split(':').Length < 3)
+        if (!AuthHelper.IsAuthenticated(ctx))
             return Results.Json(new { ok = false, error = "Non authentifié" });
     }
     catch { return Results.Json(new { ok = false, error = "Non authentifié" }); }
