@@ -194,6 +194,25 @@ app.MapGet("/api/auth/me", (HttpContext ctx) =>
     }
 });
 
+// GET /api/operators — list operator names (accessible to all authenticated profiles)
+app.MapGet("/api/operators", (HttpContext ctx) =>
+{
+    try
+    {
+        var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (string.IsNullOrWhiteSpace(token))
+            return Results.Json(new { ok = false, error = "Non authentifié" });
+
+        var users = BackendUtils.LoadUsers();
+        var operators = users
+            .Where(u => u.Profile != 1 && u.Profile != 5)
+            .Select(u => new { name = u.Name, login = u.Login, profile = u.Profile })
+            .ToList();
+        return Results.Json(new { ok = true, users = operators });
+    }
+    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+});
+
 app.MapGet("/api/auth/users", (HttpContext ctx) =>
 {
     try

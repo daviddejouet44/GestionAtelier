@@ -1287,13 +1287,8 @@ app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
         new() { Id = "fiery",         Label = "Envoyer dans Fiery",        Enabled = true },
     };
 
-    // TODO: requires AuthHelper from PR1
     private static bool IsAdmin(HttpContext ctx)
     {
-        var helperResult = TryInvokeAuthBool("IsAdmin", ctx);
-        if (helperResult.HasValue)
-            return helperResult.Value;
-
         try
         {
             var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
