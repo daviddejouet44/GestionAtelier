@@ -205,15 +205,13 @@ app.MapGet("/api/operators", (HttpContext ctx) =>
 
         var users = BackendUtils.LoadUsers();
         var operatorList = users
-            .Select(u => new { name = u.Name ?? "", login = u.Login ?? "", profile = u.Profile })
+            .Select(u => new { id = u.Id ?? "", name = u.Name ?? "", login = u.Login ?? "", profile = u.Profile })
             .ToList();
-        Console.WriteLine($"[DEBUG] /api/operators: {operatorList.Count} users loaded");
         return Results.Json(new { ok = true, operators = operatorList });
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[ERROR] /api/operators: {ex.Message}\n{ex.StackTrace}");
-        return Results.Json(new { ok = false, error = ex.Message });
+        return ErrorHelper.HandleException(ex, "/api/operators");
     }
 });
 

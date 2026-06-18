@@ -836,11 +836,12 @@ export function initFabrication() {
       .then(r => r.json())
       .then(cfg => {
         const hasPressero = cfg?.pressero?.enabled;
-        const hasW2p = cfg?.w2p?.enabled;
-        if (hasPressero || hasW2p) {
+        const hasMdsf = cfg?.mdsf?.enabled;
+        // Only providers with a working lookup endpoint can be targeted directly.
+        const provider = hasPressero ? 'pressero' : (hasMdsf ? 'mdsf' : null);
+        if (provider) {
           fabErpLookup.dataset.erpEnabled = 'true';
           fabErpLookup.style.display = '';
-          const provider = hasPressero ? 'pressero' : 'w2p';
           fabErpLookup.onclick = async () => {
             const ndEl = gEl('numeroDossier');
             const ref = ndEl ? ndEl.value.trim() : '';

@@ -70,6 +70,39 @@ public static class IntegrationsEndpoints
             catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
 
+        // ── GET /api/settings/integrations-full ───────────────────────────
+        // Lightweight, secret-free view of the integration config used by the
+        // fabrication form to decide whether to show the ERP/W2P lookup button.
+        // Accessible to any authenticated user (operators use the fiche form).
+        app.MapGet("/api/settings/integrations-full", (HttpContext ctx) =>
+        {
+            if (!AuthHelper.IsAuthenticated(ctx)) return Results.Json(new { ok = false, error = "Authentification requise" });
+            try
+            {
+                var cfg = MongoDbHelper.GetSettings<IntegrationsFullConfig>("integrations_full_config")
+                          ?? new IntegrationsFullConfig();
+                var lookupCfg = MongoDbHelper.GetSettings<SubmissionErpLookupSettings>("submission_erp_lookup")
+                                ?? new SubmissionErpLookupSettings();
+
+                // "w2p" lookup is available when the submission ERP/W2P lookup is enabled
+                // and at least one usable source is configured (Pressero, MDSF or a generic ERP source).
+                var hasGenericSource = lookupCfg.ErpSources != null && lookupCfg.ErpSources.Count > 0;
+                var w2pEnabled = lookupCfg.Enabled && (hasGenericSource
+                                                       || (cfg.Mdsf?.Enabled ?? false)
+                                                       || (cfg.Pressero?.Enabled ?? false));
+
+                return Results.Json(new
+                {
+                    activeProvider = cfg.ActiveProvider,
+                    erp = new { enabled = cfg.Erp?.Enabled ?? false },
+                    pressero = new { enabled = cfg.Pressero?.Enabled ?? false },
+                    mdsf = new { enabled = cfg.Mdsf?.Enabled ?? false },
+                    w2p = new { enabled = w2pEnabled }
+                });
+            }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex, "/api/settings/integrations-full"); }
+        });
+
         // ── PUT /api/settings/integrations-config ─────────────────────────
         app.MapPut("/api/settings/integrations-config", async (HttpContext ctx) =>
         {
