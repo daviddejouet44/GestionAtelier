@@ -572,15 +572,13 @@ async function buildBatView(_filterStatus, _sortField) {
       btnArchiver.textContent = "📦 Archiver";
       btnArchiver.onclick = async () => {
         if (!confirm(`Archiver le BAT "${job.name}" dans le dossier de production ?`)) return;
-        const archiveFolder = "Fin de production";
-        const archivePath = full.replace(/[/\\]BAT[/\\]/, "/" + archiveFolder + "/").replace(/\\/g, "/");
-        const resp = await fetch("/api/jobs/move", {
+        const resp = await fetch("/api/jobs/archive", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ source: full, destination: archiveFolder, overwrite: true })
+          body: JSON.stringify({ fullPath: full })
         }).then(r => r.json()).catch(() => ({ ok: false }));
-        if (resp.ok) { showNotification("✅ Archivé dans Fin de production", "success"); buildBatView(); }
-        else showNotification("❌ Erreur archivage", "error");
+        if (resp.ok) { showNotification("✅ BAT archivé", "success"); buildBatView(); }
+        else showNotification("❌ Erreur : " + (resp.error || "Erreur archivage"), "error");
       };
 
       const btnFiche = document.createElement("button");
