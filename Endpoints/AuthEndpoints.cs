@@ -204,12 +204,17 @@ app.MapGet("/api/operators", (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = "Non authentifié" });
 
         var users = BackendUtils.LoadUsers();
-        var operators = users
-            .Select(u => new { name = u.Name, login = u.Login, profile = u.Profile })
+        var operatorList = users
+            .Select(u => new { name = u.Name ?? "", login = u.Login ?? "", profile = u.Profile })
             .ToList();
-        return Results.Json(new { ok = true, operators });
+        Console.WriteLine($"[DEBUG] /api/operators: {operatorList.Count} users loaded");
+        return Results.Json(new { ok = true, operators = operatorList });
     }
-    catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[ERROR] /api/operators: {ex.Message}\n{ex.StackTrace}");
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
 });
 
 app.MapGet("/api/auth/users", (HttpContext ctx) =>
