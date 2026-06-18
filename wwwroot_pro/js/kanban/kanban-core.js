@@ -342,7 +342,7 @@ function buildKanbanFilterBar() {
   filterBar.style.borderBottom = "1px solid #e5e7eb";
   filterBar.style.fontSize = "13px";
 
-  fetch("/api/auth/users", { headers: { "Authorization": `Bearer ${authToken}` } })
+  fetch("/api/operators", { headers: { "Authorization": `Bearer ${authToken}` } })
     .then(async r => {
       if (!r.ok) return { ok: false, users: [] };
       return r.json();
