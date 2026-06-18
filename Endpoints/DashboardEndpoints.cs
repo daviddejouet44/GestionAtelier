@@ -407,16 +407,10 @@ app.MapGet("/api/dashboard/stats/export-csv", (HttpContext ctx) =>
         if (string.IsNullOrWhiteSpace(token))
             return Results.Json(new { ok = false, error = "Non authentifié" });
 
-        try
-        {
-            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            if (parts.Length < 3) return Results.Json(new { ok = false, error = "Token invalide" });
-            var userId = parts[0];
-            var users = BackendUtils.LoadUsers();
-            if (!users.Any(u => u.Id == userId)) return Results.Json(new { ok = false, error = "Utilisateur non trouvé" });
-        }
-        catch { return Results.Json(new { ok = false, error = "Token invalide" }); }
+        var userId = AuthHelper.GetClaim(ctx, "userId");
+        if (string.IsNullOrEmpty(userId)) return Results.Json(new { ok = false, error = "Token invalide" });
+        var users = BackendUtils.LoadUsers();
+        if (!users.Any(u => u.Id == userId)) return Results.Json(new { ok = false, error = "Utilisateur non trouvé" });
 
         var root = BackendUtils.HotfoldersRoot();
         var activeFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
