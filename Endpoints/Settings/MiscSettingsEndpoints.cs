@@ -24,13 +24,6 @@ namespace GestionAtelier.Endpoints.Settings;
 
 public static class MiscSettingsEndpoints
 {
-    private static readonly Type? AuthHelperType = Type.GetType("GestionAtelier.Services.AuthHelper, GestionAtelier");
-    private static readonly System.Reflection.MethodInfo? AuthIsAdminMethod =
-        AuthHelperType?.GetMethod("IsAdmin", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-    private static readonly System.Reflection.MethodInfo? AuthIsAuthenticatedMethod =
-        AuthHelperType?.GetMethod("IsAuthenticated", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-    private static readonly System.Reflection.MethodInfo? AuthGetClaimMethod =
-        AuthHelperType?.GetMethod("GetClaim", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
     private static readonly Type? ErrorHelperType = Type.GetType("GestionAtelier.Services.ErrorHelper, GestionAtelier");
     private static readonly System.Reflection.MethodInfo? ErrorHandleExceptionMethod =
         ErrorHelperType?.GetMethod("HandleException", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
@@ -1287,60 +1280,11 @@ app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
         new() { Id = "fiery",         Label = "Envoyer dans Fiery",        Enabled = true },
     };
 
-    private static bool IsAdmin(HttpContext ctx)
-    {
-        // Prefer the real JWT-based check (AuthHelper.IsAdmin). The legacy
-        // base64 "userId:login:profile" fallback below only applies to the old
-        // token format and never matches a signed JWT.
-        var helperResult = TryInvokeAuthBool("IsAdmin", ctx);
-        if (helperResult.HasValue)
-            return helperResult.Value;
+    private static bool IsAdmin(HttpContext ctx) => AuthHelper.IsAdmin(ctx);
 
-        try
-        {
-            var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            return parts.Length >= 3 && parts[2] == "3";
-        }
-        catch { return false; }
-    }
+    private static bool IsAuthenticated(HttpContext ctx) => AuthHelper.IsAuthenticated(ctx);
 
-    // TODO: requires AuthHelper from PR1
-    private static bool IsAuthenticated(HttpContext ctx)
-    {
-        var helperResult = TryInvokeAuthBool("IsAuthenticated", ctx);
-        if (helperResult.HasValue)
-            return helperResult.Value;
-
-        try
-        {
-            var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            return decoded.Split(':').Length >= 3;
-        }
-        catch { return false; }
-    }
-
-    // TODO: requires AuthHelper from PR1
-    private static string? GetClaim(HttpContext ctx, string claimType)
-    {
-        var helperResult = TryInvokeAuthString("GetClaim", ctx, claimType);
-        if (helperResult.found)
-            return helperResult.value;
-
-        if (claimType != "userId")
-            return null;
-
-        try
-        {
-            var token = ctx.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(token));
-            var parts = decoded.Split(':');
-            return parts.Length >= 1 ? parts[0] : null;
-        }
-        catch { return null; }
-    }
+    private static string? GetClaim(HttpContext ctx, string claimType) => AuthHelper.GetClaim(ctx, claimType);
 
     // TODO: requires ErrorHelper from PR2
     private static IResult HandleException(Exception ex)
@@ -1350,35 +1294,6 @@ app.MapPost("/api/admin/settings/import", async (HttpContext ctx) =>
 
         LogMiscSettingsError(ex);
         return Results.Json(new { ok = false, error = "Une erreur interne est survenue." });
-    }
-
-    private static bool? TryInvokeAuthBool(string methodName, HttpContext ctx)
-    {
-        try
-        {
-            var method = methodName switch
-            {
-                "IsAdmin" => AuthIsAdminMethod,
-                "IsAuthenticated" => AuthIsAuthenticatedMethod,
-                _ => null
-            };
-            if (method?.Invoke(null, new object[] { ctx }) is bool value)
-                return value;
-        }
-        catch { }
-        return null;
-    }
-
-    private static (bool found, string? value) TryInvokeAuthString(string methodName, HttpContext ctx, string claimType)
-    {
-        try
-        {
-            var method = methodName == "GetClaim" ? AuthGetClaimMethod : null;
-            if (method != null)
-                return (true, method.Invoke(null, new object[] { ctx, claimType }) as string);
-        }
-        catch { }
-        return (false, null);
     }
 
     private static IResult? TryInvokeErrorHelper(Exception ex)
