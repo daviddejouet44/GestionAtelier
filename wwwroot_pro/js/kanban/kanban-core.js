@@ -344,14 +344,13 @@ function buildKanbanFilterBar() {
 
   fetch("/api/operators", { headers: { "Authorization": `Bearer ${authToken}` } })
     .then(async r => {
-      if (!r.ok) return { ok: false, users: [] };
+      if (!r.ok) return { ok: false, operators: [] };
       return r.json();
     })
     .then(data => {
-      const users = (data.ok && Array.isArray(data.users) ? data.users : [])
-        .filter(u => u.profile !== 1 && u.profile !== 5);
+      const ops = data.ok && Array.isArray(data.operators) ? data.operators : [];
       const uniqueUsers = [...new Set(
-        users.map(u => (typeof u === "string" ? u : (u?.name || u?.login || "")).trim()).filter(Boolean)
+        ops.map(u => (u?.name || u?.login || "").trim()).filter(Boolean)
       )].sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
       uniqueUsers.forEach(name => {
         const opt = document.createElement("option");
