@@ -194,7 +194,7 @@ app.MapGet("/api/auth/me", (HttpContext ctx) =>
     }
 });
 
-// GET /api/operators — list operator names (accessible to all authenticated profiles)
+// GET /api/operators — list all user accounts (accessible to all authenticated profiles)
 app.MapGet("/api/operators", (HttpContext ctx) =>
 {
     try
@@ -205,10 +205,9 @@ app.MapGet("/api/operators", (HttpContext ctx) =>
 
         var users = BackendUtils.LoadUsers();
         var operators = users
-            .Where(u => u.Profile != 1 && u.Profile != 5)
             .Select(u => new { name = u.Name, login = u.Login, profile = u.Profile })
             .ToList();
-        return Results.Json(new { ok = true, users = operators });
+        return Results.Json(new { ok = true, operators });
     }
     catch (Exception ex) { return Results.Json(new { ok = false, error = ex.Message }); }
 });
