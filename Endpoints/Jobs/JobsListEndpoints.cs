@@ -81,24 +81,6 @@ app.MapGet("/api/jobs", (HttpContext ctx) =>
     }
 });
 
-app.MapGet("/api/operators", (HttpContext ctx) =>
-{
-    try
-    {
-        if (!AuthHelper.IsAuthenticated(ctx))
-            return Results.Json(new { ok = false, error = "Non authentifié" });
-
-        var users = BackendUtils.LoadUsers();
-        var operators = users.Where(u => u.Profile == 2 || u.Profile == 4 || u.Profile == 6)
-            .Select(u => new { id = u.Id, name = u.Name, login = u.Login });
-        return Results.Json(new { ok = true, operators });
-    }
-    catch (Exception ex)
-    {
-        return ErrorHelper.HandleException(ex);
-    }
-});
-
 app.MapGet("/api/alerts/bat-pending", (HttpContext ctx) =>
 {
     try

@@ -12,7 +12,7 @@ import {
 } from './core.js';
 
 import { buildKanban, refreshKanban, openAssignDropdown, startBatDecisionPolling, stopBatDecisionPolling } from './kanban.js?v=36';
-import { openFabrication, initFabrication, openQuoteSendModal } from './fabrication.js?v=34';
+import { openFabrication, initFabrication, openQuoteSendModal } from './fabrication.js?v=35';
 import { initCalendar, ensureCalendar, calendar, submissionCalendar, initSubmissionCalendar, colorForEvent, openPlanificationCalendar, refreshOperatorView } from './calendar.js';
 import { initDossiersView, loadDossiersList, openDossierDetail } from './dossiers.js';
 import { initSettingsView } from './settings.js?v=36';
