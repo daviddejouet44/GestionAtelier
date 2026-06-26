@@ -20,6 +20,16 @@
 
     <!-- Globalization invariante pour réduire la surface -->
     <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!--
+      Empêche le SDK d'inclure les artefacts déjà publiés comme "Content".
+      Sans cela, publier dans ./publish/GestionAtelier (sous le projet) fait que
+      les globs par défaut (**/*.json, **/web.config, ...) capturent les fichiers
+      d'une publication précédente, ce qui provoque des chemins dupliqués
+      (publish\GestionAtelier\publish\GestionAtelier\...) et l'erreur MSB3030
+      "Impossible de copier ... GestionAtelier.deps.json, car il est introuvable".
+    -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);publish\**;installer\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <!-- ✅ Inclure wwwroot_portal et wwwroot_pro dans le publish -->
