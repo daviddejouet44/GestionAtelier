@@ -884,7 +884,7 @@ async function addMachineFilter(calendarEl) {
   try {
     const [engines, usersResp, finitionsResp] = await Promise.all([
       fetch("/api/config/print-engines").then(r => r.json()).catch(() => []),
-      fetch("/api/auth/users", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, users: [] })),
+      fetch("/api/operators", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, operators: [] })),
       fetch("/api/fabrication/finitions", { headers: { 'Authorization': `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, finitions: [] }))
     ]);
 
@@ -894,7 +894,7 @@ async function addMachineFilter(calendarEl) {
       : [];
     buildPills("planning-machine-pills", engineNames, () => calendar?.refetchEvents());
 
-    const userList = (usersResp.ok && Array.isArray(usersResp.users)) ? usersResp.users : [];
+    const userList = (usersResp.ok && Array.isArray(usersResp.operators)) ? usersResp.operators : [];
     const opSel = wrap.querySelector("#planning-operator-filter");
     opSel.innerHTML = '<option value="">Tous opérateurs</option>' + userList.map(u => {
       const name = u.name || u.login || '';
