@@ -645,6 +645,32 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
       } else if (folderName === "Prêt pour impression") {
+        // BAT status pastille (bottom-right of the card, always visible independently of the
+        // hover action buttons). Only rendered in the "En attente" (Prêt pour impression) tile.
+        const batPastille = document.createElement("div");
+        batPastille.className = "kanban-bat-pastille";
+        const BAT_PASTILLE_MAP = {
+          pending:   { label: "En attente", bg: "#2563eb" },
+          sent:      { label: "Envoyé",     bg: "#ea580c" },
+          validated: { label: "Validé",     bg: "#16a34a" },
+          rejected:  { label: "Refusé",     bg: "#dc2626" },
+        };
+        const renderBatPastille = (status) => {
+          const s = BAT_PASTILLE_MAP[status] || BAT_PASTILLE_MAP.pending;
+          batPastille.textContent = s.label;
+          batPastille.style.background = s.bg;
+        };
+        renderBatPastille("pending"); // default: En attente tant que le BAT n'a pas été envoyé
+        card.appendChild(batPastille);
+        (async () => {
+          try {
+            const r = await fetch("/api/bat/status-by-file?fileName=" + encodeURIComponent(jobFileName), {
+              headers: { "Authorization": "Bearer " + (authToken || "") }
+            }).then(res => res.json()).catch(() => null);
+            renderBatPastille(r && r.ok && r.status && r.status !== "none" ? r.status : "pending");
+          } catch (_) { renderBatPastille("pending"); }
+        })();
+
         if (isActionVisible(folderName, "ouvrirFichier")) actions.appendChild(btnOpen);
         if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
         if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
