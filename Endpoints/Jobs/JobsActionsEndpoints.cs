@@ -171,6 +171,23 @@ app.MapPost("/api/acrobat/preflight", async (HttpContext ctx) =>
         if (!File.Exists(dropletExe))
             return Results.Json(new { ok = false, error = $"Droplet introuvable : {dropletExe}. Vérifiez le chemin dans Paramétrage > Preflight." });
 
+        // Resolve a human-readable name for the preflight profile used, so it can be surfaced
+        // automatically in the production sheet (fiche de fabrication).
+        string preflightProfilName;
+        {
+            var pfCfg = MongoDbHelper.GetSettings<PreflightSettings>("preflight");
+            var matchDroplet = pfCfg?.Droplets?.FirstOrDefault(dp =>
+                string.Equals(dp.Path, dropletExe, StringComparison.OrdinalIgnoreCase));
+            if (matchDroplet != null && !string.IsNullOrWhiteSpace(matchDroplet.Name))
+                preflightProfilName = matchDroplet.Name;
+            else if (pfCfg != null && string.Equals(pfCfg.DropletStandard, dropletExe, StringComparison.OrdinalIgnoreCase))
+                preflightProfilName = "Standard";
+            else if (pfCfg != null && string.Equals(pfCfg.DropletFondPerdu, dropletExe, StringComparison.OrdinalIgnoreCase))
+                preflightProfilName = "Fond perdu";
+            else
+                preflightProfilName = Path.GetFileNameWithoutExtension(dropletExe);
+        }
+
         // Launch the droplet with the PDF path as argument
         var psi = new ProcessStartInfo(dropletExe, $"\"{fullPath}\"")
         {
@@ -268,6 +285,22 @@ app.MapPost("/api/acrobat/preflight", async (HttpContext ctx) =>
                 Builders<BsonDocument>.Update.Set("fullPath", destPath));
         }
         catch (Exception exF) { Console.WriteLine($"[WARN] UpdateFabricationPath: {exF.Message}"); }
+
+        // Store the preflight profile name on the fabrication sheet so it "remonte" automatically
+        // into the fiche de production. Upsert by fileName so the info is captured even when the
+        // fiche has not been created yet at preflight time.
+        try
+        {
+            var fileNameLc = Path.GetFileName(destPath).ToLowerInvariant();
+            var fabCol2 = MongoDbHelper.GetFabricationsCollection();
+            fabCol2.UpdateOne(
+                Builders<BsonDocument>.Filter.Eq("fileName", fileNameLc),
+                Builders<BsonDocument>.Update
+                    .Set("preflightProfil", preflightProfilName)
+                    .SetOnInsert("fullPath", destPath),
+                new UpdateOptions { IsUpsert = true });
+        }
+        catch (Exception exPf) { Console.WriteLine($"[WARN] SetPreflightProfil: {exPf.Message}"); }
 
         // Log activity
         MongoDbHelper.InsertActivityLog(new ActivityLogEntry

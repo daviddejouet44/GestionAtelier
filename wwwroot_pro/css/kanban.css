@@ -224,6 +224,14 @@
   gap: 3px; white-space: nowrap;
 }
 
+/* BAT status pastille — En attente tile only, bottom-right, shown independently of hover actions */
+.kanban-bat-pastille {
+  position: absolute; bottom: 6px; right: 6px; z-index: 3;
+  font-size: 10px; font-weight: 700; color: #fff;
+  padding: 2px 9px; border-radius: 10px; white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); pointer-events: none;
+}
+
 /* =========================================================
    ASSIGN DROPDOWN
 ========================================================= */

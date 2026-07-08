@@ -581,7 +581,8 @@ public static class BackendUtils
             ["bascule"]                = sheet.Bascule                == null ? BsonNull.Value : (BsonValue)sheet.Bascule,
             ["couleurs"]               = sheet.Couleurs               == null ? BsonNull.Value : (BsonValue)sheet.Couleurs,
             ["couleursAccompagnement"] = sheet.CouleursAccompagnement == null ? BsonNull.Value : (BsonValue)sheet.CouleursAccompagnement,
-            ["certification"]          = sheet.Certification          == null ? BsonNull.Value : (BsonValue)sheet.Certification
+            ["certification"]          = sheet.Certification          == null ? BsonNull.Value : (BsonValue)sheet.Certification,
+            ["preflightProfil"]        = sheet.PreflightProfil        == null ? BsonNull.Value : (BsonValue)sheet.PreflightProfil
         };
 
         // Preserve finitionSteps if they exist on the existing document (they are managed separately)
@@ -713,7 +714,8 @@ public static class BackendUtils
             Bascule = GetNullableString(d, "bascule"),
             Couleurs = GetNullableString(d, "couleurs"),
             CouleursAccompagnement = GetNullableString(d, "couleursAccompagnement"),
-            Certification = GetNullableString(d, "certification")
+            Certification = GetNullableString(d, "certification"),
+            PreflightProfil = GetNullableString(d, "preflightProfil")
         };
     }
 

@@ -225,6 +225,10 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             CouleursAccompagnement = input.CouleursAccompagnement,
             Certification = input.Certification,
 
+            // Preflight profile is filled automatically by the preflight endpoint and shown
+            // read-only in the fiche, so it is not sent by the form — always preserve the old value.
+            PreflightProfil = input.PreflightProfil ?? old?.PreflightProfil,
+
             History = old?.History ?? new List<FabricationHistory>()
         };
 
@@ -940,6 +944,42 @@ app.MapGet("/api/bat/status", (HttpContext ctx) =>
         validatedAt = doc.Contains("validatedAt") && doc["validatedAt"] != BsonNull.Value ? doc["validatedAt"].ToUniversalTime() : (DateTime?)null,
         rejectedAt = doc.Contains("rejectedAt") && doc["rejectedAt"] != BsonNull.Value ? doc["rejectedAt"].ToUniversalTime() : (DateTime?)null
     });
+});
+
+// GET /api/bat/status-by-file — resolve the BAT status for a job by its file name,
+// independent of the folder it currently sits in (batStatus docs are keyed by the BAT
+// folder path "BAT_<name>.pdf"). Used by the "En attente" tile pastille.
+app.MapGet("/api/bat/status-by-file", (string? fileName) =>
+{
+    try
+    {
+        var safe = Path.GetFileName(fileName ?? "");
+        if (string.IsNullOrWhiteSpace(safe))
+            return Results.Json(new { ok = false, status = "none" });
+
+        var col = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
+        var doc = col.Find(new BsonDocument()).ToList()
+            .Where(d =>
+            {
+                if (!d.Contains("fullPath") || d["fullPath"] == BsonNull.Value) return false;
+                var docFn = Path.GetFileName(d["fullPath"].AsString);
+                if (docFn.StartsWith("BAT_", StringComparison.OrdinalIgnoreCase)) docFn = docFn.Substring(4);
+                return string.Equals(docFn, safe, StringComparison.OrdinalIgnoreCase);
+            })
+            .OrderByDescending(d => d["_id"].AsObjectId.CreationTime)
+            .FirstOrDefault();
+
+        var status = "none";
+        if (doc != null)
+        {
+            if (doc.Contains("rejectedAt") && doc["rejectedAt"] != BsonNull.Value) status = "rejected";
+            else if (doc.Contains("validatedAt") && doc["validatedAt"] != BsonNull.Value) status = "validated";
+            else if (doc.Contains("sentAt") && doc["sentAt"] != BsonNull.Value) status = "sent";
+            else status = "pending";
+        }
+        return Results.Json(new { ok = true, status });
+    }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
 });
 
 // GET /api/bat/serialization-status — returns whether a BAT is currently being generated
