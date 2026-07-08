@@ -258,6 +258,7 @@ public static class FormConfigEndpoints
             // ── Section : BAT ─────────────────────────────────────────────
             new() { Id = "bat",               Label = "BAT",                    Type = "select",      Section = "BAT", Order = order++, Visible = true, Width = "half",
                     Options = new List<string> { "Non", "Numérique", "Papier" } },
+            new() { Id = "dateEnvoiBat",      Label = "Date d'envoi du BAT au client", Type = "date", Section = "BAT", Order = order++, Visible = true, Width = "half" },
             new() { Id = "mailValidationBat", Label = "Mail validation BAT",   Type = "file-import", Section = "BAT", Order = order++, Visible = true, Width = "half" },
             new() { Id = "mailValidationDevis",Label = "Mail validation devis", Type = "file-import", Section = "Informations générales", Order = order++, Visible = true, Width = "half" },
 

@@ -94,6 +94,7 @@ const FIELD_HTML_IDS = {
   "justifsAdresse":        "fab-justifs-adresse",
   "repartitions":          "fab-repartitions-container",
   "notes":                 "fab-notes",
+  "dateEnvoiBat":               "fab-date-envoi-bat",
   "dateReception":              "fab-date-reception",
   "dateEnvoi":                  "fab-date-envoi",
   "dateProductionFinitions":    "fab-date-finitions",
@@ -560,7 +561,7 @@ function populateFabForm(d, faconnageOptions) {
   set('media1',d.media1);set('media1Fabricant',d.media1Fabricant);set('media2',d.media2);set('media2Fabricant',d.media2Fabricant);
   set('media3',d.media3);set('media3Fabricant',d.media3Fabricant);set('media4',d.media4);set('media4Fabricant',d.media4Fabricant);
   set('couvertureMedia',d.mediaCouverture);set('couvertureFabricant',d.mediaCouvertureFabricant);
-  set('bat',d.bat);set('retraitLivraison',d.retraitLivraison);set('adresseLivraison',d.adresseLivraison);
+  set('bat',d.bat);set('dateEnvoiBat',d.dateEnvoiBat);set('retraitLivraison',d.retraitLivraison);set('adresseLivraison',d.adresseLivraison);
   set('plis',d.plis);set('sortie',d.sortie);set('faconnageBinding',d.faconnageBinding);set('notes',d.notes);
   set('justifsQuantite',d.justifsClientsQuantite!=null?d.justifsClientsQuantite:'');set('justifsAdresse',d.justifsClientsAdresse);
   set('dateDepart',d.dateDepart);set('planningMachine',d.planningMachine);set('rainage',d.rainage);
@@ -1341,7 +1342,7 @@ export async function saveFabrication() {
     moteurImpression:get('moteurImpression'),machine:get('moteurImpression'),
     operateur:get('operateur')||null,quantite:getN('quantite'),typeTravail:get('typeTravail'),
     format:get('formatFini'),rectoVerso:get('rectoVerso'),formeDecoupe:get('formeDecoupe')||null,
-    bat:get('bat')||null,retraitLivraison:get('retraitLivraison')||null,adresseLivraison:get('adresseLivraison')||null,
+    bat:get('bat')||null,dateEnvoiBat:get('dateEnvoiBat')||null,retraitLivraison:get('retraitLivraison')||null,adresseLivraison:get('adresseLivraison')||null,
     client:get('client'),numeroDossier:get('numeroDossier')||null,notes:get('notes'),
     faconnage:facCont?Array.from(facCont.querySelectorAll('.fab-faconnage-cb:checked')).map(cb=>cb.value):[],
     delai:get('delai')||null,media1:get('media1')||null,media2:get('media2')||null,media3:get('media3')||null,media4:get('media4')||null,

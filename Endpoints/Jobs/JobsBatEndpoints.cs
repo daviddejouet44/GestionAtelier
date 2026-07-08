@@ -63,6 +63,171 @@ app.MapPost("/api/bat/execute", async (HttpContext ctx) =>
     }
 });
 
+// ======================================================
+// BAT PLANNING — mini-planning « BAT à envoyer » (numérique / papier)
+// Alimenté par le champ dateEnvoiBat de la fiche de fabrication.
+// ======================================================
+app.MapGet("/api/bat/planning", (HttpContext ctx) =>
+{
+    try
+    {
+        if (!AuthHelper.IsAuthenticated(ctx))
+            return Results.Json(new { ok = false, error = "Non authentifié" });
+
+        // Load config (planning days + alert threshold hours)
+        var cfgCol = MongoDbHelper.GetCollection<BsonDocument>("batCommandConfig");
+        var cfgDoc = cfgCol.Find(Builders<BsonDocument>.Filter.Empty).FirstOrDefault();
+        var planningDays = cfgDoc != null && cfgDoc.Contains("batPlanningDays") ? cfgDoc["batPlanningDays"].AsInt32 : 5;
+        var alertHours = cfgDoc != null && cfgDoc.Contains("batPlanningAlertHours") ? cfgDoc["batPlanningAlertHours"].AsInt32 : 24;
+        if (planningDays < 1) planningDays = 5;
+        if (planningDays > 14) planningDays = 14;
+
+        var now = DateTime.UtcNow;
+        var today = now.Date;
+        var windowEnd = today.AddDays(planningDays); // exclusive upper bound
+
+        // Files still physically present in the kanban hotfolders (orphan detection)
+        var hotRoot = BackendUtils.HotfoldersRoot();
+        var activeFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (Directory.Exists(hotRoot))
+        {
+            foreach (var dir in Directory.GetDirectories(hotRoot))
+            {
+                try
+                {
+                    foreach (var file in Directory.GetFiles(dir, "*.pdf", SearchOption.TopDirectoryOnly))
+                        activeFileNames.Add(Path.GetFileName(file));
+                }
+                catch { }
+            }
+        }
+
+        // BATs already sent/validated should not appear in the "to send" planning.
+        var alreadyHandled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var batStatusCol = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
+            foreach (var s in batStatusCol.Find(new BsonDocument()).ToList())
+            {
+                var status = s.Contains("status") && s["status"] != BsonNull.Value ? s["status"].AsString : "";
+                var validated = s.Contains("validatedAt") && s["validatedAt"] != BsonNull.Value;
+                if (!validated
+                    && !string.Equals(status, "sent", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(status, "validated", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var sp = s.Contains("fullPath") && s["fullPath"] != BsonNull.Value ? s["fullPath"].AsString : "";
+                var fn = Path.GetFileName(sp)?.ToLowerInvariant() ?? "";
+                if (fn.StartsWith("bat_")) fn = fn.Substring(4);
+                if (!string.IsNullOrEmpty(fn)) alreadyHandled.Add(fn);
+            }
+        }
+        catch { }
+
+        var fabCol = MongoDbHelper.GetFabricationsCollection();
+        var filter = Builders<BsonDocument>.Filter.And(
+            Builders<BsonDocument>.Filter.Exists("dateEnvoiBat"),
+            Builders<BsonDocument>.Filter.Ne("dateEnvoiBat", BsonNull.Value),
+            Builders<BsonDocument>.Filter.Lt("dateEnvoiBat", new BsonDateTime(windowEnd))
+        );
+        var docs = fabCol.Find(filter).ToList();
+
+        var entries = new List<dynamic>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var doc in docs)
+        {
+            // Skip explicitly excluded / locked jobs
+            if (doc.Contains("excludeFromPlanning") && doc["excludeFromPlanning"].BsonType == BsonType.Boolean && doc["excludeFromPlanning"].AsBoolean)
+                continue;
+            if (doc.Contains("locked") && doc["locked"] != BsonNull.Value && doc["locked"].BsonType == BsonType.Boolean && doc["locked"].AsBoolean)
+                continue;
+
+            // Only Numérique / Papier BATs are relevant to the "à envoyer" planning
+            var bat = doc.Contains("bat") && doc["bat"] != BsonNull.Value ? doc["bat"].AsString : "";
+            string batType;
+            if (string.Equals(bat, "Numérique", StringComparison.OrdinalIgnoreCase)) batType = "numerique";
+            else if (string.Equals(bat, "Papier", StringComparison.OrdinalIgnoreCase)) batType = "papier";
+            else continue;
+
+            var fileName = doc.Contains("fileName") && doc["fileName"] != BsonNull.Value ? doc["fileName"].AsString : "";
+            if (string.IsNullOrWhiteSpace(fileName)) continue;
+
+            // Skip orphan records: file no longer present in any active kanban folder
+            if (!activeFileNames.Contains(fileName) && !activeFileNames.Contains(fileName.ToLowerInvariant()))
+                continue;
+
+            // Skip BATs already sent/validated
+            var fnNorm = fileName.ToLowerInvariant();
+            if (fnNorm.StartsWith("bat_")) fnNorm = fnNorm.Substring(4);
+            if (alreadyHandled.Contains(fnNorm)) continue;
+
+            // De-duplicate by (fileName + type)
+            if (!seen.Add(fnNorm + "|" + batType)) continue;
+
+            DateTime dEnvoi;
+            try { dEnvoi = doc["dateEnvoiBat"].ToUniversalTime().Date; }
+            catch { continue; }
+
+            var numeroDossier = doc.Contains("numeroDossier") && doc["numeroDossier"] != BsonNull.Value ? doc["numeroDossier"].AsString : "";
+            var client = doc.Contains("client") && doc["client"] != BsonNull.Value ? doc["client"].AsString : "";
+
+            var offset = (int)(dEnvoi - today).TotalDays; // <0 = en retard
+            var hoursUntil = (int)Math.Floor((dEnvoi - now).TotalHours);
+            var isAlert = hoursUntil <= alertHours; // dans la fenêtre d'alerte (inclut le retard)
+
+            entries.Add(new
+            {
+                fileName,
+                numeroDossier,
+                client,
+                batType,
+                dateEnvoiBat = dEnvoi.ToString("yyyy-MM-dd"),
+                offset,
+                hoursUntil,
+                overdue = offset < 0,
+                alert = isAlert
+            });
+        }
+
+        // Build day buckets (today .. today+planningDays-1)
+        var days = new List<object>();
+        for (int i = 0; i < planningDays; i++)
+        {
+            var date = today.AddDays(i);
+            var dstr = date.ToString("yyyy-MM-dd");
+            days.Add(new
+            {
+                date = dstr,
+                offset = i,
+                numerique = entries.Where(e => (string)e.batType == "numerique" && (int)e.offset == i).ToList(),
+                papier = entries.Where(e => (string)e.batType == "papier" && (int)e.offset == i).ToList()
+            });
+        }
+
+        var overdue = new
+        {
+            numerique = entries.Where(e => (bool)e.overdue && (string)e.batType == "numerique").OrderBy(e => (string)e.dateEnvoiBat).ToList(),
+            papier = entries.Where(e => (bool)e.overdue && (string)e.batType == "papier").OrderBy(e => (string)e.dateEnvoiBat).ToList()
+        };
+
+        var alertCount = entries.Count(e => (bool)e.alert);
+
+        return Results.Json(new
+        {
+            ok = true,
+            today = today.ToString("yyyy-MM-dd"),
+            planningDays,
+            alertHours,
+            alertCount,
+            overdue,
+            days
+        });
+    }
+    catch (Exception ex)
+    {
+        return ErrorHelper.HandleException(ex);
+    }
+});
+
 app.MapGet("/api/assignment", (HttpContext ctx, string fullPath) =>
 {
     if (!AuthHelper.IsAuthenticated(ctx))
