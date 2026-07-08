@@ -225,6 +225,10 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             CouleursAccompagnement = input.CouleursAccompagnement,
             Certification = input.Certification,
 
+            // Preflight profile is filled automatically by the preflight endpoint and shown
+            // read-only in the fiche, so it is not sent by the form — always preserve the old value.
+            PreflightProfil = input.PreflightProfil ?? old?.PreflightProfil,
+
             History = old?.History ?? new List<FabricationHistory>()
         };
 

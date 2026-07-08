@@ -133,6 +133,10 @@ public record FabricationSheet
 
     // ── Certification ──────────────────────────────────────
     public string? Certification { get; init; }    // "Aucun" | "FSC" | "PEFC"
+
+    // ── Preflight ──────────────────────────────────────────
+    /// <summary>Name of the preflight profile/droplet used, filled automatically after preflight.</summary>
+    public string? PreflightProfil { get; init; }
 }
 
 public class FabricationInput
@@ -240,6 +244,9 @@ public class FabricationInput
 
     // ── Certification ──────────────────────────────────────
     public string? Certification { get; set; }
+
+    // ── Preflight ──────────────────────────────────────────
+    public string? PreflightProfil { get; set; }
 }
 
 // ======================================================

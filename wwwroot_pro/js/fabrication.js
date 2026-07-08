@@ -556,6 +556,7 @@ function populateFabForm(d, faconnageOptions) {
   set('donneurOrdreTelephone',d.donneurOrdreTelephone);set('donneurOrdreEmail',d.donneurOrdreEmail);
   set('rectoVerso',d.rectoVerso);set('formeDecoupe',d.formeDecoupe);set('pagination',d.pagination);
   set('formatFeuilleMachine',d.formatFeuille);
+  set('preflightProfil',d.preflightProfil);
   set('media1',d.media1);set('media1Fabricant',d.media1Fabricant);set('media2',d.media2);set('media2Fabricant',d.media2Fabricant);
   set('media3',d.media3);set('media3Fabricant',d.media3Fabricant);set('media4',d.media4);set('media4Fabricant',d.media4Fabricant);
   set('couvertureMedia',d.mediaCouverture);set('couvertureFabricant',d.mediaCouvertureFabricant);
