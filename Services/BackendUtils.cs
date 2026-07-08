@@ -559,6 +559,7 @@ public static class BackendUtils
             ["sortie"]           = sheet.Sortie           == null ? BsonNull.Value : (BsonValue)sheet.Sortie,
             ["mailDevisFileName"] = sheet.MailDevisFileName == null ? BsonNull.Value : (BsonValue)sheet.MailDevisFileName,
             ["mailBatFileName"]   = sheet.MailBatFileName   == null ? BsonNull.Value : (BsonValue)sheet.MailBatFileName,
+            ["dateEnvoiBat"]      = sheet.DateEnvoiBat      == null ? BsonNull.Value : (BsonValue)sheet.DateEnvoiBat.Value,
             ["dateDepart"]      = sheet.DateDepart      == null ? BsonNull.Value : (BsonValue)sheet.DateDepart.Value,
             ["dateLivraison"]   = sheet.DateLivraison   == null ? BsonNull.Value : (BsonValue)sheet.DateLivraison.Value,
             ["planningMachine"] = sheet.PlanningMachine == null ? BsonNull.Value : (BsonValue)sheet.PlanningMachine.Value,
@@ -581,7 +582,8 @@ public static class BackendUtils
             ["bascule"]                = sheet.Bascule                == null ? BsonNull.Value : (BsonValue)sheet.Bascule,
             ["couleurs"]               = sheet.Couleurs               == null ? BsonNull.Value : (BsonValue)sheet.Couleurs,
             ["couleursAccompagnement"] = sheet.CouleursAccompagnement == null ? BsonNull.Value : (BsonValue)sheet.CouleursAccompagnement,
-            ["certification"]          = sheet.Certification          == null ? BsonNull.Value : (BsonValue)sheet.Certification
+            ["certification"]          = sheet.Certification          == null ? BsonNull.Value : (BsonValue)sheet.Certification,
+            ["preflightProfil"]        = sheet.PreflightProfil        == null ? BsonNull.Value : (BsonValue)sheet.PreflightProfil
         };
 
         // Preserve finitionSteps if they exist on the existing document (they are managed separately)
@@ -680,6 +682,7 @@ public static class BackendUtils
             Sortie           = GetNullableString(d, "sortie"),
             MailDevisFileName = GetNullableString(d, "mailDevisFileName"),
             MailBatFileName   = GetNullableString(d, "mailBatFileName"),
+            DateEnvoiBat      = d.Contains("dateEnvoiBat")      && d["dateEnvoiBat"]      != BsonNull.Value ? (DateTime?)d["dateEnvoiBat"].ToUniversalTime()      : null,
             DateDepart      = d.Contains("dateDepart")      && d["dateDepart"]      != BsonNull.Value ? (DateTime?)d["dateDepart"].ToUniversalTime()      : null,
             DateLivraison   = d.Contains("dateLivraison")   && d["dateLivraison"]   != BsonNull.Value ? (DateTime?)d["dateLivraison"].ToUniversalTime()   : null,
             PlanningMachine = d.Contains("planningMachine") && d["planningMachine"] != BsonNull.Value ? (DateTime?)d["planningMachine"].ToUniversalTime() : null,
@@ -713,7 +716,8 @@ public static class BackendUtils
             Bascule = GetNullableString(d, "bascule"),
             Couleurs = GetNullableString(d, "couleurs"),
             CouleursAccompagnement = GetNullableString(d, "couleursAccompagnement"),
-            Certification = GetNullableString(d, "certification")
+            Certification = GetNullableString(d, "certification"),
+            PreflightProfil = GetNullableString(d, "preflightProfil")
         };
     }
 

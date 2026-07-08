@@ -39,6 +39,13 @@ The app listens on `http://localhost:5080`. Interfaces:
 - `GA_HOTFOLDERS_ROOT` must be set to a Linux path (default is `C:\Flux` which doesn't exist on Linux). Use `/tmp/hotfolders`.
 - No automated test suite exists in this repository.
 - No linter configuration (`.editorconfig`, `dotnet format` rules) is committed.
+- **Startup requires `JWT_SECRET` and `LICENSE_PUBLIC_KEY`** (neither is committed). Without `LICENSE_PUBLIC_KEY` (and no `data/public.key`), the app throws a `TypeInitializationException` at startup and exits. Without `JWT_SECRET` (≥32 chars), the app boots but every authenticated request fails with HTTP 500 (`AuthHelper.GetSigningKey`). See the env-var table below.
+
+### Licence gating & local UI testing
+
+- The staff UI (`/pro/`) is gated by a signed licence file (`data/license.lic`, machine-bound, not committed). With `LICENSE_PUBLIC_KEY` set to a dummy value and no valid `.lic`, `GET /api/license/status` returns `level: 0`: the app boots and all APIs work, but the `/pro/` navigation and Kanban tiles are hidden and a licence modal opens (see `wwwroot_pro/js/license.js` → `applyLicenseUI`).
+- To exercise the `/pro/` UI end-to-end without a real licence, temporarily force the client-side level in `loadLicenseStatus()` (`license.js`), e.g. set `data.isValid = true; data.level = 3;` before `applyLicenseUI(data)`. **This is a test-only hack — never commit it.**
+- The `/portal/` client interface and the JSON APIs are not affected by the licence level.
 
 ### Seeding data
 
