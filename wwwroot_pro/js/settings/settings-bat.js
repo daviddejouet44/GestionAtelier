@@ -22,6 +22,8 @@ export async function renderSettingsBatConfig(panel) {
   let intCfg = { tempCopyPath: "", prismaPrepareOutputPath: "" };
   let batCmd = "";
   let batAlertDelayHours = 48;
+  let batPlanningAlertHours = 24;
+  let batPlanningDays = 5;
   let batSimpleDropletPath = "";
   let routings = [];
   let types = [];
@@ -42,7 +44,7 @@ export async function renderSettingsBatConfig(panel) {
       fetch("/api/settings/bat-validation-link", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false, config: {} }))
     ]);
     if (r1.ok && r1.config) intCfg = r1.config;
-    if (r2.ok) { batCmd = r2.command || ""; batAlertDelayHours = r2.batAlertDelayHours ?? 48; batSimpleDropletPath = r2.batSimpleDropletPath || ""; }
+    if (r2.ok) { batCmd = r2.command || ""; batAlertDelayHours = r2.batAlertDelayHours ?? 48; batSimpleDropletPath = r2.batSimpleDropletPath || ""; batPlanningAlertHours = r2.batPlanningAlertHours ?? 24; batPlanningDays = r2.batPlanningDays ?? 5; }
     if (Array.isArray(r3)) routings = r3;
     if (Array.isArray(r4)) types = r4;
     if (r9.ok && r9.config) batPapierCfg = r9.config;
@@ -159,6 +161,18 @@ export async function renderSettingsBatConfig(panel) {
         <input type="number" id="bat-alert-delay-input" value="${batAlertDelayHours}" min="1" class="settings-input" style="width:120px;" />
         <p style="color:#6b7280;font-size:12px;margin-top:4px;">Affiche une alerte si un BAT reste sans validation/refus après ce délai. Défaut : 48h.</p>
       </div>
+      <h4 style="margin-top:20px;">Planning des BAT à envoyer</h4>
+      <p style="color:#6b7280;font-size:13px;margin-bottom:12px;">Mini-planning affiché dans l'onglet BAT, alimenté par la « Date d'envoi du BAT au client » de chaque fiche.</p>
+      <div class="settings-form-group">
+        <label>Alerte avant envoi du BAT (heures)</label>
+        <input type="number" id="bat-planning-alert-input" value="${batPlanningAlertHours}" min="1" class="settings-input" style="width:120px;" />
+        <p style="color:#6b7280;font-size:12px;margin-top:4px;">Signale un dossier lorsque l'échéance d'envoi du BAT est à H-<em>x</em> ou dépassée. Défaut : 24h.</p>
+      </div>
+      <div class="settings-form-group" style="margin-top:12px;">
+        <label>Nombre de jours affichés</label>
+        <input type="number" id="bat-planning-days-input" value="${batPlanningDays}" min="1" max="14" class="settings-input" style="width:120px;" />
+        <p style="color:#6b7280;font-size:12px;margin-top:4px;">Nombre de jours du planning à partir d'aujourd'hui. Défaut : 5 jours.</p>
+      </div>
       <button id="bat-cmd-save" class="btn btn-primary">Enregistrer</button>
     </div>
 
@@ -257,10 +271,14 @@ export async function renderSettingsBatConfig(panel) {
     const batSimpleDropletPathNew = panel.querySelector("#bat-simple-droplet-input").value.trim();
     const rawDelay = parseInt(panel.querySelector("#bat-alert-delay-input").value);
     const batAlertDelayHoursNew = (rawDelay > 0) ? rawDelay : 48;
+    const rawPlanAlert = parseInt(panel.querySelector("#bat-planning-alert-input").value);
+    const batPlanningAlertHoursNew = (rawPlanAlert > 0) ? rawPlanAlert : 24;
+    const rawPlanDays = parseInt(panel.querySelector("#bat-planning-days-input").value);
+    const batPlanningDaysNew = (rawPlanDays > 0) ? Math.min(rawPlanDays, 14) : 5;
     const r = await fetch("/api/config/bat-command", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ command: batCmd, batAlertDelayHours: batAlertDelayHoursNew, batSimpleDropletPath: batSimpleDropletPathNew })
+      body: JSON.stringify({ command: batCmd, batAlertDelayHours: batAlertDelayHoursNew, batSimpleDropletPath: batSimpleDropletPathNew, batPlanningAlertHours: batPlanningAlertHoursNew, batPlanningDays: batPlanningDaysNew })
     }).then(r => r.json());
     if (r.ok) showNotification("✅ Configuration BAT Simple enregistrée", "success");
     else alert("Erreur");

@@ -94,6 +94,9 @@ public record FabricationSheet
     public string? MailDevisFileName { get; init; }
     public string? MailBatFileName { get; init; }
 
+    // ── Date d'envoi du BAT au client (alimente le mini-planning BAT) ──
+    public DateTime? DateEnvoiBat { get; init; }
+
     // ── Dates ────────────────────────────────────────────
     public DateTime? DateDepart { get; init; }
     public DateTime? DateLivraison { get; init; }
@@ -206,6 +209,9 @@ public class FabricationInput
     // ── Mails importés ───────────────────────────────────
     public string? MailDevisFileName { get; set; }
     public string? MailBatFileName { get; set; }
+
+    // ── Date d'envoi du BAT au client (alimente le mini-planning BAT) ──
+    public DateTime? DateEnvoiBat { get; set; }
 
     // ── Dates ────────────────────────────────────────────
     public DateTime? DateDepart { get; set; }

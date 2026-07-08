@@ -350,6 +350,7 @@ async function buildBatView(_filterStatus, _sortField) {
         </div>
       </div>
       <div id="bat-view-summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;"></div>
+      <div id="bat-planning" style="margin-bottom:20px;"></div>
       <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
         <span style="font-size:13px;font-weight:500;">Filtrer :</span>
         <button class="btn btn-sm bat-filter-btn ${filterStatus === 'all' ? 'active' : ''}" data-filter="all">Tous</button>
@@ -370,6 +371,9 @@ async function buildBatView(_filterStatus, _sortField) {
 
   container.querySelector("#bat-view-adobe").onclick = () => window.open("https://www.adobe.com/files#", "_blank", "noopener");
   container.querySelector("#bat-view-refresh").onclick = () => buildBatView();
+
+  // Mini-planning « BAT à envoyer » (alimenté par dateEnvoiBat de la fiche)
+  renderBatPlanning(container.querySelector("#bat-planning"));
   container.querySelectorAll(".bat-filter-btn").forEach(btn => {
     btn.onclick = () => buildBatView(btn.dataset.filter, sortField);
   });
@@ -802,6 +806,103 @@ async function buildBatView(_filterStatus, _sortField) {
   } catch (err) {
     listEl.innerHTML = `<p style="color:#ef4444;">Erreur : ${err.message}</p>`;
   }
+}
+
+// ======================================================
+// MINI-PLANNING « BAT à envoyer » (numérique / papier)
+// ======================================================
+async function renderBatPlanning(rootEl) {
+  if (!rootEl) return;
+  rootEl.innerHTML = '<p style="color:#6b7280;font-size:13px;">Chargement du planning des BAT…</p>';
+
+  let data;
+  try {
+    data = await fetch("/api/bat/planning", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json());
+  } catch (e) {
+    rootEl.innerHTML = "";
+    return;
+  }
+  if (!data || !data.ok) { rootEl.innerHTML = ""; return; }
+
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  // Human label for a day offset (0 = today, 1 = tomorrow, else weekday + date)
+  const dayLabel = (dateStr, offset) => {
+    if (offset === 0) return "Aujourd'hui";
+    if (offset === 1) return "Demain";
+    const d = new Date(dateStr + "T00:00:00");
+    const wd = d.toLocaleDateString("fr-FR", { weekday: "long" });
+    const dm = d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+    return `${wd.charAt(0).toUpperCase()}${wd.slice(1)} ${dm}`;
+  };
+
+  // Render a single dossier chip
+  const chip = (item) => {
+    const label = item.numeroDossier && item.numeroDossier.trim()
+      ? item.numeroDossier
+      : item.fileName.replace(/\.pdf$/i, "");
+    const cli = item.client && item.client.trim() ? ` <span style="color:#6b7280;">· ${esc(item.client)}</span>` : "";
+    const alertStyle = item.alert
+      ? "background:#fee2e2;border-color:#fca5a5;color:#991b1b;"
+      : "background:#f3f4f6;border-color:#e5e7eb;color:#374151;";
+    const bell = item.alert ? "🔔 " : "";
+    const tip = item.overdue ? "En retard" : (item.alert ? "À envoyer bientôt" : "");
+    return `<span title="${esc(tip)}" style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border:1px solid;border-radius:14px;font-size:12px;font-weight:600;${alertStyle}">${bell}${esc(label)}${cli}</span>`;
+  };
+
+  // Render one type column (numerique | papier)
+  const renderColumn = (title, icon, key) => {
+    const overdueItems = (data.overdue && data.overdue[key]) || [];
+    let rows = "";
+
+    if (overdueItems.length > 0) {
+      rows += `
+        <div style="padding:8px 10px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;margin-bottom:8px;">
+          <div style="font-size:12px;font-weight:700;color:#b91c1c;margin-bottom:6px;">⏰ En retard (${overdueItems.length})</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;">${overdueItems.map(chip).join("")}</div>
+        </div>`;
+    }
+
+    (data.days || []).forEach(day => {
+      const items = day[key] || [];
+      const isToday = day.offset === 0;
+      const labelColor = isToday ? "#1d4ed8" : "#374151";
+      const body = items.length > 0
+        ? `<div style="display:flex;flex-wrap:wrap;gap:6px;">${items.map(chip).join("")}</div>`
+        : `<span style="color:#9ca3af;font-size:12px;font-style:italic;">—</span>`;
+      rows += `
+        <div style="padding:6px 0;border-top:1px solid #f1f5f9;">
+          <div style="font-size:12px;font-weight:700;color:${labelColor};margin-bottom:4px;">
+            ${esc(dayLabel(day.date, day.offset))}${items.length ? ` <span style="color:#9ca3af;font-weight:500;">(${items.length})</span>` : ""}
+          </div>
+          ${body}
+        </div>`;
+    });
+
+    return `
+      <div style="flex:1;min-width:260px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;">
+        <div style="font-size:14px;font-weight:800;color:#111827;margin-bottom:8px;">${icon} ${esc(title)}</div>
+        ${rows}
+      </div>`;
+  };
+
+  const alertBadge = data.alertCount > 0
+    ? `<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:14px;padding:2px 10px;font-size:12px;font-weight:700;">🔔 ${data.alertCount} alerte(s) — envoi ≤ ${data.alertHours}h</span>`
+    : `<span style="color:#6b7280;font-size:12px;">Aucune alerte (seuil ${data.alertHours}h)</span>`;
+
+  rootEl.innerHTML = `
+    <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:14px;padding:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+        <h3 style="margin:0;font-size:16px;font-weight:800;color:#111827;">🗓️ Planning des BAT à envoyer</h3>
+        ${alertBadge}
+      </div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;">
+        ${renderColumn("BAT numérique", "🖥️", "numerique")}
+        ${renderColumn("BAT papier", "📄", "papier")}
+      </div>
+    </div>`;
 }
 
 // ======================================================

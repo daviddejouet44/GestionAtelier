@@ -202,6 +202,7 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             Sortie           = input.Sortie,
             MailDevisFileName = input.MailDevisFileName ?? old?.MailDevisFileName,
             MailBatFileName   = input.MailBatFileName   ?? old?.MailBatFileName,
+            DateEnvoiBat    = ToUtcDateOnly(input.DateEnvoiBat),
             DateDepart      = ToUtcDateOnly(input.DateDepart),
             DateLivraison   = ToUtcDateOnly(input.DateLivraison),
             PlanningMachine = ToUtcDateOnly(input.PlanningMachine),
@@ -1403,7 +1404,9 @@ app.MapGet("/api/config/bat-command", () =>
         @"C:\Program Files\Canon\PRISMACore\PRISMAprepare.exe ""{filePath}"" /T ""{type}"" /SP /C {qty}";
     var alertDelayHours = doc != null && doc.Contains("batAlertDelayHours") ? doc["batAlertDelayHours"].AsInt32 : 48;
     var batSimpleDropletPath = doc != null && doc.Contains("batSimpleDropletPath") ? doc["batSimpleDropletPath"].AsString : "";
-    return Results.Json(new { ok = true, command = cmd, batAlertDelayHours = alertDelayHours, batSimpleDropletPath });
+    var batPlanningAlertHours = doc != null && doc.Contains("batPlanningAlertHours") ? doc["batPlanningAlertHours"].AsInt32 : 24;
+    var batPlanningDays = doc != null && doc.Contains("batPlanningDays") ? doc["batPlanningDays"].AsInt32 : 5;
+    return Results.Json(new { ok = true, command = cmd, batAlertDelayHours = alertDelayHours, batSimpleDropletPath, batPlanningAlertHours, batPlanningDays });
 });
 
 app.MapPut("/api/config/bat-command", async (HttpContext ctx) =>
@@ -1418,6 +1421,10 @@ app.MapPut("/api/config/bat-command", async (HttpContext ctx) =>
         doc["batAlertDelayHours"] = dh.ValueKind == JsonValueKind.Number ? dh.GetInt32() : 48;
     if (json.TryGetProperty("batSimpleDropletPath", out var dp))
         doc["batSimpleDropletPath"] = dp.GetString() ?? "";
+    if (json.TryGetProperty("batPlanningAlertHours", out var pah))
+        doc["batPlanningAlertHours"] = pah.ValueKind == JsonValueKind.Number ? pah.GetInt32() : 24;
+    if (json.TryGetProperty("batPlanningDays", out var pd))
+        doc["batPlanningDays"] = pd.ValueKind == JsonValueKind.Number ? Math.Clamp(pd.GetInt32(), 1, 14) : 5;
     await col.ReplaceOneAsync(Builders<BsonDocument>.Filter.Empty, doc, new ReplaceOptions { IsUpsert = true });
     return Results.Json(new { ok = true });
 });
