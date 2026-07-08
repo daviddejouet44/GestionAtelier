@@ -1,8 +1,8 @@
 // kanban/kanban-cards.js — Kanban card rendering
 import { currentUser, authToken, deliveriesByPath, assignmentsByPath, fnKey, normalizePath, daysDiffFromToday, showNotification } from '../core.js';
 import { openBatChoiceModal } from '../bat.js';
-import { state, refreshKanban } from './kanban-core.js?v=39';
-import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js?v=39';
+import { state, refreshKanban } from './kanban-core.js?v=40';
+import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js?v=40';
 
 // Opens the quote send modal from Kanban context (prefill from fabrication data)
 async function openKanbanQuoteModal(fullPath, fab) {
@@ -320,6 +320,27 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         if (d && d.planningMachine) {
           const dt = new Date(d.planningMachine);
           machineEl.textContent = "Machine: " + dt.toLocaleDateString("fr-FR");
+        }
+        // "Fiche sans PDF" in the "Jobs à traiter" tile: offer a button to import the final
+        // PDF, which replaces the substitution PDF so the operator can start production.
+        if (d && d.sansPdf && folderName === "Début de production" && currentUser?.profile !== 1) {
+          const badge = document.createElement("span");
+          badge.textContent = "📄 Sans PDF";
+          badge.title = "Fiche créée sans PDF — PDF de substitution affiché";
+          badge.style.cssText = "font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:#fef3c7;color:#92400e;flex-shrink:0;";
+          topRowMain.appendChild(badge);
+
+          if (window._uploadFinalPdf) {
+            const btnFinal = document.createElement("button");
+            btnFinal.className = "btn btn-sm btn-primary";
+            btnFinal.textContent = "⬆️ PDF final";
+            btnFinal.title = "Importer le PDF final (remplace le PDF de substitution)";
+            btnFinal.onclick = (e) => {
+              e.stopPropagation();
+              window._uploadFinalPdf(full, jobFileName, async () => { await refreshKanban(); });
+            };
+            actions.appendChild(btnFinal);
+          }
         }
       })();
 

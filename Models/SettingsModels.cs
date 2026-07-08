@@ -353,6 +353,25 @@ public class FormFieldConfig
     /// <summary>Custom field added by admin — may be deleted via the settings UI.</summary>
     [JsonPropertyName("isCustom")]
     public bool IsCustom { get; set; } = false;
+
+    /// <summary>When true, this field is only shown for "fiches sans PDF" (created via the
+    /// blank-fiche submission process). It stays hidden for regular jobs.</summary>
+    [JsonPropertyName("sansPdfOnly")]
+    public bool SansPdfOnly { get; set; } = false;
+}
+
+/// <summary>Admin-configurable substitution PDF used as a placeholder thumbnail when a
+/// production sheet is created without importing a real PDF ("fiche sans PDF").</summary>
+public class SubstitutionPdfSettings
+{
+    [JsonPropertyName("fileName")]
+    public string? FileName { get; set; }
+
+    [JsonPropertyName("path")]
+    public string? Path { get; set; }
+
+    [JsonPropertyName("updatedAt")]
+    public DateTime? UpdatedAt { get; set; }
 }
 
 public class FabricationFormConfig

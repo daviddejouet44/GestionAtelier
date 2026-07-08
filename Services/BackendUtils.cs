@@ -567,6 +567,7 @@ public static class BackendUtils
             ["dateEnvoi"]             = sheet.DateEnvoi             == null ? BsonNull.Value : (BsonValue)sheet.DateEnvoi.Value,
             ["dateProductionFinitions"] = sheet.DateProductionFinitions == null ? BsonNull.Value : (BsonValue)sheet.DateProductionFinitions.Value,
             ["dateImpression"]        = sheet.DateImpression        == null ? BsonNull.Value : (BsonValue)sheet.DateImpression.Value,
+            ["dateReceptionFichier"]  = sheet.DateReceptionFichier  == null ? BsonNull.Value : (BsonValue)sheet.DateReceptionFichier.Value,
             ["tempsProduitMinutes"]   = sheet.TempsProduitMinutes   == null ? BsonNull.Value : (BsonValue)(int)sheet.TempsProduitMinutes,
             ["justifsClientsQuantite"] = sheet.JustifsClientsQuantite == null ? BsonNull.Value : (BsonValue)(int)sheet.JustifsClientsQuantite,
             ["justifsClientsAdresse"]  = sheet.JustifsClientsAdresse  == null ? BsonNull.Value : (BsonValue)sheet.JustifsClientsAdresse,
@@ -587,6 +588,13 @@ public static class BackendUtils
         // Preserve finitionSteps if they exist on the existing document (they are managed separately)
         if (existing != null && existing.Contains("finitionSteps") && existing["finitionSteps"] != BsonNull.Value)
             doc["finitionSteps"] = existing["finitionSteps"];
+
+        // Preserve the "fiche sans PDF" placeholder flag + substitution reference across saves.
+        // These are set/cleared by the dedicated submission endpoints, not the generic form save.
+        if (existing != null && existing.Contains("sansPdf") && existing["sansPdf"] != BsonNull.Value)
+            doc["sansPdf"] = existing["sansPdf"];
+        if (existing != null && existing.Contains("substitutionPdf") && existing["substitutionPdf"] != BsonNull.Value)
+            doc["substitutionPdf"] = existing["substitutionPdf"];
 
         if (existing != null)
         {
@@ -688,6 +696,7 @@ public static class BackendUtils
             DateEnvoi             = d.Contains("dateEnvoi")             && d["dateEnvoi"]             != BsonNull.Value ? (DateTime?)d["dateEnvoi"].ToUniversalTime()             : null,
             DateProductionFinitions = d.Contains("dateProductionFinitions") && d["dateProductionFinitions"] != BsonNull.Value ? (DateTime?)d["dateProductionFinitions"].ToUniversalTime() : null,
             DateImpression        = d.Contains("dateImpression")        && d["dateImpression"]        != BsonNull.Value ? (DateTime?)d["dateImpression"].ToUniversalTime()        : null,
+            DateReceptionFichier  = d.Contains("dateReceptionFichier")  && d["dateReceptionFichier"]  != BsonNull.Value ? (DateTime?)d["dateReceptionFichier"].ToUniversalTime()  : null,
             TempsProduitMinutes   = d.Contains("tempsProduitMinutes")   && d["tempsProduitMinutes"]   != BsonNull.Value ? (int?)d["tempsProduitMinutes"].AsInt32             : null,
             JustifsClientsQuantite = d.Contains("justifsClientsQuantite") && d["justifsClientsQuantite"] != BsonNull.Value ? (int?)d["justifsClientsQuantite"].AsInt32 : null,
             JustifsClientsAdresse  = GetNullableString(d, "justifsClientsAdresse"),

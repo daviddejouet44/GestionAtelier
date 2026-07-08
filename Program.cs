@@ -73,7 +73,8 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddHostedService<GestionAtelier.Services.DailyReportService>();
 builder.Services.AddSingleton<GestionAtelier.Services.OrderSourcePollingService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<GestionAtelier.Services.OrderSourcePollingService>());
+// Temporarily disable OrderSourcePollingService for demo
+//builder.Services.AddHostedService(sp => sp.GetRequiredService<GestionAtelier.Services.OrderSourcePollingService>());
 
 // Point 12: Rate limiter to protect /api/auth/login against brute-force
 builder.Services.AddRateLimiter(options =>
@@ -132,9 +133,9 @@ try
 {
     var _ = LicenseService.GetCurrent(); // triggers key loading; logs warning if missing
 }
-catch (InvalidOperationException licEx)
+catch (Exception licEx)
 {
-    Console.WriteLine($"[WARN] License public key not configured: {licEx.Message}");
+    Console.WriteLine($"[WARN] License configuration: {licEx.Message}");
 }
 
 // Initialize hotfolders
@@ -296,6 +297,9 @@ app.MapQuoteLinksEndpoints();
 // Submission XML coupling + ERP/W2P lookup
 app.MapSubmissionXmlEndpoints();
 app.MapExternalLookupEndpoints();
+
+// "Fiche sans PDF" process: substitution PDF, blank sheet creation, final PDF replacement
+app.MapSubmissionBlankEndpoints();
 
 // 5. Routes /pro
 app.MapGet("/pro", (HttpContext ctx) =>

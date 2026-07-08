@@ -98,6 +98,7 @@ const FIELD_HTML_IDS = {
   "dateEnvoi":                  "fab-date-envoi",
   "dateProductionFinitions":    "fab-date-finitions",
   "dateImpression":             "fab-date-impression",
+  "dateReceptionFichier":       "fab-date-reception-fichier",
   "tempsProduitMinutes":        "fab-temps-produit",
   // ── Process d'impression ─────────────────────────────────────────────────
   "process":                    "fab-process",
@@ -374,9 +375,10 @@ const ENNOBLISSEMENT_OPTIONS=[
 function renderFabForm(config, opts) {
   if(!fabDynamicForm) return;
   fabDynamicForm.innerHTML='';
-  const {engines=[],types=[],papers=[],sheetFormats=[],faconnageOptions=[],bindingOptions=[],foldsOptions=[],outputOptions=[]}=opts;
+  const {engines=[],types=[],papers=[],sheetFormats=[],faconnageOptions=[],bindingOptions=[],foldsOptions=[],outputOptions=[],sansPdf=false}=opts;
   const paperHtml='<option value="">— Sélectionner —</option>'+papers.map(p=>'<option value="'+p+'">'+p+'</option>').join('');
-  const fields=(config.fields||[]).filter(f=>f.visible).sort((a,b)=>a.order-b.order);
+  // Fields flagged "sansPdfOnly" are shown only for fiches created without a PDF.
+  const fields=(config.fields||[]).filter(f=>f.visible&&(!f.sansPdfOnly||sansPdf)).sort((a,b)=>a.order-b.order);
   const sections=config.sections||[];
   const sectionMap={}; sections.forEach(s=>{sectionMap[s]=[];});
   fields.forEach(f=>{const sec=f.section||'_other';if(!sectionMap[sec])sectionMap[sec]=[];sectionMap[sec].push(f);});
@@ -614,6 +616,8 @@ function populateFabForm(d, faconnageOptions) {
     tpEl.value=d.tempsProduitMinutes!=null?d.tempsProduitMinutes:'';
     delete tpEl.dataset.manual;
   }
+  // Date de réception du fichier (process "fiche sans PDF")
+  set('dateReceptionFichier', d.dateReceptionFichier);
   // Process d'impression
   set('process', d.process);
   set('bascule', d.bascule);
@@ -1070,7 +1074,8 @@ export async function openFabrication(fullPath, prefillData = null) {
   _finitionTimeRules=Array.isArray(finitionTimeResp.rules)?finitionTimeResp.rules:[];
   _jdfEnabled=!!(jdfConfigResp.enabled);
   const config=formConfig||{fields:[],sections:[]};
-  renderFabForm(config,{engines:Array.isArray(engines)?engines:[],types:Array.isArray(types)?types:[],papers:Array.isArray(papers)?papers:[],sheetFormats:Array.isArray(sheetFormats)?sheetFormats:[],faconnageOptions:Array.isArray(faconnageOptions)?faconnageOptions:[],bindingOptions:Array.isArray(bindingOptionsResp?.options)?bindingOptionsResp.options:[],foldsOptions:Array.isArray(foldsOptionsResp?.options)?foldsOptionsResp.options:[],outputOptions:Array.isArray(outputOptionsResp?.options)?outputOptionsResp.options:[]});
+  const isSansPdf=!!(d&&d.sansPdf);
+  renderFabForm(config,{engines:Array.isArray(engines)?engines:[],types:Array.isArray(types)?types:[],papers:Array.isArray(papers)?papers:[],sheetFormats:Array.isArray(sheetFormats)?sheetFormats:[],faconnageOptions:Array.isArray(faconnageOptions)?faconnageOptions:[],bindingOptions:Array.isArray(bindingOptionsResp?.options)?bindingOptionsResp.options:[],foldsOptions:Array.isArray(foldsOptionsResp?.options)?foldsOptionsResp.options:[],outputOptions:Array.isArray(outputOptionsResp?.options)?outputOptionsResp.options:[],sansPdf:isSansPdf});
   populateFabForm(d,Array.isArray(faconnageOptions)?faconnageOptions:[]);
   updateDependsOnFields(); // show/hide process-dependent fields (e.g. Bascule when Offset selected)
   // If prefill provided, show a banner
@@ -1360,6 +1365,7 @@ export async function saveFabrication() {
     dateEnvoi:(()=>{const el=document.getElementById('fab-date-envoi');return el&&el.value?el.value:null;})(),
     dateProductionFinitions:(()=>{const el=document.getElementById('fab-date-finitions');return el&&el.value?el.value:null;})(),
     dateImpression:(()=>{const el=document.getElementById('fab-date-impression');return el&&el.value?el.value:null;})(),
+    dateReceptionFichier:(()=>{const el=document.getElementById('fab-date-reception-fichier');return el&&el.value?el.value:null;})(),
     tempsProduitMinutes:(()=>{const el=document.getElementById('fab-temps-produit');return el&&el.value?parseInt(el.value)||null:null;})(),
     finitionsChecked:(()=>{const cont=document.getElementById('fab-finitions-checked-container');return cont?Array.from(cont.querySelectorAll('.fab-finitions-cb:checked')).map(cb=>cb.value):null;})(),
     justifsClientsQuantite:getN('justifsQuantite'),justifsClientsAdresse:get('justifsAdresse')||null,

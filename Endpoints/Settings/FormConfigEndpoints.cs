@@ -302,6 +302,7 @@ public static class FormConfigEndpoints
             new() { Id = "dateEnvoi",               Label = "Date d'envoi",                 Type = "date",     Section = "Dates clés", Order = order++, Visible = true, Width = "half" },
             new() { Id = "dateProductionFinitions", Label = "Date production Finitions",    Type = "date",     Section = "Dates clés", Order = order++, Visible = true, Width = "half" },
             new() { Id = "dateImpression",          Label = "Date d'impression",            Type = "date",     Section = "Dates clés", Order = order++, Visible = true, Width = "half" },
+            new() { Id = "dateReceptionFichier",    Label = "Date de réception du fichier",  Type = "date",     Section = "Dates clés", Order = order++, Visible = true, Width = "half", SansPdfOnly = true },
 
             // ── Section : Temps de production ────────────────────────────
             new() { Id = "tempsProduitMinutes", Label = "Temps théorique de production (minutes)", Type = "number", Section = "Temps de production", Order = order++, Visible = true, Width = "half" },
