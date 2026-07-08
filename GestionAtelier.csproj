@@ -1,26 +1,32 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
-    <!-- Cible .NET -->
-    <TargetFramework>net8.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
+  <!-- Cible .NET -->
+  <TargetFramework>net8.0</TargetFramework>
+  <Nullable>enable</Nullable>
+  <ImplicitUsings>enable</ImplicitUsings>
 
-    <!-- Nommage -->
-    <AssemblyName>GestionAtelier</AssemblyName>
-    <RootNamespace>GestionAtelier</RootNamespace>
+  <!-- Nommage -->
+  <AssemblyName>Gestion Atelier Canon</AssemblyName>
+  <RootNamespace>GestionAtelier</RootNamespace>
 
-    <!-- Publication en mode "classique" (pas single-file) pour éviter les chemins TEMP -->
-    <PublishSingleFile>false</PublishSingleFile>
-    <SelfContained>false</SelfContained>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  <!-- Pas de fenêtre console noire -->
+  <OutputType>WinExe</OutputType>
 
-    <!-- Laisser le SDK inclure automatiquement wwwroot/** dans le publish -->
-    <EnableDefaultContentItems>true</EnableDefaultContentItems>
-    <EnableDefaultStaticFileItems>true</EnableDefaultStaticFileItems>
+  <!-- Publication en mode "classique" (pas single-file) pour éviter les chemins TEMP -->
+  <PublishSingleFile>false</PublishSingleFile>
+  <SelfContained>false</SelfContained>
+  <RuntimeIdentifier>win-x64</RuntimeIdentifier>
 
-    <!-- Globalization invariante pour réduire la surface -->
-    <InvariantGlobalization>true</InvariantGlobalization>
-  </PropertyGroup>
+  <!-- Laisser le SDK inclure automatiquement wwwroot/** dans le publish -->
+  <EnableDefaultContentItems>true</EnableDefaultContentItems>
+  <EnableDefaultStaticFileItems>true</EnableDefaultStaticFileItems>
+
+  <!-- Globalization invariante pour réduire la surface -->
+  <InvariantGlobalization>true</InvariantGlobalization>
+
+  <ApplicationIcon>icon.ico</ApplicationIcon>
+
+</PropertyGroup>
 
   <!-- ✅ Inclure wwwroot_portal et wwwroot_pro dans le publish -->
   <ItemGroup>

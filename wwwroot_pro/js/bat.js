@@ -197,21 +197,21 @@ export function openBatChoiceModal(fullPath, onComplete) {
           <div class="bat-choice-icon">🖨</div>
           <div class="bat-choice-text">
             <strong>BAT Complet</strong>
-            <span>Copie vers TEMP_COPY et le hotfolder PrismaPrepare (selon le type de travail). Le fichier Epreuve.pdf sera automatiquement renommé en BAT_{nom}.pdf et déplacé dans la tuile BAT.</span>
+            <span>PDF sécurisé et verouillé en impression. Une fois le BAT disponible vous serez alerté par un pop-up. Le BAT sera disponible dans l'onglet BAT.</span>
           </div>
         </button>
         <button class="bat-choice-btn bat-papier-btn" id="bat-papier-btn">
           <div class="bat-choice-icon">📄🖨</div>
           <div class="bat-choice-text">
             <strong>BAT Papier</strong>
-            <span>Même process que BAT Complet, avec un template email dédié pour le BAT papier.</span>
+            <span>Le PDF lancé en impression est aussi disponible dans l'onglet BAT. Vous pourrez informer votre client par mail quand il sera disponible..</span>
           </div>
         </button>
         <button class="bat-choice-btn bat-simple-btn" id="bat-simple-btn">
           <div class="bat-choice-icon">📄</div>
           <div class="bat-choice-text">
             <strong>BAT Simple</strong>
-            <span>Ouverture du fichier via le droplet configuré par l'administrateur</span>
+            <span>Une fois le BAT disponible vous serez alerté par un pop-up. Le BAT sera disponible dans l'onglet BAT.</span>
           </div>
         </button>
       </div>
