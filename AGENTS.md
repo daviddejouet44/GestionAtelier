@@ -11,7 +11,7 @@ GestionAtelier is an ASP.NET Core 8.0 web application for print shop (offset/dig
 | Service | Purpose | Startup |
 |---------|---------|---------|
 | MongoDB | Primary data store (jobs, users, settings) | `mongod --dbpath /var/lib/mongodb --logpath /var/log/mongodb/mongod.log --fork --bind_ip 127.0.0.1 --port 27017` |
-| ASP.NET Kestrel | Web server on port 5080 | `GA_HOTFOLDERS_ROOT=/tmp/hotfolders dotnet run -r linux-x64 --no-self-contained` (from `/workspace`) |
+| ASP.NET Kestrel | Web server on port 5080 | `JWT_SECRET=... LICENSE_PUBLIC_KEY=... GA_HOTFOLDERS_ROOT=/tmp/hotfolders dotnet run -r linux-x64 --no-self-contained` (from `/workspace`) |
 
 ### Build & Run
 
@@ -22,6 +22,8 @@ dotnet build -r linux-x64 --no-self-contained
 
 # Run (requires MongoDB running on localhost:27017)
 export GA_HOTFOLDERS_ROOT=/tmp/hotfolders
+export JWT_SECRET="dev-secret-key-for-local-testing-1234567890"  # ≥32 chars; required or the app throws
+export LICENSE_PUBLIC_KEY="testkey"                              # any non-empty value; required or the app crashes at startup
 dotnet run -r linux-x64 --no-self-contained
 ```
 
@@ -50,4 +52,6 @@ mongosh --quiet --eval 'db = db.getSiblingDB("GestionAtelier"); db.users.insertO
 | Variable | Required | Default | Notes |
 |----------|----------|---------|-------|
 | `GA_HOTFOLDERS_ROOT` | Yes (on Linux) | `C:\Flux` | Set to `/tmp/hotfolders` |
+| `JWT_SECRET` | Yes | None | Signing key for auth tokens (≥32 chars). Without it, `/api/auth/login` throws a 500 (`AuthHelper.GetSigningKey`). |
+| `LICENSE_PUBLIC_KEY` | Yes | None | License public key. Without it (and no `data/public.key` file), the app crashes at startup via `LicenseService`'s static initializer. Any non-empty value lets the app boot (it will simply report "no license installed"). |
 | `GA_ENCRYPTION_KEY` | No | Derived from hardcoded passphrase | AES-256 key for stored credentials (≥32 chars) |
