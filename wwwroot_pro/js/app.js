@@ -11,7 +11,7 @@ import {
   initLogin, logout
 } from './core.js';
 
-import { buildKanban, refreshKanban, openAssignDropdown, startBatDecisionPolling, stopBatDecisionPolling } from './kanban.js?v=36';
+import { buildKanban, refreshKanban, openAssignDropdown, startBatDecisionPolling, stopBatDecisionPolling } from './kanban.js?v=41';
 import { openFabrication, initFabrication, openQuoteSendModal } from './fabrication.js?v=36';
 import { initCalendar, ensureCalendar, calendar, submissionCalendar, initSubmissionCalendar, colorForEvent, openPlanificationCalendar, refreshOperatorView } from './calendar.js';
 import { initDossiersView, loadDossiersList, openDossierDetail } from './dossiers.js';
