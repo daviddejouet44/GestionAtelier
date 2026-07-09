@@ -204,6 +204,7 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             Sortie           = input.Sortie,
             MailDevisFileName = input.MailDevisFileName ?? old?.MailDevisFileName,
             MailBatFileName   = input.MailBatFileName   ?? old?.MailBatFileName,
+            DateEnvoiBat    = ToUtcDateOnly(input.DateEnvoiBat),
             DateDepart      = ToUtcDateOnly(input.DateDepart),
             DateLivraison   = ToUtcDateOnly(input.DateLivraison),
             PlanningMachine = ToUtcDateOnly(input.PlanningMachine),
@@ -227,6 +228,10 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             Couleurs               = input.Couleurs,
             CouleursAccompagnement = input.CouleursAccompagnement,
             Certification = input.Certification,
+
+            // Preflight profile is filled automatically by the preflight endpoint and shown
+            // read-only in the fiche, so it is not sent by the form — always preserve the old value.
+            PreflightProfil = input.PreflightProfil ?? old?.PreflightProfil,
 
             History = old?.History ?? new List<FabricationHistory>()
         };
@@ -945,6 +950,42 @@ app.MapGet("/api/bat/status", (HttpContext ctx) =>
     });
 });
 
+// GET /api/bat/status-by-file — resolve the BAT status for a job by its file name,
+// independent of the folder it currently sits in (batStatus docs are keyed by the BAT
+// folder path "BAT_<name>.pdf"). Used by the "En attente" tile pastille.
+app.MapGet("/api/bat/status-by-file", (string? fileName) =>
+{
+    try
+    {
+        var safe = Path.GetFileName(fileName ?? "");
+        if (string.IsNullOrWhiteSpace(safe))
+            return Results.Json(new { ok = false, status = "none" });
+
+        var col = MongoDbHelper.GetCollection<BsonDocument>("batStatus");
+        var doc = col.Find(new BsonDocument()).ToList()
+            .Where(d =>
+            {
+                if (!d.Contains("fullPath") || d["fullPath"] == BsonNull.Value) return false;
+                var docFn = Path.GetFileName(d["fullPath"].AsString);
+                if (docFn.StartsWith("BAT_", StringComparison.OrdinalIgnoreCase)) docFn = docFn.Substring(4);
+                return string.Equals(docFn, safe, StringComparison.OrdinalIgnoreCase);
+            })
+            .OrderByDescending(d => d["_id"].AsObjectId.CreationTime)
+            .FirstOrDefault();
+
+        var status = "none";
+        if (doc != null)
+        {
+            if (doc.Contains("rejectedAt") && doc["rejectedAt"] != BsonNull.Value) status = "rejected";
+            else if (doc.Contains("validatedAt") && doc["validatedAt"] != BsonNull.Value) status = "validated";
+            else if (doc.Contains("sentAt") && doc["sentAt"] != BsonNull.Value) status = "sent";
+            else status = "pending";
+        }
+        return Results.Json(new { ok = true, status });
+    }
+    catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+});
+
 // GET /api/bat/serialization-status — returns whether a BAT is currently being generated
 app.MapGet("/api/bat/serialization-status", () =>
 {
@@ -1406,7 +1447,9 @@ app.MapGet("/api/config/bat-command", () =>
         @"C:\Program Files\Canon\PRISMACore\PRISMAprepare.exe ""{filePath}"" /T ""{type}"" /SP /C {qty}";
     var alertDelayHours = doc != null && doc.Contains("batAlertDelayHours") ? doc["batAlertDelayHours"].AsInt32 : 48;
     var batSimpleDropletPath = doc != null && doc.Contains("batSimpleDropletPath") ? doc["batSimpleDropletPath"].AsString : "";
-    return Results.Json(new { ok = true, command = cmd, batAlertDelayHours = alertDelayHours, batSimpleDropletPath });
+    var batPlanningAlertHours = doc != null && doc.Contains("batPlanningAlertHours") ? doc["batPlanningAlertHours"].AsInt32 : 24;
+    var batPlanningDays = doc != null && doc.Contains("batPlanningDays") ? doc["batPlanningDays"].AsInt32 : 5;
+    return Results.Json(new { ok = true, command = cmd, batAlertDelayHours = alertDelayHours, batSimpleDropletPath, batPlanningAlertHours, batPlanningDays });
 });
 
 app.MapPut("/api/config/bat-command", async (HttpContext ctx) =>
@@ -1421,6 +1464,10 @@ app.MapPut("/api/config/bat-command", async (HttpContext ctx) =>
         doc["batAlertDelayHours"] = dh.ValueKind == JsonValueKind.Number ? dh.GetInt32() : 48;
     if (json.TryGetProperty("batSimpleDropletPath", out var dp))
         doc["batSimpleDropletPath"] = dp.GetString() ?? "";
+    if (json.TryGetProperty("batPlanningAlertHours", out var pah))
+        doc["batPlanningAlertHours"] = pah.ValueKind == JsonValueKind.Number ? pah.GetInt32() : 24;
+    if (json.TryGetProperty("batPlanningDays", out var pd))
+        doc["batPlanningDays"] = pd.ValueKind == JsonValueKind.Number ? Math.Clamp(pd.GetInt32(), 1, 14) : 5;
     await col.ReplaceOneAsync(Builders<BsonDocument>.Filter.Empty, doc, new ReplaceOptions { IsUpsert = true });
     return Results.Json(new { ok = true });
 });

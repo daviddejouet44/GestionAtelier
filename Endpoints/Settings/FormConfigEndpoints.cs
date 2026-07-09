@@ -239,6 +239,7 @@ public static class FormConfigEndpoints
             new() { Id = "formeDecoupe",        Label = "Forme de découpe",         Type = "text",   Section = "Impression", Order = order++, Visible = true, Width = "half" },
             new() { Id = "pagination",          Label = "Pagination",               Type = "text",   Section = "Impression", Order = order++, Visible = true, Width = "half" },
             new() { Id = "formatFeuilleMachine",Label = "Format feuille en machine",Type = "select", Section = "Impression", Order = order++, Visible = true, Width = "half" },
+            new() { Id = "preflightProfil",     Label = "Preflight utilisé",        Type = "text",   Section = "Impression", Order = order++, Visible = true, ReadOnly = true, Width = "half" },
 
             // ── Section : Media ──────────────────────────────────────────
             new() { Id = "media1",          Label = "Média 1",           Type = "select", Section = "Media", Order = order++, Visible = true, Width = "half" },
@@ -257,6 +258,7 @@ public static class FormConfigEndpoints
             // ── Section : BAT ─────────────────────────────────────────────
             new() { Id = "bat",               Label = "BAT",                    Type = "select",      Section = "BAT", Order = order++, Visible = true, Width = "half",
                     Options = new List<string> { "Non", "Numérique", "Papier" } },
+            new() { Id = "dateEnvoiBat",      Label = "Date d'envoi du BAT au client", Type = "date", Section = "BAT", Order = order++, Visible = true, Width = "half" },
             new() { Id = "mailValidationBat", Label = "Mail validation BAT",   Type = "file-import", Section = "BAT", Order = order++, Visible = true, Width = "half" },
             new() { Id = "mailValidationDevis",Label = "Mail validation devis", Type = "file-import", Section = "Informations générales", Order = order++, Visible = true, Width = "half" },
 

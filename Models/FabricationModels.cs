@@ -94,6 +94,9 @@ public record FabricationSheet
     public string? MailDevisFileName { get; init; }
     public string? MailBatFileName { get; init; }
 
+    // ── Date d'envoi du BAT au client (alimente le mini-planning BAT) ──
+    public DateTime? DateEnvoiBat { get; init; }
+
     // ── Dates ────────────────────────────────────────────
     public DateTime? DateDepart { get; init; }
     public DateTime? DateLivraison { get; init; }
@@ -136,6 +139,10 @@ public record FabricationSheet
 
     // ── Certification ──────────────────────────────────────
     public string? Certification { get; init; }    // "Aucun" | "FSC" | "PEFC"
+
+    // ── Preflight ──────────────────────────────────────────
+    /// <summary>Name of the preflight profile/droplet used, filled automatically after preflight.</summary>
+    public string? PreflightProfil { get; init; }
 }
 
 public class FabricationInput
@@ -210,6 +217,9 @@ public class FabricationInput
     public string? MailDevisFileName { get; set; }
     public string? MailBatFileName { get; set; }
 
+    // ── Date d'envoi du BAT au client (alimente le mini-planning BAT) ──
+    public DateTime? DateEnvoiBat { get; set; }
+
     // ── Dates ────────────────────────────────────────────
     public DateTime? DateDepart { get; set; }
     public DateTime? DateLivraison { get; set; }
@@ -246,6 +256,9 @@ public class FabricationInput
 
     // ── Certification ──────────────────────────────────────
     public string? Certification { get; set; }
+
+    // ── Preflight ──────────────────────────────────────────
+    public string? PreflightProfil { get; set; }
 }
 
 // ======================================================
