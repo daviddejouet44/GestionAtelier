@@ -109,6 +109,9 @@ public record FabricationSheet
     public DateTime? DateProductionFinitions { get; init; }
     public DateTime? DateImpression { get; init; }
 
+    // ── Date de réception du fichier final (process "fiche sans PDF") ──────
+    public DateTime? DateReceptionFichier { get; init; }
+
     // ── Temps théorique de production (minutes) ──────────
     public int? TempsProduitMinutes { get; init; }
 
@@ -228,6 +231,9 @@ public class FabricationInput
     public DateTime? DateEnvoi { get; set; }
     public DateTime? DateProductionFinitions { get; set; }
     public DateTime? DateImpression { get; set; }
+
+    // ── Date de réception du fichier final (process "fiche sans PDF") ──────
+    public DateTime? DateReceptionFichier { get; set; }
 
     // ── Temps théorique de production (minutes) ──────────
     public int? TempsProduitMinutes { get; set; }

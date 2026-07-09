@@ -16,7 +16,7 @@ import { renderSettingsLogo } from './settings/settings-logo.js';
 import { renderSettingsLogs, loadSettingsLogs } from './settings/settings-logs.js';
 import { renderSettingsSheetFormats } from './settings/settings-sheet-formats.js';
 import { renderSettingsCoverProducts, renderSettingsSheetCalcRules, renderSettingsDeliveryDelay, renderSettingsPassesConfig, renderSettingsGrammageTimeConfig, renderSettingsJdfConfig } from './settings/settings-production-config.js';
-import { renderSettingsFormConfig } from './settings/settings-form-config.js';
+import { renderSettingsFormConfig } from './settings/settings-form-config.js?v=2';
 import { renderSettingsEmailTemplates } from './settings/settings-email-templates.js';
 import { renderSettingsIntegrations } from './settings/settings-integrations.js';
 import { renderSettingsPortal } from './settings/settings-portal.js';

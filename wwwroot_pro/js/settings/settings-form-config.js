@@ -25,6 +25,19 @@ function renderConfigUI(panel, config) {
     <p style="font-size:13px;color:#6b7280;margin-bottom:16px;">
       Configurez l'ordre, la visibilité et les propriétés des champs. Les champs masqués n'apparaissent ni dans la fiche ni dans le PDF.
     </p>
+    <div id="ffc-subpdf" style="border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;margin-bottom:18px;background:#fafafa;">
+      <h4 style="margin:0 0 6px;font-size:14px;">📄 PDF de substitution (fiche sans PDF)</h4>
+      <p style="font-size:12px;color:#6b7280;margin:0 0 10px;">
+        Ce PDF est utilisé comme vignette lorsqu'une fiche est créée sans importer de PDF. Il est remplacé par le PDF final une fois celui-ci importé.
+      </p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <span id="ffc-subpdf-status" style="font-size:13px;color:#374151;">Chargement…</span>
+        <a id="ffc-subpdf-preview" href="#" target="_blank" rel="noopener" class="btn" style="display:none;">👁️ Aperçu</a>
+        <button id="ffc-subpdf-upload" class="btn btn-primary">⬆️ Importer un PDF</button>
+        <button id="ffc-subpdf-reset" class="btn" style="color:#ef4444;border-color:#ef4444;">🔄 PDF par défaut</button>
+        <input id="ffc-subpdf-file" type="file" accept=".pdf,application/pdf" style="display:none;" />
+      </div>
+    </div>
     <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
       <button id="ffc-save"  class="btn btn-primary">💾 Enregistrer</button>
       <button id="ffc-add-section" class="btn" style="background:#f0fdf4;border-color:#16a34a;color:#16a34a;">＋ Nouvelle section</button>
@@ -36,11 +49,75 @@ function renderConfigUI(panel, config) {
   `;
 
   renderSections(panel, config);
+  setupSubstitutionPdf(panel);
 
   panel.querySelector("#ffc-save").onclick        = () => saveConfig(panel);
   panel.querySelector("#ffc-reset").onclick       = () => resetConfig(panel);
   panel.querySelector("#ffc-add-section").onclick = () => promptAddSection(panel, config);
   panel.querySelector("#ffc-add-field").onclick   = () => openAddFieldModal(panel, config);
+}
+
+// ─── Substitution PDF (fiche sans PDF) ────────────────────────────────────
+
+async function setupSubstitutionPdf(panel) {
+  const statusEl  = panel.querySelector("#ffc-subpdf-status");
+  const previewEl = panel.querySelector("#ffc-subpdf-preview");
+  const uploadBtn = panel.querySelector("#ffc-subpdf-upload");
+  const resetBtn  = panel.querySelector("#ffc-subpdf-reset");
+  const fileInput = panel.querySelector("#ffc-subpdf-file");
+  if (!statusEl) return;
+
+  async function refresh() {
+    try {
+      const r = await fetch("/api/settings/substitution-pdf", {
+        headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(res => res.json());
+      if (r.ok && r.configured) {
+        statusEl.textContent = "PDF actuel : " + (r.fileName || "substitution.pdf");
+        if (previewEl && r.path) {
+          previewEl.style.display = "";
+          previewEl.href = "/api/file?path=" + encodeURIComponent(r.path) + "&token=" + encodeURIComponent(authToken || "");
+        }
+      } else {
+        statusEl.textContent = "Aucun PDF personnalisé — un PDF par défaut sera utilisé.";
+        if (previewEl) previewEl.style.display = "none";
+      }
+    } catch (e) {
+      statusEl.textContent = "Erreur de chargement.";
+    }
+  }
+
+  if (uploadBtn) uploadBtn.onclick = () => fileInput && fileInput.click();
+  if (fileInput) fileInput.onchange = async () => {
+    const file = fileInput.files && fileInput.files[0];
+    fileInput.value = "";
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".pdf")) { showNotification("❌ Seuls les PDF sont acceptés", "error"); return; }
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const r = await fetch("/api/settings/substitution-pdf", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${authToken}` },
+        body: fd
+      }).then(res => res.json());
+      if (r.ok) { showNotification("✅ PDF de substitution enregistré", "success"); await refresh(); }
+      else showNotification("❌ " + (r.error || "Erreur"), "error");
+    } catch (e) { showNotification("❌ Erreur réseau", "error"); }
+  };
+  if (resetBtn) resetBtn.onclick = async () => {
+    if (!confirm("Réinitialiser le PDF de substitution par défaut ?")) return;
+    try {
+      const r = await fetch("/api/settings/substitution-pdf", {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(res => res.json());
+      if (r.ok) { showNotification("✅ PDF de substitution réinitialisé", "success"); await refresh(); }
+      else showNotification("❌ " + (r.error || "Erreur"), "error");
+    } catch (e) { showNotification("❌ Erreur réseau", "error"); }
+  };
+
+  refresh();
 }
 
 // ─── Sections renderer ────────────────────────────────────────────────────
@@ -243,7 +320,7 @@ function createFieldRow(field, fieldIdx, totalFields, allSections, allFields) {
       <input type="text" class="ffc-field-label settings-input" data-id="${esc(field.id)}" value="${esc(field.label)}"
              style="width:100%;padding:3px 7px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;" />
       <div style="font-size:10px;${typeColor}">
-        ${esc(field.id)} · ${esc(field.type)}${hasCond?' 🔗':''}${hasOpts?' 📋':''}
+        ${esc(field.id)} · ${esc(field.type)}${hasCond?' 🔗':''}${hasOpts?' 📋':''}${field.sansPdfOnly?' 📄':''}
       </div>
     </div>
     <select class="ffc-field-width settings-input" data-id="${esc(field.id)}"
@@ -510,6 +587,14 @@ function openFieldConfigModal(panel, field, config) {
                style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;" />
       </div>
 
+      <div style="margin-bottom:16px;padding:12px;border:1px solid #e5e7eb;border-radius:8px;">
+        <h5 style="margin:0 0 8px;font-size:13px;">📄 Process « fiche sans PDF »</h5>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+          <input type="checkbox" id="ffc-cfg-sanspdf" ${field.sansPdfOnly?'checked':''} />
+          Afficher ce champ uniquement pour les fiches créées sans PDF
+        </label>
+      </div>
+
       <div style="display:flex;gap:10px;justify-content:flex-end;">
         <button id="ffc-cfg-cancel" class="btn">Annuler</button>
         <button id="ffc-cfg-ok" class="btn btn-primary">Appliquer</button>
@@ -547,6 +632,9 @@ function openFieldConfigModal(panel, field, config) {
 
     // Default value
     field.defaultValue = modal.querySelector("#ffc-cfg-default").value || null;
+
+    // "Fiche sans PDF" visibility
+    field.sansPdfOnly = modal.querySelector("#ffc-cfg-sanspdf").checked;
 
     modal.remove();
     renderSections(panel, config);
