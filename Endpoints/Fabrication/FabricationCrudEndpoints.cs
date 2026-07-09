@@ -64,8 +64,10 @@ app.MapGet("/api/fabrication", (string? fullPath, string? fileName) =>
             ? rawDoc["source"].AsString
             : "";
         var sourceJson = System.Text.Json.JsonSerializer.Serialize(source);
+        var sansPdf = rawDoc != null && rawDoc.Contains("sansPdf") && rawDoc["sansPdf"] != BsonNull.Value
+            && rawDoc["sansPdf"].BsonType == BsonType.Boolean && rawDoc["sansPdf"].AsBoolean;
         var resultJson = json.EndsWith("}")
-            ? json[..^1] + ",\"locked\":" + (locked ? "true" : "false") + ",\"source\":" + sourceJson + "}"
+            ? json[..^1] + ",\"locked\":" + (locked ? "true" : "false") + ",\"source\":" + sourceJson + ",\"sansPdf\":" + (sansPdf ? "true" : "false") + "}"
             : json;
         return Results.Content(resultJson, "application/json");
     }
@@ -214,6 +216,7 @@ app.MapPut("/api/fabrication", async (HttpContext ctx) =>
             DateEnvoi             = ToUtcDateOnly(input.DateEnvoi),
             DateProductionFinitions = ToUtcDateOnly(input.DateProductionFinitions),
             DateImpression        = ToUtcDateOnly(input.DateImpression),
+            DateReceptionFichier  = ToUtcDateOnly(input.DateReceptionFichier),
             TempsProduitMinutes   = input.TempsProduitMinutes ?? old?.TempsProduitMinutes,
             JustifsClientsQuantite = input.JustifsClientsQuantite,
             JustifsClientsAdresse  = input.JustifsClientsAdresse,

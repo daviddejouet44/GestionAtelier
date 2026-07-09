@@ -1422,6 +1422,10 @@ async function initSubmissionView() {
             <div class="progress-bar"><div class="progress-fill"></div></div>
             <p id="uploadStatus">Envoi en cours...</p>
           </div>
+          <div class="submission-blank-cta" style="margin-top:16px;padding-top:16px;border-top:1px dashed #d1d5db;text-align:center;">
+            <p style="font-size:12px;color:#6b7280;margin:0 0 8px;">Vous n'avez pas encore le PDF ?</p>
+            <button id="btnCreateBlank" class="btn btn-primary" style="width:100%;">＋ Créer une fiche sans PDF</button>
+          </div>
         </div>
         <div class="submission-files-section">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
@@ -1466,7 +1470,71 @@ async function initSubmissionView() {
   await refreshSubmissionView();
   setupSubmissionButtons();
   setupMailImportButton();
+
+  const btnCreateBlank = document.getElementById("btnCreateBlank");
+  if (btnCreateBlank) btnCreateBlank.onclick = createBlankFiche;
 }
+
+// ── Créer une fiche sans PDF (utilise un PDF de substitution) ──────────────
+async function createBlankFiche() {
+  const btn = document.getElementById("btnCreateBlank");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Création…"; }
+  try {
+    const r = await fetch("/api/soumission/create-blank", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+    if (!r.ok) {
+      showNotification("❌ " + (r.error || "Impossible de créer la fiche"), "error");
+      return;
+    }
+    showNotification("✅ Fiche sans PDF créée", "success");
+    await refreshSubmissionView();
+    if (submissionCalendar) submissionCalendar.refetchEvents();
+    if (r.fullPath) openFabrication(r.fullPath);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "＋ Créer une fiche sans PDF"; }
+  }
+}
+
+// ── Importer/remplacer le PDF final d'une fiche sans PDF ───────────────────
+function uploadFinalPdf(fullPath, fileName, onDone) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".pdf,application/pdf";
+  input.style.display = "none";
+  document.body.appendChild(input);
+  input.onchange = async () => {
+    const file = input.files && input.files[0];
+    input.remove();
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      showNotification("❌ Seuls les fichiers PDF sont acceptés", "error");
+      return;
+    }
+    const fd = new FormData();
+    fd.append("file", file);
+    if (fullPath) fd.append("fullPath", fullPath);
+    if (fileName) fd.append("fileName", fileName);
+    try {
+      const r = await fetch("/api/soumission/replace-pdf", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${authToken}` },
+        body: fd
+      }).then(res => res.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+      if (r.ok) {
+        showNotification("✅ PDF final importé — il remplace le PDF de substitution", "success");
+        if (typeof onDone === "function") await onDone();
+      } else {
+        showNotification("❌ " + (r.error || "Échec de l'import"), "error");
+      }
+    } catch (e) {
+      showNotification("❌ Erreur réseau", "error");
+    }
+  };
+  input.click();
+}
+window._uploadFinalPdf = uploadFinalPdf;
 
 // ── ERP/W2P lookup popup ──────────────────────────────────────────────────────
 async function openErpLookupPopup(prefillCb, defaultRef = "") {
@@ -1855,6 +1923,25 @@ async function refreshSubmissionView() {
       }).then(r => r.json()).then(d => {
         if (d && d.numeroDossier) {
           dossierNumEl.textContent = "N° " + d.numeroDossier;
+        }
+        // "Fiche sans PDF": show a badge + a button to import the final PDF (which
+        // replaces the substitution PDF). The button disappears once the real PDF is in.
+        if (d && d.sansPdf) {
+          const badge = document.createElement("span");
+          badge.textContent = "📄 Sans PDF";
+          badge.title = "Fiche créée sans PDF — PDF de substitution affiché";
+          badge.style.cssText = "display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:#fef3c7;color:#92400e;margin-left:6px;";
+          dossierNumEl.appendChild(badge);
+
+          const btnFinal = document.createElement("button");
+          btnFinal.className = "btn btn-primary";
+          btnFinal.textContent = "⬆️ Importer le PDF final";
+          btnFinal.title = "Remplacer le PDF de substitution par le fichier final";
+          btnFinal.onclick = (e) => {
+            e.stopPropagation();
+            uploadFinalPdf(full, fnKey(full), async () => { await refreshSubmissionView(); });
+          };
+          actions.appendChild(btnFinal);
         }
       }).catch(() => {});
 
