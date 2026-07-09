@@ -1,8 +1,8 @@
 // kanban/kanban-cards.js — Kanban card rendering
 import { currentUser, authToken, deliveriesByPath, assignmentsByPath, fnKey, normalizePath, daysDiffFromToday, showNotification } from '../core.js';
 import { openBatChoiceModal } from '../bat.js';
-import { state, refreshKanban } from './kanban-core.js?v=40';
-import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js?v=40';
+import { state, refreshKanban } from './kanban-core.js?v=41';
+import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js?v=41';
 
 // Opens the quote send modal from Kanban context (prefill from fabrication data)
 async function openKanbanQuoteModal(fullPath, fab) {
