@@ -10,6 +10,15 @@ export async function renderSettingsSchedule(panel) {
     if (resp.ok && resp.config) cfg = resp.config;
   } catch(e) { /* use defaults */ }
 
+  // Coûts de calage (planification intelligente)
+  let co = { calageBaseMinutes: 15, changementPapierMinutes: 10, changementFormatMinutes: 8 };
+  try {
+    const cor = await fetch("/api/config/changeover-costs", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json());
+    if (cor.ok && cor.config) co = cor.config;
+  } catch(e) { /* use defaults */ }
+
   const holidays = Array.isArray(cfg.holidays) ? cfg.holidays : [];
 
   // Auto-add holidays for current year and next year if missing
@@ -62,7 +71,40 @@ export async function renderSettingsSchedule(panel) {
         </div>
       `).join("")}
     </div>
+    <hr style="margin: 20px 0;" />
+    <h4>🪄 Coûts de calage (planification intelligente)</h4>
+    <p style="color:#6b7280;font-size:13px;margin-top:0;">Utilisés pour proposer le meilleur ordre de fabrication (regroupement par papier / format) et estimer le temps économisé.</p>
+    <div class="settings-form-group">
+      <label>Calage de base par tirage (min)</label>
+      <input type="number" min="0" id="co-base" value="${co.calageBaseMinutes ?? 15}" class="settings-input" style="width:120px;" />
+    </div>
+    <div class="settings-form-group">
+      <label>Surcoût changement de papier (min)</label>
+      <input type="number" min="0" id="co-papier" value="${co.changementPapierMinutes ?? 10}" class="settings-input" style="width:120px;" />
+    </div>
+    <div class="settings-form-group">
+      <label>Surcoût changement de format (min)</label>
+      <input type="number" min="0" id="co-format" value="${co.changementFormatMinutes ?? 8}" class="settings-input" style="width:120px;" />
+    </div>
+    <button id="co-save" class="btn btn-primary" style="margin-top: 10px;">Enregistrer les coûts de calage</button>
   `;
+
+  const coSaveBtn = document.getElementById("co-save");
+  if (coSaveBtn) coSaveBtn.onclick = async () => {
+    const payload = {
+      calageBaseMinutes: parseInt(document.getElementById("co-base").value) || 0,
+      changementPapierMinutes: parseInt(document.getElementById("co-papier").value) || 0,
+      changementFormatMinutes: parseInt(document.getElementById("co-format").value) || 0,
+      engines: Array.isArray(co.engines) ? co.engines : []
+    };
+    const r = await fetch("/api/config/changeover-costs", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify(payload)
+    }).then(r => r.json());
+    if (r.ok) showNotification("✅ Coûts de calage enregistrés", "success");
+    else alert("Erreur : " + (r.error || "inconnue"));
+  };
 
   document.getElementById("sch-save").onclick = async () => {
     const workStart = document.getElementById("sch-start").value;
