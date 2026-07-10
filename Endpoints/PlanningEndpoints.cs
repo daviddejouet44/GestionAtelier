@@ -72,6 +72,8 @@ public static class PlanningEndpoints
                 var vipSet = new HashSet<string>(prioCfg.VipClients ?? new(), StringComparer.OrdinalIgnoreCase);
                 var brokenSet = new HashSet<string>(filters.BrokenMachines, StringComparer.OrdinalIgnoreCase);
                 var stockOutSet = new HashSet<string>(filters.OutOfStockPapers, StringComparer.OrdinalIgnoreCase);
+                // Machines déclarées indisponibles dans le suivi temps réel (point 3) : panne / maintenance.
+                var autoUnavailable = LoadUnavailableMachines();
                 int workStartMin = GetWorkStartMinutes();
                 var today = DateTime.UtcNow;
                 var now = DateTime.UtcNow;
@@ -81,6 +83,12 @@ public static class PlanningEndpoints
                 {
                     ComputePriority(c, prioCfg, vipSet, today, now);
                     if (brokenSet.Contains(c.Moteur)) { c.Blocked = true; c.BlockReason = "Machine en panne"; }
+                    else if (autoUnavailable.TryGetValue(c.Moteur, out var statut))
+                    {
+                        c.Blocked = true;
+                        c.BlockReason = statut.Equals("Maintenance", StringComparison.OrdinalIgnoreCase)
+                            ? "Machine en maintenance" : "Machine en panne";
+                    }
                     else if (stockOutSet.Contains(c.Papier)) { c.Blocked = true; c.BlockReason = "Rupture papier"; }
                 }
 
@@ -230,7 +238,12 @@ public static class PlanningEndpoints
                         vip = candidates.Count(c => c.PriorityReasons.Contains("Client VIP")),
                         retard = candidates.Count(c => c.PriorityReasons.Contains("Retard")),
                         modif = candidates.Count(c => c.PriorityReasons.Contains("Modif. de dernière minute"))
-                    }
+                    },
+                    // Machines rendues indisponibles automatiquement par leur statut temps réel.
+                    autoUnavailableMachines = autoUnavailable
+                        .Where(kv => candidates.Any(c => string.Equals(c.Moteur, kv.Key, StringComparison.OrdinalIgnoreCase)))
+                        .Select(kv => new { moteur = kv.Key, statut = kv.Value })
+                        .ToList()
                 };
 
                 return Results.Json(new { ok = true, summary, machines = machinesOut, conflicts });
@@ -520,6 +533,25 @@ public static class PlanningEndpoints
         }
         catch { }
         return set;
+    }
+
+    /// <summary>Moteurs indisponibles (statut « En panne » ou « Maintenance ») → moteur ⇒ statut.</summary>
+    private static Dictionary<string, string> LoadUnavailableMachines()
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var col = MongoDbHelper.GetCollection<BsonDocument>("machineStatus");
+            var docs = col.Find(Builders<BsonDocument>.Filter.In("statut", new[] { "En panne", "Maintenance" })).ToList();
+            foreach (var d in docs)
+            {
+                if (d.Contains("moteur") && d["moteur"] != BsonNull.Value && d["moteur"].IsString
+                    && d.Contains("statut") && d["statut"] != BsonNull.Value && d["statut"].IsString)
+                    map[d["moteur"].AsString] = d["statut"].AsString;
+            }
+        }
+        catch { }
+        return map;
     }
 
     /// <summary>Calcule le score de priorité, les raisons et le niveau d'un OF.</summary>

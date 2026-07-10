@@ -1073,6 +1073,9 @@ function renderOptimizeContent(data) {
       ${conflicts.length ? `<div style="margin-top:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;font-size:12px;color:#991b1b;">
         ⚠️ <strong>${conflicts.length} conflit(s) de planning</strong> : ${conflicts.map(c => `${esc(c.count + ' OF urgents')} le ${esc(c.day)} sur ${esc(c.moteur)} (#${c.dossiers.map(esc).join(', #')})`).join(' ; ')}
       </div>` : ''}
+      ${(s.autoUnavailableMachines && s.autoUnavailableMachines.length) ? `<div style="margin-top:10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 12px;font-size:12px;color:#9a3412;">
+        🛑 <strong>Machine(s) indisponible(s)</strong> (suivi temps réel) : ${s.autoUnavailableMachines.map(x => `${esc(x.moteur)} — ${esc(x.statut)}`).join(' ; ')} → OF exclus automatiquement.
+      </div>` : ''}
       <div style="margin-top:10px;padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
         <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;">♻️ Recalcul avec contraintes :</div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;">
