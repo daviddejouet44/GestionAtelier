@@ -23,6 +23,7 @@ import { STAGE_PROGRESS, STAGE_DISPLAY_LABELS } from './constants.js';
 import { hideAllViews, showDossiers, showSettings, showGlobalProduction } from './app/navigation.js';
 import { initDashboardView } from './app/dashboard.js?v=3';
 import { initMachinesView } from './machines.js';
+import { initGlobalSearch } from './search.js';
 import { initHelpPanel } from './help.js';
 
 // ======================================================
@@ -2484,6 +2485,7 @@ async function initApp() {
   await initLicense();
   await setupExternalLinksButtons();
   initNotificationBell();
+  initGlobalSearch();
   initHelpPanel();
   initFabrication();
 

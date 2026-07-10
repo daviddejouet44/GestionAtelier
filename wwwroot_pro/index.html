@@ -45,6 +45,12 @@
         <img id="app-logo" src="/api/logo" alt="Logo" style="max-height:40px;margin-left:12px;display:none;" onerror="this.style.display='none'" onload="this.style.display='inline-block'" />
       </div>
       <div class="header-right">
+        <div id="global-search" style="position:relative;display:none;margin-right:10px;">
+          <input id="global-search-input" type="text" autocomplete="off" placeholder="🔎 Rechercher OF, client, réf, PDF, opérateur, papier, machine, date…"
+            style="width:340px;max-width:44vw;padding:7px 12px;border:1px solid #d1d5db;border-radius:20px;font-size:13px;outline:none;" />
+          <div id="global-search-results" class="hidden"
+            style="position:absolute;top:calc(100% + 6px);right:0;width:440px;max-width:80vw;max-height:60vh;overflow-y:auto;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.18);z-index:9500;"></div>
+        </div>
         <div id="notif-bell" class="notif-bell" style="display:none;">
           <button id="notif-btn" class="notif-btn">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -242,7 +248,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=42"></script>
+  <script type="module" src="js/app.js?v=43"></script>
 
 </body>
 </html>

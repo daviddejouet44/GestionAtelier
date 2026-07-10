@@ -21,6 +21,10 @@ public static class MongoDbIndexes
             Builders<BsonDocument>.IndexKeys.Ascending("fileName")));
         fab.Indexes.CreateOne(new CreateIndexModel<BsonDocument>(
             Builders<BsonDocument>.IndexKeys.Ascending("numeroDossier")));
+        // Recherche globale (point 6) : index sur les champs les plus filtrés.
+        foreach (var f in new[] { "client", "numeroAffaire", "operateur", "moteurImpression", "dateImpression" })
+            fab.Indexes.CreateOne(new CreateIndexModel<BsonDocument>(
+                Builders<BsonDocument>.IndexKeys.Ascending(f)));
 
         // Collection productionFolders
         var pf = MongoDbHelper.GetCollection<BsonDocument>("productionFolders");
