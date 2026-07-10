@@ -964,70 +964,144 @@ function _optimizeContext() {
   return { moteurs, startDate, endDate };
 }
 
-async function openOptimizeModal() {
-  const btn = document.getElementById("planning-optimize-btn");
-  if (btn) { btn.disabled = true; btn.textContent = "⏳ Calcul…"; }
-  try {
-    const ctx = _optimizeContext();
-    const resp = await fetch("/api/planning/optimize", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify(ctx)
-    }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+// État de la session d'optimisation (permet le recalcul avec contraintes).
+let _optState = null;
+let _optOverlay = null;
+let _optPanel = null;
+let _optData = null;
 
-    if (!resp.ok) {
-      showNotification(`⚠️ ${resp.error || "Optimisation impossible"}`, "error");
-      return;
-    }
-    renderOptimizeModal(resp);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = "🪄 Proposer le meilleur ordre"; }
-  }
+async function openOptimizeModal() {
+  const ctx = _optimizeContext();
+  _optState = { moteurs: ctx.moteurs, startDate: ctx.startDate, endDate: ctx.endDate, brokenMachines: [], outOfStockPapers: [] };
+
+  _optOverlay = document.createElement("div");
+  _optOverlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:10000;padding:20px;";
+  _optPanel = document.createElement("div");
+  _optPanel.style.cssText = "background:#fff;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.3);max-width:820px;width:100%;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;";
+  _optOverlay.appendChild(_optPanel);
+  document.body.appendChild(_optOverlay);
+  _optOverlay.onclick = (e) => { if (e.target === _optOverlay) closeOptimizeModal(); };
+
+  await runOptimize();
 }
 
-function renderOptimizeModal(data) {
+function closeOptimizeModal() {
+  if (_optOverlay) _optOverlay.remove();
+  _optOverlay = _optPanel = _optData = null;
+}
+
+async function runOptimize() {
+  if (!_optPanel) return;
+  _optPanel.innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280;">⏳ Calcul du meilleur ordre…</div>';
+  const resp = await fetch("/api/planning/optimize", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+    body: JSON.stringify(_optState)
+  }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+
+  if (!resp.ok) {
+    _optPanel.innerHTML = `<div style="padding:30px;text-align:center;">
+      <p style="color:#b45309;">⚠️ ${esc(resp.error || "Optimisation impossible")}</p>
+      <button id="_opt-close" style="margin-top:10px;padding:9px 16px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:8px;font-weight:600;cursor:pointer;">Fermer</button>
+    </div>`;
+    const cb = _optPanel.querySelector("#_opt-close"); if (cb) cb.onclick = closeOptimizeModal;
+    return;
+  }
+  _optData = resp;
+  renderOptimizeContent(resp);
+}
+
+function _priorityBadges(o) {
+  const reasons = o.priorityReasons || [];
+  const map = {
+    "Urgent": { bg: "#dc2626", label: "🔴 Urgent" },
+    "Client VIP": { bg: "#7c3aed", label: "⭐ VIP" },
+    "Retard": { bg: "#b45309", label: "⏰ Retard" },
+    "Modif. de dernière minute": { bg: "#0891b2", label: "✏️ Modif." }
+  };
+  return reasons.map(r => {
+    const m = map[r] || { bg: "#6b7280", label: r };
+    return `<span style="display:inline-block;font-size:10px;font-weight:700;color:#fff;background:${m.bg};border-radius:10px;padding:1px 7px;margin-left:4px;white-space:nowrap;">${m.label}</span>`;
+  }).join("");
+}
+
+function renderOptimizeContent(data) {
   const s = data.summary || {};
   const machines = Array.isArray(data.machines) ? data.machines : [];
-
-  const overlay = document.createElement("div");
-  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:10000;padding:20px;";
-
-  const panel = document.createElement("div");
-  panel.style.cssText = "background:#fff;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.3);max-width:760px;width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;";
-
+  const conflicts = Array.isArray(data.conflicts) ? data.conflicts : [];
   const gain = s.calagesSaved > 0 || s.minutesSaved > 0;
+
+  // Univers des moteurs / papiers pour les contraintes de recalcul.
+  const moteurSet = new Set(), paperSet = new Set();
+  machines.forEach(m => {
+    moteurSet.add(m.moteur);
+    (m.order || []).forEach(o => { if (o.papier) paperSet.add(o.papier); });
+    (m.blocked || []).forEach(o => { if (o.papier) paperSet.add(o.papier); });
+  });
+  const moteurList = [...moteurSet];
+  const paperList = [...paperSet];
+
+  const pc = s.priorityCounts || {};
+  const prioBar = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+    ${pc.urgent ? `<span style="font-size:11px;font-weight:700;color:#fff;background:#dc2626;border-radius:10px;padding:2px 9px;">🔴 ${pc.urgent} urgent(s)</span>` : ''}
+    ${pc.retard ? `<span style="font-size:11px;font-weight:700;color:#fff;background:#b45309;border-radius:10px;padding:2px 9px;">⏰ ${pc.retard} en retard</span>` : ''}
+    ${pc.vip ? `<span style="font-size:11px;font-weight:700;color:#fff;background:#7c3aed;border-radius:10px;padding:2px 9px;">⭐ ${pc.vip} VIP</span>` : ''}
+    ${pc.modif ? `<span style="font-size:11px;font-weight:700;color:#fff;background:#0891b2;border-radius:10px;padding:2px 9px;">✏️ ${pc.modif} modif.</span>` : ''}
+  </div>`;
+
   const header = `
-    <div style="padding:18px 22px;border-bottom:1px solid #eee;">
+    <div style="padding:16px 22px;border-bottom:1px solid #eee;">
       <h3 style="margin:0 0 10px;font-size:17px;font-weight:700;color:#1e3a5f;">🪄 Meilleur ordre de fabrication proposé</h3>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <div style="flex:1;min-width:150px;background:${gain ? '#f5f3ff' : '#f9fafb'};border:1px solid ${gain ? '#ddd6fe' : '#e5e7eb'};border-radius:10px;padding:10px 14px;">
+        <div style="flex:1;min-width:140px;background:${gain ? '#f5f3ff' : '#f9fafb'};border:1px solid ${gain ? '#ddd6fe' : '#e5e7eb'};border-radius:10px;padding:9px 13px;">
           <div style="font-size:12px;color:#6b7280;">Calages</div>
-          <div style="font-size:20px;font-weight:700;color:#111827;">${s.currentCalages ?? 0} → <span style="color:#7c3aed;">${s.optimizedCalages ?? 0}</span></div>
-          <div style="font-size:12px;color:${gain ? '#16a34a' : '#6b7280'};font-weight:600;">${(s.calagesSaved ?? 0) > 0 ? '−' + s.calagesSaved + ' calage(s)' : 'déjà optimal'}</div>
+          <div style="font-size:19px;font-weight:700;color:#111827;">${s.currentCalages ?? 0} → <span style="color:#7c3aed;">${s.optimizedCalages ?? 0}</span></div>
+          <div style="font-size:11px;color:${gain ? '#16a34a' : '#6b7280'};font-weight:600;">${(s.calagesSaved ?? 0) > 0 ? '−' + s.calagesSaved + ' calage(s)' : 'déjà optimal'}</div>
         </div>
-        <div style="flex:1;min-width:150px;background:${gain ? '#ecfdf5' : '#f9fafb'};border:1px solid ${gain ? '#a7f3d0' : '#e5e7eb'};border-radius:10px;padding:10px 14px;">
+        <div style="flex:1;min-width:140px;background:${gain ? '#ecfdf5' : '#f9fafb'};border:1px solid ${gain ? '#a7f3d0' : '#e5e7eb'};border-radius:10px;padding:9px 13px;">
           <div style="font-size:12px;color:#6b7280;">Temps de calage</div>
-          <div style="font-size:20px;font-weight:700;color:#111827;">${_fmtMin(s.currentSetupMinutes)} → <span style="color:#059669;">${_fmtMin(s.optimizedSetupMinutes)}</span></div>
-          <div style="font-size:12px;color:${gain ? '#16a34a' : '#6b7280'};font-weight:600;">${(s.minutesSaved ?? 0) > 0 ? '≈ ' + _fmtMin(s.minutesSaved) + ' économisées' : 'déjà optimal'}</div>
+          <div style="font-size:19px;font-weight:700;color:#111827;">${_fmtMin(s.currentSetupMinutes)} → <span style="color:#059669;">${_fmtMin(s.optimizedSetupMinutes)}</span></div>
+          <div style="font-size:11px;color:${gain ? '#16a34a' : '#6b7280'};font-weight:600;">${(s.minutesSaved ?? 0) > 0 ? '≈ ' + _fmtMin(s.minutesSaved) + ' économisées' : 'déjà optimal'}</div>
         </div>
-        <div style="flex:1;min-width:120px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;">
-          <div style="font-size:12px;color:#6b7280;">OF concernés</div>
-          <div style="font-size:20px;font-weight:700;color:#111827;">${s.ofCount ?? 0}</div>
-          <div style="font-size:12px;color:#6b7280;">${s.machineCount ?? 0} machine(s)</div>
+        <div style="flex:1;min-width:110px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:9px 13px;">
+          <div style="font-size:12px;color:#6b7280;">OF planifiés</div>
+          <div style="font-size:19px;font-weight:700;color:#111827;">${s.ofCount ?? 0}</div>
+          <div style="font-size:11px;color:#6b7280;">${s.machineCount ?? 0} machine(s)${s.blockedCount ? ` · ${s.blockedCount} bloqué(s)` : ''}</div>
+        </div>
+      </div>
+      ${prioBar}
+      ${conflicts.length ? `<div style="margin-top:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;font-size:12px;color:#991b1b;">
+        ⚠️ <strong>${conflicts.length} conflit(s) de planning</strong> : ${conflicts.map(c => `${esc(c.count + ' OF urgents')} le ${esc(c.day)} sur ${esc(c.moteur)} (#${c.dossiers.map(esc).join(', #')})`).join(' ; ')}
+      </div>` : ''}
+      <div style="margin-top:10px;padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
+        <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;">♻️ Recalcul avec contraintes :</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;">
+          <div><span style="font-size:11px;color:#6b7280;">⚠️ Machine en panne :</span><span id="_opt-broken" style="margin-left:6px;">${
+            moteurList.map(m => _constraintPill(m, _optState.brokenMachines.includes(m), 'broken')).join('') || '<span style="font-size:11px;color:#9ca3af;">—</span>'
+          }</span></div>
+          <div><span style="font-size:11px;color:#6b7280;">📄 Rupture papier :</span><span id="_opt-stockout" style="margin-left:6px;">${
+            paperList.map(p => _constraintPill(p, _optState.outOfStockPapers.includes(p), 'stockout')).join('') || '<span style="font-size:11px;color:#9ca3af;">—</span>'
+          }</span></div>
         </div>
       </div>
     </div>`;
 
-  let body = '<div style="padding:16px 22px;overflow-y:auto;flex:1;">';
-  if (machines.length === 0) {
-    body += '<p style="color:#9ca3af;">Aucun OF à ordonner.</p>';
-  }
+  let body = '<div style="padding:14px 22px;overflow-y:auto;flex:1;">';
+  if (machines.length === 0) body += '<p style="color:#9ca3af;">Aucun OF à ordonner.</p>';
   for (const m of machines) {
     const order = Array.isArray(m.order) ? m.order : [];
+    const blocked = Array.isArray(m.blocked) ? m.blocked : [];
     body += `<div style="margin-bottom:18px;">
       <div style="font-size:14px;font-weight:700;color:#1e3a5f;margin-bottom:4px;">🖨️ ${esc(m.moteur)}
         <span style="font-weight:500;color:#6b7280;font-size:12px;">— ${m.currentCalages} → ${m.optimizedCalages} calage(s), ${_fmtMin(m.minutesSaved)} gagnées</span></div>`;
+    if (blocked.length) {
+      body += `<div style="border:1px solid #fecaca;background:#fef2f2;border-radius:8px;padding:8px 12px;margin-bottom:8px;">
+        <div style="font-size:12px;font-weight:700;color:#991b1b;margin-bottom:4px;">🚫 À replanifier (${blocked.length})</div>
+        ${blocked.map(b => `<div style="font-size:12px;color:#7f1d1d;">${esc(b.numeroDossier ? '#' + b.numeroDossier : b.fileName)}${b.client ? ' — ' + esc(b.client) : ''} · <strong>${esc(b.reason)}</strong>${_priorityBadges(b)}</div>`).join('')}
+      </div>`;
+    }
     body += '<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">';
+    if (order.length === 0) body += '<div style="padding:10px 12px;font-size:12px;color:#9ca3af;">Aucun OF planifiable (voir contraintes).</div>';
     order.forEach((o, idx) => {
       const color = _OPTIMIZE_GROUP_COLORS[(o.groupIndex || 0) % _OPTIMIZE_GROUP_COLORS.length];
       const label = o.numeroDossier ? ('#' + o.numeroDossier + (o.client ? ' — ' + o.client : '')) : o.fileName;
@@ -1035,10 +1109,12 @@ function renderOptimizeModal(data) {
         <div style="width:5px;align-self:stretch;background:${color};border-radius:3px;"></div>
         <div style="width:26px;height:26px;border-radius:50%;background:#f3f4f6;color:#374151;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${idx + 1}</div>
         <div style="flex:1;min-width:0;">
-          <div style="font-size:13px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${o.isNewSetup ? '🔧 ' : ''}${esc(label)}</div>
+          <div style="font-size:13px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${o.isNewSetup ? '🔧 ' : ''}${esc(label)}${_priorityBadges(o)}</div>
           <div style="font-size:12px;color:#6b7280;">${esc(o.papier || '—')}${o.format ? ' · ' + esc(o.format) : ''}${o.quantite ? ' · ' + o.quantite + ' ex.' : ''}</div>
         </div>
-        <div style="text-align:right;flex-shrink:0;">
+        <button class="_opt-urgent-toggle" data-file="${esc(o.fileName)}" data-urgent="${o.urgent ? '1' : '0'}" title="Marquer/retirer urgent"
+          style="flex-shrink:0;font-size:14px;line-height:1;padding:4px 7px;border-radius:6px;border:1px solid ${o.urgent ? '#dc2626' : '#e5e7eb'};background:${o.urgent ? '#fee2e2' : '#fff'};cursor:pointer;">🔴</button>
+        <div style="text-align:right;flex-shrink:0;min-width:64px;">
           <div style="font-size:13px;font-weight:600;color:#1e3a5f;">🕐 ${esc(o.assignedTime || '')}</div>
           <div style="font-size:11px;color:${o.isNewSetup ? '#b45309' : '#16a34a'};">${o.isNewSetup ? '+' + _fmtMin(o.setupMinutes) + ' calage' : 'enchaîné'}</div>
         </div>
@@ -1048,21 +1124,45 @@ function renderOptimizeModal(data) {
   }
   body += '</div>';
 
+  const hasSchedulable = machines.some(m => (m.order || []).length > 0);
   const footer = `
     <div style="padding:14px 22px;border-top:1px solid #eee;display:flex;justify-content:flex-end;gap:10px;">
       <button id="_opt-close" style="padding:9px 16px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Fermer</button>
-      <button id="_opt-apply" style="padding:9px 18px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;" ${machines.length === 0 ? 'disabled' : ''}>✅ Appliquer l'ordre</button>
+      <button id="_opt-apply" style="padding:9px 18px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;" ${hasSchedulable ? '' : 'disabled'}>✅ Appliquer l'ordre</button>
     </div>`;
 
-  panel.innerHTML = header + body + footer;
-  overlay.appendChild(panel);
-  document.body.appendChild(overlay);
+  _optPanel.innerHTML = header + body + footer;
 
-  const cleanup = () => overlay.remove();
-  panel.querySelector("#_opt-close").onclick = cleanup;
-  overlay.onclick = (e) => { if (e.target === overlay) cleanup(); };
+  _optPanel.querySelector("#_opt-close").onclick = closeOptimizeModal;
 
-  const applyBtn = panel.querySelector("#_opt-apply");
+  // Contraintes → recalcul
+  _optPanel.querySelectorAll("._opt-constraint").forEach(el => {
+    el.onclick = () => {
+      const val = el.dataset.value, kind = el.dataset.kind;
+      const arr = kind === 'broken' ? _optState.brokenMachines : _optState.outOfStockPapers;
+      const i = arr.indexOf(val);
+      if (i >= 0) arr.splice(i, 1); else arr.push(val);
+      runOptimize();
+    };
+  });
+
+  // Bascule urgent → recalcul
+  _optPanel.querySelectorAll("._opt-urgent-toggle").forEach(btn => {
+    btn.onclick = async () => {
+      const fileName = btn.dataset.file;
+      const newUrgent = btn.dataset.urgent !== '1';
+      btn.disabled = true;
+      const r = await fetch("/api/fabrication/urgent", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+        body: JSON.stringify({ fileName, urgent: newUrgent })
+      }).then(r => r.json()).catch(() => ({ ok: false }));
+      if (r.ok) { showNotification(newUrgent ? "🔴 Marqué urgent" : "Urgent retiré", "success"); runOptimize(); }
+      else { btn.disabled = false; showNotification("❌ Échec", "error"); }
+    };
+  });
+
+  const applyBtn = _optPanel.querySelector("#_opt-apply");
   if (applyBtn) applyBtn.onclick = async () => {
     const items = machines.flatMap(m => (m.order || []).map(o => ({
       fileName: o.fileName, assignedDate: o.assignedDate, assignedTime: o.assignedTime
@@ -1074,7 +1174,7 @@ function renderOptimizeModal(data) {
       body: JSON.stringify({ items })
     }).then(r => r.json()).catch(() => ({ ok: false }));
     if (r.ok) {
-      cleanup();
+      closeOptimizeModal();
       calendar?.refetchEvents();
       const extra = r.skippedLocked ? ` (${r.skippedLocked} verrouillé(s) ignoré(s))` : '';
       showNotification(`✅ Ordre appliqué à ${r.updated} OF${extra}`, "success");
@@ -1083,6 +1183,11 @@ function renderOptimizeModal(data) {
       showNotification(`❌ ${r.error || "Application impossible"}`, "error");
     }
   };
+}
+
+function _constraintPill(value, active, kind) {
+  return `<button class="_opt-constraint" data-value="${esc(value)}" data-kind="${kind}"
+    style="font-size:11px;font-weight:600;padding:2px 9px;border-radius:12px;margin:0 3px 3px 0;cursor:pointer;white-space:nowrap;border:1px solid ${active ? '#dc2626' : '#d1d5db'};background:${active ? '#dc2626' : '#fff'};color:${active ? '#fff' : '#374151'};">${esc(value)}</button>`;
 }
 
 function _fmtMin(min) {

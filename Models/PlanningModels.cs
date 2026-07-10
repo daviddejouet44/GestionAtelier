@@ -58,3 +58,35 @@ public class ChangeoverEngineOverride
     [JsonPropertyName("changementFormatMinutes")]
     public int? ChangementFormatMinutes { get; set; }
 }
+
+// ======================================================
+// Gestion des priorités (point 2)
+// Poids des facteurs de priorité + liste des clients VIP.
+// Stocké dans "settings" sous l'_id "priorityConfig".
+// ======================================================
+public class PriorityConfig
+{
+    /// <summary>Poids d'un OF marqué « urgent » manuellement.</summary>
+    [JsonPropertyName("weightUrgent")]
+    public int WeightUrgent { get; set; } = 100;
+
+    /// <summary>Poids d'un OF d'un client VIP.</summary>
+    [JsonPropertyName("weightVip")]
+    public int WeightVip { get; set; } = 40;
+
+    /// <summary>Poids d'un OF en retard (date d'impression ou de réception dépassée).</summary>
+    [JsonPropertyName("weightRetard")]
+    public int WeightRetard { get; set; } = 60;
+
+    /// <summary>Poids d'un OF modifié à la dernière minute.</summary>
+    [JsonPropertyName("weightModif")]
+    public int WeightModif { get; set; } = 25;
+
+    /// <summary>Fenêtre (heures) pendant laquelle une modification est considérée « de dernière minute ».</summary>
+    [JsonPropertyName("modifWindowHours")]
+    public int ModifWindowHours { get; set; } = 24;
+
+    /// <summary>Noms des clients VIP (comparaison insensible à la casse).</summary>
+    [JsonPropertyName("vipClients")]
+    public List<string> VipClients { get; set; } = new();
+}
