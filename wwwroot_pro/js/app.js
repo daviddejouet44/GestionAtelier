@@ -22,6 +22,7 @@ import { STAGE_PROGRESS, STAGE_DISPLAY_LABELS } from './constants.js';
 
 import { hideAllViews, showDossiers, showSettings, showGlobalProduction } from './app/navigation.js';
 import { initDashboardView } from './app/dashboard.js?v=3';
+import { initMachinesView } from './machines.js';
 import { initHelpPanel } from './help.js';
 
 // ======================================================
@@ -298,6 +299,13 @@ function showSubmission() {
   document.getElementById("btnViewSubmission").classList.add("active");
   initSubmissionView();
   updateGlobalAlert();
+}
+
+function showMachinesView() {
+  hideAllViews();
+  document.getElementById("machines-view").classList.remove("hidden");
+  document.getElementById("btnViewMachines").classList.add("active");
+  initMachinesView();
 }
 
 function showProduction() {
@@ -1398,6 +1406,10 @@ function setupKanbanActions() {
     btnCalendar.style.display = "inline-block";
     if (btnSubmission) btnSubmission.style.display = "inline-block";
   }
+
+  // Suivi machines : même visibilité que le planning.
+  const btnMachines = document.getElementById("btnViewMachines");
+  if (btnMachines) btnMachines.style.display = btnCalendar.style.display;
 }
 
 // ======================================================
@@ -2525,6 +2537,9 @@ document.getElementById("btnViewKanban").onclick = () => {
 document.getElementById("btnViewCalendar").onclick = () => {
   showCalendar();
 };
+
+const btnViewMachines = document.getElementById("btnViewMachines");
+if (btnViewMachines) btnViewMachines.onclick = showMachinesView;
 
 document.getElementById("btnViewSubmission").onclick = showSubmission;
 const btnEnvoyerDevisToolbar = document.getElementById("btn-envoyer-devis");
