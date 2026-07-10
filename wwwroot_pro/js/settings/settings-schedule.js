@@ -19,6 +19,15 @@ export async function renderSettingsSchedule(panel) {
     if (cor.ok && cor.config) co = cor.config;
   } catch(e) { /* use defaults */ }
 
+  // Priorités (planification intelligente — point 2)
+  let prio = { weightUrgent: 100, weightVip: 40, weightRetard: 60, weightModif: 25, modifWindowHours: 24, vipClients: [] };
+  try {
+    const pr = await fetch("/api/config/priority", {
+      headers: { "Authorization": `Bearer ${authToken}` }
+    }).then(r => r.json());
+    if (pr.ok && pr.config) prio = pr.config;
+  } catch(e) { /* use defaults */ }
+
   const holidays = Array.isArray(cfg.holidays) ? cfg.holidays : [];
 
   // Auto-add holidays for current year and next year if missing
@@ -87,7 +96,56 @@ export async function renderSettingsSchedule(panel) {
       <input type="number" min="0" id="co-format" value="${co.changementFormatMinutes ?? 8}" class="settings-input" style="width:120px;" />
     </div>
     <button id="co-save" class="btn btn-primary" style="margin-top: 10px;">Enregistrer les coûts de calage</button>
+    <hr style="margin: 20px 0;" />
+    <h4>🎯 Priorités (planification intelligente)</h4>
+    <p style="color:#6b7280;font-size:13px;margin-top:0;">Poids des facteurs qui font remonter un OF dans l'ordre proposé.</p>
+    <div class="settings-form-group">
+      <label>Poids « Urgent »</label>
+      <input type="number" min="0" id="prio-urgent" value="${prio.weightUrgent ?? 100}" class="settings-input" style="width:120px;" />
+    </div>
+    <div class="settings-form-group">
+      <label>Poids « Client VIP »</label>
+      <input type="number" min="0" id="prio-vip" value="${prio.weightVip ?? 40}" class="settings-input" style="width:120px;" />
+    </div>
+    <div class="settings-form-group">
+      <label>Poids « Retard »</label>
+      <input type="number" min="0" id="prio-retard" value="${prio.weightRetard ?? 60}" class="settings-input" style="width:120px;" />
+    </div>
+    <div class="settings-form-group">
+      <label>Poids « Modif. dernière minute »</label>
+      <input type="number" min="0" id="prio-modif" value="${prio.weightModif ?? 25}" class="settings-input" style="width:120px;" />
+    </div>
+    <div class="settings-form-group">
+      <label>Fenêtre « dernière minute » (heures)</label>
+      <input type="number" min="0" id="prio-window" value="${prio.modifWindowHours ?? 24}" class="settings-input" style="width:120px;" />
+    </div>
+    <div class="settings-form-group">
+      <label>Clients VIP (un par ligne)</label>
+      <textarea id="prio-vips" class="settings-input" rows="3" style="width:100%;max-width:360px;" placeholder="Ex : Mairie de Nantes">${(Array.isArray(prio.vipClients) ? prio.vipClients : []).map(esc).join("\n")}</textarea>
+    </div>
+    <button id="prio-save" class="btn btn-primary" style="margin-top: 10px;">Enregistrer les priorités</button>
   `;
+
+  const prioSaveBtn = document.getElementById("prio-save");
+  if (prioSaveBtn) prioSaveBtn.onclick = async () => {
+    const vipClients = (document.getElementById("prio-vips").value || "")
+      .split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+    const payload = {
+      weightUrgent: parseInt(document.getElementById("prio-urgent").value) || 0,
+      weightVip: parseInt(document.getElementById("prio-vip").value) || 0,
+      weightRetard: parseInt(document.getElementById("prio-retard").value) || 0,
+      weightModif: parseInt(document.getElementById("prio-modif").value) || 0,
+      modifWindowHours: parseInt(document.getElementById("prio-window").value) || 0,
+      vipClients
+    };
+    const r = await fetch("/api/config/priority", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify(payload)
+    }).then(r => r.json());
+    if (r.ok) showNotification("✅ Priorités enregistrées", "success");
+    else alert("Erreur : " + (r.error || "inconnue"));
+  };
 
   const coSaveBtn = document.getElementById("co-save");
   if (coSaveBtn) coSaveBtn.onclick = async () => {
