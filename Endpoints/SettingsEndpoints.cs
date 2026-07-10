@@ -30,6 +30,7 @@ public static class SettingsEndpointsExtensions
         app.MapMiscSettingsEndpoints(recyclePath);
         app.MapRoutingEndpoints(recyclePath);
         app.MapPrintConfigEndpoints(recyclePath);
+        app.MapChangeoverConfigEndpoints(recyclePath);
         app.MapKanbanConfigEndpoints(recyclePath);
         app.MapAccountsEndpoints(recyclePath);
         app.MapFormConfigEndpoints();
