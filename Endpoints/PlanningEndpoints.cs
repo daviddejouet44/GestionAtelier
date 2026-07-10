@@ -33,6 +33,18 @@ public static class PlanningEndpoints
         public int TempsMin;
         public string Day = "";              // yyyy-MM-dd (jour d'impression)
         public string? CurrentMachineTime;   // HH:mm ou null
+        // Priorité (point 2)
+        public bool Urgent;
+        public DateTime? DateImpression;
+        public DateTime? DateReceptionSouhaitee;
+        public DateTime? LastModifiedAt;
+        public bool LastActionModification;
+        public int PriorityScore;
+        public List<string> PriorityReasons = new();
+        public string PriorityLevel = "normal"; // normal | elevated | urgent
+        // Contraintes (recalcul)
+        public bool Blocked;
+        public string BlockReason = "";
         // Champs calculés lors de l'application
         public string AssignedTime = "";
         public int SetupMinutes;
@@ -49,24 +61,42 @@ public static class PlanningEndpoints
                 if (!AuthHelper.IsAuthenticated(ctx))
                     return Results.Json(new { ok = false, error = "Non authentifié" }, statusCode: 401);
 
-                var (moteurs, startDate, endDate, fileNames) = await ReadFiltersAsync(ctx);
-                var candidates = LoadCandidates(moteurs, startDate, endDate, fileNames);
+                var filters = await ReadFiltersAsync(ctx);
+                var candidates = LoadCandidates(filters);
 
                 if (candidates.Count == 0)
                     return Results.Json(new { ok = false, error = "Aucun OF à planifier pour ces critères (vérifiez qu'ils ont une date d'impression)." });
 
                 var costCfg = MongoDbHelper.GetSettings<ChangeoverCostSettings>("changeoverCosts") ?? new ChangeoverCostSettings();
+                var prioCfg = MongoDbHelper.GetSettings<PriorityConfig>("priorityConfig") ?? new PriorityConfig();
+                var vipSet = new HashSet<string>(prioCfg.VipClients ?? new(), StringComparer.OrdinalIgnoreCase);
+                var brokenSet = new HashSet<string>(filters.BrokenMachines, StringComparer.OrdinalIgnoreCase);
+                var stockOutSet = new HashSet<string>(filters.OutOfStockPapers, StringComparer.OrdinalIgnoreCase);
                 int workStartMin = GetWorkStartMinutes();
+                var today = DateTime.UtcNow;
+                var now = DateTime.UtcNow;
+
+                // Priorité + contraintes (recalcul) pour chaque OF.
+                foreach (var c in candidates)
+                {
+                    ComputePriority(c, prioCfg, vipSet, today, now);
+                    if (brokenSet.Contains(c.Moteur)) { c.Blocked = true; c.BlockReason = "Machine en panne"; }
+                    else if (stockOutSet.Contains(c.Papier)) { c.Blocked = true; c.BlockReason = "Rupture papier"; }
+                }
 
                 var machinesOut = new List<object>();
-                int totCurCalages = 0, totOptCalages = 0, totCurMin = 0, totOptMin = 0;
+                var conflicts = new List<object>();
+                int totCurCalages = 0, totOptCalages = 0, totCurMin = 0, totOptMin = 0, totBlocked = 0;
 
                 // Un tirage/calage est propre à chaque machine (elles tournent en parallèle).
                 foreach (var grp in candidates.GroupBy(c => c.Moteur).OrderBy(g => g.Key))
                 {
                     var moteur = grp.Key;
                     var cost = costCfg.EffectiveFor(moteur);
-                    var list = grp.ToList();
+                    var all = grp.ToList();
+                    var blocked = all.Where(c => c.Blocked).ToList();
+                    var list = all.Where(c => !c.Blocked).ToList();
+                    totBlocked += blocked.Count;
 
                     // Ordre actuel : par horaire machine manuel (sinon N° dossier).
                     var currentOrder = list
@@ -75,12 +105,18 @@ public static class PlanningEndpoints
                         .ThenBy(c => c.FileName, StringComparer.OrdinalIgnoreCase)
                         .ToList();
 
-                    // Ordre optimisé : regroupé par (papier, format), groupes ordonnés
-                    // papier puis format (deux groupes voisins de même papier ne coûtent
-                    // qu'un changement de format).
+                    // Priorité par groupe (papier, format) : un groupe hérite de la priorité
+                    // maximale de ses OF, ce qui fait remonter le travail prioritaire tout en
+                    // préservant le regroupement (donc les calages économisés).
+                    var groupMaxPrio = list
+                        .GroupBy(c => c.Papier + "|" + c.Format, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(g => g.Key, g => g.Max(c => c.PriorityScore), StringComparer.OrdinalIgnoreCase);
+
                     var optimizedOrder = list
-                        .OrderBy(c => c.Papier, StringComparer.OrdinalIgnoreCase)
+                        .OrderByDescending(c => groupMaxPrio[c.Papier + "|" + c.Format])
+                        .ThenBy(c => c.Papier, StringComparer.OrdinalIgnoreCase)
                         .ThenBy(c => c.Format, StringComparer.OrdinalIgnoreCase)
+                        .ThenByDescending(c => c.PriorityScore)
                         .ThenBy(c => c.NumeroDossier, StringComparer.OrdinalIgnoreCase)
                         .ThenBy(c => c.FileName, StringComparer.OrdinalIgnoreCase)
                         .ToList();
@@ -114,6 +150,19 @@ public static class PlanningEndpoints
                         })
                         .ToList();
 
+                    // Conflit : plus d'un OF urgent le même jour sur la même machine.
+                    foreach (var dayGrp in list.Where(c => c.Urgent).GroupBy(c => c.Day))
+                    {
+                        if (dayGrp.Count() > 1)
+                            conflicts.Add(new
+                            {
+                                moteur = string.IsNullOrWhiteSpace(moteur) ? "(sans moteur)" : moteur,
+                                day = dayGrp.Key,
+                                count = dayGrp.Count(),
+                                dossiers = dayGrp.Select(c => string.IsNullOrWhiteSpace(c.NumeroDossier) ? c.FileName : c.NumeroDossier).ToList()
+                            });
+                    }
+
                     machinesOut.Add(new
                     {
                         moteur = string.IsNullOrWhiteSpace(moteur) ? "(sans moteur)" : moteur,
@@ -139,7 +188,21 @@ public static class PlanningEndpoints
                             assignedTime = c.AssignedTime,
                             setupMinutes = c.SetupMinutes,
                             isNewSetup = c.IsNewSetup,
-                            groupIndex = c.GroupIndex
+                            groupIndex = c.GroupIndex,
+                            urgent = c.Urgent,
+                            priorityScore = c.PriorityScore,
+                            priorityLevel = c.PriorityLevel,
+                            priorityReasons = c.PriorityReasons
+                        }).ToList(),
+                        blocked = blocked.Select(c => new
+                        {
+                            fileName = c.FileName,
+                            numeroDossier = c.NumeroDossier,
+                            client = c.Client,
+                            papier = c.Papier,
+                            reason = c.BlockReason,
+                            urgent = c.Urgent,
+                            priorityReasons = c.PriorityReasons
                         }).ToList()
                     });
 
@@ -158,10 +221,19 @@ public static class PlanningEndpoints
                     calagesSaved = Math.Max(0, totCurCalages - totOptCalages),
                     currentSetupMinutes = totCurMin,
                     optimizedSetupMinutes = totOptMin,
-                    minutesSaved = Math.Max(0, totCurMin - totOptMin)
+                    minutesSaved = Math.Max(0, totCurMin - totOptMin),
+                    blockedCount = totBlocked,
+                    conflictsCount = conflicts.Count,
+                    priorityCounts = new
+                    {
+                        urgent = candidates.Count(c => c.Urgent),
+                        vip = candidates.Count(c => c.PriorityReasons.Contains("Client VIP")),
+                        retard = candidates.Count(c => c.PriorityReasons.Contains("Retard")),
+                        modif = candidates.Count(c => c.PriorityReasons.Contains("Modif. de dernière minute"))
+                    }
                 };
 
-                return Results.Json(new { ok = true, summary, machines = machinesOut });
+                return Results.Json(new { ok = true, summary, machines = machinesOut, conflicts });
             }
             catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
@@ -216,35 +288,116 @@ public static class PlanningEndpoints
             }
             catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
+
+        // Bascule le drapeau « urgent » d'un OF (stocké dans une collection dédiée,
+        // robuste aux enregistrements de fiche qui remplacent le document fabrication).
+        app.MapPut("/api/fabrication/urgent", async (HttpContext ctx) =>
+        {
+            try
+            {
+                if (!AuthHelper.IsAuthenticated(ctx))
+                    return Results.Json(new { ok = false, error = "Non authentifié" }, statusCode: 401);
+
+                var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
+                var fileName = json.TryGetProperty("fileName", out var fn) ? (fn.GetString() ?? "").Trim() : "";
+                if (string.IsNullOrWhiteSpace(fileName))
+                    return Results.Json(new { ok = false, error = "fileName requis" });
+                bool urgent = json.TryGetProperty("urgent", out var u) && (u.ValueKind == JsonValueKind.True
+                    || (u.ValueKind == JsonValueKind.String && bool.TryParse(u.GetString(), out var b) && b));
+
+                var col = MongoDbHelper.GetCollection<BsonDocument>("jobPriority");
+                var filter = Builders<BsonDocument>.Filter.Eq("fileName", fileName);
+                var update = Builders<BsonDocument>.Update
+                    .Set("fileName", fileName)
+                    .Set("urgent", urgent)
+                    .Set("urgentSetAt", urgent ? (BsonValue)DateTime.UtcNow : BsonNull.Value)
+                    .Set("urgentSetBy", AuthHelper.GetClaim(ctx, "name") ?? AuthHelper.GetClaim(ctx, "login") ?? "");
+                await col.UpdateOneAsync(filter, update, new UpdateOptions { IsUpsert = true });
+
+                return Results.Json(new { ok = true, urgent });
+            }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+        });
+
+        // File d'attente prioritaire : OF triés par score de priorité décroissant.
+        app.MapPost("/api/planning/priorities", async (HttpContext ctx) =>
+        {
+            try
+            {
+                if (!AuthHelper.IsAuthenticated(ctx))
+                    return Results.Json(new { ok = false, error = "Non authentifié" }, statusCode: 401);
+
+                var filters = await ReadFiltersAsync(ctx);
+                var candidates = LoadCandidates(filters);
+                var prioCfg = MongoDbHelper.GetSettings<PriorityConfig>("priorityConfig") ?? new PriorityConfig();
+                var vipSet = new HashSet<string>(prioCfg.VipClients ?? new(), StringComparer.OrdinalIgnoreCase);
+                var now = DateTime.UtcNow;
+                foreach (var c in candidates) ComputePriority(c, prioCfg, vipSet, now, now);
+
+                var items = candidates
+                    .OrderByDescending(c => c.PriorityScore)
+                    .ThenBy(c => c.DateImpression ?? DateTime.MaxValue)
+                    .ThenBy(c => c.NumeroDossier, StringComparer.OrdinalIgnoreCase)
+                    .Select(c => new
+                    {
+                        fileName = c.FileName,
+                        numeroDossier = c.NumeroDossier,
+                        client = c.Client,
+                        moteur = c.Moteur,
+                        papier = c.Papier,
+                        day = c.Day,
+                        urgent = c.Urgent,
+                        priorityScore = c.PriorityScore,
+                        priorityLevel = c.PriorityLevel,
+                        priorityReasons = c.PriorityReasons
+                    })
+                    .ToList();
+
+                return Results.Json(new { ok = true, items });
+            }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+        });
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
-    private static async Task<(List<string> moteurs, DateTime? start, DateTime? end, List<string> fileNames)> ReadFiltersAsync(HttpContext ctx)
+    private class OptimizeFilters
     {
-        var moteurs = new List<string>();
-        var fileNames = new List<string>();
-        DateTime? start = null, end = null;
+        public List<string> Moteurs = new();
+        public List<string> FileNames = new();
+        public DateTime? Start;
+        public DateTime? End;
+        public List<string> BrokenMachines = new();
+        public List<string> OutOfStockPapers = new();
+    }
+
+    private static async Task<OptimizeFilters> ReadFiltersAsync(HttpContext ctx)
+    {
+        var f = new OptimizeFilters();
         try
         {
             var json = await ctx.Request.ReadFromJsonAsync<JsonElement>();
             if (json.ValueKind == JsonValueKind.Object)
             {
-                if (json.TryGetProperty("moteurs", out var mEl) && mEl.ValueKind == JsonValueKind.Array)
-                    moteurs = mEl.EnumerateArray().Select(x => x.GetString() ?? "").Where(s => s.Length > 0).ToList();
-                if (json.TryGetProperty("fileNames", out var fEl) && fEl.ValueKind == JsonValueKind.Array)
-                    fileNames = fEl.EnumerateArray().Select(x => x.GetString() ?? "").Where(s => s.Length > 0).ToList();
+                List<string> Arr(string name) => json.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.Array
+                    ? el.EnumerateArray().Select(x => x.GetString() ?? "").Where(s => s.Length > 0).ToList()
+                    : new List<string>();
+
+                f.Moteurs = Arr("moteurs");
+                f.FileNames = Arr("fileNames");
+                f.BrokenMachines = Arr("brokenMachines");
+                f.OutOfStockPapers = Arr("outOfStockPapers");
                 if (json.TryGetProperty("startDate", out var sEl) && DateTime.TryParse(sEl.GetString(), out var sd))
-                    start = DateTime.SpecifyKind(sd.Date, DateTimeKind.Utc);
+                    f.Start = DateTime.SpecifyKind(sd.Date, DateTimeKind.Utc);
                 if (json.TryGetProperty("endDate", out var eEl) && DateTime.TryParse(eEl.GetString(), out var ed))
-                    end = DateTime.SpecifyKind(ed.Date.AddDays(1), DateTimeKind.Utc);
+                    f.End = DateTime.SpecifyKind(ed.Date.AddDays(1), DateTimeKind.Utc);
             }
         }
         catch { /* corps optionnel */ }
-        return (moteurs, start, end, fileNames);
+        return f;
     }
 
-    private static List<OfCandidate> LoadCandidates(List<string> moteurs, DateTime? start, DateTime? end, List<string> fileNames)
+    private static List<OfCandidate> LoadCandidates(OptimizeFilters f)
     {
         var fabCol = MongoDbHelper.GetFabricationsCollection();
         var conditions = new List<FilterDefinition<BsonDocument>>
@@ -254,24 +407,32 @@ public static class PlanningEndpoints
             Builders<BsonDocument>.Filter.Ne("excludeFromPlanning", true),
             Builders<BsonDocument>.Filter.Ne("locked", true)
         };
-        if (start.HasValue && end.HasValue)
+        if (f.Start.HasValue && f.End.HasValue)
         {
-            conditions.Add(Builders<BsonDocument>.Filter.Gte("dateImpression", new BsonDateTime(start.Value)));
-            conditions.Add(Builders<BsonDocument>.Filter.Lt("dateImpression", new BsonDateTime(end.Value)));
+            conditions.Add(Builders<BsonDocument>.Filter.Gte("dateImpression", new BsonDateTime(f.Start.Value)));
+            conditions.Add(Builders<BsonDocument>.Filter.Lt("dateImpression", new BsonDateTime(f.End.Value)));
         }
         var docs = fabCol.Find(Builders<BsonDocument>.Filter.And(conditions)).ToList();
 
-        var moteurSet = new HashSet<string>(moteurs, StringComparer.OrdinalIgnoreCase);
-        var fileSet = new HashSet<string>(fileNames, StringComparer.OrdinalIgnoreCase);
+        var moteurSet = new HashSet<string>(f.Moteurs, StringComparer.OrdinalIgnoreCase);
+        var fileSet = new HashSet<string>(f.FileNames, StringComparer.OrdinalIgnoreCase);
+
+        // Charge les OF marqués « urgent » (collection dédiée, robuste aux enregistrements de fiche).
+        var urgentSet = LoadUrgentFileNames();
 
         var result = new List<OfCandidate>();
         foreach (var doc in docs)
         {
-            string S(string f) => doc.Contains(f) && doc[f] != BsonNull.Value && doc[f].IsString ? doc[f].AsString.Trim() : "";
-            int I(string f)
+            string S(string fld) => doc.Contains(fld) && doc[fld] != BsonNull.Value && doc[fld].IsString ? doc[fld].AsString.Trim() : "";
+            int I(string fld)
             {
-                try { return doc.Contains(f) && doc[f] != BsonNull.Value ? doc[f].ToInt32() : 0; }
+                try { return doc.Contains(fld) && doc[fld] != BsonNull.Value ? doc[fld].ToInt32() : 0; }
                 catch { return 0; }
+            }
+            DateTime? D(string fld)
+            {
+                try { return doc.Contains(fld) && doc[fld] != BsonNull.Value ? doc[fld].ToUniversalTime() : (DateTime?)null; }
+                catch { return null; }
             }
 
             var moteur = S("moteurImpression");
@@ -291,8 +452,8 @@ public static class PlanningEndpoints
             int temps = I("tempsProduitMinutes");
             if (temps <= 0) temps = 30;
 
-            string day = "";
-            try { day = doc["dateImpression"].ToUniversalTime().ToString("yyyy-MM-dd"); } catch { }
+            var dateImpr = D("dateImpression");
+            string day = dateImpr?.ToString("yyyy-MM-dd") ?? "";
 
             string? curTime = null;
             if (doc.Contains("manualPlanningTimes") && doc["manualPlanningTimes"].IsBsonDocument)
@@ -300,6 +461,27 @@ public static class PlanningEndpoints
                 var mpt = doc["manualPlanningTimes"].AsBsonDocument;
                 if (mpt.Contains("machineTime") && mpt["machineTime"] != BsonNull.Value && mpt["machineTime"].IsString)
                     curTime = mpt["machineTime"].AsString;
+            }
+
+            // Dernière modification : issue de l'historique de la fiche (préservé entre sauvegardes).
+            DateTime? lastMod = null;
+            bool lastActionModif = false;
+            if (doc.Contains("history") && doc["history"].IsBsonArray)
+            {
+                foreach (var item in doc["history"].AsBsonArray)
+                {
+                    if (!item.IsBsonDocument) continue;
+                    var h = item.AsBsonDocument;
+                    DateTime? hd = null;
+                    try { if (h.Contains("date") && h["date"] != BsonNull.Value) hd = h["date"].ToUniversalTime(); } catch { }
+                    if (hd == null) continue;
+                    if (lastMod == null || hd > lastMod)
+                    {
+                        lastMod = hd;
+                        var act = h.Contains("action") && h["action"] != BsonNull.Value && h["action"].IsString ? h["action"].AsString : "";
+                        lastActionModif = act.IndexOf("Modif", StringComparison.OrdinalIgnoreCase) >= 0;
+                    }
+                }
             }
 
             result.Add(new OfCandidate
@@ -313,10 +495,66 @@ public static class PlanningEndpoints
                 Quantite = I("quantite"),
                 TempsMin = temps,
                 Day = day,
-                CurrentMachineTime = curTime
+                CurrentMachineTime = curTime,
+                Urgent = urgentSet.Contains(fileName),
+                DateImpression = dateImpr,
+                DateReceptionSouhaitee = D("dateReceptionSouhaitee"),
+                LastModifiedAt = lastMod,
+                LastActionModification = lastActionModif
             });
         }
         return result;
+    }
+
+    /// <summary>Noms de fichiers (minuscule) marqués urgent dans la collection jobPriority.</summary>
+    private static HashSet<string> LoadUrgentFileNames()
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var col = MongoDbHelper.GetCollection<BsonDocument>("jobPriority");
+            var docs = col.Find(Builders<BsonDocument>.Filter.Eq("urgent", true)).ToList();
+            foreach (var d in docs)
+                if (d.Contains("fileName") && d["fileName"] != BsonNull.Value && d["fileName"].IsString)
+                    set.Add(d["fileName"].AsString.Trim());
+        }
+        catch { }
+        return set;
+    }
+
+    /// <summary>Calcule le score de priorité, les raisons et le niveau d'un OF.</summary>
+    private static void ComputePriority(OfCandidate c, PriorityConfig cfg, HashSet<string> vipSet, DateTime today, DateTime now)
+    {
+        int score = 0;
+        var reasons = new List<string>();
+
+        if (c.Urgent)
+        {
+            score += cfg.WeightUrgent;
+            reasons.Add("Urgent");
+        }
+        if (!string.IsNullOrWhiteSpace(c.Client) && vipSet.Contains(c.Client))
+        {
+            score += cfg.WeightVip;
+            reasons.Add("Client VIP");
+        }
+        bool retard = (c.DateImpression.HasValue && c.DateImpression.Value.Date < today.Date)
+                   || (c.DateReceptionSouhaitee.HasValue && c.DateReceptionSouhaitee.Value.Date < today.Date);
+        if (retard)
+        {
+            score += cfg.WeightRetard;
+            reasons.Add("Retard");
+        }
+        if (cfg.ModifWindowHours > 0 && c.LastModifiedAt.HasValue && c.LastActionModification
+            && (now - c.LastModifiedAt.Value).TotalHours <= cfg.ModifWindowHours)
+        {
+            score += cfg.WeightModif;
+            reasons.Add("Modif. de dernière minute");
+        }
+
+        c.PriorityScore = score;
+        c.PriorityReasons = reasons;
+        c.PriorityLevel = c.Urgent ? "urgent" : (score > 0 ? "elevated" : "normal");
     }
 
     /// <summary>Coût de calage entre deux OF consécutifs (0 si même papier ET même format).</summary>
