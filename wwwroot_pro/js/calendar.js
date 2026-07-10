@@ -780,8 +780,15 @@ async function addMachineFilter(calendarEl) {
       <div id="planning-paper-selects" style="display:flex;flex-wrap:wrap;gap:6px;max-width:600px;">
         <span style="font-size:12px;color:#9ca3af;font-style:italic;">Chargement...</span>
       </div>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:6px;flex-direction:column;margin-left:auto;">
+      <label style="font-size:13px;font-weight:500;">&nbsp;</label>
+      <button id="planning-optimize-btn" class="btn" title="Regroupe les OF par papier/format pour minimiser les calages"
+        style="font-size:13px;padding:6px 14px;border-radius:8px;background:#7c3aed;color:#fff;border:none;cursor:pointer;font-weight:600;white-space:nowrap;">🪄 Proposer le meilleur ordre</button>
     </div>`;
   calendarEl.parentNode?.insertBefore(wrap, calendarEl);
+  const optimizeBtn = wrap.querySelector("#planning-optimize-btn");
+  if (optimizeBtn) optimizeBtn.onclick = () => openOptimizeModal();
 
   // Also build finitions filters (hidden until finitions view is active)
   const existingFin = document.getElementById("planning-finitions-filter-wrap");
@@ -931,6 +938,158 @@ async function addMachineFilter(calendarEl) {
     const finTypes = (finitionsResp.ok && Array.isArray(finitionsResp.finitions)) ? finitionsResp.finitions : [];
     buildCumulativeSelects("planning-finitions-selects", finTypes, "Toutes finitions", "Ajouter une finition", () => calendar?.refetchEvents());
   } catch(e) { /* ignore */ }
+}
+
+// ======================================================
+// PLANIFICATION INTELLIGENTE — Proposition du meilleur ordre
+// ======================================================
+
+// Palette pour les bandes de groupe (papier/format) dans la modale.
+const _OPTIMIZE_GROUP_COLORS = [
+  "#8b5cf6", "#2563eb", "#16a34a", "#f59e0b", "#dc2626",
+  "#0891b2", "#db2777", "#65a30d", "#9333ea", "#0d9488"
+];
+
+function _optimizeContext() {
+  // Moteurs sélectionnés (pills), sinon tous.
+  const pillsEl = document.getElementById("planning-machine-pills");
+  const moteurs = pillsEl
+    ? Array.from(pillsEl.querySelectorAll('.planning-engine-pill[data-selected="true"]')).map(p => p.dataset.value).filter(Boolean)
+    : [];
+  // Plage visible du calendrier.
+  const start = calendar?.view?.currentStart;
+  const end = calendar?.view?.currentEnd;
+  const startDate = start ? start.toLocaleDateString('sv-SE') : null;
+  const endDate = end ? new Date(end.getTime() - 86400000).toLocaleDateString('sv-SE') : null;
+  return { moteurs, startDate, endDate };
+}
+
+async function openOptimizeModal() {
+  const btn = document.getElementById("planning-optimize-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Calcul…"; }
+  try {
+    const ctx = _optimizeContext();
+    const resp = await fetch("/api/planning/optimize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify(ctx)
+    }).then(r => r.json()).catch(() => ({ ok: false, error: "Erreur réseau" }));
+
+    if (!resp.ok) {
+      showNotification(`⚠️ ${resp.error || "Optimisation impossible"}`, "error");
+      return;
+    }
+    renderOptimizeModal(resp);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "🪄 Proposer le meilleur ordre"; }
+  }
+}
+
+function renderOptimizeModal(data) {
+  const s = data.summary || {};
+  const machines = Array.isArray(data.machines) ? data.machines : [];
+
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:10000;padding:20px;";
+
+  const panel = document.createElement("div");
+  panel.style.cssText = "background:#fff;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.3);max-width:760px;width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;";
+
+  const gain = s.calagesSaved > 0 || s.minutesSaved > 0;
+  const header = `
+    <div style="padding:18px 22px;border-bottom:1px solid #eee;">
+      <h3 style="margin:0 0 10px;font-size:17px;font-weight:700;color:#1e3a5f;">🪄 Meilleur ordre de fabrication proposé</h3>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:150px;background:${gain ? '#f5f3ff' : '#f9fafb'};border:1px solid ${gain ? '#ddd6fe' : '#e5e7eb'};border-radius:10px;padding:10px 14px;">
+          <div style="font-size:12px;color:#6b7280;">Calages</div>
+          <div style="font-size:20px;font-weight:700;color:#111827;">${s.currentCalages ?? 0} → <span style="color:#7c3aed;">${s.optimizedCalages ?? 0}</span></div>
+          <div style="font-size:12px;color:${gain ? '#16a34a' : '#6b7280'};font-weight:600;">${(s.calagesSaved ?? 0) > 0 ? '−' + s.calagesSaved + ' calage(s)' : 'déjà optimal'}</div>
+        </div>
+        <div style="flex:1;min-width:150px;background:${gain ? '#ecfdf5' : '#f9fafb'};border:1px solid ${gain ? '#a7f3d0' : '#e5e7eb'};border-radius:10px;padding:10px 14px;">
+          <div style="font-size:12px;color:#6b7280;">Temps de calage</div>
+          <div style="font-size:20px;font-weight:700;color:#111827;">${_fmtMin(s.currentSetupMinutes)} → <span style="color:#059669;">${_fmtMin(s.optimizedSetupMinutes)}</span></div>
+          <div style="font-size:12px;color:${gain ? '#16a34a' : '#6b7280'};font-weight:600;">${(s.minutesSaved ?? 0) > 0 ? '≈ ' + _fmtMin(s.minutesSaved) + ' économisées' : 'déjà optimal'}</div>
+        </div>
+        <div style="flex:1;min-width:120px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;">
+          <div style="font-size:12px;color:#6b7280;">OF concernés</div>
+          <div style="font-size:20px;font-weight:700;color:#111827;">${s.ofCount ?? 0}</div>
+          <div style="font-size:12px;color:#6b7280;">${s.machineCount ?? 0} machine(s)</div>
+        </div>
+      </div>
+    </div>`;
+
+  let body = '<div style="padding:16px 22px;overflow-y:auto;flex:1;">';
+  if (machines.length === 0) {
+    body += '<p style="color:#9ca3af;">Aucun OF à ordonner.</p>';
+  }
+  for (const m of machines) {
+    const order = Array.isArray(m.order) ? m.order : [];
+    body += `<div style="margin-bottom:18px;">
+      <div style="font-size:14px;font-weight:700;color:#1e3a5f;margin-bottom:4px;">🖨️ ${esc(m.moteur)}
+        <span style="font-weight:500;color:#6b7280;font-size:12px;">— ${m.currentCalages} → ${m.optimizedCalages} calage(s), ${_fmtMin(m.minutesSaved)} gagnées</span></div>`;
+    body += '<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">';
+    order.forEach((o, idx) => {
+      const color = _OPTIMIZE_GROUP_COLORS[(o.groupIndex || 0) % _OPTIMIZE_GROUP_COLORS.length];
+      const label = o.numeroDossier ? ('#' + o.numeroDossier + (o.client ? ' — ' + o.client : '')) : o.fileName;
+      body += `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:${idx === 0 ? '0' : '1px'} solid #f1f5f9;background:${idx % 2 ? '#fafafa' : '#fff'};">
+        <div style="width:5px;align-self:stretch;background:${color};border-radius:3px;"></div>
+        <div style="width:26px;height:26px;border-radius:50%;background:#f3f4f6;color:#374151;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${idx + 1}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${o.isNewSetup ? '🔧 ' : ''}${esc(label)}</div>
+          <div style="font-size:12px;color:#6b7280;">${esc(o.papier || '—')}${o.format ? ' · ' + esc(o.format) : ''}${o.quantite ? ' · ' + o.quantite + ' ex.' : ''}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:13px;font-weight:600;color:#1e3a5f;">🕐 ${esc(o.assignedTime || '')}</div>
+          <div style="font-size:11px;color:${o.isNewSetup ? '#b45309' : '#16a34a'};">${o.isNewSetup ? '+' + _fmtMin(o.setupMinutes) + ' calage' : 'enchaîné'}</div>
+        </div>
+      </div>`;
+    });
+    body += '</div></div>';
+  }
+  body += '</div>';
+
+  const footer = `
+    <div style="padding:14px 22px;border-top:1px solid #eee;display:flex;justify-content:flex-end;gap:10px;">
+      <button id="_opt-close" style="padding:9px 16px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Fermer</button>
+      <button id="_opt-apply" style="padding:9px 18px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;" ${machines.length === 0 ? 'disabled' : ''}>✅ Appliquer l'ordre</button>
+    </div>`;
+
+  panel.innerHTML = header + body + footer;
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+
+  const cleanup = () => overlay.remove();
+  panel.querySelector("#_opt-close").onclick = cleanup;
+  overlay.onclick = (e) => { if (e.target === overlay) cleanup(); };
+
+  const applyBtn = panel.querySelector("#_opt-apply");
+  if (applyBtn) applyBtn.onclick = async () => {
+    const items = machines.flatMap(m => (m.order || []).map(o => ({
+      fileName: o.fileName, assignedDate: o.assignedDate, assignedTime: o.assignedTime
+    })));
+    applyBtn.disabled = true; applyBtn.textContent = "⏳ Application…";
+    const r = await fetch("/api/planning/apply-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify({ items })
+    }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (r.ok) {
+      cleanup();
+      calendar?.refetchEvents();
+      const extra = r.skippedLocked ? ` (${r.skippedLocked} verrouillé(s) ignoré(s))` : '';
+      showNotification(`✅ Ordre appliqué à ${r.updated} OF${extra}`, "success");
+    } else {
+      applyBtn.disabled = false; applyBtn.textContent = "✅ Appliquer l'ordre";
+      showNotification(`❌ ${r.error || "Application impossible"}`, "error");
+    }
+  };
+}
+
+function _fmtMin(min) {
+  min = Math.round(min || 0);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return m ? `${h} h ${m}` : `${h} h`;
 }
 
 // ======================================================
