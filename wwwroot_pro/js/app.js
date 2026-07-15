@@ -24,6 +24,7 @@ import { hideAllViews, showDossiers, showSettings, showGlobalProduction } from '
 import { initDashboardView } from './app/dashboard.js?v=3';
 import { initMachinesView } from './machines.js';
 import { initStockView } from './stock.js';
+import { initKpiView } from './kpi.js';
 import { initGlobalSearch } from './search.js';
 import { initHelpPanel } from './help.js';
 
@@ -315,6 +316,13 @@ function showStockView() {
   document.getElementById("stock-view").classList.remove("hidden");
   document.getElementById("btnViewStock").classList.add("active");
   initStockView();
+}
+
+function showKpiView() {
+  hideAllViews();
+  document.getElementById("kpi-view").classList.remove("hidden");
+  document.getElementById("btnViewKpi").classList.add("active");
+  initKpiView();
 }
 
 function showProduction() {
@@ -1422,6 +1430,9 @@ function setupKanbanActions() {
   // Stocks : même visibilité que le planning.
   const btnStock = document.getElementById("btnViewStock");
   if (btnStock) btnStock.style.display = btnCalendar.style.display;
+  // KPI : visible pour tout le personnel sauf Soumission (profil 1).
+  const btnKpi = document.getElementById("btnViewKpi");
+  if (btnKpi) btnKpi.style.display = (currentUser.profile === 1) ? "none" : "inline-block";
 }
 
 // ======================================================
@@ -2556,6 +2567,9 @@ if (btnViewMachines) btnViewMachines.onclick = showMachinesView;
 
 const btnViewStock = document.getElementById("btnViewStock");
 if (btnViewStock) btnViewStock.onclick = showStockView;
+
+const btnViewKpi = document.getElementById("btnViewKpi");
+if (btnViewKpi) btnViewKpi.onclick = showKpiView;
 
 document.getElementById("btnViewSubmission").onclick = showSubmission;
 const btnEnvoyerDevisToolbar = document.getElementById("btn-envoyer-devis");
