@@ -39,12 +39,13 @@ public static class KpiEndpoints
 
                 // ── Fiches de fabrication de la période (par dateImpression) ──────────
                 var fabCol = MongoDbHelper.GetFabricationsCollection();
+                // KPI de production : on compte tout OF ayant une date d'impression dans la
+                // période (indépendamment de l'exclusion du planning), pour refléter la production réelle.
                 var fabFilter = Builders<BsonDocument>.Filter.And(
                     Builders<BsonDocument>.Filter.Exists("dateImpression"),
                     Builders<BsonDocument>.Filter.Ne("dateImpression", BsonNull.Value),
                     Builders<BsonDocument>.Filter.Gte("dateImpression", new BsonDateTime(from)),
-                    Builders<BsonDocument>.Filter.Lt("dateImpression", new BsonDateTime(toExclusive)),
-                    Builders<BsonDocument>.Filter.Ne("excludeFromPlanning", true)
+                    Builders<BsonDocument>.Filter.Lt("dateImpression", new BsonDateTime(toExclusive))
                 );
                 var fabs = fabCol.Find(fabFilter).ToList();
 
