@@ -16,6 +16,8 @@ export function hideAllViews() {
   document.getElementById("bat-view").classList.add("hidden");
   const machinesEl = document.getElementById("machines-view");
   if (machinesEl) machinesEl.classList.add("hidden");
+  const stockEl = document.getElementById("stock-view");
+  if (stockEl) stockEl.classList.add("hidden");
   document.getElementById("rapport-view").classList.add("hidden");
   const globalProdEl = document.getElementById("global-production");
   if (globalProdEl) globalProdEl.classList.add("hidden");
