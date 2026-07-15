@@ -76,7 +76,7 @@ async function loadStock() {
   if (!body) return;
   let data;
   try {
-    data = await fetch("/api/stock", { headers: { "Authorization": `****** } }).then(r => r.json());
+    data = await fetch("/api/stock", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json());
   } catch (e) { body.innerHTML = '<p style="color:#dc2626;">Erreur de chargement</p>'; return; }
   if (!data.ok) { body.innerHTML = `<p style="color:#dc2626;">${esc(data.error || "Erreur")}</p>`; return; }
 
@@ -207,8 +207,7 @@ function renderBody(items, categories) {
       <h3 style="font-size:15px;font-weight:700;color:#1e3a5f;margin:0 0 8px;">${catLabel(catId)} <span style="font-weight:500;color:#9ca3af;font-size:12px;">(${rows.length})</span></h3>`;
     if (isPapier) {
       html += `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 12px;font-size:12px;color:#1d4ed8;margin-bottom:8px;">
-        📄 Ces papiers sont synchronisés automatiquement depuis le <strong>Catalogue papiers</strong>.
-        Pour ajouter ou supprimer un papier, utilisez <a href="#" onclick="document.querySelector('[data-section=settings]')?.click();return false;" style="color:#1d4ed8;text-decoration:underline;">Réglages → Catalogue papiers</a>.
+        📄 Ces papiers sont synchronisés automatiquement depuis le <strong>Catalogue papiers</strong> (Réglages → Catalogue papiers).
         Les quantités et seuils restent modifiables ici.
       </div>`;
     }
@@ -229,8 +228,8 @@ function renderBody(items, categories) {
         <td style="padding:7px 8px;"><span style="background:${st.bg};color:${st.fg};font-weight:700;font-size:11px;border-radius:10px;padding:2px 9px;white-space:nowrap;">${st.label}</span></td>
         <td style="padding:7px 8px;color:#6b7280;">${esc(i.supplier || '—')}</td>
         <td style="padding:7px 8px;text-align:right;white-space:nowrap;">
-          <button class="stock-mv" data-id="${esc(i.id)}" data-type="entree" title="Entrée de stock" style="border:1px solid #16a34a;color:#16a34a;background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;font-weight:700;">＋</button>
-          <button class="stock-mv" data-id="${esc(i.id)}" data-type="sortie" title="Sortie de stock" style="border:1px solid #dc2626;color:#dc2626;background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;font-weight:700;">－</button>
+          <button class="stock-mv" data-id="${esc(i.id)}" data-type="entree" title="Entrée de stock" style="border:1px solid #16a34a;color:#16a34a;background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;">＋</button>
+          <button class="stock-mv" data-id="${esc(i.id)}" data-type="sortie" title="Sortie de stock" style="border:1px solid #dc2626;color:#dc2626;background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;">－</button>
           <button class="stock-edit" data-id="${esc(i.id)}" title="Modifier" style="border:1px solid #d1d5db;background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;">✏️</button>
           ${isAdmin && !i.fromCatalog ? `<button class="stock-del" data-id="${esc(i.id)}" title="Supprimer" style="border:1px solid #d1d5db;background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;">🗑️</button>` : ''}
         </td>
@@ -287,7 +286,7 @@ async function ensurePaperId(item) {
   if (!item.isVirtual) return item.id;
   const r = await fetch("/api/stock/ensure-paper", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `****** },
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
     body: JSON.stringify({ name: item.name })
   }).then(res => res.json()).catch(() => ({ ok: false }));
   if (!r.ok) throw new Error(r.error || "Impossible de matérialiser l'article papier");
@@ -328,8 +327,8 @@ async function openManageCategoriesModal() {
         <div style="border-top:1px solid #e5e7eb;padding-top:14px;">
           <h4 style="margin:0 0 10px;font-size:13px;font-weight:700;color:#374151;">＋ Nouvelle catégorie</h4>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
-            <div><label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px;">Emoji</label><input id="mcat-new-emoji" class="settings-input" value="" placeholder="📦" style="width:60px;text-align:center;" maxlength="4" /></div>
-            <div style="flex:1;min-width:140px;"><label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px;">Libellé</label><input id="mcat-new-label" class="settings-input" value="" placeholder="Nom de la catégorie" style="width:100%;" /></div>
+            <div><label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px;">Emoji</label><input id="mcat-new-emoji" class="settings-input" value="" placeholder="📦" style="width:60px;text-align:center;" /></div>
+            <div style="flex:1;min-width:140px;"><label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px;">Libellé</label><input id="mcat-new-label" class="settings-input" value="" placeholder="Ex: Encres" style="width:100%;" /></div>
             <button id="mcat-add-btn" class="btn btn-primary">Ajouter</button>
           </div>
           <div id="mcat-err" style="margin-top:6px;font-size:12px;color:#dc2626;"></div>
@@ -407,8 +406,8 @@ function openItemModal(item) {
   panel.innerHTML = `
     <div style="padding:18px 22px;border-bottom:1px solid #eee;"><h3 style="margin:0;font-size:16px;font-weight:700;color:#1e3a5f;">${isEdit ? "✏️ Modifier l'article" : "＋ Nouvel article"}</h3></div>
     <div style="padding:16px 22px;display:flex;flex-direction:column;gap:10px;">
-      ${isCatalogPaper ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:7px 10px;font-size:12px;color:#1d4ed8;margin-bottom:4px;">📄 Papier synchronisé depuis le Catalogue papiers — le nom et la catégorie ne sont pas modifiables ici.</div>` : ''}
-      <label style="font-size:12px;color:#374151;">Nom<input id="si-name" class="settings-input" value="${esc(item?.name || '')}" style="width:100%;margin-top:3px;${isCatalogPaper ? 'opacity:0.6;' : ''}" ${isCatalogPaper ? 'disabled' : ''}/></label>
+      ${isCatalogPaper ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:7px 10px;font-size:12px;color:#1d4ed8;margin-bottom:4px;">📄 Papier synchronisé depuis le Catalogue papiers. Nom et catégorie non modifiables ici.</div>` : ''}
+      <label style="font-size:12px;color:#374151;">Nom<input id="si-name" class="settings-input" value="${esc(item?.name || '')}" style="width:100%;margin-top:3px;${isCatalogPaper ? 'opacity:0.6;' : ''}" ${isCatalogPaper ? 'disabled' : ''} /></label>
       <div style="display:flex;gap:10px;">
         <label style="font-size:12px;color:#374151;flex:1;">Catégorie
           <select id="si-cat" class="settings-input" style="width:100%;margin-top:3px;" ${isCatalogPaper ? 'disabled' : ''}>${catsOptions}</select>
@@ -458,7 +457,7 @@ function openItemModal(item) {
     }
     const r = await fetch(url, {
       method,
-      headers: { "Content-Type": "application/json", "Authorization": `****** },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
       body: JSON.stringify(payload)
     }).then(r => r.json()).catch(() => ({ ok: false }));
     if (r.ok) { close(); showNotification(isEdit ? "✅ Article modifié" : "✅ Article créé", "success"); loadStock(); }
@@ -475,7 +474,7 @@ function openMovementModal(item, type) {
     <div style="padding:18px 22px;border-bottom:1px solid #eee;"><h3 style="margin:0;font-size:16px;font-weight:700;color:${isIn ? '#16a34a' : '#dc2626'};">${isIn ? '＋ Entrée de stock' : '－ Sortie de stock'}</h3>
       <div style="font-size:13px;color:#6b7280;margin-top:4px;">${esc(item.name)} — stock actuel : <strong>${_num(item.quantity)} ${esc(item.unit || '')}</strong></div></div>
     <div style="padding:16px 22px;display:flex;flex-direction:column;gap:10px;">
-      <label style="font-size:12px;color:#374151;">Quantité (${isIn ? 'ajoutée' : 'retirée'})<input id="mv-qty" type="number" min="0" step="any" class="settings-input" value="" style="width:100%;margin-top:3px;" autofocus /></label>
+      <label style="font-size:12px;color:#374151;">Quantité (${isIn ? 'ajoutée' : 'retirée'})<input id="mv-qty" type="number" min="0" step="any" class="settings-input" value="" style="width:100%;margin-top:3px;" /></label>
       <label style="font-size:12px;color:#374151;">Motif<input id="mv-reason" class="settings-input" value="" placeholder="${isIn ? 'Réception fournisseur…' : 'Consommation OF…'}" style="width:100%;margin-top:3px;" /></label>
     </div>
     <div style="padding:14px 22px;border-top:1px solid #eee;display:flex;justify-content:flex-end;gap:10px;">
@@ -494,7 +493,7 @@ function openMovementModal(item, type) {
     catch (e) { showNotification(`❌ ${e.message}`, "error"); return; }
     const r = await fetch(`/api/stock/${itemId}/movement`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `****** },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
       body: JSON.stringify({ type, quantity: qty, reason: panel.querySelector("#mv-reason").value.trim() })
     }).then(r => r.json()).catch(() => ({ ok: false }));
     if (r.ok) { close(); showNotification(`✅ Stock mis à jour : ${_num(r.quantity)}`, "success"); loadStock(); }
