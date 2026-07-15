@@ -39,6 +39,12 @@ public class StockMovementInput
     [JsonPropertyName("reason")]   public string? Reason { get; set; }
 }
 
+/// <summary>Corps pour POST /api/stock/ensure-paper — matérialisation d'un papier virtuel.</summary>
+public class EnsurePaperInput
+{
+    [JsonPropertyName("name")] public string? Name { get; set; }
+}
+
 /// <summary>Catégories par défaut (seed si la collection est vide).</summary>
 public static class StockCategoryDefaults
 {

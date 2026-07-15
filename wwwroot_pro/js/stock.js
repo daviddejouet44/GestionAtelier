@@ -76,11 +76,19 @@ async function loadStock() {
   if (!body) return;
   let data;
   try {
-    data = await fetch("/api/stock", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json());
+    data = await fetch("/api/stock", { headers: { "Authorization": `****** } }).then(r => r.json());
   } catch (e) { body.innerHTML = '<p style="color:#dc2626;">Erreur de chargement</p>'; return; }
   if (!data.ok) { body.innerHTML = `<p style="color:#dc2626;">${esc(data.error || "Erreur")}</p>`; return; }
 
   if (Array.isArray(data.categories)) _categories = data.categories;
+
+  // Attribuer un identifiant synthétique aux articles virtuels du catalogue papiers
+  // (ils n'ont pas encore d'_id en base)
+  for (const item of data.items || []) {
+    if (item.isVirtual && !item.id) {
+      item.id = "~vp~" + item.name;
+    }
+  }
 
   renderAlerts(data.items || []);
   renderBody(data.items || [], data.categories || []);
@@ -90,9 +98,11 @@ async function loadStock() {
 }
 
 function _populateCatSelect(select) {
-  select.innerHTML = _categories.map(c =>
-    `<option value="${esc(c.id)}">${esc(c.emoji || '')} ${esc(c.label)}</option>`
-  ).join('');
+  // Exclure la catégorie papier de l'import : elle est synchronisée automatiquement
+  select.innerHTML = _categories
+    .filter(c => c.id !== "papier")
+    .map(c => `<option value="${esc(c.id)}">${esc(c.emoji || '')} ${esc(c.label)}</option>`)
+    .join('');
 }
 
 function toggleImportPanel() {
@@ -192,9 +202,17 @@ function renderBody(items, categories) {
   for (const catId of sortedCats) {
     const rows = items.filter(i => i.category === catId);
     if (rows.length === 0) continue;
+    const isPapier = catId === "papier";
     html += `<div style="margin-bottom:18px;">
-      <h3 style="font-size:15px;font-weight:700;color:#1e3a5f;margin:0 0 8px;">${catLabel(catId)} <span style="font-weight:500;color:#9ca3af;font-size:12px;">(${rows.length})</span></h3>
-      <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <h3 style="font-size:15px;font-weight:700;color:#1e3a5f;margin:0 0 8px;">${catLabel(catId)} <span style="font-weight:500;color:#9ca3af;font-size:12px;">(${rows.length})</span></h3>`;
+    if (isPapier) {
+      html += `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 12px;font-size:12px;color:#1d4ed8;margin-bottom:8px;">
+        📄 Ces papiers sont synchronisés automatiquement depuis le <strong>Catalogue papiers</strong>.
+        Pour ajouter ou supprimer un papier, utilisez <a href="#" onclick="document.querySelector('[data-section=settings]')?.click();return false;" style="color:#1d4ed8;text-decoration:underline;">Réglages → Catalogue papiers</a>.
+        Les quantités et seuils restent modifiables ici.
+      </div>`;
+    }
+    html += `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
         <thead><tr style="text-align:left;color:#6b7280;border-bottom:1px solid #e5e7eb;">
           <th style="padding:6px 8px;">Article</th><th style="padding:6px 8px;">Quantité</th>
           <th style="padding:6px 8px;">Seuil</th><th style="padding:6px 8px;">Statut</th>
@@ -202,8 +220,10 @@ function renderBody(items, categories) {
         </tr></thead><tbody>`;
     for (const i of rows) {
       const st = STATUS_STYLE[i.status] || STATUS_STYLE.ok;
-      html += `<tr data-id="${esc(i.id)}" style="border-bottom:1px solid #f1f5f9;">
-        <td style="padding:7px 8px;font-weight:600;color:#111827;">${esc(i.name)}${i.reference ? ` <span style="font-weight:400;color:#9ca3af;">(${esc(i.reference)})</span>` : ''}</td>
+      const rowBg = i.isVirtual ? 'background:#f8fafc;' : (i.isOrphan ? 'background:#fffbeb;' : '');
+      const orphanBadge = i.isOrphan ? ' <span style="font-size:10px;background:#fef3c7;color:#b45309;border-radius:4px;padding:1px 5px;vertical-align:middle;">orphelin</span>' : '';
+      html += `<tr data-id="${esc(i.id)}" style="border-bottom:1px solid #f1f5f9;${rowBg}">
+        <td style="padding:7px 8px;font-weight:600;color:${i.isVirtual ? '#9ca3af' : '#111827'};">${esc(i.name)}${i.reference ? ` <span style="font-weight:400;color:#9ca3af;">(${esc(i.reference)})</span>` : ''}${orphanBadge}</td>
         <td style="padding:7px 8px;"><strong>${_num(i.quantity)}</strong> ${esc(i.unit || '')}</td>
         <td style="padding:7px 8px;color:#6b7280;">${_num(i.minThreshold)}</td>
         <td style="padding:7px 8px;"><span style="background:${st.bg};color:${st.fg};font-weight:700;font-size:11px;border-radius:10px;padding:2px 9px;white-space:nowrap;">${st.label}</span></td>
@@ -212,7 +232,7 @@ function renderBody(items, categories) {
           <button class="stock-mv" data-id="${esc(i.id)}" data-type="entree" title="Entrée de stock" style="border:1px solid #16a34a;color:#16a34a;background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;font-weight:700;">＋</button>
           <button class="stock-mv" data-id="${esc(i.id)}" data-type="sortie" title="Sortie de stock" style="border:1px solid #dc2626;color:#dc2626;background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;font-weight:700;">－</button>
           <button class="stock-edit" data-id="${esc(i.id)}" title="Modifier" style="border:1px solid #d1d5db;background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;">✏️</button>
-          ${isAdmin ? `<button class="stock-del" data-id="${esc(i.id)}" title="Supprimer" style="border:1px solid #d1d5db;background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;">🗑️</button>` : ''}
+          ${isAdmin && !i.fromCatalog ? `<button class="stock-del" data-id="${esc(i.id)}" title="Supprimer" style="border:1px solid #d1d5db;background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;">🗑️</button>` : ''}
         </td>
       </tr>`;
     }
@@ -256,6 +276,24 @@ function renderBody(items, categories) {
 function _num(n) {
   const v = Number(n || 0);
   return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+
+/**
+ * Matérialise un article papier virtuel (catalogue uniquement) en article de stock réel.
+ * Si l'article existe déjà en base, retourne son id sans modification.
+ * Met à jour item.id et item.isVirtual après matérialisation.
+ */
+async function ensurePaperId(item) {
+  if (!item.isVirtual) return item.id;
+  const r = await fetch("/api/stock/ensure-paper", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `****** },
+    body: JSON.stringify({ name: item.name })
+  }).then(res => res.json()).catch(() => ({ ok: false }));
+  if (!r.ok) throw new Error(r.error || "Impossible de matérialiser l'article papier");
+  item.id = r.id;
+  item.isVirtual = false;
+  return r.id;
 }
 
 async function openManageCategoriesModal() {
@@ -353,20 +391,27 @@ async function openManageCategoriesModal() {
 
 function openItemModal(item) {
   const isEdit = !!item;
+  const isCatalogPaper = isEdit && item.fromCatalog;
   const overlay = _overlay();
   const panel = _panel("520px");
 
-  const catsOptions = _categories.map(c =>
-    `<option value="${esc(c.id)}" ${item?.category === c.id ? 'selected' : ''}>${esc((c.emoji || '') + ' ' + c.label)}</option>`
-  ).join('');
+  // Pour les articles du catalogue papier, on n'affiche pas la catégorie papier
+  // dans le sélecteur (pas de création manuelle). Pour les nouveaux articles,
+  // on exclut papier du choix de catégorie.
+  const catsOptions = _categories
+    .filter(c => !(c.id === "papier" && !isCatalogPaper))
+    .map(c =>
+      `<option value="${esc(c.id)}" ${item?.category === c.id ? 'selected' : ''} ${isCatalogPaper && c.id === "papier" ? 'disabled' : ''}>${esc((c.emoji || '') + ' ' + c.label)}</option>`
+    ).join('');
 
   panel.innerHTML = `
     <div style="padding:18px 22px;border-bottom:1px solid #eee;"><h3 style="margin:0;font-size:16px;font-weight:700;color:#1e3a5f;">${isEdit ? "✏️ Modifier l'article" : "＋ Nouvel article"}</h3></div>
     <div style="padding:16px 22px;display:flex;flex-direction:column;gap:10px;">
-      <label style="font-size:12px;color:#374151;">Nom<input id="si-name" class="settings-input" value="${esc(item?.name || '')}" style="width:100%;margin-top:3px;" /></label>
+      ${isCatalogPaper ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:7px 10px;font-size:12px;color:#1d4ed8;margin-bottom:4px;">📄 Papier synchronisé depuis le Catalogue papiers — le nom et la catégorie ne sont pas modifiables ici.</div>` : ''}
+      <label style="font-size:12px;color:#374151;">Nom<input id="si-name" class="settings-input" value="${esc(item?.name || '')}" style="width:100%;margin-top:3px;${isCatalogPaper ? 'opacity:0.6;' : ''}" ${isCatalogPaper ? 'disabled' : ''}/></label>
       <div style="display:flex;gap:10px;">
         <label style="font-size:12px;color:#374151;flex:1;">Catégorie
-          <select id="si-cat" class="settings-input" style="width:100%;margin-top:3px;">${catsOptions}</select>
+          <select id="si-cat" class="settings-input" style="width:100%;margin-top:3px;" ${isCatalogPaper ? 'disabled' : ''}>${catsOptions}</select>
         </label>
         <label style="font-size:12px;color:#374151;flex:1;">Unité<input id="si-unit" class="settings-input" value="${esc(item?.unit || '')}" placeholder="feuilles, kg, L…" style="width:100%;margin-top:3px;" /></label>
       </div>
@@ -390,8 +435,8 @@ function openItemModal(item) {
   panel.querySelector("#si-cancel").onclick = close;
   panel.querySelector("#si-save").onclick = async () => {
     const payload = {
-      name: panel.querySelector("#si-name").value.trim(),
-      category: panel.querySelector("#si-cat").value,
+      name: isCatalogPaper ? item.name : panel.querySelector("#si-name").value.trim(),
+      category: isCatalogPaper ? "papier" : panel.querySelector("#si-cat").value,
       unit: panel.querySelector("#si-unit").value.trim(),
       minThreshold: parseFloat(panel.querySelector("#si-min").value) || 0,
       supplier: panel.querySelector("#si-sup").value.trim(),
@@ -400,11 +445,20 @@ function openItemModal(item) {
     };
     if (!payload.name) { showNotification("Nom requis", "error"); return; }
     if (!isEdit) payload.quantity = parseFloat(panel.querySelector("#si-qty")?.value) || 0;
-    const url = isEdit ? `/api/stock/${item.id}` : "/api/stock";
-    const method = isEdit ? "PUT" : "POST";
+    let url, method;
+    if (isEdit) {
+      let itemId;
+      try { itemId = await ensurePaperId(item); }
+      catch (e) { showNotification(`❌ ${e.message}`, "error"); return; }
+      url = `/api/stock/${itemId}`;
+      method = "PUT";
+    } else {
+      url = "/api/stock";
+      method = "POST";
+    }
     const r = await fetch(url, {
       method,
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      headers: { "Content-Type": "application/json", "Authorization": `****** },
       body: JSON.stringify(payload)
     }).then(r => r.json()).catch(() => ({ ok: false }));
     if (r.ok) { close(); showNotification(isEdit ? "✅ Article modifié" : "✅ Article créé", "success"); loadStock(); }
@@ -435,9 +489,12 @@ function openMovementModal(item, type) {
   panel.querySelector("#mv-save").onclick = async () => {
     const qty = parseFloat(panel.querySelector("#mv-qty").value);
     if (!(qty > 0)) { showNotification("Quantité invalide", "error"); return; }
-    const r = await fetch(`/api/stock/${item.id}/movement`, {
+    let itemId;
+    try { itemId = await ensurePaperId(item); }
+    catch (e) { showNotification(`❌ ${e.message}`, "error"); return; }
+    const r = await fetch(`/api/stock/${itemId}/movement`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      headers: { "Content-Type": "application/json", "Authorization": `****** },
       body: JSON.stringify({ type, quantity: qty, reason: panel.querySelector("#mv-reason").value.trim() })
     }).then(r => r.json()).catch(() => ({ ok: false }));
     if (r.ok) { close(); showNotification(`✅ Stock mis à jour : ${_num(r.quantity)}`, "success"); loadStock(); }

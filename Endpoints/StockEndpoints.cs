@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Xml;
 using System.Xml.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -29,6 +30,9 @@ public static class StockEndpoints
     private static IMongoCollection<BsonDocument> Items() => MongoDbHelper.GetCollection<BsonDocument>("stockItems");
     private static IMongoCollection<BsonDocument> Movements() => MongoDbHelper.GetCollection<BsonDocument>("stockMovements");
     private static IMongoCollection<BsonDocument> Cats() => MongoDbHelper.GetCollection<BsonDocument>("stockCategories");
+
+    /// <summary>Identifiant exact de la catégorie papier — synchronisée automatiquement avec le Catalogue papiers.</summary>
+    private const string PaperCategoryId = "papier";
 
     /// <summary>Retourne les ids des catégories existantes en base (avec seed si vide).</summary>
     private static HashSet<string> GetValidCategoryIds()
@@ -72,6 +76,92 @@ public static class StockEndpoints
         return StockStatus.Compute(qty, min);
     }
 
+    /// <summary>
+    /// Retourne la liste fusionnée (XML Paper Catalog.xml + customPaperCatalog MongoDB) des noms de papiers.
+    /// Même logique que GET /api/config/paper-catalog dans PrintConfigEndpoints.cs.
+    /// </summary>
+    private static List<string> GetCatalogPaperNames()
+    {
+        var names = new List<string>();
+        try
+        {
+            var searchPaths = new[]
+            {
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data", "Paper Catalog.xml"),
+                Path.Combine(Directory.GetCurrentDirectory(), "data", "Paper Catalog.xml"),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Paper Catalog.xml"),
+                Path.Combine(Directory.GetCurrentDirectory(), "Paper Catalog.xml"),
+                Path.Combine(BackendUtils.HotfoldersRoot(), "..", "Paper Catalog.xml"),
+                "Paper Catalog.xml"
+            };
+
+            string? xmlPath = searchPaths.FirstOrDefault(p => File.Exists(p));
+            if (xmlPath != null)
+            {
+                var xmlSettings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null };
+                XDocument doc;
+                using (var xmlReader = XmlReader.Create(xmlPath, xmlSettings))
+                    doc = XDocument.Load(xmlReader);
+
+                var xmlNames = doc.Descendants()
+                    .Where(el => el.Name.LocalName == "Media")
+                    .Select(el => (string?)(el.Attribute("DescriptiveName") ?? el.Attribute("descriptiveName")))
+                    .Where(n => !string.IsNullOrWhiteSpace(n))
+                    .Select(n => n!)
+                    .ToList();
+
+                if (!xmlNames.Any())
+                {
+                    xmlNames = doc.Descendants()
+                        .Where(el => el.Name.LocalName == "CatalogEntry" || el.Name.LocalName == "Paper" || el.Name.LocalName == "Entry")
+                        .Select(el => (string?)(el.Attribute("Name") ?? el.Attribute("name") ?? el.Attribute("mediaName") ?? el.Attribute("MediaName")))
+                        .Where(n => !string.IsNullOrWhiteSpace(n))
+                        .Select(n => n!)
+                        .ToList();
+                }
+                names.AddRange(xmlNames);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[WARN] GetCatalogPaperNames XML error: {ex.Message}");
+        }
+
+        var customCatalog = MongoDbHelper.GetSettings<CustomPaperCatalog>("customPaperCatalog");
+        if (customCatalog?.Papers != null)
+            names.AddRange(customCatalog.Papers.Select(p => p.Name).Where(n => !string.IsNullOrWhiteSpace(n)));
+
+        return names.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(n => n).ToList();
+    }
+
+    /// <summary>Convertit un document stockItems en DTO avec indicateurs catalogue (fromCatalog = true).</summary>
+    private static object ToCatalogDto(BsonDocument d, bool isOrphan = false)
+    {
+        double qty = 0, min = 0;
+        try { qty = d.Contains("quantity") && d["quantity"] != BsonNull.Value ? d["quantity"].ToDouble() : 0; } catch { }
+        try { min = d.Contains("minThreshold") && d["minThreshold"] != BsonNull.Value ? d["minThreshold"].ToDouble() : 0; } catch { }
+        string S(string f) => d.Contains(f) && d[f] != BsonNull.Value && d[f].IsString ? d[f].AsString : "";
+        DateTime? T(string f) { try { return d.Contains(f) && d[f] != BsonNull.Value ? d[f].ToUniversalTime() : (DateTime?)null; } catch { return null; } }
+        return new
+        {
+            id = d["_id"].AsObjectId.ToString(),
+            name = S("name"),
+            category = S("category"),
+            unit = S("unit"),
+            quantity = qty,
+            minThreshold = min,
+            supplier = S("supplier"),
+            reference = S("reference"),
+            note = S("note"),
+            status = StockStatus.Compute(qty, min),
+            updatedAt = T("updatedAt"),
+            updatedBy = S("updatedBy"),
+            fromCatalog = true,
+            isVirtual = false,
+            isOrphan = isOrphan
+        };
+    }
+
     public static void MapStockEndpoints(this WebApplication app)
     {
         // ── Catégories ───────────────────────────────────────────────────────────
@@ -94,7 +184,82 @@ public static class StockEndpoints
                 var docs = Items().Find(filter)
                     .Sort(Builders<BsonDocument>.Sort.Ascending("category").Ascending("name"))
                     .ToList();
-                var items = docs.Select(ToDto).ToList();
+
+                // Compter les alertes sur les articles réellement en base (avant injection des virtuels)
+                var alertCount = docs.Count(d => StatusOf(d) != "ok");
+
+                // Construire la liste des articles en fusionnant avec le catalogue papiers
+                var items = new List<object>();
+                bool includePapier = string.IsNullOrWhiteSpace(category) ||
+                    category.Equals(PaperCategoryId, StringComparison.OrdinalIgnoreCase);
+
+                if (includePapier)
+                {
+                    // Articles non-papier : conversion DTO standard
+                    items.AddRange(docs
+                        .Where(d => !(d.Contains("category") && d["category"].AsString
+                            .Equals(PaperCategoryId, StringComparison.OrdinalIgnoreCase)))
+                        .Select(ToDto));
+
+                    // Articles papier existants en base, indexés par nom (insensible à la casse)
+                    var paperDocs = docs
+                        .Where(d => d.Contains("category") && d["category"].AsString
+                            .Equals(PaperCategoryId, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                    var paperDocsByName = new Dictionary<string, BsonDocument>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var pd in paperDocs)
+                    {
+                        var n = pd.Contains("name") && pd["name"] != BsonNull.Value ? pd["name"].AsString : "";
+                        if (!string.IsNullOrEmpty(n) && !paperDocsByName.ContainsKey(n))
+                            paperDocsByName[n] = pd;
+                    }
+
+                    // Fusionner avec les noms du catalogue papiers (XML + custom MongoDB)
+                    var catalogNames = GetCatalogPaperNames();
+                    var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var name in catalogNames)
+                    {
+                        seenNames.Add(name);
+                        if (paperDocsByName.TryGetValue(name, out var existingDoc))
+                        {
+                            items.Add(ToCatalogDto(existingDoc, isOrphan: false));
+                        }
+                        else
+                        {
+                            // Article virtuel : existe dans le catalogue mais pas encore en stock
+                            items.Add(new
+                            {
+                                id = "",
+                                name,
+                                category = PaperCategoryId,
+                                unit = "",
+                                quantity = 0.0,
+                                minThreshold = 0.0,
+                                supplier = "",
+                                reference = "",
+                                note = "",
+                                status = "ok",
+                                updatedAt = (DateTime?)null,
+                                updatedBy = "",
+                                fromCatalog = true,
+                                isVirtual = true,
+                                isOrphan = false
+                            });
+                        }
+                    }
+
+                    // Articles papier en base qui ne correspondent plus à aucun papier du catalogue (orphelins)
+                    foreach (var pd in paperDocs)
+                    {
+                        var n = pd.Contains("name") && pd["name"] != BsonNull.Value ? pd["name"].AsString : "";
+                        if (!string.IsNullOrEmpty(n) && !seenNames.Contains(n))
+                            items.Add(ToCatalogDto(pd, isOrphan: true));
+                    }
+                }
+                else
+                {
+                    items.AddRange(docs.Select(ToDto));
+                }
 
                 // Renvoyer les catégories triées depuis la collection dynamique
                 StockCategoriesEndpoints.SeedDefaultCategories();
@@ -113,7 +278,7 @@ public static class StockEndpoints
                     ok = true,
                     categories,
                     items,
-                    alertCount = docs.Count(d => StatusOf(d) != "ok")
+                    alertCount
                 });
             }
             catch (Exception ex) { return ErrorHelper.HandleException(ex); }
@@ -147,6 +312,9 @@ public static class StockEndpoints
                 var validIds = GetValidCategoryIds();
                 if (string.IsNullOrWhiteSpace(input.Category) || !validIds.Contains(input.Category))
                     return Results.Json(new { ok = false, error = "Catégorie invalide" });
+
+                if (input.Category.Trim().ToLowerInvariant() == PaperCategoryId)
+                    return Results.Json(new { ok = false, error = "La catégorie « papier » est synchronisée automatiquement avec le Catalogue papiers. Utilisez l'onglet Réglages → Catalogue papiers." });
 
                 var doc = new BsonDocument
                 {
@@ -214,6 +382,56 @@ public static class StockEndpoints
                 Items().DeleteOne(Builders<BsonDocument>.Filter.Eq("_id", oid));
                 Movements().DeleteMany(Builders<BsonDocument>.Filter.Eq("itemId", oid.ToString()));
                 return Results.Json(new { ok = true });
+            }
+            catch (Exception ex) { return ErrorHelper.HandleException(ex); }
+        });
+
+        // Matérialise un papier virtuel du catalogue en article de stock réel (créé si absent).
+        // POST /api/stock/ensure-paper  { "name": "Couché mat 90g" }
+        app.MapPost("/api/stock/ensure-paper", async (HttpContext ctx) =>
+        {
+            try
+            {
+                if (!AuthHelper.IsAuthenticated(ctx))
+                    return Results.Json(new { ok = false, error = "Non authentifié" }, statusCode: 401);
+
+                var input = await ctx.Request.ReadFromJsonAsync<EnsurePaperInput>();
+                if (input == null || string.IsNullOrWhiteSpace(input.Name))
+                    return Results.Json(new { ok = false, error = "Nom requis" });
+
+                var trimmedName = input.Name.Trim();
+
+                // Vérifier que le papier existe bien dans le catalogue
+                var catalogNames = GetCatalogPaperNames();
+                if (!catalogNames.Any(n => n.Equals(trimmedName, StringComparison.OrdinalIgnoreCase)))
+                    return Results.Json(new { ok = false, error = "Ce papier n'existe pas dans le Catalogue papiers" });
+
+                // Chercher un article de stock existant pour ce papier
+                var existing = Items().Find(Builders<BsonDocument>.Filter.And(
+                    Builders<BsonDocument>.Filter.Eq("category", PaperCategoryId),
+                    Builders<BsonDocument>.Filter.Regex("name", new MongoDB.Bson.BsonRegularExpression(
+                        "^" + System.Text.RegularExpressions.Regex.Escape(trimmedName) + "$", "i"))
+                )).FirstOrDefault();
+
+                if (existing != null)
+                    return Results.Json(new { ok = true, id = existing["_id"].AsObjectId.ToString(), created = false });
+
+                // Créer l'article de stock (matérialisation à la demande)
+                var doc = new BsonDocument
+                {
+                    ["name"]         = trimmedName,
+                    ["category"]     = PaperCategoryId,
+                    ["unit"]         = "",
+                    ["quantity"]     = 0.0,
+                    ["minThreshold"] = 0.0,
+                    ["supplier"]     = "",
+                    ["reference"]    = "",
+                    ["note"]         = "",
+                    ["updatedAt"]    = DateTime.UtcNow,
+                    ["updatedBy"]    = AuthHelper.GetClaim(ctx, "name") ?? AuthHelper.GetClaim(ctx, "login") ?? ""
+                };
+                await Items().InsertOneAsync(doc);
+                return Results.Json(new { ok = true, id = doc["_id"].AsObjectId.ToString(), created = true });
             }
             catch (Exception ex) { return ErrorHelper.HandleException(ex); }
         });
@@ -322,6 +540,9 @@ public static class StockEndpoints
                 var validIds = GetValidCategoryIds();
                 if (string.IsNullOrWhiteSpace(category) || !validIds.Contains(category))
                     return Results.Json(new { ok = false, error = "Catégorie invalide" });
+
+                if (category == PaperCategoryId)
+                    return Results.Json(new { ok = false, error = "La catégorie « papier » est synchronisée automatiquement avec le Catalogue papiers. Utilisez l'onglet Réglages → Catalogue papiers." });
 
                 if (mode != "overwrite" && mode != "merge")
                     mode = "merge";
@@ -529,10 +750,12 @@ public static class StockEndpoints
 
     /// <summary>
     /// Parse un fichier XML.
-    /// Format attendu :
-    ///   &lt;articles&gt;
-    ///     &lt;article nom="..." quantite="..." unite="..." seuil="..." fournisseur="..." reference="..." note="..." /&gt;
-    ///   &lt;/articles&gt;
+    /// Formats reconnus :
+    ///   1. Format stock standard :
+    ///      &lt;articles&gt;&lt;article nom="..." quantite="..." /&gt;&lt;/articles&gt;
+    ///      (éléments article|item|produit)
+    ///   2. Format catalogue papier (Paper Catalog.xml) :
+    ///      &lt;Media DescriptiveName="..."&gt; ou &lt;CatalogEntry Name="..."&gt; / &lt;Paper&gt; / &lt;Entry&gt;
     /// Les valeurs peuvent aussi être des éléments enfants.
     /// </summary>
     private static List<StockImportRow> ParseXml(Stream stream)
@@ -541,11 +764,6 @@ public static class StockEndpoints
         try
         {
             var doc = XDocument.Load(stream);
-            // Chercher tous les éléments qui ressemblent à des articles
-            var items = doc.Descendants()
-                .Where(e => e.Name.LocalName.Equals("article", StringComparison.OrdinalIgnoreCase)
-                         || e.Name.LocalName.Equals("item", StringComparison.OrdinalIgnoreCase)
-                         || e.Name.LocalName.Equals("produit", StringComparison.OrdinalIgnoreCase));
 
             string Attr(XElement e, params string[] names)
             {
@@ -564,19 +782,56 @@ public static class StockEndpoints
                 return double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0;
             }
 
-            foreach (var item in items)
+            // Format 1 : éléments article|item|produit (format stock standard)
+            var stockItems = doc.Descendants()
+                .Where(e => e.Name.LocalName.Equals("article", StringComparison.OrdinalIgnoreCase)
+                         || e.Name.LocalName.Equals("item", StringComparison.OrdinalIgnoreCase)
+                         || e.Name.LocalName.Equals("produit", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (stockItems.Any())
             {
-                var name = Attr(item, "nom", "name", "Nom", "libellé", "libelle", "designation");
-                if (string.IsNullOrWhiteSpace(name)) continue;
-                rows.Add(new StockImportRow(
-                    name,
-                    Attr(item, "unite", "unité", "unit"),
-                    AttrD(item, "quantite", "quantité", "quantity", "qte"),
-                    AttrD(item, "seuil", "minthreshold", "threshold"),
-                    Attr(item, "fournisseur", "supplier"),
-                    Attr(item, "reference", "référence", "ref"),
-                    Attr(item, "note", "notes", "commentaire")
-                ));
+                foreach (var item in stockItems)
+                {
+                    var name = Attr(item, "nom", "name", "Nom", "libellé", "libelle", "designation");
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    rows.Add(new StockImportRow(
+                        name,
+                        Attr(item, "unite", "unité", "unit"),
+                        AttrD(item, "quantite", "quantité", "quantity", "qte"),
+                        AttrD(item, "seuil", "minthreshold", "threshold"),
+                        Attr(item, "fournisseur", "supplier"),
+                        Attr(item, "reference", "référence", "ref"),
+                        Attr(item, "note", "notes", "commentaire")
+                    ));
+                }
+            }
+            else
+            {
+                // Format 2 : catalogue papier — <Media DescriptiveName="...">
+                var mediaItems = doc.Descendants()
+                    .Where(e => e.Name.LocalName == "Media")
+                    .Select(e => (string?)(e.Attribute("DescriptiveName")?.Value ?? e.Attribute("descriptiveName")?.Value))
+                    .Where(n => !string.IsNullOrWhiteSpace(n))
+                    .ToList();
+
+                if (mediaItems.Any())
+                {
+                    foreach (var name in mediaItems)
+                        rows.Add(new StockImportRow(name!, "", 0, 0, "", "", ""));
+                }
+                else
+                {
+                    // Format 2b : <CatalogEntry Name="..."> / <Paper> / <Entry>
+                    var catalogItems = doc.Descendants()
+                        .Where(e => e.Name.LocalName == "CatalogEntry" || e.Name.LocalName == "Paper" || e.Name.LocalName == "Entry")
+                        .Select(e => (string?)(e.Attribute("Name")?.Value ?? e.Attribute("name")?.Value
+                                      ?? e.Attribute("mediaName")?.Value ?? e.Attribute("MediaName")?.Value))
+                        .Where(n => !string.IsNullOrWhiteSpace(n))
+                        .ToList();
+                    foreach (var name in catalogItems)
+                        rows.Add(new StockImportRow(name!, "", 0, 0, "", "", ""));
+                }
             }
         }
         catch { /* retourne liste vide si XML invalide ou mal formé */ }
