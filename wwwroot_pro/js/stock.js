@@ -408,7 +408,7 @@ function openItemModal(item) {
     <div style="padding:18px 22px;border-bottom:1px solid #eee;"><h3 style="margin:0;font-size:16px;font-weight:700;color:#1e3a5f;">${isEdit ? "✏️ Modifier l'article" : "＋ Nouvel article"}</h3></div>
     <div style="padding:16px 22px;display:flex;flex-direction:column;gap:10px;">
       ${isCatalogPaper ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:7px 10px;font-size:12px;color:#1d4ed8;margin-bottom:4px;">📄 Papier synchronisé depuis le Catalogue papiers — le nom et la catégorie ne sont pas modifiables ici.</div>` : ''}
-      <label style="font-size:12px;color:#374151;">Nom<input id="si-name" class="settings-input" value="${esc(item?.name || '')}" style="width:100%;margin-top:3px;" ${isCatalogPaper ? 'disabled style="width:100%;margin-top:3px;opacity:0.6;"' : ''}/></label>
+      <label style="font-size:12px;color:#374151;">Nom<input id="si-name" class="settings-input" value="${esc(item?.name || '')}" style="width:100%;margin-top:3px;${isCatalogPaper ? 'opacity:0.6;' : ''}" ${isCatalogPaper ? 'disabled' : ''}/></label>
       <div style="display:flex;gap:10px;">
         <label style="font-size:12px;color:#374151;flex:1;">Catégorie
           <select id="si-cat" class="settings-input" style="width:100%;margin-top:3px;" ${isCatalogPaper ? 'disabled' : ''}>${catsOptions}</select>
