@@ -23,6 +23,7 @@ import { STAGE_PROGRESS, STAGE_DISPLAY_LABELS } from './constants.js';
 import { hideAllViews, showDossiers, showSettings, showGlobalProduction } from './app/navigation.js';
 import { initDashboardView } from './app/dashboard.js?v=3';
 import { initMachinesView } from './machines.js';
+import { initStockView } from './stock.js';
 import { initGlobalSearch } from './search.js';
 import { initHelpPanel } from './help.js';
 
@@ -307,6 +308,13 @@ function showMachinesView() {
   document.getElementById("machines-view").classList.remove("hidden");
   document.getElementById("btnViewMachines").classList.add("active");
   initMachinesView();
+}
+
+function showStockView() {
+  hideAllViews();
+  document.getElementById("stock-view").classList.remove("hidden");
+  document.getElementById("btnViewStock").classList.add("active");
+  initStockView();
 }
 
 function showProduction() {
@@ -1411,6 +1419,9 @@ function setupKanbanActions() {
   // Suivi machines : même visibilité que le planning.
   const btnMachines = document.getElementById("btnViewMachines");
   if (btnMachines) btnMachines.style.display = btnCalendar.style.display;
+  // Stocks : même visibilité que le planning.
+  const btnStock = document.getElementById("btnViewStock");
+  if (btnStock) btnStock.style.display = btnCalendar.style.display;
 }
 
 // ======================================================
@@ -2542,6 +2553,9 @@ document.getElementById("btnViewCalendar").onclick = () => {
 
 const btnViewMachines = document.getElementById("btnViewMachines");
 if (btnViewMachines) btnViewMachines.onclick = showMachinesView;
+
+const btnViewStock = document.getElementById("btnViewStock");
+if (btnViewStock) btnViewStock.onclick = showStockView;
 
 document.getElementById("btnViewSubmission").onclick = showSubmission;
 const btnEnvoyerDevisToolbar = document.getElementById("btn-envoyer-devis");
