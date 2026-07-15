@@ -45,6 +45,7 @@ function applyLicenseUI(data) {
   setVisible('btnViewCalendar', level >= 2);
   setVisible('btnViewMachines', level >= 2);
   setVisible('btnViewStock', level >= 2);
+  setVisible('btnViewKpi', level >= 2);
   setVisible('btnViewDashboard', level >= 2);
   setVisible('btn-envoyer-devis', level >= 3);
   setVisible('btnViewGlobalProd', level >= 3);
