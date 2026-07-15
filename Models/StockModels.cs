@@ -6,7 +6,8 @@ namespace GestionAtelier.Models;
 
 // ======================================================
 // Gestion des stocks (point 7)
-// Collections : "stockItems" (articles) et "stockMovements" (entrées/sorties).
+// Collections : "stockItems" (articles), "stockMovements" (entrées/sorties),
+//               "stockCategories" (catégories dynamiques).
 // ======================================================
 
 /// <summary>Données d'entrée pour créer / modifier un article de stock.</summary>
@@ -22,6 +23,14 @@ public class StockItemInput
     [JsonPropertyName("note")]       public string? Note { get; set; }
 }
 
+/// <summary>Données d'entrée pour créer / renommer une catégorie de stock.</summary>
+public class StockCategoryInput
+{
+    [JsonPropertyName("label")]  public string? Label { get; set; }
+    [JsonPropertyName("emoji")]  public string? Emoji { get; set; }
+    [JsonPropertyName("order")]  public int? Order { get; set; }
+}
+
 public class StockMovementInput
 {
     /// <summary>entree | sortie | ajustement</summary>
@@ -30,15 +39,17 @@ public class StockMovementInput
     [JsonPropertyName("reason")]   public string? Reason { get; set; }
 }
 
-public static class StockCategories
+/// <summary>Catégories par défaut (seed si la collection est vide).</summary>
+public static class StockCategoryDefaults
 {
-    public static readonly string[] All = { "papier", "encre", "plaque", "carton", "consommable" };
-
-    public static bool IsValid(string? c) =>
-        !string.IsNullOrWhiteSpace(c) && Array.Exists(All, x => string.Equals(x, c, StringComparison.OrdinalIgnoreCase));
-
-    public static string Canonical(string c) =>
-        Array.Find(All, x => string.Equals(x, c, StringComparison.OrdinalIgnoreCase)) ?? c.ToLowerInvariant();
+    public static readonly (string Id, string Label, string Emoji, int Order)[] All =
+    {
+        ("papier",      "Papiers",      "📄", 0),
+        ("encre",       "Encres",       "🎨", 1),
+        ("plaque",      "Plaques",      "🟫", 2),
+        ("carton",      "Cartons",      "📦", 3),
+        ("consommable", "Consommables", "🧰", 4),
+    };
 }
 
 public static class StockStatus

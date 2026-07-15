@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <!-- Cible .NET -->
     <TargetFramework>net8.0</TargetFramework>
@@ -42,6 +42,15 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
+  </ItemGroup>
+
+  <!-- ✅ Copier data/public.key vers le dossier output (data\public.key) -->
+  <ItemGroup>
+    <None Include="data\public.key" Condition="Exists('data\public.key')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <Link>data\public.key</Link>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
