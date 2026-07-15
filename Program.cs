@@ -289,6 +289,7 @@ app.MapLicenseEndpoints();
 app.MapSearchEndpoints();
 app.MapPlanningEndpoints();
 app.MapMachineStatusEndpoints();
+app.MapStockEndpoints();
 
 // Portal API endpoints
 app.MapPortalAuthEndpoints();
