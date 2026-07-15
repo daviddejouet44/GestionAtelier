@@ -37,9 +37,17 @@ public static class MachineStatusEndpoints
                     .Where(d => d.Contains("moteur") && d["moteur"] != BsonNull.Value)
                     .ToDictionary(d => d["moteur"].AsString, d => d, StringComparer.OrdinalIgnoreCase);
 
+                // Connexions machine (pilotage — point 8).
+                var connDocs = MongoDbHelper.GetCollection<BsonDocument>("machineConnections")
+                    .Find(Builders<BsonDocument>.Filter.Empty).ToList()
+                    .Where(d => d.Contains("moteur") && d["moteur"].IsString)
+                    .ToDictionary(d => d["moteur"].AsString, d => d, StringComparer.OrdinalIgnoreCase);
+
                 // Fusionne catalogue + statuts persistés ; les moteurs sans doc apparaissent "Disponible".
                 var known = new HashSet<string>(engines, StringComparer.OrdinalIgnoreCase);
                 foreach (var extra in statusDocs.Keys) known.Add(extra);
+                foreach (var extra in connDocs.Keys) known.Add(extra);
+                var nowUtc = DateTime.UtcNow;
 
                 var list = known.OrderBy(m => m, StringComparer.OrdinalIgnoreCase).Select(moteur =>
                 {
@@ -52,6 +60,19 @@ public static class MachineStatusEndpoints
                     var statut = S("statut");
                     if (!MachineStatuses.IsValid(statut)) statut = "Disponible";
 
+                    // État de connexion (pilotage).
+                    connDocs.TryGetValue(moteur, out var cd);
+                    var protocol = cd != null && cd.Contains("protocol") && cd["protocol"].IsString ? cd["protocol"].AsString : "manual";
+                    var connEnabled = cd != null && cd.Contains("enabled") && cd["enabled"].IsBoolean && cd["enabled"].AsBoolean;
+                    int pollInterval = 30;
+                    try { if (cd != null && cd.Contains("pollIntervalSec") && cd["pollIntervalSec"] != BsonNull.Value) pollInterval = cd["pollIntervalSec"].ToInt32(); } catch { }
+                    var lastTelemetryAt = T("lastTelemetryAt");
+                    // En ligne si télémétrie récente (< max(60s, 2× intervalle de poll)).
+                    var freshnessSec = Math.Max(60, pollInterval * 2);
+                    bool online = (protocol != "manual") && connEnabled && lastTelemetryAt.HasValue
+                        && (nowUtc - lastTelemetryAt.Value).TotalSeconds <= freshnessSec;
+                    var connState = protocol == "manual" ? "manual" : (online ? "online" : "offline");
+
                     return new
                     {
                         moteur,
@@ -63,7 +84,12 @@ public static class MachineStatusEndpoints
                         tempsRestantMinutes = I("tempsRestantMinutes"),
                         note = S("note"),
                         updatedAt = T("updatedAt"),
-                        updatedBy = S("updatedBy")
+                        updatedBy = S("updatedBy"),
+                        protocol,
+                        connectionEnabled = connEnabled,
+                        connectionState = connState,
+                        connectionSource = S("connectionSource"),
+                        lastTelemetryAt
                     };
                 }).ToList();
 
