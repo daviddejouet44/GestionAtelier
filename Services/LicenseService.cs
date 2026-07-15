@@ -101,7 +101,7 @@ public static class LicenseService
     public static (bool ok, string error) SaveLicenseFile(Stream stream)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(LicensePath)!);
-        var tmp = LicensePath + ".tmp";
+        var tmp = LicensePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
             using (var fs = File.Create(tmp))
