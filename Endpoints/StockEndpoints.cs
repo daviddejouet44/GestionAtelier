@@ -579,7 +579,7 @@ public static class StockEndpoints
                 ));
             }
         }
-        catch { /* retourne liste vide si XML invalide */ }
+        catch { /* retourne liste vide si XML invalide ou mal formé */ }
         return rows;
     }
 }

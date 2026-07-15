@@ -92,7 +92,8 @@ public static class JobsFichierReceptionEndpoints
                     DateTime? dateRec = null;
                     try
                     {
-                        if (doc.Contains("dateReceptionFichier") && doc["dateReceptionFichier"] != BsonNull.Value)
+                        if (doc.Contains("dateReceptionFichier") && doc["dateReceptionFichier"] != BsonNull.Value
+                            && doc["dateReceptionFichier"].BsonType == BsonType.DateTime)
                             dateRec = doc["dateReceptionFichier"].ToUniversalTime();
                     }
                     catch { }

@@ -310,7 +310,7 @@ async function openManageCategoriesModal() {
         const r = await fetch(`/api/stock/categories/${encodeURIComponent(cat.id)}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-          body: JSON.stringify({ label: newLabel.trim(), emoji: newEmoji !== null ? newEmoji.trim() : cat.emoji })
+          body: JSON.stringify({ label: newLabel.trim(), emoji: (newEmoji !== null && newEmoji.trim() !== '') ? newEmoji.trim() : cat.emoji })
         }).then(r => r.json()).catch(() => ({ ok: false }));
         if (r.ok) { showNotification("✅ Catégorie renommée", "success"); await render(); }
         else showNotification(`❌ ${r.error || "Erreur"}`, "error");
