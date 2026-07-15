@@ -72,6 +72,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 builder.Services.AddHostedService<GestionAtelier.Services.DailyReportService>();
+builder.Services.AddHostedService<GestionAtelier.Services.MachineTelemetryPollingService>();
 builder.Services.AddSingleton<GestionAtelier.Services.OrderSourcePollingService>();
 // Temporarily disable OrderSourcePollingService for demo
 //builder.Services.AddHostedService(sp => sp.GetRequiredService<GestionAtelier.Services.OrderSourcePollingService>());
@@ -289,6 +290,7 @@ app.MapLicenseEndpoints();
 app.MapSearchEndpoints();
 app.MapPlanningEndpoints();
 app.MapMachineStatusEndpoints();
+app.MapMachinePilotageEndpoints();
 app.MapStockEndpoints();
 app.MapKpiEndpoints();
 
