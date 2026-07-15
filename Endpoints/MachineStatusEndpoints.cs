@@ -95,6 +95,8 @@ public static class MachineStatusEndpoints
                         AuthHelper.GetClaim(ctx, "name") ?? AuthHelper.GetClaim(ctx, "login") ?? "")
                 };
 
+                string? newStatut = null;
+                string eventNote = "";
                 if (json.TryGetProperty("statut", out var stEl))
                 {
                     var st = stEl.GetString() ?? "";
@@ -103,13 +105,17 @@ public static class MachineStatusEndpoints
                     // Normalise la casse sur la valeur canonique.
                     var canonical = MachineStatuses.All.First(x => string.Equals(x, st, StringComparison.OrdinalIgnoreCase));
                     updates.Add(Builders<BsonDocument>.Update.Set("statut", canonical));
+                    newStatut = canonical;
                 }
                 if (json.TryGetProperty("papierCharge", out var pEl))
                     updates.Add(Builders<BsonDocument>.Update.Set("papierCharge", pEl.GetString() ?? ""));
                 if (json.TryGetProperty("compteurFeuilles", out var cEl) && cEl.TryGetInt64(out var cVal))
                     updates.Add(Builders<BsonDocument>.Update.Set("compteurFeuilles", Math.Max(0, cVal)));
                 if (json.TryGetProperty("note", out var nEl))
-                    updates.Add(Builders<BsonDocument>.Update.Set("note", nEl.GetString() ?? ""));
+                {
+                    eventNote = nEl.GetString() ?? "";
+                    updates.Add(Builders<BsonDocument>.Update.Set("note", eventNote));
+                }
 
                 // OF en cours : renseigne le dossier + le temps restant depuis la fiche si possible.
                 if (json.TryGetProperty("ofEnCours", out var ofEl))
@@ -144,6 +150,31 @@ public static class MachineStatusEndpoints
 
                 var col = MongoDbHelper.GetCollection<BsonDocument>("machineStatus");
                 var filter = Builders<BsonDocument>.Filter.Eq("moteur", moteur);
+
+                // Journalise les transitions de statut (base des KPI : occupation / arrêts / causes).
+                if (newStatut != null)
+                {
+                    var prevDoc = await col.Find(filter).FirstOrDefaultAsync();
+                    var prevStatut = prevDoc != null && prevDoc.Contains("statut") && prevDoc["statut"] != BsonNull.Value && prevDoc["statut"].IsString
+                        ? prevDoc["statut"].AsString : "";
+                    if (!string.Equals(prevStatut, newStatut, StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            await MongoDbHelper.GetCollection<BsonDocument>("machineEvents").InsertOneAsync(new BsonDocument
+                            {
+                                ["moteur"]         = moteur,
+                                ["statut"]         = newStatut,
+                                ["previousStatut"] = prevStatut,
+                                ["note"]           = eventNote,
+                                ["at"]             = DateTime.UtcNow,
+                                ["by"]             = AuthHelper.GetClaim(ctx, "name") ?? AuthHelper.GetClaim(ctx, "login") ?? ""
+                            });
+                        }
+                        catch { /* journalisation non bloquante */ }
+                    }
+                }
+
                 await col.UpdateOneAsync(filter, Builders<BsonDocument>.Update.Combine(updates), new UpdateOptions { IsUpsert = true });
 
                 return Results.Json(new { ok = true });

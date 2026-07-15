@@ -290,6 +290,7 @@ app.MapSearchEndpoints();
 app.MapPlanningEndpoints();
 app.MapMachineStatusEndpoints();
 app.MapStockEndpoints();
+app.MapKpiEndpoints();
 
 // Portal API endpoints
 app.MapPortalAuthEndpoints();
