@@ -22,6 +22,7 @@ import { renderSettingsIntegrations } from './settings/settings-integrations.js'
 import { renderSettingsPortal } from './settings/settings-portal.js';
 import { renderSettingsRainageOptions, renderSettingsFinitionTimeRules, renderSettingsFinitionSheetFormulas } from './settings/settings-finition-config.js';
 import { renderSettingsProductionDelayAlert } from './settings/settings-alerts.js';
+import { renderSettingsFichierReception } from './settings/settings-fichier-reception.js';
 
 // calendar and submissionCalendar are accessed via window globals set by app.js
 
@@ -58,6 +59,7 @@ export async function initSettingsView() {
         <button class="settings-tab" data-tab="cover-products">Produit avec couverture</button>
         <button class="settings-tab" data-tab="sheet-calc-rules">Calcul feuilles</button>
         <button class="settings-tab" data-tab="delivery-delay">Dates clés</button>
+        <button class="settings-tab" data-tab="fichier-reception">⏰ Alerte réception fichier</button>
         <button class="settings-tab" data-tab="passes-config">Passes</button>
         <button class="settings-tab" data-tab="grammage-time">Pallier grammage</button>
         <button class="settings-tab" data-tab="jdf-config">JDF</button>
@@ -91,6 +93,7 @@ export async function initSettingsView() {
       <div class="settings-panel hidden" id="settings-panel-cover-products"></div>
       <div class="settings-panel hidden" id="settings-panel-sheet-calc-rules"></div>
       <div class="settings-panel hidden" id="settings-panel-delivery-delay"></div>
+      <div class="settings-panel hidden" id="settings-panel-fichier-reception"></div>
       <div class="settings-panel hidden" id="settings-panel-passes-config"></div>
       <div class="settings-panel hidden" id="settings-panel-grammage-time"></div>
       <div class="settings-panel hidden" id="settings-panel-jdf-config"></div>
@@ -126,9 +129,13 @@ export async function initSettingsView() {
 
 function _applyLicenseToSettings() {
   const level = window._licenseLevel || 0;
+  // Onglets masqués selon la version
   const tabsStarterHidden = ['schedule', 'planning-colors', 'integrations', 'external-links', 'portal', 'production-delay-alert'];
   const tabsProHidden = ['portal'];
-  const tabsToHide = level === 1 ? tabsStarterHidden : level === 2 ? tabsProHidden : [];
+  // Fonctionnalités réservées au niveau 4 « Entreprise Plus » (masquées si < 4)
+  const tabsEntreprisePlusOnly = ['print-engines', 'passes-config', 'grammage-time'];
+  let tabsToHide = level === 1 ? tabsStarterHidden : level === 2 ? tabsProHidden : level === 3 ? tabsProHidden : [];
+  if (level < 4) tabsToHide = [...new Set([...tabsToHide, ...tabsEntreprisePlusOnly])];
 
   document.querySelectorAll('.settings-tab[data-tab]').forEach(btn => {
     const tab = btn.getAttribute('data-tab');
@@ -161,6 +168,7 @@ export async function loadSettingsPanel(tabName, panelEl) {
     case "cover-products": await renderSettingsCoverProducts(panelEl); break;
     case "sheet-calc-rules": await renderSettingsSheetCalcRules(panelEl); break;
     case "delivery-delay": await renderSettingsDeliveryDelay(panelEl); break;
+    case "fichier-reception": await renderSettingsFichierReception(panelEl); break;
     case "passes-config": await renderSettingsPassesConfig(panelEl); break;
     case "grammage-time": await renderSettingsGrammageTimeConfig(panelEl); break;
     case "jdf-config": await renderSettingsJdfConfig(panelEl); break;

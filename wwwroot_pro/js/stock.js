@@ -1,15 +1,19 @@
 // stock.js — Gestion des stocks (point 7)
 import { authToken, showNotification, esc, currentUser } from './core.js';
 
-const CAT_LABEL = {
-  papier: "📄 Papiers", encre: "🎨 Encres", plaque: "🟫 Plaques",
-  carton: "📦 Cartons", consommable: "🧰 Consommables"
-};
 const STATUS_STYLE = {
   ok:      { bg: "#dcfce7", fg: "#16a34a", label: "🟢 OK" },
   bas:     { bg: "#fef3c7", fg: "#b45309", label: "🟠 Bas" },
   rupture: { bg: "#fee2e2", fg: "#dc2626", label: "🔴 Rupture" }
 };
+
+// Cache des catégories chargées depuis l'API
+let _categories = [];
+
+function catLabel(cat) {
+  const c = _categories.find(x => x.id === cat);
+  return c ? `${c.emoji || ''} ${c.label}`.trim() : esc(cat);
+}
 
 export async function initStockView() {
   const container = document.getElementById("stock-view");
@@ -18,13 +22,52 @@ export async function initStockView() {
     <div class="settings-container">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
         <h2 style="margin:0;font-size:22px;font-weight:700;color:var(--text-primary);">📦 Gestion des stocks</h2>
-        <button id="stock-add-btn" class="btn btn-primary" style="border-radius:50px;">＋ Ajouter un article</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="stock-manage-cats-btn" class="btn" style="border-radius:50px;">🗂️ Gérer les catégories</button>
+          <button id="stock-import-btn" class="btn" style="border-radius:50px;">📥 Importer</button>
+          <button id="stock-add-btn" class="btn btn-primary" style="border-radius:50px;">＋ Ajouter un article</button>
+        </div>
+      </div>
+      <div id="stock-import-panel" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:16px;">
+        <h4 style="margin:0 0 12px;font-size:14px;font-weight:700;color:#1e3a5f;">📥 Import CSV / XML</h4>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+          <div>
+            <label style="font-size:12px;color:#374151;display:block;margin-bottom:4px;">Catégorie cible</label>
+            <select id="import-cat-select" class="settings-input" style="min-width:160px;"></select>
+          </div>
+          <div>
+            <label style="font-size:12px;color:#374151;display:block;margin-bottom:4px;">Mode</label>
+            <select id="import-mode-select" class="settings-input">
+              <option value="merge">Fusionner</option>
+              <option value="overwrite">Écraser</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:12px;color:#374151;display:block;margin-bottom:4px;">Fichier CSV ou XML</label>
+            <input type="file" id="import-file-input" accept=".csv,.xml" class="settings-input" style="font-size:13px;" />
+          </div>
+          <button id="import-submit-btn" class="btn btn-primary">Importer</button>
+          <button id="import-close-btn" class="btn">✕</button>
+        </div>
+        <div style="margin-top:10px;font-size:11px;color:#6b7280;">
+          <strong>CSV</strong> — colonnes (séparateur ; ou ,) : <code>nom</code> (obligatoire), <code>quantité</code>, <code>unité</code>, <code>seuil</code>, <code>fournisseur</code>, <code>référence</code>, <code>note</code><br/>
+          <strong>XML</strong> — <code>&lt;articles&gt;&lt;article nom="…" quantite="…" unite="…" seuil="…" fournisseur="…" reference="…" note="…"/&gt;&lt;/articles&gt;</code>
+        </div>
+        <div id="import-result" style="margin-top:10px;font-size:13px;"></div>
       </div>
       <div id="stock-alerts"></div>
       <div id="stock-add-form"></div>
       <div id="stock-body"><p style="color:#6b7280;">Chargement…</p></div>
     </div>`;
-  document.getElementById("stock-add-btn").onclick = () => toggleAddForm();
+
+  document.getElementById("stock-add-btn").onclick = () => openItemModal(null);
+  document.getElementById("stock-manage-cats-btn").onclick = () => openManageCategoriesModal();
+  document.getElementById("stock-import-btn").onclick = () => toggleImportPanel();
+  document.getElementById("import-close-btn").onclick = () => {
+    document.getElementById("stock-import-panel").style.display = "none";
+  };
+  document.getElementById("import-submit-btn").onclick = () => runImport();
+
   await loadStock();
 }
 
@@ -37,8 +80,83 @@ async function loadStock() {
   } catch (e) { body.innerHTML = '<p style="color:#dc2626;">Erreur de chargement</p>'; return; }
   if (!data.ok) { body.innerHTML = `<p style="color:#dc2626;">${esc(data.error || "Erreur")}</p>`; return; }
 
+  if (Array.isArray(data.categories)) _categories = data.categories;
+
   renderAlerts(data.items || []);
   renderBody(data.items || [], data.categories || []);
+
+  const importSelect = document.getElementById("import-cat-select");
+  if (importSelect) _populateCatSelect(importSelect);
+}
+
+function _populateCatSelect(select) {
+  select.innerHTML = _categories.map(c =>
+    `<option value="${esc(c.id)}">${esc(c.emoji || '')} ${esc(c.label)}</option>`
+  ).join('');
+}
+
+function toggleImportPanel() {
+  const panel = document.getElementById("stock-import-panel");
+  if (!panel) return;
+  const visible = panel.style.display !== "none";
+  panel.style.display = visible ? "none" : "";
+  if (!visible) {
+    const importSelect = document.getElementById("import-cat-select");
+    if (importSelect) _populateCatSelect(importSelect);
+  }
+}
+
+async function runImport() {
+  const fileInput = document.getElementById("import-file-input");
+  const catSelect = document.getElementById("import-cat-select");
+  const modeSelect = document.getElementById("import-mode-select");
+  const resultEl = document.getElementById("import-result");
+  if (!fileInput || !catSelect || !modeSelect) return;
+
+  const file = fileInput.files?.[0];
+  if (!file) { showNotification("Sélectionnez un fichier", "error"); return; }
+  const category = catSelect.value;
+  const mode = modeSelect.value;
+  if (!category) { showNotification("Sélectionnez une catégorie", "error"); return; }
+
+  const btn = document.getElementById("import-submit-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "Import…"; }
+  if (resultEl) resultEl.innerHTML = '<span style="color:#6b7280;">Import en cours…</span>';
+
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("category", category);
+    fd.append("mode", mode);
+    const r = await fetch("/api/stock/import", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${authToken}` },
+      body: fd
+    }).then(res => res.json());
+
+    if (r.ok) {
+      const parts = [];
+      if (r.added) parts.push(`<strong style="color:#16a34a;">+${r.added} créé(s)</strong>`);
+      if (r.updated) parts.push(`<strong style="color:#2563eb;">${r.updated} mis à jour</strong>`);
+      if (r.skipped) parts.push(`<span style="color:#9ca3af;">${r.skipped} ignoré(s)</span>`);
+      let html = `✅ Import terminé — ${parts.join(', ')}`;
+      if (r.errors && r.errors.length) {
+        html += `<ul style="margin:6px 0 0;padding-left:16px;font-size:11px;color:#dc2626;">${r.errors.slice(0, 10).map(e => `<li>${esc(e)}</li>`).join('')}</ul>`;
+      }
+      if (resultEl) resultEl.innerHTML = html;
+      showNotification(`✅ Import terminé : ${r.added} créé(s), ${r.updated} mis à jour`, "success");
+      fileInput.value = "";
+      await loadStock();
+    } else {
+      if (resultEl) resultEl.innerHTML = `<span style="color:#dc2626;">❌ ${esc(r.error || "Erreur")}</span>`;
+      showNotification(`❌ ${r.error || "Erreur import"}`, "error");
+    }
+  } catch (e) {
+    if (resultEl) resultEl.innerHTML = '<span style="color:#dc2626;">❌ Erreur réseau</span>';
+    showNotification("❌ Erreur réseau", "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Importer"; }
+  }
 }
 
 function renderAlerts(items) {
@@ -66,13 +184,16 @@ function renderBody(items, categories) {
     return;
   }
   const isAdmin = currentUser && currentUser.profile === 3;
-  const order = categories.length ? categories : ["papier", "encre", "plaque", "carton", "consommable"];
+  const sortedCats = Array.isArray(categories) && categories.length
+    ? categories.map(c => typeof c === 'object' ? c.id : c)
+    : _categories.map(c => c.id);
+
   let html = "";
-  for (const cat of order) {
-    const rows = items.filter(i => i.category === cat);
+  for (const catId of sortedCats) {
+    const rows = items.filter(i => i.category === catId);
     if (rows.length === 0) continue;
     html += `<div style="margin-bottom:18px;">
-      <h3 style="font-size:15px;font-weight:700;color:#1e3a5f;margin:0 0 8px;">${CAT_LABEL[cat] || esc(cat)} <span style="font-weight:500;color:#9ca3af;font-size:12px;">(${rows.length})</span></h3>
+      <h3 style="font-size:15px;font-weight:700;color:#1e3a5f;margin:0 0 8px;">${catLabel(catId)} <span style="font-weight:500;color:#9ca3af;font-size:12px;">(${rows.length})</span></h3>
       <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
         <thead><tr style="text-align:left;color:#6b7280;border-bottom:1px solid #e5e7eb;">
           <th style="padding:6px 8px;">Article</th><th style="padding:6px 8px;">Quantité</th>
@@ -97,6 +218,33 @@ function renderBody(items, categories) {
     }
     html += `</tbody></table></div></div>`;
   }
+
+  const knownIds = new Set(sortedCats);
+  const orphans = items.filter(i => !knownIds.has(i.category));
+  if (orphans.length) {
+    html += `<div style="margin-bottom:18px;">
+      <h3 style="font-size:15px;font-weight:700;color:#9ca3af;margin:0 0 8px;">❓ Autres (${orphans.length})</h3>
+      <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr style="text-align:left;color:#6b7280;border-bottom:1px solid #e5e7eb;">
+          <th style="padding:6px 8px;">Article</th><th style="padding:6px 8px;">Catégorie</th><th style="padding:6px 8px;">Quantité</th>
+          <th style="padding:6px 8px;">Statut</th><th style="padding:6px 8px;text-align:right;">Actions</th>
+        </tr></thead><tbody>`;
+    for (const i of orphans) {
+      const st = STATUS_STYLE[i.status] || STATUS_STYLE.ok;
+      html += `<tr data-id="${esc(i.id)}" style="border-bottom:1px solid #f1f5f9;">
+        <td style="padding:7px 8px;font-weight:600;color:#111827;">${esc(i.name)}</td>
+        <td style="padding:7px 8px;color:#9ca3af;">${esc(i.category)}</td>
+        <td style="padding:7px 8px;"><strong>${_num(i.quantity)}</strong> ${esc(i.unit || '')}</td>
+        <td style="padding:7px 8px;"><span style="background:${st.bg};color:${st.fg};font-weight:700;font-size:11px;border-radius:10px;padding:2px 9px;white-space:nowrap;">${st.label}</span></td>
+        <td style="padding:7px 8px;text-align:right;white-space:nowrap;">
+          <button class="stock-edit" data-id="${esc(i.id)}" title="Modifier" style="border:1px solid #d1d5db;background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;">✏️</button>
+          ${isAdmin ? `<button class="stock-del" data-id="${esc(i.id)}" title="Supprimer" style="border:1px solid #d1d5db;background:#fff;border-radius:6px;padding:3px 8px;cursor:pointer;">🗑️</button>` : ''}
+        </td>
+      </tr>`;
+    }
+    html += `</tbody></table></div></div>`;
+  }
+
   body.innerHTML = html;
 
   const dataById = Object.fromEntries(items.map(i => [i.id, i]));
@@ -110,26 +258,115 @@ function _num(n) {
   return Number.isInteger(v) ? String(v) : v.toFixed(1);
 }
 
-function toggleAddForm() {
-  const el = document.getElementById("stock-add-form");
-  if (!el) return;
-  if (el.innerHTML) { el.innerHTML = ""; return; }
-  openItemModal(null); // création via modale
+async function openManageCategoriesModal() {
+  const overlay = _overlay();
+  const panel = _panel("560px");
+  const isAdmin = currentUser && currentUser.profile === 3;
+
+  const render = async () => {
+    let cats = [];
+    try {
+      const r = await fetch("/api/stock/categories", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json());
+      if (r.ok) { cats = r.categories || []; _categories = cats; }
+    } catch {}
+
+    panel.innerHTML = `
+      <div style="padding:18px 22px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
+        <h3 style="margin:0;font-size:16px;font-weight:700;color:#1e3a5f;">🗂️ Gérer les catégories</h3>
+        <button id="mcat-close" class="btn" style="border-radius:8px;">✕</button>
+      </div>
+      <div style="padding:16px 22px;">
+        <div id="mcat-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+          ${cats.map(c => `
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
+              <span style="font-size:18px;min-width:24px;text-align:center;">${esc(c.emoji || '📁')}</span>
+              <span style="flex:1;font-weight:600;color:#111827;font-size:13px;">${esc(c.label)}</span>
+              <span style="font-size:11px;color:#9ca3af;font-family:monospace;">${esc(c.id)}</span>
+              <button class="mcat-edit-btn btn" data-id="${esc(c.id)}" style="font-size:11px;padding:2px 8px;">✏️</button>
+              ${isAdmin ? `<button class="mcat-del-btn btn" data-id="${esc(c.id)}" style="font-size:11px;padding:2px 8px;color:#dc2626;border-color:#dc2626;">🗑️</button>` : ''}
+            </div>`).join('')}
+        </div>
+        ${cats.length === 0 ? '<p style="color:#9ca3af;font-size:13px;">Aucune catégorie.</p>' : ''}
+        <div style="border-top:1px solid #e5e7eb;padding-top:14px;">
+          <h4 style="margin:0 0 10px;font-size:13px;font-weight:700;color:#374151;">＋ Nouvelle catégorie</h4>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+            <div><label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px;">Emoji</label><input id="mcat-new-emoji" class="settings-input" value="" placeholder="📦" style="width:60px;text-align:center;" maxlength="4" /></div>
+            <div style="flex:1;min-width:140px;"><label style="font-size:12px;color:#6b7280;display:block;margin-bottom:3px;">Libellé</label><input id="mcat-new-label" class="settings-input" value="" placeholder="Nom de la catégorie" style="width:100%;" /></div>
+            <button id="mcat-add-btn" class="btn btn-primary">Ajouter</button>
+          </div>
+          <div id="mcat-err" style="margin-top:6px;font-size:12px;color:#dc2626;"></div>
+        </div>
+      </div>`;
+
+    panel.querySelector("#mcat-close").onclick = () => { overlay.remove(); loadStock(); };
+
+    panel.querySelectorAll(".mcat-edit-btn").forEach(btn => {
+      btn.onclick = async () => {
+        const cat = cats.find(c => c.id === btn.dataset.id);
+        if (!cat) return;
+        const newLabel = prompt("Nouveau libellé :", cat.label);
+        if (!newLabel || newLabel.trim() === cat.label) return;
+        const newEmoji = prompt("Emoji (laisser vide pour conserver) :", cat.emoji || '');
+        const r = await fetch(`/api/stock/categories/${encodeURIComponent(cat.id)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+          body: JSON.stringify({ label: newLabel.trim(), emoji: (newEmoji !== null && newEmoji.trim() !== '') ? newEmoji.trim() : cat.emoji })
+        }).then(r => r.json()).catch(() => ({ ok: false }));
+        if (r.ok) { showNotification("✅ Catégorie renommée", "success"); await render(); }
+        else showNotification(`❌ ${r.error || "Erreur"}`, "error");
+      };
+    });
+
+    panel.querySelectorAll(".mcat-del-btn").forEach(btn => {
+      btn.onclick = async () => {
+        const cat = cats.find(c => c.id === btn.dataset.id);
+        if (!cat) return;
+        if (!confirm(`Supprimer la catégorie « ${cat.label} » ? Les articles qu'elle contient doivent d'abord être déplacés.`)) return;
+        const r = await fetch(`/api/stock/categories/${encodeURIComponent(cat.id)}`, {
+          method: "DELETE",
+          headers: { "Authorization": `Bearer ${authToken}` }
+        }).then(res => res.json()).catch(() => ({ ok: false }));
+        if (r.ok) { showNotification("✅ Catégorie supprimée", "success"); await render(); }
+        else showNotification(`❌ ${r.error || "Erreur"}`, "error");
+      };
+    });
+
+    panel.querySelector("#mcat-add-btn").onclick = async () => {
+      const errEl = panel.querySelector("#mcat-err");
+      const label = (panel.querySelector("#mcat-new-label").value || "").trim();
+      const emoji = (panel.querySelector("#mcat-new-emoji").value || "").trim();
+      if (!label) { if (errEl) errEl.textContent = "Libellé requis"; return; }
+      const r = await fetch("/api/stock/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+        body: JSON.stringify({ label, emoji })
+      }).then(res => res.json()).catch(() => ({ ok: false }));
+      if (r.ok) { showNotification("✅ Catégorie créée", "success"); await render(); }
+      else { if (errEl) errEl.textContent = r.error || "Erreur"; }
+    };
+  };
+
+  overlay.appendChild(panel); document.body.appendChild(overlay);
+  overlay.onclick = e => { if (e.target === overlay) { overlay.remove(); loadStock(); } };
+  await render();
 }
 
-// Modale création / édition d'article
 function openItemModal(item) {
   const isEdit = !!item;
-  const cats = ["papier", "encre", "plaque", "carton", "consommable"];
   const overlay = _overlay();
   const panel = _panel("520px");
+
+  const catsOptions = _categories.map(c =>
+    `<option value="${esc(c.id)}" ${item?.category === c.id ? 'selected' : ''}>${esc((c.emoji || '') + ' ' + c.label)}</option>`
+  ).join('');
+
   panel.innerHTML = `
     <div style="padding:18px 22px;border-bottom:1px solid #eee;"><h3 style="margin:0;font-size:16px;font-weight:700;color:#1e3a5f;">${isEdit ? "✏️ Modifier l'article" : "＋ Nouvel article"}</h3></div>
     <div style="padding:16px 22px;display:flex;flex-direction:column;gap:10px;">
       <label style="font-size:12px;color:#374151;">Nom<input id="si-name" class="settings-input" value="${esc(item?.name || '')}" style="width:100%;margin-top:3px;" /></label>
       <div style="display:flex;gap:10px;">
         <label style="font-size:12px;color:#374151;flex:1;">Catégorie
-          <select id="si-cat" class="settings-input" style="width:100%;margin-top:3px;">${cats.map(c => `<option value="${c}" ${item?.category === c ? 'selected' : ''}>${CAT_LABEL[c].replace(/^\S+\s/,'')}</option>`).join('')}</select>
+          <select id="si-cat" class="settings-input" style="width:100%;margin-top:3px;">${catsOptions}</select>
         </label>
         <label style="font-size:12px;color:#374151;flex:1;">Unité<input id="si-unit" class="settings-input" value="${esc(item?.unit || '')}" placeholder="feuilles, kg, L…" style="width:100%;margin-top:3px;" /></label>
       </div>
@@ -162,16 +399,19 @@ function openItemModal(item) {
       note: panel.querySelector("#si-note").value.trim()
     };
     if (!payload.name) { showNotification("Nom requis", "error"); return; }
-    if (!isEdit) payload.quantity = parseFloat(panel.querySelector("#si-qty").value) || 0;
+    if (!isEdit) payload.quantity = parseFloat(panel.querySelector("#si-qty")?.value) || 0;
     const url = isEdit ? `/api/stock/${item.id}` : "/api/stock";
     const method = isEdit ? "PUT" : "POST";
-    const r = await fetch(url, { method, headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify(payload) }).then(r => r.json()).catch(() => ({ ok: false }));
+    const r = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      body: JSON.stringify(payload)
+    }).then(r => r.json()).catch(() => ({ ok: false }));
     if (r.ok) { close(); showNotification(isEdit ? "✅ Article modifié" : "✅ Article créé", "success"); loadStock(); }
     else showNotification(`❌ ${r.error || "Échec"}`, "error");
   };
 }
 
-// Modale mouvement (entrée / sortie)
 function openMovementModal(item, type) {
   if (!item) return;
   const isIn = type === "entree";
@@ -196,7 +436,8 @@ function openMovementModal(item, type) {
     const qty = parseFloat(panel.querySelector("#mv-qty").value);
     if (!(qty > 0)) { showNotification("Quantité invalide", "error"); return; }
     const r = await fetch(`/api/stock/${item.id}/movement`, {
-      method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
       body: JSON.stringify({ type, quantity: qty, reason: panel.querySelector("#mv-reason").value.trim() })
     }).then(r => r.json()).catch(() => ({ ok: false }));
     if (r.ok) { close(); showNotification(`✅ Stock mis à jour : ${_num(r.quantity)}`, "success"); loadStock(); }
@@ -207,7 +448,10 @@ function openMovementModal(item, type) {
 async function deleteItem(item) {
   if (!item) return;
   if (!confirm(`Supprimer l'article « ${item.name} » et son historique ?`)) return;
-  const r = await fetch(`/api/stock/${item.id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()).catch(() => ({ ok: false }));
+  const r = await fetch(`/api/stock/${item.id}`, {
+    method: "DELETE",
+    headers: { "Authorization": `Bearer ${authToken}` }
+  }).then(r => r.json()).catch(() => ({ ok: false }));
   if (r.ok) { showNotification("✅ Article supprimé", "success"); loadStock(); }
   else showNotification(`❌ ${r.error || "Échec"}`, "error");
 }
