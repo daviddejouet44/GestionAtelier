@@ -76,18 +76,22 @@ async function updateGlobalAlert() {
   const isProductionTabActive = !document.getElementById("kanban-layout")?.classList.contains("hidden");
 
   try {
-    const [delayResp, batResp] = await Promise.all([
+    const [delayResp, batResp, fichierResp] = await Promise.all([
       isProductionTabActive
         ? fetch("/api/alerts/production-delay").then(r => r.json()).catch(() => ({ ok: false, groups: [] }))
         : Promise.resolve({ ok: false, groups: [] }),
       isProductionTabActive
         ? fetch("/api/alerts/bat-pending").then(r => r.json()).catch(() => [])
-        : Promise.resolve([])
+        : Promise.resolve([]),
+      fetch("/api/fichier-reception/planning", {
+        headers: { "Authorization": `Bearer ${authToken}` }
+      }).then(r => r.json()).catch(() => ({ ok: false, alerts: [] }))
     ]);
 
     const delayGroups = (delayResp.ok && Array.isArray(delayResp.groups)) ? delayResp.groups : [];
     const alertCfg = delayResp.config || { enabled: true, title: "Retard de production" };
     const batAlerts = Array.isArray(batResp) ? batResp : [];
+    const fichierAlerts = (fichierResp.ok && Array.isArray(fichierResp.alerts)) ? fichierResp.alerts : [];
 
     let html = "";
 
@@ -124,6 +128,22 @@ async function updateGlobalAlert() {
       html += `<div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;">
         <span style="font-size:12px;font-weight:700;color:#92400e;">📋 BAT en attente de validation (${batAlerts.length})</span>
         <div style="margin-top:4px;">${batHtml}</div>
+      </div>`;
+    }
+
+    // Alertes date de réception du fichier
+    if (fichierAlerts.length > 0) {
+      const fichierHtml = fichierAlerts.map(a => {
+        const dossier = a.numeroDossier ? ` — N°${esc(a.numeroDossier)}` : '';
+        const client = a.nomClient ? ` (${esc(a.nomClient)})` : '';
+        const diff = a.overdue
+          ? `<strong style="color:#dc2626;">En retard</strong>`
+          : `dans ${Math.abs(a.hoursRemaining).toFixed(0)}h`;
+        return `<span style="display:inline-block;background:#fdf4ff;border:1px solid #e9d5ff;border-radius:4px;padding:1px 7px;font-size:11px;margin:1px 2px;color:#7e22ce;" title="${esc(a.fileName || '')}${dossier}">${esc(a.fileName || a.numeroDossier || '—')}${dossier}${client} (${diff})</span>`;
+      }).join('');
+      html += `<div style="background:#fdf4ff;border:1px solid #e9d5ff;border-radius:8px;padding:8px 12px;margin-top:6px;">
+        <span style="font-size:12px;font-weight:700;color:#7e22ce;">📁 Réception fichier imminente / en retard (${fichierAlerts.length})</span>
+        <div style="margin-top:4px;">${fichierHtml}</div>
       </div>`;
     }
 

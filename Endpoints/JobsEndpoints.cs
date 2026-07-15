@@ -29,5 +29,6 @@ public static class JobsEndpointsExtensions
         app.MapJobsMoveEndpoints(recyclePath);
         app.MapJobsActionsEndpoints(recyclePath);
         app.MapJobsBatEndpoints(recyclePath);
+        app.MapJobsFichierReceptionEndpoints();
     }
 }

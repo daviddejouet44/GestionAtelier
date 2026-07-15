@@ -43,16 +43,17 @@ function applyLicenseUI(data) {
   setVisible('btnViewDossiers', level >= 1);
   setVisible('btnViewRecycle', level >= 1);
   setVisible('btnViewCalendar', level >= 2);
-  setVisible('btnViewMachines', level >= 2);
-  setVisible('btnViewStock', level >= 2);
-  setVisible('btnViewKpi', level >= 2);
   setVisible('btnViewDashboard', level >= 2);
   setVisible('btn-envoyer-devis', level >= 3);
   setVisible('btnViewGlobalProd', level >= 3);
+  // Fonctionnalités réservées au niveau 4 « Entreprise Plus »
+  setVisible('btnViewMachines', level >= 4);
+  setVisible('btnViewStock', level >= 4);
+  setVisible('btnViewKpi', level >= 4);
 
   const sidebarRetard = document.getElementById('kanban-sidebar-sec-retard');
   const sidebarMachine = document.getElementById('kanban-sidebar-sec-machine');
-  if (level < 2) {
+  if (level < 4) {
     if (sidebarRetard) sidebarRetard.style.display = 'none';
     if (sidebarMachine) sidebarMachine.style.display = 'none';
   } else {

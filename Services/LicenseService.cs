@@ -136,6 +136,7 @@ public static class LicenseService
         "GestionAtelier Starter" => 1,
         "GestionAtelier Pro" => 2,
         "GestionAtelier Enterprise" => 3,
+        "GestionAtelier Entreprise Plus" => 4,
         _ => 0
     };
 }
