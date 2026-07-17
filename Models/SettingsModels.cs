@@ -98,6 +98,21 @@ public class DropletConfig
     public string Path { get; set; } = "";
 }
 
+public class AutoPreflightSettings
+{
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; } = false;
+
+    [JsonPropertyName("minimumBleedMm")]
+    public double? MinimumBleedMm { get; set; }
+
+    [JsonPropertyName("minimumImageDpi")]
+    public int? MinimumImageDpi { get; set; }
+
+    [JsonPropertyName("maximumTacPercent")]
+    public double? MaximumTacPercent { get; set; }
+}
+
 public class KanbanColumnConfig
 {
     [JsonPropertyName("folder")]
