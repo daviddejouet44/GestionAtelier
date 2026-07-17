@@ -139,6 +139,10 @@ app.MapPost("/api/preflight/analyze", async (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = "fullPath manquant" });
 
         var fullPath = Path.GetFullPath(fpEl.GetString() ?? "");
+        var allowedRoot = Path.GetFullPath(BackendUtils.HotfoldersRoot());
+        if (!IsPathInsideRoot(fullPath, allowedRoot))
+            return Results.Json(new { ok = false, error = "Chemin PDF hors périmètre autorisé." });
+
         if (!File.Exists(fullPath))
             return Results.Json(new { ok = false, error = "Fichier introuvable" });
 
@@ -147,10 +151,7 @@ app.MapPost("/api/preflight/analyze", async (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = report.ErrorMessage ?? "Impossible d'analyser le PDF" });
 
         var rulesSettings = MongoDbHelper.GetSettings<PreflightRulesSettings>("preflightRules") ?? new PreflightRulesSettings();
-        var autoSettings =
-            MongoDbHelper.GetSettings<AutoPreflightSettings>("autoPreflight") ??
-            MongoDbHelper.GetSettings<AutoPreflightSettings>("autoPreflightSettings") ??
-            new AutoPreflightSettings();
+        var autoSettings = MongoDbHelper.GetSettings<AutoPreflightSettings>("autoPreflight") ?? new AutoPreflightSettings();
         var preflightSettings = MongoDbHelper.GetSettings<PreflightSettings>("preflight") ?? new PreflightSettings();
 
         var recommendation = PreflightDecisionEngine.Evaluate(
@@ -824,5 +825,19 @@ app.MapPost("/api/jobs/open-in-prismaprepare", async (HttpContext ctx) =>
     }
 });
 
+    }
+
+    private static bool IsPathInsideRoot(string absolutePath, string absoluteRootPath)
+    {
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+        var normalizedRoot = Path.TrimEndingDirectorySeparator(absoluteRootPath);
+        var normalizedPath = Path.GetFullPath(absolutePath);
+
+        if (string.Equals(normalizedPath, normalizedRoot, comparison))
+            return true;
+
+        var rootPrefix = normalizedRoot + Path.DirectorySeparatorChar;
+        return normalizedPath.StartsWith(rootPrefix, comparison);
     }
 }
