@@ -614,6 +614,68 @@ app.MapGet("/api/config/preflight/droplets", () =>
 });
 
 // ======================================================
+// SETTINGS — AUTO PREFLIGHT (activation + seuils globaux)
+// ======================================================
+
+app.MapGet("/api/config/autopreflight", (HttpContext ctx) =>
+{
+    try
+    {
+        if (!IsAdmin(ctx))
+            return Results.Json(new { ok = false, error = "Admin only" });
+        var cfg = MongoDbHelper.GetSettings<AutoPreflightSettings>("autoPreflight") ?? new AutoPreflightSettings();
+        return Results.Json(new { ok = true, config = cfg });
+    }
+    catch (Exception ex) { return HandleException(ex); }
+});
+
+app.MapPut("/api/config/autopreflight", async (HttpContext ctx) =>
+{
+    try
+    {
+        if (!IsAdmin(ctx))
+            return Results.Json(new { ok = false, error = "Admin only" });
+        var body = await ctx.Request.ReadFromJsonAsync<AutoPreflightSettings>();
+        if (body == null)
+            return Results.Json(new { ok = false, error = "Corps JSON invalide" });
+        MongoDbHelper.UpsertSettings("autoPreflight", body);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return HandleException(ex); }
+});
+
+// ======================================================
+// SETTINGS — PREFLIGHT RULES (règles + seuils par règle)
+// ======================================================
+
+app.MapGet("/api/config/preflight-rules", (HttpContext ctx) =>
+{
+    try
+    {
+        if (!IsAdmin(ctx))
+            return Results.Json(new { ok = false, error = "Admin only" });
+        var cfg = MongoDbHelper.GetSettings<PreflightRulesSettings>("preflightRules") ?? new PreflightRulesSettings();
+        return Results.Json(new { ok = true, config = cfg });
+    }
+    catch (Exception ex) { return HandleException(ex); }
+});
+
+app.MapPut("/api/config/preflight-rules", async (HttpContext ctx) =>
+{
+    try
+    {
+        if (!IsAdmin(ctx))
+            return Results.Json(new { ok = false, error = "Admin only" });
+        var body = await ctx.Request.ReadFromJsonAsync<PreflightRulesSettings>();
+        if (body == null)
+            return Results.Json(new { ok = false, error = "Corps JSON invalide" });
+        MongoDbHelper.UpsertSettings("preflightRules", body);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex) { return HandleException(ex); }
+});
+
+// ======================================================
 // SETTINGS — FORMATS FEUILLE EN MACHINE
 // ======================================================
 
