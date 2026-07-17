@@ -3,6 +3,7 @@ import { currentUser, authToken, deliveriesByPath, assignmentsByPath, fnKey, nor
 import { openBatChoiceModal } from '../bat.js';
 import { state, refreshKanban } from './kanban-core.js?v=41';
 import { openAssignDropdown, openActionsDropdown } from './kanban-actions.js?v=41';
+import { openPreflightAnalysisPanel, isAutoPreflightEnabled } from './kanban-preflight-panel.js';
 
 // Opens the quote send modal from Kanban context (prefill from fabrication data)
 async function openKanbanQuoteModal(fullPath, fab) {
@@ -116,6 +117,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
 
     const drop = col.querySelector(".kanban-col-operator__drop");
     drop.innerHTML = "";
+    const pfEnabled = await isAutoPreflightEnabled();
 
     let filtered = jobs;
 
@@ -660,8 +662,22 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           };
           if (isActionVisible(folderName, "preflight")) actions.appendChild(btnPreflightDirect);
 
+          // Bouton Analyser PDF (moteur preflight automatique)
+          if (pfEnabled) {
+            const btnAnalyse = document.createElement("button");
+            btnAnalyse.className = "btn btn-sm";
+            btnAnalyse.textContent = "🔍 Analyser PDF";
+            btnAnalyse.title = "Analyser le PDF et obtenir une recommandation de preflight";
+            btnAnalyse.onclick = async (e) => {
+              e.stopPropagation();
+              const fileName = full.split(/[\\/]/).pop();
+              await openPreflightAnalysisPanel(full, fileName, async () => { await refreshKanban(); });
+            };
+            if (isActionVisible(folderName, "preflight")) actions.appendChild(btnAnalyse);
+          }
+
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
-          if (isActionVisible(folderName, "mailDebutProduction")) actions.appendChild(btnMailDebut);
+          if (isActionVisible(folderName, "mailDebutProduction") actions.appendChild(btnMailDebut);
           if (isActionVisible(folderName, "mailFinProduction")) actions.appendChild(btnMailFin);
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
@@ -756,12 +772,26 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
         };
         if (isActionVisible(folderName, "preflight")) actions.appendChild(btnPreflight);
 
+        // Bouton Analyser PDF (moteur preflight automatique)
+        if (pfEnabled) {
+          const btnAnalyseCorr = document.createElement("button");
+          btnAnalyseCorr.className = "btn btn-sm";
+          btnAnalyseCorr.textContent = "🔍 Analyser PDF";
+          btnAnalyseCorr.title = "Analyser le PDF et obtenir une recommandation de preflight";
+          btnAnalyseCorr.onclick = async (e) => {
+            e.stopPropagation();
+            const fileName = full.split(/[\\/]/).pop();
+            await openPreflightAnalysisPanel(full, fileName, async () => { await refreshKanban(); });
+          };
+          if (isActionVisible(folderName, "preflight")) actions.appendChild(btnAnalyseCorr);
+        }
+
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
           if (isActionVisible(folderName, "mailDebutProduction")) actions.appendChild(btnMailDebut);
           if (isActionVisible(folderName, "mailFinProduction")) actions.appendChild(btnMailFin);
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
-      } else if (folderName === "PrismaPrepare") {
+      } else if (folderName === "PrismaPrepare" {
         if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
         if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
