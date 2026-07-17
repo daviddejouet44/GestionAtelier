@@ -98,6 +98,22 @@ public class DropletConfig
     public string Path { get; set; } = "";
 }
 
+public class AutoPreflightSettings
+{
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; } = false;
+
+    [JsonPropertyName("minimumBleedMm")]
+    public double? MinimumBleedMm { get; set; }
+
+    [JsonPropertyName("minimumImageDpi")]
+    public int? MinimumImageDpi { get; set; }
+
+    /// <summary>Seuil TAC (Total Area Coverage / taux d'encrage total) réservé pour le moteur futur.</summary>
+    [JsonPropertyName("maximumTacPercent")]
+    public double? MaximumTacPercent { get; set; }
+}
+
 public class KanbanColumnConfig
 {
     [JsonPropertyName("folder")]
