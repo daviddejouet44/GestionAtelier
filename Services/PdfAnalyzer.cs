@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using iText.Kernel.Colors;
 using iText.Kernel.Pdf;
 using iText.Kernel.Pdf.Canvas.Parser;
@@ -21,7 +22,7 @@ public static class PdfAnalyzer
         "Symbol", "ZapfDingbats"
     };
 
-    public static PdfAnalysisReport Analyze(string fullPath)
+    public static PdfAnalysisReport Analyze(string fullPath, string? allowedRootPath = null)
     {
         var report = new PdfAnalysisReport();
 
@@ -31,6 +32,10 @@ public static class PdfAnalyzer
                 return BuildError("Chemin PDF vide.");
 
             var absolutePath = Path.GetFullPath(fullPath);
+            var effectiveRoot = ResolveAllowedRoot(allowedRootPath);
+            if (!string.IsNullOrWhiteSpace(effectiveRoot) && !IsPathInsideRoot(absolutePath, effectiveRoot))
+                return BuildError("Chemin PDF hors périmètre autorisé.");
+
             if (!File.Exists(absolutePath))
                 return BuildError("Fichier PDF introuvable.");
 
@@ -83,11 +88,7 @@ public static class PdfAnalyzer
                     spotColors.Add(color);
 
                 if (listener.MinImageDpi.HasValue)
-                {
-                    report.MinImageDpi = report.MinImageDpi.HasValue
-                        ? Math.Min(report.MinImageDpi.Value, listener.MinImageDpi.Value)
-                        : listener.MinImageDpi;
-                }
+                    report.MinImageDpi = UpdateMinimum(report.MinImageDpi, listener.MinImageDpi.Value);
 
                 report.ImagesBelow300DpiCount += listener.ImagesBelow300DpiCount;
             }
@@ -215,6 +216,7 @@ public static class PdfAnalyzer
 
         var w = Math.Min(widthMm, heightMm);
         var h = Math.Max(widthMm, heightMm);
+        // Tolérance pragmatique pour accepter les petites variations d'export (arrondis/boîtes PDF).
         const double tolerance = 2.0d;
 
         foreach (var (name, dims) in candidates)
@@ -225,7 +227,7 @@ public static class PdfAnalyzer
                 return name;
         }
 
-        return $"{Math.Round(widthMm, 1).ToString("0.#", CultureInfo.InvariantCulture)}x{Math.Round(heightMm, 1).ToString("0.#", CultureInfo.InvariantCulture)} mm";
+        return $"{widthMm.ToString("0.#", CultureInfo.InvariantCulture)}x{heightMm.ToString("0.#", CultureInfo.InvariantCulture)} mm";
     }
 
     private static void AnalyzeColorSpaces(PdfDictionary? colorSpaceDict, PdfAnalysisReport report, HashSet<string> spotColors)
@@ -269,10 +271,7 @@ public static class PdfAnalyzer
                             if (entry is PdfName channelName)
                             {
                                 var channel = DecodePdfName(channelName);
-                                if (channel.Equals("Cyan", StringComparison.OrdinalIgnoreCase) ||
-                                    channel.Equals("Magenta", StringComparison.OrdinalIgnoreCase) ||
-                                    channel.Equals("Yellow", StringComparison.OrdinalIgnoreCase) ||
-                                    channel.Equals("Black", StringComparison.OrdinalIgnoreCase))
+                                if (IsCmykProcessChannel(channel))
                                     continue;
 
                                 if (!string.IsNullOrWhiteSpace(channel))
@@ -356,7 +355,25 @@ public static class PdfAnalyzer
     {
         var raw = name?.ToString() ?? "";
         if (raw.StartsWith('/')) raw = raw[1..];
-        return raw.Replace("#20", " ");
+
+        if (!raw.Contains('#'))
+            return raw;
+
+        var sb = new StringBuilder(raw.Length);
+        for (var i = 0; i < raw.Length; i++)
+        {
+            if (raw[i] == '#' && i + 2 < raw.Length &&
+                byte.TryParse(raw.AsSpan(i + 1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var value))
+            {
+                sb.Append((char)value);
+                i += 2;
+                continue;
+            }
+
+            sb.Append(raw[i]);
+        }
+
+        return sb.ToString();
     }
 
     private static string NormalizeFontName(string rawName)
@@ -364,6 +381,45 @@ public static class PdfAnalyzer
         if (string.IsNullOrWhiteSpace(rawName)) return "";
         var idx = rawName.IndexOf('+');
         return idx >= 0 && idx + 1 < rawName.Length ? rawName[(idx + 1)..] : rawName;
+    }
+
+    private static double UpdateMinimum(double? currentMinimum, double candidate)
+        => currentMinimum.HasValue ? Math.Min(currentMinimum.Value, candidate) : candidate;
+
+    private static bool IsCmykProcessChannel(string channel)
+        => channel.Equals("Cyan", StringComparison.OrdinalIgnoreCase) ||
+           channel.Equals("Magenta", StringComparison.OrdinalIgnoreCase) ||
+           channel.Equals("Yellow", StringComparison.OrdinalIgnoreCase) ||
+           channel.Equals("Black", StringComparison.OrdinalIgnoreCase);
+
+    private static string? ResolveAllowedRoot(string? providedRootPath)
+    {
+        if (!string.IsNullOrWhiteSpace(providedRootPath))
+            return Path.GetFullPath(providedRootPath);
+
+        try
+        {
+            var hotfolderRoot = BackendUtils.HotfoldersRoot();
+            return string.IsNullOrWhiteSpace(hotfolderRoot) ? null : Path.GetFullPath(hotfolderRoot);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool IsPathInsideRoot(string absolutePath, string absoluteRootPath)
+    {
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+        var normalizedRoot = Path.TrimEndingDirectorySeparator(absoluteRootPath);
+        var normalizedPath = Path.GetFullPath(absolutePath);
+
+        if (string.Equals(normalizedPath, normalizedRoot, comparison))
+            return true;
+
+        var rootPrefix = normalizedRoot + Path.DirectorySeparatorChar;
+        return normalizedPath.StartsWith(rootPrefix, comparison);
     }
 
     private sealed class PdfAnalysisEventListener : IEventListener
@@ -406,7 +462,7 @@ public static class PdfAnalyzer
                 var dpiY = image.GetHeight() * 72d / heightPt;
                 var minDpi = Math.Min(dpiX, dpiY);
 
-                MinImageDpi = MinImageDpi.HasValue ? Math.Min(MinImageDpi.Value, minDpi) : minDpi;
+                MinImageDpi = UpdateMinimum(MinImageDpi, minDpi);
 
                 if (minDpi < 300d)
                     ImagesBelow300DpiCount++;
@@ -459,10 +515,7 @@ public static class PdfAnalyzer
                         {
                             if (entry is not PdfName channelName) continue;
                             var channel = DecodePdfName(channelName);
-                            if (channel.Equals("Cyan", StringComparison.OrdinalIgnoreCase) ||
-                                channel.Equals("Magenta", StringComparison.OrdinalIgnoreCase) ||
-                                channel.Equals("Yellow", StringComparison.OrdinalIgnoreCase) ||
-                                channel.Equals("Black", StringComparison.OrdinalIgnoreCase))
+                            if (IsCmykProcessChannel(channel))
                                 continue;
 
                             if (!string.IsNullOrWhiteSpace(channel))

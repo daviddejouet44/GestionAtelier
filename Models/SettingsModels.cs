@@ -109,6 +109,7 @@ public class AutoPreflightSettings
     [JsonPropertyName("minimumImageDpi")]
     public int? MinimumImageDpi { get; set; }
 
+    /// <summary>Seuil TAC (Total Area Coverage / taux d'encrage total) réservé pour le moteur futur.</summary>
     [JsonPropertyName("maximumTacPercent")]
     public double? MaximumTacPercent { get; set; }
 }
