@@ -65,9 +65,10 @@ public static class PreflightDecisionEngine
         PreflightSettings? preflightSettings = null,
         string? printProfileId = null)
     {
-        // Respect du flag opt-in : si la feature est désactivée, retourner une recommandation inactive.
-        // Aucun comportement existant n'est affecté tant que la feature n'est pas activée.
-        if (autoSettings != null && !autoSettings.Enabled)
+        // Respect du flag opt-in : si la feature est désactivée (ou non configurée), retourner une
+        // recommandation inactive. Aucun comportement existant n'est affecté tant que la feature
+        // n'est pas explicitement activée (Enabled = true).
+        if (autoSettings == null || !autoSettings.Enabled)
             return new PreflightRecommendation { IsActive = false };
 
         // Rapport en erreur : recommandation active mais vide (pas de corrections possibles).
