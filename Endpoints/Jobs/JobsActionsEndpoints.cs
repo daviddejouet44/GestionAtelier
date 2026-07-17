@@ -130,6 +130,48 @@ app.MapPost("/api/acrobat", () =>
     }
 });
 
+app.MapPost("/api/preflight/analyze", async (HttpContext ctx) =>
+{
+    try
+    {
+        var doc = await JsonDocument.ParseAsync(ctx.Request.Body);
+        if (!doc.RootElement.TryGetProperty("fullPath", out var fpEl))
+            return Results.Json(new { ok = false, error = "fullPath manquant" });
+
+        var fullPath = Path.GetFullPath(fpEl.GetString() ?? "");
+        if (!File.Exists(fullPath))
+            return Results.Json(new { ok = false, error = "Fichier introuvable" });
+
+        var report = PdfAnalyzer.Analyze(fullPath);
+        if (report.IsError)
+            return Results.Json(new { ok = false, error = report.ErrorMessage ?? "Impossible d'analyser le PDF" });
+
+        var rulesSettings = MongoDbHelper.GetSettings<PreflightRulesSettings>("preflightRules") ?? new PreflightRulesSettings();
+        var autoSettings =
+            MongoDbHelper.GetSettings<AutoPreflightSettings>("autoPreflight") ??
+            MongoDbHelper.GetSettings<AutoPreflightSettings>("autoPreflightSettings") ??
+            new AutoPreflightSettings();
+        var preflightSettings = MongoDbHelper.GetSettings<PreflightSettings>("preflight") ?? new PreflightSettings();
+
+        var recommendation = PreflightDecisionEngine.Evaluate(
+            report,
+            rulesSettings,
+            autoSettings,
+            preflightSettings);
+
+        return Results.Json(new
+        {
+            ok = true,
+            report,
+            recommendation
+        });
+    }
+    catch (Exception ex)
+    {
+        return ErrorHelper.HandleException(ex);
+    }
+});
+
 app.MapPost("/api/acrobat/preflight", async (HttpContext ctx) =>
 {
     try
