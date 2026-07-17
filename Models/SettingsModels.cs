@@ -539,6 +539,106 @@ public class ProductionDelayAlertConfig
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Preflight decision engine — configurable rules and thresholds (Step 2)
+// Stored in MongoDB via MongoDbHelper.GetSettings<PreflightRulesSettings>("preflightRules")
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// <summary>
+/// Configuration d'une règle individuelle du moteur de décision preflight.
+/// Chaque règle peut être activée ou désactivée indépendamment par l'utilisateur.
+/// </summary>
+public class PreflightRuleConfig
+{
+    /// <summary>Identifiant canonique de la règle (ex. "rgb_to_cmyk"). Voir <c>PreflightRuleIds</c>.</summary>
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = "";
+
+    /// <summary>Libellé affiché à l'utilisateur (ex. "Conversion CMJN").</summary>
+    [JsonPropertyName("label")]
+    public string Label { get; set; } = "";
+
+    /// <summary>La règle est active uniquement si ce flag est à <c>true</c>.</summary>
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; } = false;
+
+    /// <summary>
+    /// Nom du droplet ou correction cible associé à cette règle (facultatif).
+    /// Utilisé pour la présélection du droplet dans la recommandation.
+    /// </summary>
+    [JsonPropertyName("targetDropletName")]
+    public string? TargetDropletName { get; set; }
+}
+
+/// <summary>
+/// Seuils configurables spécifiques à un profil d'impression (ex. offset PSO Coated, numérique).
+/// Permet d'appliquer des limites différentes selon le contexte de production.
+/// </summary>
+public class PreflightProfileThresholds
+{
+    /// <summary>Identifiant du profil (ex. "offset", "numerique").</summary>
+    [JsonPropertyName("profileId")]
+    public string ProfileId { get; set; } = "";
+
+    /// <summary>Libellé affiché à l'utilisateur (ex. "Offset PSO Coated", "Numérique").</summary>
+    [JsonPropertyName("profileLabel")]
+    public string ProfileLabel { get; set; } = "";
+
+    /// <summary>Seuil TAC maximum (%). <c>null</c> = règle inactive pour ce profil.</summary>
+    [JsonPropertyName("maximumTacPercent")]
+    public double? MaximumTacPercent { get; set; }
+
+    /// <summary>Fond perdu minimum requis (mm). <c>null</c> = règle inactive pour ce profil.</summary>
+    [JsonPropertyName("minimumBleedMm")]
+    public double? MinimumBleedMm { get; set; }
+
+    /// <summary>Résolution minimale des images (dpi). <c>null</c> = règle inactive pour ce profil.</summary>
+    [JsonPropertyName("minimumImageDpi")]
+    public int? MinimumImageDpi { get; set; }
+}
+
+/// <summary>
+/// Paramètres du moteur de décision preflight automatique, persistés en MongoDB.
+/// Toutes les valeurs sont définies par l'utilisateur — aucune constante métier n'est codée en dur.
+/// Utiliser <c>MongoDbHelper.GetSettings&lt;PreflightRulesSettings&gt;("preflightRules")</c>.
+/// </summary>
+public class PreflightRulesSettings
+{
+    /// <summary>
+    /// Seuil TAC global (%). <c>null</c> = règle inactive (aucune valeur par défaut figée).
+    /// Un seuil spécifique à un profil (voir <see cref="ProfileThresholds"/>) prend la priorité.
+    /// </summary>
+    [JsonPropertyName("maximumTacPercent")]
+    public double? MaximumTacPercent { get; set; }
+
+    /// <summary>
+    /// Fond perdu global minimum (mm). <c>null</c> = règle inactive (aucune valeur par défaut figée).
+    /// Un seuil spécifique à un profil prend la priorité.
+    /// </summary>
+    [JsonPropertyName("minimumBleedMm")]
+    public double? MinimumBleedMm { get; set; }
+
+    /// <summary>
+    /// Résolution minimale globale des images (dpi). <c>null</c> = règle inactive (aucune valeur par défaut figée).
+    /// Un seuil spécifique à un profil prend la priorité.
+    /// </summary>
+    [JsonPropertyName("minimumImageDpi")]
+    public int? MinimumImageDpi { get; set; }
+
+    /// <summary>
+    /// Liste des règles configurées par l'utilisateur, chacune activable/désactivable individuellement.
+    /// </summary>
+    [JsonPropertyName("rules")]
+    public List<PreflightRuleConfig> Rules { get; set; } = new();
+
+    /// <summary>
+    /// Seuils par profil d'impression (optionnel). Prend la priorité sur les seuils globaux.
+    /// Permet de définir des tolérances différentes pour l'offset et le numérique par exemple.
+    /// </summary>
+    [JsonPropertyName("profileThresholds")]
+    public List<PreflightProfileThresholds> ProfileThresholds { get; set; } = new();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Kanban action menu configuration (which actions are shown in the Action dropdown)
 // ──────────────────────────────────────────────────────────────────────────────
 public class KanbanAction
