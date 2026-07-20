@@ -75,6 +75,8 @@ public static class DropletRunner
         }
 
         // Laisse Acrobat fermer/flush le fichier après la sortie du processus.
+        // CancellationToken.None intentionnel : interrompre ce délai pourrait laisser
+        // le fichier dans un état incohérent si Acrobat n'a pas fini d'écrire.
         await Task.Delay(FlushDelay, CancellationToken.None);
 
         return new DropletRunResult { Ok = true };

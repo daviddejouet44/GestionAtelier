@@ -183,7 +183,11 @@ app.MapPost("/api/preflight/run-chain", async (HttpContext ctx) =>
         if (!doc.RootElement.TryGetProperty("fullPath", out var fpEl))
             return Results.Json(new { ok = false, error = "fullPath manquant" });
 
-        var fullPath = Path.GetFullPath(fpEl.GetString() ?? "");
+        var rawPath = fpEl.GetString();
+        if (string.IsNullOrWhiteSpace(rawPath))
+            return Results.Json(new { ok = false, error = "fullPath manquant" });
+
+        var fullPath = Path.GetFullPath(rawPath);
         var allowedRoot = Path.GetFullPath(BackendUtils.HotfoldersRoot());
         if (!IsPathInsideRoot(fullPath, allowedRoot))
             return Results.Json(new { ok = false, error = "Chemin PDF hors périmètre autorisé." });
