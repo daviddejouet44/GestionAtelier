@@ -286,6 +286,9 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
       // Actions are appended to infoStack (inside the layout) at the end of folder-specific logic below,
       // so they appear directly under the PDF name (next to the thumbnail) instead of at card bottom.
 
+      const actions = document.createElement("div");
+      actions.className = "kanban-card-operator-actions";
+
       // Load dossier number, presse and planningMachine asynchronously
       (async () => {
         let d = {};
@@ -345,9 +348,6 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           }
         }
       })();
-
-      const actions = document.createElement("div");
-      actions.className = "kanban-card-operator-actions";
 
       // Profile 1 (Soumission): no action buttons, no dragging
       if (currentUser?.profile === 1) {
@@ -677,7 +677,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           }
 
         if (!readOnly && (currentUser.profile === 2 || currentUser.profile === 3)) {
-          if (isActionVisible(folderName, "mailDebutProduction") actions.appendChild(btnMailDebut);
+          if (isActionVisible(folderName, "mailDebutProduction")) actions.appendChild(btnMailDebut);
           if (isActionVisible(folderName, "mailFinProduction")) actions.appendChild(btnMailFin);
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
@@ -791,7 +791,7 @@ export async function refreshKanbanColumnOperator(folderName, q, sort, col, read
           if (isActionVisible(folderName, "mailFinProduction")) actions.appendChild(btnMailFin);
           if (isActionVisible(folderName, "supprimer")) actions.appendChild(btnDelete);
         }
-      } else if (folderName === "PrismaPrepare" {
+      } else if (folderName === "PrismaPrepare") {
         if (isActionVisible(folderName, "fiche")) actions.appendChild(btnFiche);
         if (isActionVisible(folderName, "affecter")) actions.appendChild(btnAssign);
 
