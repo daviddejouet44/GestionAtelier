@@ -106,16 +106,16 @@ public static class GhostscriptInkAnalyzer
         foreach (Match m in matches)
         {
             double c = double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
-            double mg = double.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture);
+            double magenta = double.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture);
             double y = double.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture);
             double k = double.Parse(m.Groups[4].Value, CultureInfo.InvariantCulture);
 
-            double pageTac = (c + mg + y + k) * 100.0;
+            double pageTac = (c + magenta + y + k) * 100.0;
             if (pageTac > maxTac)
                 maxTac = pageTac;
 
             sumC += c;
-            sumM += mg;
+            sumM += magenta;
             sumY += y;
             sumK += k;
         }
