@@ -15,17 +15,17 @@ export async function isAutoPreflightEnabled() {
 function badge(s, text) {
   const C = { ok: ['#dcfce7','#16a34a','🟢'], warning: ['#fef9c3','#ca8a04','🟠'], error: ['#fee2e2','#dc2626','🔴'], na: ['#f3f4f6','#6b7280','—'] };
   const c = C[s] || C.na;
-  return '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:12px;font-size:12px;font-weight:600;background:' + c[0] + ';color:' + c[1] + ';">' + c[2] + ' ' + text + '</span>';
+  return '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:12px;font-size:12px;font-weight:600;background:' + c[0] + ';color:' + c[1] + ';">' + c[2] + ' ' + (text || '') + '</span>';
 }
-function fmm(v) { return v != null ? v.toFixed(1) + ' mm' : '—'; }
-function fdpi(v) { return v != null ? Math.round(v) + ' dpi' : '—'; }
-function fpct(v) { return v != null ? v.toFixed(1) + ' %' : 'Non calculé (Étape 5)'; }
+function fmm(v) { return v != null ? v.toFixed(1) + ' mm' : '—'; }
+function fdpi(v) { return v != null ? Math.round(v) + ' dpi' : '—'; }
+function fpct(v) { return v != null ? v.toFixed(1) + ' %' : 'Non calculé (Étape 5)'; }
 
 export async function openPreflightAnalysisPanel(fullPath, fileName, onLaunchDone) {
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:10000;overflow:auto;padding:20px;';
   const modal = document.createElement('div');
-  modal.style.cssText = 'background:white;border-radius:14px;padding:28px 32px;min-width:520px;max-width:820px;width:100%;box-shadow:0 16px 48px rgba(0,0,0,.3);position:relative;max-height:90vh;overflow-y:auto;';
+  modal.style.cssText = 'background:white;border-radius:14px;padding:28px 32px;min-width:520px;max-width:820px;width:100%;box-shadow:0 16px 48px rgba(0,0,0,.3);position:relative;max-height:90vh;overflow:auto;';
   modal.innerHTML = [
     '<button id="pf-panel-close" style="position:absolute;top:14px;right:14px;background:none;border:none;cursor:pointer;font-size:18px;color:#6b7280;" title="Fermer">&times;</button>',
     '<h3 style="margin:0 0 4px;font-size:16px;color:#111827;">📄 Analyse PDF</h3>',
@@ -62,14 +62,14 @@ export async function openPreflightAnalysisPanel(fullPath, fileName, onLaunchDon
   const bleedSt = () => rep.bleedMm == null ? 'warning' : rep.bleedMm >= 3 ? 'ok' : rep.bleedMm > 0 ? 'warning' : 'error';
   const rows = [
     { label: 'Taille / Format',    statusFn: () => rep.trimBox?.present ? 'ok' : 'warning',
-      valueFn: () => rep.finishedFormat || (rep.trimBox?.widthMm != null ? rep.trimBox.widthMm.toFixed(0) + '×' + rep.trimBox.heightMm.toFixed(0) + ' mm' : '—') },
+      valueFn: () => rep.finishedFormat || (rep.trimBox?.widthMm != null ? rep.trimBox.widthMm.toFixed(0) + '×' + rep.trimBox.heightMm.toFixed(0) + ' mm' : '—') },
     { label: 'Fond perdu',         statusFn: bleedSt, valueFn: () => fmm(rep.bleedMm) },
     { label: 'TrimBox',            statusFn: () => rep.trimBox?.present ? 'ok' : 'warning', valueFn: () => rep.trimBox?.present ? 'Présente' : 'Absente' },
     { label: 'Espace couleur',     statusFn: () => rep.usesRgb ? 'error' : 'ok', valueFn: () => [rep.usesRgb?'RVB':'',rep.usesCmyk?'CMJN':'',rep.usesGray?'Gris':''].filter(Boolean).join(', ')||'—' },
     { label: 'Tons directs',       statusFn: () => rep.spotColors?.length ? 'warning' : 'ok', valueFn: () => rep.spotColors?.length ? rep.spotColors.join(', ') : 'Aucun' },
     { label: 'TAC',               statusFn: () => rep.totalInkCoveragePercent==null?'na':(rec?.corrections?.some(c=>c.ruleId==='tac_reduction')?'error':'ok'), valueFn: () => fpct(rep.totalInkCoveragePercent) },
     { label: 'Polices manquantes', statusFn: () => rep.hasMissingFonts?'error':'ok', valueFn: () => rep.hasMissingFonts?(rep.missingFonts?.join(', ')||'Oui'):'Aucune' },
-    { label: 'Résolution images',  statusFn: () => rep.minImageDpi==null?'na':(rep.imagesBelow300DpiCount>0?'warning':'ok'), valueFn: () => rep.minImageDpi!=null ? fdpi(rep.minImageDpi)+' min ('+rep.imagesBelow300DpiCount+' < seuil)' : '—' },
+    { label: 'Résolution images',  statusFn: () => rep.minImageDpi==null?'na':(rep.imagesBelow300DpiCount>0?'warning':'ok'), valueFn: () => rep.minImageDpi!=null ? fdpi(rep.minImageDpi)+' min ('+rep.imagesBelow300DpiCount+' < 300)' : '—' },
     { label: 'Surimpression',      statusFn: () => rep.hasOverprint==null?'na':(rep.hasOverprint?'warning':'ok'), valueFn: () => rep.hasOverprint==null?'Non analysé':(rep.hasOverprint?'Détectée':'Aucune') },
   ];
 
@@ -84,14 +84,14 @@ export async function openPreflightAnalysisPanel(fullPath, fileName, onLaunchDon
   const bl = s => s==='ok'?'OK':s==='warning'?'Attention':s==='error'?'Erreur':'N/A';
   const tableWrap = document.createElement('div');
   tableWrap.style.cssText = 'margin-bottom:18px;';
-  tableWrap.innerHTML = '<h4 style="margin:0 0 10px;font-size:14px;color:#374151;">Contrôles</h4><table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="background:#f3f4f6;"><th style="text-align:left;padding:6px 10px;font-weight:600;color:#374151;border-bottom:1px solid #e5e7eb;">Contrôle</th><th style="text-align:left;padding:6px 10px;font-weight:600;color:#374151;border-bottom:1px solid #e5e7eb;">Valeur</th><th style="text-align:left;padding:6px 10px;font-weight:600;color:#374151;border-bottom:1px solid #e5e7eb;">Statut</th></tr></thead><tbody id="pf-checks-tbody"></tbody></table>';
+  tableWrap.innerHTML = '<h4 style="margin:0 0 10px;font-size:14px;color:#374151;">Contrôles</h4><table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="background:#f9fafb;"><th style="text-align:left;padding:6px 10px;color:#6b7280;font-weight:600;">Contrôle</th><th style="text-align:left;padding:6px 10px;color:#6b7280;font-weight:600;">État</th><th style="text-align:left;padding:6px 10px;color:#6b7280;font-weight:600;">Valeur</th></tr></thead><tbody id="pf-checks-tbody"></tbody></table>';
   bodyEl.appendChild(tableWrap);
   const tbody = tableWrap.querySelector('#pf-checks-tbody');
   rows.forEach(row => {
     const st = row.statusFn(); const val = row.valueFn();
     const tr = document.createElement('tr');
     tr.style.borderBottom = '1px solid #f3f4f6';
-    tr.innerHTML = '<td style="padding:6px 10px;color:#374151;font-weight:500;">' + row.label + '</td><td style="padding:6px 10px;color:#6b7280;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + val + '">' + val + '</td><td style="padding:6px 10px;">' + badge(st, bl(st)) + '</td>';
+    tr.innerHTML = '<td style="padding:6px 10px;color:#374151;font-weight:500;">' + row.label + '</td><td style="padding:6px 10px;color:#6b7280;max-width:220px;overflow:hidden;text-overflow:ellipsis;">' + badge(st, bl(st)) + '</td><td style="padding:6px 10px;color:#6b7280;max-width:220px;overflow:hidden;text-overflow:ellipsis;">' + val + '</td>';
     tbody.appendChild(tr);
   });
 
@@ -107,14 +107,83 @@ export async function openPreflightAnalysisPanel(fullPath, fileName, onLaunchDon
     recoEl.innerHTML = '<p style="font-size:13px;color:#16a34a;margin:0;">✅ Aucune correction requise.</p>';
   } else {
     const corrHtml = rec.corrections.map(c => '<li style="margin-bottom:4px;"><strong>' + c.label + '</strong>' + (c.description ? ' — ' + c.description : '') + '</li>').join('');
-    const dpHtml = rec.selectedDroplet ? '<p style="font-size:12px;color:#0369a1;margin:8px 0 0;"><strong>Droplet présélectionné :</strong> ' + (rec.selectedDroplet.name || rec.selectedDroplet.path) + '</p>' : '';
-    recoEl.innerHTML = '<p style="font-size:13px;color:#374151;margin:0 0 6px;"><strong>Preflight conseillé :</strong> ' + (rec.advisedPreflightLabel || 'Standard') + '</p><p style="font-size:13px;font-weight:600;color:#374151;margin:0 0 4px;">Corrections proposées :</p><ul style="margin:0;padding-left:18px;font-size:13px;color:#374151;">' + corrHtml + '</ul>' + dpHtml;
+    const dpHtml = rec.selectedDroplet ? '<p style="font-size:12px;color:#0369a1;margin:8px 0 0;"><strong>Droplet présélectionné :</strong> ' + (rec.selectedDroplet.name || rec.selectedDroplet.path) + '</p>' : '';
+    recoEl.innerHTML = '<p style="font-size:13px;color:#374151;margin:0 0 6px;"><strong>Preflight conseillé :</strong> ' + (rec.advisedPreflightLabel || 'Standard') + '</p><p style="font-size:13px;font-weight:600;color:#374151;margin:0 0 4px;">Corrections proposées :</p><ul style="margin:0;padding-left:18px;font-size:13px;color:#374151;">' + corrHtml + '</ul>' + dpHtml;
+  }
+
+  // Chain execution section (only shown when the engine is active and there are corrections)
+  if (rec && rec.isActive && rec.corrections && rec.corrections.length > 0) {
+    const chainDiv = document.createElement('div');
+    chainDiv.style.cssText = 'background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px;margin-bottom:18px;';
+    const chainListHtml = rec.corrections.map((c, i) =>
+      '<li style="margin-bottom:4px;">' +
+        '<span style="color:#6b7280;font-size:11px;margin-right:6px;">' + (i + 1) + '.</span>' +
+        '<strong>' + c.label + '</strong>' +
+      '</li>'
+    ).join('');
+    chainDiv.innerHTML =
+      '<h4 style="margin:0 0 8px;font-size:14px;color:#15803d;">🔗 Chaîne de corrections recommandée</h4>' +
+      '<ol style="margin:0 0 10px;padding-left:20px;font-size:13px;color:#374151;">' + chainListHtml + '</ol>' +
+      '<button id="pf-chain-btn" class="btn btn-primary" style="background:#15803d;border-color:#15803d;min-width:220px;">▶ Appliquer les corrections recommandées</button>' +
+      '<div id="pf-chain-status" style="margin-top:10px;font-size:13px;min-height:18px;"></div>' +
+      '<div id="pf-chain-report" style="margin-top:8px;"></div>';
+    bodyEl.appendChild(chainDiv);
+
+    const chainBtn = chainDiv.querySelector('#pf-chain-btn');
+    const chainStatusEl = chainDiv.querySelector('#pf-chain-status');
+    const chainReportEl = chainDiv.querySelector('#pf-chain-report');
+
+    chainBtn.onclick = async () => {
+      chainBtn.disabled = true;
+      chainBtn.textContent = '⏳ Chaîne en cours…';
+      chainStatusEl.textContent = '';
+      chainReportEl.innerHTML = '';
+      try {
+        const r = await fetch('/api/preflight/run-chain', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${authToken}` },
+          body: JSON.stringify({ fullPath })
+        }).then(res => res.json()).catch(() => ({ ok: false, error: 'Erreur réseau' }));
+
+        // Render step-by-step report
+        if (r.chainReport && Array.isArray(r.chainReport.steps) && r.chainReport.steps.length > 0) {
+          const stepsHtml = r.chainReport.steps.map(s =>
+            '<div style="display:flex;align-items:flex-start;gap:8px;padding:4px 0;border-bottom:1px solid #e5e7eb;">' +
+              '<span style="font-size:14px;flex-shrink:0;">' + (s.ok ? '✅' : '❌') + '</span>' +
+              '<div>' +
+                '<strong style="font-size:13px;">' + s.label + '</strong>' +
+                (s.dropletName ? '<span style="font-size:11px;color:#6b7280;margin-left:6px;">(' + s.dropletName + ')</span>' : '') +
+                (s.error ? '<div style="color:#dc2626;font-size:12px;margin-top:2px;">' + s.error + '</div>' : '') +
+              '</div>' +
+            '</div>'
+          ).join('');
+          chainReportEl.innerHTML = '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:8px 12px;font-size:13px;">' + stepsHtml + '</div>';
+        }
+
+        if (r.ok) {
+          chainBtn.textContent = '✅ Corrections appliquées';
+          chainStatusEl.style.color = '#16a34a';
+          chainStatusEl.textContent = 'La chaîne de corrections s\'est terminée avec succès. Le fichier a été déplacé vers Prêt pour impression.';
+          if (onLaunchDone) setTimeout(onLaunchDone, 800);
+        } else {
+          chainBtn.disabled = false;
+          chainBtn.textContent = '▶ Appliquer les corrections recommandées';
+          chainStatusEl.style.color = '#dc2626';
+          chainStatusEl.textContent = '❌ ' + (r.error || r.chainReport?.errorMessage || 'Erreur inconnue');
+        }
+      } catch(err) {
+        chainBtn.disabled = false;
+        chainBtn.textContent = '▶ Appliquer les corrections recommandées';
+        chainStatusEl.style.color = '#dc2626';
+        chainStatusEl.textContent = '❌ ' + err.message;
+      }
+    };
   }
 
   // Launch section
   const launchDiv = document.createElement('div');
   launchDiv.style.cssText = 'border-top:1px solid #e5e7eb;padding-top:16px;';
-  launchDiv.innerHTML = '<h4 style="margin:0 0 10px;font-size:14px;color:#374151;">Lancer le Preflight</h4><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><label style="font-size:13px;color:#374151;white-space:nowrap;">Droplet :</label><select id="pf-droplet-select" class="settings-input" style="flex:1;min-width:200px;max-width:360px;font-size:13px;"></select><button id="pf-launch-btn" class="btn btn-primary" style="min-width:140px;">▶ Lancer le Preflight</button></div><div id="pf-launch-status" style="margin-top:10px;font-size:13px;min-height:18px;"></div>';
+  launchDiv.innerHTML = '<h4 style="margin:0 0 10px;font-size:14px;color:#374151;">Lancer le Preflight</h4><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><label style="font-size:13px;color:#374151;white-space:nowrap;">Droplet :</label><select id="pf-droplet-select" class="settings-input" style="flex:1;min-width:200px;max-width:360px;font-size:13px;"></select><button id="pf-launch-btn" class="btn btn-primary" style="min-width:140px;">▶ Lancer le Preflight</button></div><div id="pf-launch-status" style="margin-top:10px;font-size:13px;min-height:18px;"></div>';
   bodyEl.appendChild(launchDiv);
   const selectEl = launchDiv.querySelector('#pf-droplet-select');
   const launchBtn = launchDiv.querySelector('#pf-launch-btn');
