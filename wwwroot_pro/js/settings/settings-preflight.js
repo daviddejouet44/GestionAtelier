@@ -19,9 +19,9 @@ export async function renderSettingsPreflight(panel) {
 
   try {
     const [r1, r2, r3] = await Promise.all([
-      fetch("/api/config/preflight",       { headers: { "Authorization": `Bearer ${authToken}` } } }).then(r => r.json()),
-      fetch("/api/config/autopreflight",   { headers: { "Authorization": `Bearer ${authToken}` } } }).then(r => r.json()),
-      fetch("/api/config/preflight-rules", { headers: { "Authorization": `Bearer ${authToken}` } } }).then(r => r.json()),
+      fetch("/api/config/preflight",       { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()),
+      fetch("/api/config/autopreflight",   { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()),
+      fetch("/api/config/preflight-rules", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()),
     ]);
     if (r1.ok && r1.config) cfg = {
       dropletStandard:  r1.config.dropletStandard  || "",
@@ -199,7 +199,7 @@ export async function renderSettingsPreflight(panel) {
     };
     const r = await fetch("/api/config/autopreflight", {
       method: "PUT",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` } },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
       body: JSON.stringify(body)
     }).then(r => r.json());
     if (r.ok) showNotification("✅ Activation & seuils enregistrés", "success");
@@ -227,7 +227,7 @@ export async function renderSettingsPreflight(panel) {
     };
     const r = await fetch("/api/config/preflight-rules", {
       method: "PUT",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` } },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
       body: JSON.stringify(body)
     }).then(r => r.json());
     if (r.ok) showNotification("✅ Règles d'analyse enregistrées", "success");
@@ -243,7 +243,7 @@ export async function renderSettingsPreflight(panel) {
     })).filter(d => d.path);
     const r = await fetch("/api/config/preflight", {
       method: "PUT",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` } },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
       body: JSON.stringify({ dropletStandard, dropletFondPerdu, droplets })
     }).then(r => r.json());
     if (r.ok) showNotification("✅ Configuration Preflight enregistrée", "success");

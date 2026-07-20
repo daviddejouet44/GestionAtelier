@@ -6,7 +6,7 @@ let _autoPreflightEnabled = null;
 export async function isAutoPreflightEnabled() {
   if (_autoPreflightEnabled !== null) return _autoPreflightEnabled;
   try {
-    const r = await fetch('/api/config/autopreflight', { headers: { "Authorization": `Bearer ${authToken}` } } }).then(r => r.json());
+    const r = await fetch('/api/config/autopreflight', { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json());
     _autoPreflightEnabled = !!(r.ok && r.config && r.config.enabled);
   } catch(e) { _autoPreflightEnabled = false; }
   return _autoPreflightEnabled;
@@ -43,7 +43,7 @@ export async function openPreflightAnalysisPanel(fullPath, fileName, onLaunchDon
   try {
     const r = await fetch('/api/preflight/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${authToken}` } },
+      headers: { 'Content-Type': 'application/json', "Authorization": `Bearer ${authToken}` },
       body: JSON.stringify({ fullPath })
     });
     analysisResult = await r.json();
