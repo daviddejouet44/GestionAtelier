@@ -175,6 +175,73 @@ app.MapPost("/api/preflight/analyze", async (HttpContext ctx) =>
     }
 });
 
+app.MapPost("/api/preflight/run-chain", async (HttpContext ctx) =>
+{
+    try
+    {
+        var doc = await JsonDocument.ParseAsync(ctx.Request.Body);
+        if (!doc.RootElement.TryGetProperty("fullPath", out var fpEl))
+            return Results.Json(new { ok = false, error = "fullPath manquant" });
+
+        var fullPath = Path.GetFullPath(fpEl.GetString() ?? "");
+        var allowedRoot = Path.GetFullPath(BackendUtils.HotfoldersRoot());
+        if (!IsPathInsideRoot(fullPath, allowedRoot))
+            return Results.Json(new { ok = false, error = "Chemin PDF hors périmètre autorisé." });
+
+        if (!File.Exists(fullPath))
+            return Results.Json(new { ok = false, error = "Fichier introuvable" });
+
+        // Analyse du PDF + calcul TAC
+        var report = PdfAnalyzer.Analyze(fullPath);
+        if (report.IsError)
+            return Results.Json(new { ok = false, error = report.ErrorMessage ?? "Impossible d'analyser le PDF" });
+
+        var preflightSettings = MongoDbHelper.GetSettings<PreflightSettings>("preflight") ?? new PreflightSettings();
+        GhostscriptInkAnalyzer.Enrich(report, fullPath, preflightSettings.GhostscriptExePath);
+
+        var rulesSettings = MongoDbHelper.GetSettings<PreflightRulesSettings>("preflightRules") ?? new PreflightRulesSettings();
+        var autoSettings  = MongoDbHelper.GetSettings<AutoPreflightSettings>("autoPreflight")    ?? new AutoPreflightSettings();
+
+        var recommendation = PreflightDecisionEngine.Evaluate(
+            report, rulesSettings, autoSettings, preflightSettings);
+
+        if (!recommendation.IsActive)
+            return Results.Json(new { ok = false, error = "Le moteur preflight automatique est désactivé. Activez-le dans Paramétrage > Preflight." });
+
+        if (recommendation.Corrections.Count == 0)
+        {
+            var emptyReport = new PreflightChainReport { Ok = true };
+            return Results.Json(new { ok = true, chainReport = emptyReport, message = "Aucune correction requise." });
+        }
+
+        // Exécution séquentielle de la chaîne de corrections
+        var chainReport = await PreflightChainRunner.RunAsync(
+            recommendation, preflightSettings, rulesSettings, fullPath, ctx.RequestAborted);
+
+        if (!chainReport.Ok)
+            return Results.Json(new { ok = false, chainReport, error = chainReport.ErrorMessage });
+
+        // Déplacement vers « Prêt pour impression » après la chaîne complète
+        var profilLabel = recommendation.AdvisedPreflightLabel;
+        if (string.IsNullOrWhiteSpace(profilLabel)) profilLabel = "Chaîne de corrections";
+
+        var stepSummary = string.Join(", ", chainReport.Steps.Select(s => s.Label));
+        var (moveOk, moveError, _) = await MoveToReadyForPrint(
+            fullPath,
+            profilLabel,
+            $"Chaîne preflight ({stepSummary}) : {Path.GetFileName(fullPath)} → Prêt pour impression");
+
+        if (!moveOk)
+            return Results.Json(new { ok = false, chainReport, error = $"La chaîne s'est bien déroulée mais le déplacement du fichier a échoué : {moveError}" });
+
+        return Results.Json(new { ok = true, chainReport });
+    }
+    catch (Exception ex)
+    {
+        return ErrorHelper.HandleException(ex);
+    }
+});
+
 app.MapPost("/api/acrobat/preflight", async (HttpContext ctx) =>
 {
     try
@@ -233,129 +300,19 @@ app.MapPost("/api/acrobat/preflight", async (HttpContext ctx) =>
                 preflightProfilName = Path.GetFileNameWithoutExtension(dropletExe);
         }
 
-        // Launch the droplet with the PDF path as argument
-        var psi = new ProcessStartInfo(dropletExe, $"\"{fullPath}\"")
-        {
-            UseShellExecute = true,
-            WindowStyle = ProcessWindowStyle.Normal
-        };
-        var process = Process.Start(psi);
-        if (process == null)
-            return Results.Json(new { ok = false, error = "Impossible de démarrer le droplet Preflight" });
-
-        // Wait for the droplet process to complete (max 5 minutes)
-        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(5));
-        try
-        {
-            await process.WaitForExitAsync(cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            try { process.Kill(); } catch { }
-            return Results.Json(new { ok = false, error = "Le droplet Preflight a dépassé le délai d'attente (5 min)" });
-        }
-
-        // Give Acrobat a moment to flush/close the file after the droplet exits
-        await Task.Delay(5000);
+        // Launch the droplet with the PDF path as argument (via DropletRunner shared helper)
+        var dropletResult = await DropletRunner.RunAsync(dropletExe, fullPath);
+        if (!dropletResult.Ok)
+            return Results.Json(new { ok = false, error = dropletResult.Error });
 
         // Move file to "Prêt pour impression" with retry loop to handle file lock
-        var root = BackendUtils.HotfoldersRoot();
-        var destDir = Path.Combine(root, "Prêt pour impression");
-        Directory.CreateDirectory(destDir);
-        var destPath = Path.Combine(destDir, Path.GetFileName(fullPath));
+        var (moveOk, moveError, destPath) = await MoveToReadyForPrint(
+            fullPath,
+            preflightProfilName,
+            $"Preflight droplet ({Path.GetFileName(dropletExe)}) : {Path.GetFileName(fullPath)} → Prêt pour impression");
 
-        bool moved = false;
-        Exception? lastEx = null;
-        for (int retry = 0; retry < 10; retry++)
-        {
-            try
-            {
-                File.Move(fullPath, destPath, overwrite: true);
-                moved = true;
-                break;
-            }
-            catch (IOException ex)
-            {
-                lastEx = ex;
-                await Task.Delay(2000);
-            }
-        }
-
-        if (!moved)
-        {
-            // Fallback: copy + delete
-            try
-            {
-                File.Copy(fullPath, destPath, overwrite: true);
-                try { File.Delete(fullPath); } catch (Exception exDel) { Console.WriteLine($"[PREFLIGHT][WARN] Could not delete source after copy: {exDel.Message}"); }
-                moved = true;
-            }
-            catch (Exception exCopy)
-            {
-                return Results.Json(new { ok = false, error = $"Impossible de déplacer le fichier après le Preflight : {lastEx?.Message ?? exCopy.Message}" });
-            }
-        }
-
-        // Update delivery path in MongoDB
-        try { BackendUtils.UpdateDeliveryPath(fullPath, destPath); } catch (Exception ex2) { Console.WriteLine($"[WARN] UpdateDeliveryPath: {ex2.Message}"); }
-
-        // Update assignment path
-        try
-        {
-            var assignCol = MongoDbHelper.GetCollection<BsonDocument>("assignments");
-            var oldNorm = fullPath.Replace("\\", "/");
-            assignCol.UpdateMany(
-                Builders<BsonDocument>.Filter.Or(
-                    Builders<BsonDocument>.Filter.Eq("fullPath", fullPath),
-                    Builders<BsonDocument>.Filter.Eq("fullPath", oldNorm)),
-                Builders<BsonDocument>.Update.Set("fullPath", destPath));
-        }
-        catch (Exception exA) { Console.WriteLine($"[WARN] UpdateAssignmentPath: {exA.Message}"); }
-
-        // Update fabrication path
-        try
-        {
-            var oldNorm2 = fullPath.Replace("\\", "/");
-            var fabCol = MongoDbHelper.GetCollection<BsonDocument>("fabrications");
-            fabCol.UpdateMany(
-                Builders<BsonDocument>.Filter.Or(
-                    Builders<BsonDocument>.Filter.Eq("fullPath", fullPath),
-                    Builders<BsonDocument>.Filter.Eq("fullPath", oldNorm2)),
-                Builders<BsonDocument>.Update.Set("fullPath", destPath));
-            var fabSheetsCol = MongoDbHelper.GetCollection<BsonDocument>("fabricationSheets");
-            fabSheetsCol.UpdateMany(
-                Builders<BsonDocument>.Filter.Or(
-                    Builders<BsonDocument>.Filter.Eq("fullPath", fullPath),
-                    Builders<BsonDocument>.Filter.Eq("fullPath", oldNorm2)),
-                Builders<BsonDocument>.Update.Set("fullPath", destPath));
-        }
-        catch (Exception exF) { Console.WriteLine($"[WARN] UpdateFabricationPath: {exF.Message}"); }
-
-        // Store the preflight profile name on the fabrication sheet so it "remonte" automatically
-        // into the fiche de production. Upsert by fileName so the info is captured even when the
-        // fiche has not been created yet at preflight time.
-        try
-        {
-            var fileNameLc = Path.GetFileName(destPath).ToLowerInvariant();
-            var fabCol2 = MongoDbHelper.GetFabricationsCollection();
-            fabCol2.UpdateOne(
-                Builders<BsonDocument>.Filter.Eq("fileName", fileNameLc),
-                Builders<BsonDocument>.Update
-                    .Set("preflightProfil", preflightProfilName)
-                    .SetOnInsert("fullPath", destPath),
-                new UpdateOptions { IsUpsert = true });
-        }
-        catch (Exception exPf) { Console.WriteLine($"[WARN] SetPreflightProfil: {exPf.Message}"); }
-
-        // Log activity
-        MongoDbHelper.InsertActivityLog(new ActivityLogEntry
-        {
-            Timestamp = DateTime.Now,
-            UserLogin = "system",
-            UserName = "GestionAtelier",
-            Action = "PREFLIGHT",
-            Details = $"Preflight droplet ({Path.GetFileName(dropletExe)}) : {Path.GetFileName(fullPath)} → Prêt pour impression"
-        });
+        if (!moveOk)
+            return Results.Json(new { ok = false, error = moveError });
 
         return Results.Json(new { ok = true });
     }
@@ -841,5 +798,118 @@ app.MapPost("/api/jobs/open-in-prismaprepare", async (HttpContext ctx) =>
 
         var rootPrefix = normalizedRoot + Path.DirectorySeparatorChar;
         return normalizedPath.StartsWith(rootPrefix, comparison);
+    }
+
+    /// <summary>
+    /// Déplace le fichier PDF <paramref name="sourcePath"/> vers le dossier « Prêt pour impression »,
+    /// met à jour les chemins dans MongoDB (delivery, assignments, fabrications) et journalise l'activité.
+    /// </summary>
+    /// <param name="sourcePath">Chemin source du fichier PDF.</param>
+    /// <param name="preflightProfilName">Nom du profil preflight à enregistrer sur la fiche de fabrication.</param>
+    /// <param name="activityDetails">Message de détail pour le log d'activité.</param>
+    /// <returns>
+    /// Un tuple <c>(ok, error, destPath)</c> :
+    /// <c>ok</c> indique si le déplacement a réussi ;
+    /// <c>error</c> contient le message d'erreur si <c>ok == false</c> ;
+    /// <c>destPath</c> est le chemin de destination si <c>ok == true</c>.
+    /// </returns>
+    private static async Task<(bool ok, string? error, string destPath)> MoveToReadyForPrint(
+        string sourcePath, string preflightProfilName, string activityDetails)
+    {
+        var root    = BackendUtils.HotfoldersRoot();
+        var destDir = Path.Combine(root, "Prêt pour impression");
+        Directory.CreateDirectory(destDir);
+        var destPath = Path.Combine(destDir, Path.GetFileName(sourcePath));
+
+        bool moved = false;
+        Exception? lastEx = null;
+        for (int retry = 0; retry < 10; retry++)
+        {
+            try
+            {
+                File.Move(sourcePath, destPath, overwrite: true);
+                moved = true;
+                break;
+            }
+            catch (IOException ex)
+            {
+                lastEx = ex;
+                await Task.Delay(2000);
+            }
+        }
+
+        if (!moved)
+        {
+            try
+            {
+                File.Copy(sourcePath, destPath, overwrite: true);
+                try { File.Delete(sourcePath); } catch (Exception exDel) { Console.WriteLine($"[PREFLIGHT][WARN] Could not delete source after copy: {exDel.Message}"); }
+            }
+            catch (Exception exCopy)
+            {
+                return (false, $"Impossible de déplacer le fichier après le Preflight : {lastEx?.Message ?? exCopy.Message}", destPath);
+            }
+        }
+
+        // Update delivery path
+        try { BackendUtils.UpdateDeliveryPath(sourcePath, destPath); } catch (Exception ex2) { Console.WriteLine($"[WARN] UpdateDeliveryPath: {ex2.Message}"); }
+
+        // Update assignment path
+        try
+        {
+            var assignCol = MongoDbHelper.GetCollection<BsonDocument>("assignments");
+            var oldNorm = sourcePath.Replace("\\", "/");
+            assignCol.UpdateMany(
+                Builders<BsonDocument>.Filter.Or(
+                    Builders<BsonDocument>.Filter.Eq("fullPath", sourcePath),
+                    Builders<BsonDocument>.Filter.Eq("fullPath", oldNorm)),
+                Builders<BsonDocument>.Update.Set("fullPath", destPath));
+        }
+        catch (Exception exA) { Console.WriteLine($"[WARN] UpdateAssignmentPath: {exA.Message}"); }
+
+        // Update fabrication path
+        try
+        {
+            var oldNorm2 = sourcePath.Replace("\\", "/");
+            var fabCol = MongoDbHelper.GetCollection<BsonDocument>("fabrications");
+            fabCol.UpdateMany(
+                Builders<BsonDocument>.Filter.Or(
+                    Builders<BsonDocument>.Filter.Eq("fullPath", sourcePath),
+                    Builders<BsonDocument>.Filter.Eq("fullPath", oldNorm2)),
+                Builders<BsonDocument>.Update.Set("fullPath", destPath));
+            var fabSheetsCol = MongoDbHelper.GetCollection<BsonDocument>("fabricationSheets");
+            fabSheetsCol.UpdateMany(
+                Builders<BsonDocument>.Filter.Or(
+                    Builders<BsonDocument>.Filter.Eq("fullPath", sourcePath),
+                    Builders<BsonDocument>.Filter.Eq("fullPath", oldNorm2)),
+                Builders<BsonDocument>.Update.Set("fullPath", destPath));
+        }
+        catch (Exception exF) { Console.WriteLine($"[WARN] UpdateFabricationPath: {exF.Message}"); }
+
+        // Store the preflight profile name on the fabrication sheet
+        try
+        {
+            var fileNameLc = Path.GetFileName(destPath).ToLowerInvariant();
+            var fabCol2 = MongoDbHelper.GetFabricationsCollection();
+            fabCol2.UpdateOne(
+                Builders<BsonDocument>.Filter.Eq("fileName", fileNameLc),
+                Builders<BsonDocument>.Update
+                    .Set("preflightProfil", preflightProfilName)
+                    .SetOnInsert("fullPath", destPath),
+                new UpdateOptions { IsUpsert = true });
+        }
+        catch (Exception exPf) { Console.WriteLine($"[WARN] SetPreflightProfil: {exPf.Message}"); }
+
+        // Log activity
+        MongoDbHelper.InsertActivityLog(new ActivityLogEntry
+        {
+            Timestamp = DateTime.Now,
+            UserLogin = "system",
+            UserName  = "GestionAtelier",
+            Action    = "PREFLIGHT",
+            Details   = activityDetails
+        });
+
+        return (true, null, destPath);
     }
 }

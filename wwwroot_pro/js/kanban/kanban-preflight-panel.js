@@ -111,6 +111,75 @@ export async function openPreflightAnalysisPanel(fullPath, fileName, onLaunchDon
     recoEl.innerHTML = '<p style="font-size:13px;color:#374151;margin:0 0 6px;"><strong>Preflight conseillé :</strong> ' + (rec.advisedPreflightLabel || 'Standard') + '</p><p style="font-size:13px;font-weight:600;color:#374151;margin:0 0 4px;">Corrections proposées :</p><ul style="margin:0;padding-left:18px;font-size:13px;color:#374151;">' + corrHtml + '</ul>' + dpHtml;
   }
 
+  // Chain execution section (only shown when the engine is active and there are corrections)
+  if (rec && rec.isActive && rec.corrections && rec.corrections.length > 0) {
+    const chainDiv = document.createElement('div');
+    chainDiv.style.cssText = 'background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px;margin-bottom:18px;';
+    const chainListHtml = rec.corrections.map((c, i) =>
+      '<li style="margin-bottom:4px;">' +
+        '<span style="color:#6b7280;font-size:11px;margin-right:6px;">' + (i + 1) + '.</span>' +
+        '<strong>' + c.label + '</strong>' +
+      '</li>'
+    ).join('');
+    chainDiv.innerHTML =
+      '<h4 style="margin:0 0 8px;font-size:14px;color:#15803d;">🔗 Chaîne de corrections recommandée</h4>' +
+      '<ol style="margin:0 0 10px;padding-left:20px;font-size:13px;color:#374151;">' + chainListHtml + '</ol>' +
+      '<button id="pf-chain-btn" class="btn btn-primary" style="background:#15803d;border-color:#15803d;min-width:220px;">▶ Appliquer les corrections recommandées</button>' +
+      '<div id="pf-chain-status" style="margin-top:10px;font-size:13px;min-height:18px;"></div>' +
+      '<div id="pf-chain-report" style="margin-top:8px;"></div>';
+    bodyEl.appendChild(chainDiv);
+
+    const chainBtn = chainDiv.querySelector('#pf-chain-btn');
+    const chainStatusEl = chainDiv.querySelector('#pf-chain-status');
+    const chainReportEl = chainDiv.querySelector('#pf-chain-report');
+
+    chainBtn.onclick = async () => {
+      chainBtn.disabled = true;
+      chainBtn.textContent = '⏳ Chaîne en cours…';
+      chainStatusEl.textContent = '';
+      chainReportEl.innerHTML = '';
+      try {
+        const r = await fetch('/api/preflight/run-chain', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', "Authorization": `****** },
+          body: JSON.stringify({ fullPath })
+        }).then(res => res.json()).catch(() => ({ ok: false, error: 'Erreur réseau' }));
+
+        // Render step-by-step report
+        if (r.chainReport && Array.isArray(r.chainReport.steps) && r.chainReport.steps.length > 0) {
+          const stepsHtml = r.chainReport.steps.map(s =>
+            '<div style="display:flex;align-items:flex-start;gap:8px;padding:4px 0;border-bottom:1px solid #e5e7eb;">' +
+              '<span style="font-size:14px;flex-shrink:0;">' + (s.ok ? '✅' : '❌') + '</span>' +
+              '<div>' +
+                '<strong style="font-size:13px;">' + s.label + '</strong>' +
+                (s.dropletName ? '<span style="font-size:11px;color:#6b7280;margin-left:6px;">(' + s.dropletName + ')</span>' : '') +
+                (s.error ? '<div style="color:#dc2626;font-size:12px;margin-top:2px;">' + s.error + '</div>' : '') +
+              '</div>' +
+            '</div>'
+          ).join('');
+          chainReportEl.innerHTML = '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:8px 12px;font-size:13px;">' + stepsHtml + '</div>';
+        }
+
+        if (r.ok) {
+          chainBtn.textContent = '✅ Corrections appliquées';
+          chainStatusEl.style.color = '#16a34a';
+          chainStatusEl.textContent = 'La chaîne de corrections s\'est terminée avec succès. Le fichier a été déplacé vers Prêt pour impression.';
+          if (onLaunchDone) setTimeout(onLaunchDone, 800);
+        } else {
+          chainBtn.disabled = false;
+          chainBtn.textContent = '▶ Appliquer les corrections recommandées';
+          chainStatusEl.style.color = '#dc2626';
+          chainStatusEl.textContent = '❌ ' + (r.error || r.chainReport?.errorMessage || 'Erreur inconnue');
+        }
+      } catch(err) {
+        chainBtn.disabled = false;
+        chainBtn.textContent = '▶ Appliquer les corrections recommandées';
+        chainStatusEl.style.color = '#dc2626';
+        chainStatusEl.textContent = '❌ ' + err.message;
+      }
+    };
+  }
+
   // Launch section
   const launchDiv = document.createElement('div');
   launchDiv.style.cssText = 'border-top:1px solid #e5e7eb;padding-top:16px;';

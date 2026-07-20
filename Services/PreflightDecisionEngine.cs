@@ -274,6 +274,50 @@ public static class PreflightDecisionEngine
 
     // ── Sélection du droplet ──────────────────────────────────────────────────
 
+    /// <summary>
+    /// Résout le droplet à utiliser pour une <paramref name="correction"/> donnée.
+    /// <para>
+    /// Priorité 1 : <c>TargetDropletName</c> de la règle correspondante.<br/>
+    /// Priorité 2 : correspondance par mot-clé (« fond perdu » si règle <c>bleed_insufficient</c>).<br/>
+    /// Priorité 3 : droplet standard (mot-clé « standard », « correction », « preflight »).<br/>
+    /// Priorité 4 : premier droplet de la liste.
+    /// </para>
+    /// </summary>
+    public static DropletConfig? ResolveDropletForCorrection(
+        PreflightCorrection correction,
+        PreflightRulesSettings rulesSettings,
+        PreflightSettings? preflightSettings)
+    {
+        if (preflightSettings == null || preflightSettings.Droplets.Count == 0)
+            return null;
+
+        // Priorité 1 : TargetDropletName défini sur la règle.
+        var rule = rulesSettings.Rules.FirstOrDefault(r => r.Id == correction.RuleId);
+        if (rule != null && !string.IsNullOrEmpty(rule.TargetDropletName))
+        {
+            var targeted = preflightSettings.Droplets.FirstOrDefault(d =>
+                string.Equals(d.Name, rule.TargetDropletName, StringComparison.OrdinalIgnoreCase));
+            if (targeted != null)
+                return targeted;
+        }
+
+        // Priorité 2 : mot-clé spécifique à la règle fond perdu.
+        if (correction.RuleId == PreflightRuleIds.BleedInsufficient)
+        {
+            var bleedDroplet = FindDropletByKeyword(preflightSettings.Droplets, "fond perdu", "fondperdu", "bleed");
+            if (bleedDroplet != null)
+                return bleedDroplet;
+        }
+
+        // Priorité 3 : droplet générique de corrections/preflight.
+        var standardDroplet = FindDropletByKeyword(preflightSettings.Droplets, "standard", "correction", "preflight");
+        if (standardDroplet != null)
+            return standardDroplet;
+
+        // Priorité 4 : premier droplet disponible.
+        return preflightSettings.Droplets.FirstOrDefault();
+    }
+
     private static DropletConfig? SelectDroplet(
         List<PreflightCorrection> corrections,
         PreflightRulesSettings rulesSettings,
