@@ -87,6 +87,13 @@ public class PreflightSettings
 
     [JsonPropertyName("droplets")]
     public List<DropletConfig> Droplets { get; set; } = new();
+
+    /// <summary>
+    /// Chemin vers l'exécutable Ghostscript (ex. « gs » sous Linux, « C:\gs\bin\gswin64c.exe » sous Windows).
+    /// Vide = calcul TAC désactivé (les champs TotalInkCoveragePercent et PlateCoveragePercent restent null).
+    /// </summary>
+    [JsonPropertyName("ghostscriptExePath")]
+    public string GhostscriptExePath { get; set; } = "";
 }
 
 public class DropletConfig
