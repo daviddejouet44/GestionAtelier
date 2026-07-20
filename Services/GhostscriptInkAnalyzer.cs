@@ -83,6 +83,12 @@ public static class GhostscriptInkAnalyzer
                 return;
             }
 
+            // WaitForExit(timeout) ne garantit PAS que tous les callbacks asynchrones stdout
+            // (OutputDataReceived) aient été livrés : la sortie pouvait être tronquée et le TAC
+            // sous-évalué de façon intermittente. Cet appel SANS timeout bloque jusqu'à ce que
+            // la lecture asynchrone de la sortie standard soit terminée et le buffer vidé.
+            process.WaitForExit();
+
             ParseAndEnrich(report, outputSb.ToString());
         }
         catch (Exception ex)
