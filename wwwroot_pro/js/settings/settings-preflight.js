@@ -13,7 +13,7 @@ const RULE_DEFINITIONS = [
 export async function renderSettingsPreflight(panel) {
   panel.innerHTML = `<h3>Preflight</h3><p style="color:#6b7280;">Chargement...</p>`;
 
-  let cfg      = { dropletStandard: "", dropletFondPerdu: "", droplets: [] };
+  let cfg      = { dropletStandard: "", dropletFondPerdu: "", droplets: [], ghostscriptExePath: "" };
   let autoCfg  = { enabled: false, maximumTacPercent: null, minimumBleedMm: null, minimumImageDpi: null };
   let rulesCfg = { maximumTacPercent: null, minimumBleedMm: null, minimumImageDpi: null, rules: [] };
 
@@ -24,9 +24,10 @@ export async function renderSettingsPreflight(panel) {
       fetch("/api/config/preflight-rules", { headers: { "Authorization": `Bearer ${authToken}` } }).then(r => r.json()),
     ]);
     if (r1.ok && r1.config) cfg = {
-      dropletStandard:  r1.config.dropletStandard  || "",
-      dropletFondPerdu: r1.config.dropletFondPerdu || "",
-      droplets:         Array.isArray(r1.config.droplets) ? r1.config.droplets : [],
+      dropletStandard:     r1.config.dropletStandard     || "",
+      dropletFondPerdu:    r1.config.dropletFondPerdu    || "",
+      droplets:            Array.isArray(r1.config.droplets) ? r1.config.droplets : [],
+      ghostscriptExePath:  r1.config.ghostscriptExePath  || "",
     };
     if (r2.ok && r2.config) autoCfg  = r2.config;
     if (r3.ok && r3.config) rulesCfg = r3.config;
@@ -123,11 +124,22 @@ export async function renderSettingsPreflight(panel) {
 
     <!-- Section 3 : Droplets Acrobat -->
     <div class="settings-section-card" style="max-width:820px;padding:20px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb;">
-      <h4 style="margin:0 0 4px;">Droplets Acrobat</h4>
+      <h4 style="margin:0 0 4px;">Droplets Acrobat &amp; Ghostscript</h4>
       <p style="color:#6b7280;font-size:13px;margin:0 0 16px;">
-        Configurez les chemins vers les droplets Acrobat (.exe) utilisés pour le Preflight.
-        Les droplets sont lancés avec le fichier PDF en argument.
+        Configurez les chemins vers les droplets Acrobat (.exe) utilisés pour le Preflight
+        et le chemin vers l'exécutable Ghostscript pour le calcul du TAC.
       </p>
+      <div class="settings-form-group" style="margin-bottom:16px;">
+        <label>Ghostscript — chemin exécutable</label>
+        <input type="text" id="preflight-ghostscript" value="${(cfg.ghostscriptExePath || '').replace(/"/g,'&quot;')}"
+          class="settings-input" style="width: 100%; max-width: 600px;"
+          placeholder="Ex: gs  /  C:\\Program Files\\gs\\gs10.04.0\\bin\\gswin64c.exe" />
+        <p style="font-size:12px;color:#6b7280;margin-top:4px;">
+          Utilisé pour le calcul TAC (taux d'encrage). Laissez vide pour désactiver le calcul.
+          Sous Linux : <code>gs</code> ou chemin absolu. Sous Windows : <code>gswin64c.exe</code> ou chemin absolu.
+        </p>
+      </div>
+      <hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb;" />
       <div class="settings-form-group">
         <label>Droplet Preflight standard (colonne "Preflight")</label>
         <input type="text" id="preflight-standard" value="${(cfg.dropletStandard || '').replace(/"/g,'&quot;')}"
@@ -235,8 +247,9 @@ export async function renderSettingsPreflight(panel) {
   };
 
   panel.querySelector("#preflight-save").onclick = async () => {
-    const dropletStandard  = panel.querySelector("#preflight-standard").value.trim();
-    const dropletFondPerdu = panel.querySelector("#preflight-fondperdu").value.trim();
+    const dropletStandard    = panel.querySelector("#preflight-standard").value.trim();
+    const dropletFondPerdu   = panel.querySelector("#preflight-fondperdu").value.trim();
+    const ghostscriptExePath = panel.querySelector("#preflight-ghostscript").value.trim();
     const droplets = Array.from(listEl.querySelectorAll("div")).map(row => ({
       name: row.querySelector(".droplet-name")?.value.trim() || "",
       path: row.querySelector(".droplet-path")?.value.trim() || ""
@@ -244,7 +257,7 @@ export async function renderSettingsPreflight(panel) {
     const r = await fetch("/api/config/preflight", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
-      body: JSON.stringify({ dropletStandard, dropletFondPerdu, droplets })
+      body: JSON.stringify({ dropletStandard, dropletFondPerdu, droplets, ghostscriptExePath })
     }).then(r => r.json());
     if (r.ok) showNotification("✅ Configuration Preflight enregistrée", "success");
     else showNotification("❌ Erreur : " + (r.error || ""), "error");

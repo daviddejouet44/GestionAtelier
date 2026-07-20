@@ -569,7 +569,7 @@ app.MapGet("/api/config/preflight", (HttpContext ctx) =>
             return Results.Json(new { ok = false, error = "Admin only" });
 
         var cfg = MongoDbHelper.GetSettings<PreflightSettings>("preflight") ?? new PreflightSettings();
-        return Results.Json(new { ok = true, config = new { dropletStandard = cfg.DropletStandard, dropletFondPerdu = cfg.DropletFondPerdu, droplets = cfg.Droplets } });
+        return Results.Json(new { ok = true, config = new { dropletStandard = cfg.DropletStandard, dropletFondPerdu = cfg.DropletFondPerdu, droplets = cfg.Droplets, ghostscriptExePath = cfg.GhostscriptExePath } });
     }
     catch (Exception ex) { return HandleException(ex); }
 });
@@ -586,6 +586,7 @@ app.MapPut("/api/config/preflight", async (HttpContext ctx) =>
 
         if (json.TryGetProperty("dropletStandard", out var ds)) existing.DropletStandard = ds.GetString() ?? existing.DropletStandard;
         if (json.TryGetProperty("dropletFondPerdu", out var df)) existing.DropletFondPerdu = df.GetString() ?? existing.DropletFondPerdu;
+        if (json.TryGetProperty("ghostscriptExePath", out var gsEl)) existing.GhostscriptExePath = gsEl.GetString() ?? existing.GhostscriptExePath;
         if (json.TryGetProperty("droplets", out var dropletsEl) && dropletsEl.ValueKind == JsonValueKind.Array)
         {
             existing.Droplets = new List<DropletConfig>();

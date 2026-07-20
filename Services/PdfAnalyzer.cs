@@ -50,6 +50,7 @@ public static class PdfAnalyzer
             var subsetFonts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var missingFonts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var spotColors = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var hasOverprint = false;
 
             for (var pageIndex = 1; pageIndex <= report.PageCount; pageIndex++)
             {
@@ -74,6 +75,7 @@ public static class PdfAnalyzer
                 {
                     AnalyzeColorSpaces(resources.GetAsDictionary(PdfName.ColorSpace), report, spotColors);
                     AnalyzeFonts(resources.GetAsDictionary(PdfName.Font), embeddedFonts, subsetFonts, missingFonts);
+                    hasOverprint |= AnalyzeExtGStateForOverprint(resources.GetAsDictionary(PdfName.ExtGState));
                 }
 
                 var listener = new PdfAnalysisEventListener();
@@ -104,6 +106,8 @@ public static class PdfAnalyzer
 
             if (report.MinImageDpi.HasValue)
                 report.MinImageDpi = Math.Round(report.MinImageDpi.Value, 2);
+
+            report.HasOverprint = hasOverprint;
 
             return report;
         }
@@ -351,8 +355,31 @@ public static class PdfAnalyzer
         }
     }
 
-    private static string DecodePdfName(PdfName? name)
+    /// <summary>
+    /// Vérifie si l'un des états graphiques (ExtGState) du dictionnaire de ressources active
+    /// le mode surimpression (overprint). La détection repose sur les clés <c>OP</c> (stroke) et
+    /// <c>op</c> (fill) de la spécification PDF (Table 58 de la spec ISO 32000).
+    /// </summary>
+    private static bool AnalyzeExtGStateForOverprint(PdfDictionary? extGStateDict)
     {
+        if (extGStateDict == null) return false;
+
+        foreach (var entry in extGStateDict.EntrySet())
+        {
+            if (entry.Value is not PdfDictionary stateDict) continue;
+
+            // OP (uppercase) = surimpression pour les opérations de remplissage (stroke overprint)
+            if (stateDict.Get(PdfName.OP) is PdfBoolean opVal && opVal.GetValue())
+                return true;
+            // op (lowercase) = surimpression pour les opérations non-stroke (fill overprint)
+            if (stateDict.Get(new PdfName("op")) is PdfBoolean opFillVal && opFillVal.GetValue())
+                return true;
+        }
+
+        return false;
+    }
+
+    private static string DecodePdfName(PdfName? name)    {
         var raw = name?.ToString() ?? "";
         if (raw.StartsWith('/')) raw = raw[1..];
 

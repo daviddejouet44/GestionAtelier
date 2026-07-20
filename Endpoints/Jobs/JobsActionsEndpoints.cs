@@ -150,9 +150,11 @@ app.MapPost("/api/preflight/analyze", async (HttpContext ctx) =>
         if (report.IsError)
             return Results.Json(new { ok = false, error = report.ErrorMessage ?? "Impossible d'analyser le PDF" });
 
+        var preflightSettings = MongoDbHelper.GetSettings<PreflightSettings>("preflight") ?? new PreflightSettings();
+        GhostscriptInkAnalyzer.Enrich(report, fullPath, preflightSettings.GhostscriptExePath);
+
         var rulesSettings = MongoDbHelper.GetSettings<PreflightRulesSettings>("preflightRules") ?? new PreflightRulesSettings();
         var autoSettings = MongoDbHelper.GetSettings<AutoPreflightSettings>("autoPreflight") ?? new AutoPreflightSettings();
-        var preflightSettings = MongoDbHelper.GetSettings<PreflightSettings>("preflight") ?? new PreflightSettings();
 
         var recommendation = PreflightDecisionEngine.Evaluate(
             report,
